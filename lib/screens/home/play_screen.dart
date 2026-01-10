@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/matchmaking_provider.dart';
 import '../../widgets/rank_badge.dart';
+import '../matchmaking/matchmaking_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -213,13 +215,19 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Matchmaking feature coming soon!'),
-                        backgroundColor: Color(0xFF00E5FF),
-                      ),
-                    );
+                  onTap: () async {
+                    final matchmaking = context.read<MatchmakingProvider>();
+                    final userId = user.id;
+                    
+                    await matchmaking.joinQueue(userId);
+                    
+                    if (context.mounted) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const MatchmakingScreen(),
+                        ),
+                      );
+                    }
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: const Center(
