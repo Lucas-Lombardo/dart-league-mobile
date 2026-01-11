@@ -7,6 +7,7 @@ import '../../widgets/rank_badge.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
+import '../../utils/haptic_service.dart';
 import '../matchmaking/matchmaking_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -222,6 +223,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             scale: _pulseAnimation,
             child: GestureDetector(
               onTap: () async {
+                HapticService.mediumImpact();
+                
                 final matchmaking = context.read<MatchmakingProvider>();
                 final game = context.read<GameProvider>();
                 final user = context.read<AuthProvider>().currentUser;

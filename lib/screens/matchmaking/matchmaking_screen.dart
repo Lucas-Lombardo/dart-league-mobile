@@ -18,6 +18,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   late AnimationController _rotationController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  MatchmakingProvider? _matchmakingProvider;
 
   @override
   void initState() {
@@ -39,17 +40,26 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
         curve: Curves.easeInOut,
       ),
     );
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final matchmaking = context.read<MatchmakingProvider>();
-      matchmaking.addListener(_onMatchmakingUpdate);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    if (_matchmakingProvider == null) {
+      _matchmakingProvider = context.read<MatchmakingProvider>();
+      _matchmakingProvider!.addListener(_onMatchmakingUpdate);
       
       // Check if match was already found (immediate match)
-      if (matchmaking.matchFound) {
-        debugPrint('🎯 Immediate match detected in initState');
-        _showMatchFoundDialog();
+      if (_matchmakingProvider!.matchFound) {
+        debugPrint('🎯 Immediate match detected');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showMatchFoundDialog();
+          }
+        });
       }
-    });
+    }
   }
 
   void _onMatchmakingUpdate() {
@@ -156,21 +166,18 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       try {
         debugPrint('🎮 Navigating to GameScreen - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
         
-        Navigator.of(context).pop(); // Close dialog
-        Navigator.of(context).pop(); // Go back from matchmaking screen
-        
-        Navigator.of(context).pushReplacement(
+        // Use Navigator to replace the entire stack with GameScreen
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => GameScreen(
               matchId: matchmaking.matchId!,
               opponentId: matchmaking.opponentId!,
             ),
           ),
+          (route) => route.isFirst, // Keep only the first route (home screen)
         );
         
         debugPrint('✅ Navigation to GameScreen complete');
-        
-        // Don't reset match here - it will be reset when matchmaking screen disposes
       } catch (e, stackTrace) {
         debugPrint('❌ Error navigating to GameScreen: $e');
         debugPrint('Stack trace: $stackTrace');
@@ -181,14 +188,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   @override
   void dispose() {
     debugPrint('🧹 MatchmakingScreen dispose called');
-    try {
-      if (mounted) {
-        final matchmaking = context.read<MatchmakingProvider>();
-        matchmaking.removeListener(_onMatchmakingUpdate);
-      }
-    } catch (e) {
-      debugPrint('⚠️ Error in dispose: $e');
-    }
+    _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();
     super.dispose();

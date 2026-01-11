@@ -122,7 +122,6 @@ class GameProvider with ChangeNotifier {
   void _handleScoreUpdated(dynamic data) {
     debugPrint('📊 Score updated: $data');
     
-    final oldCurrentPlayer = _currentPlayerId;
     final oldDartsThrown = _dartsThrown;
     
     // Backend sends player1Score and player2Score directly
@@ -145,10 +144,12 @@ class GameProvider with ChangeNotifier {
     
     _lastThrow = data['notation'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
-    _currentPlayerId = data['currentPlayerId'] as String?;
+    
+    // DON'T update currentPlayerId here - it should only change in round_complete
+    // This prevents premature turn switching after each dart
     
     debugPrint('   Darts thrown: $oldDartsThrown -> $_dartsThrown');
-    debugPrint('   Current player: $oldCurrentPlayer -> $_currentPlayerId');
+    debugPrint('   Current player stays: $_currentPlayerId (not switching until round complete)');
     debugPrint('   Is my turn: $isMyTurn');
     
     notifyListeners();

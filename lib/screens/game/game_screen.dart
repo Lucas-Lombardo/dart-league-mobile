@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
+import '../../utils/haptic_service.dart';
 
 class GameScreen extends StatefulWidget {
   final String matchId;
@@ -19,7 +20,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
-  int _selectedNumber = 20;
+  int? _selectedNumber;
   ScoreMultiplier _selectedMultiplier = ScoreMultiplier.single;
   late AnimationController _scoreAnimationController;
 
@@ -135,7 +136,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               const SizedBox(height: 48),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  HapticService.mediumImpact();
+                  debugPrint('🏠 Back to home pressed from game over screen');
+                  Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00E5FF),
@@ -405,6 +408,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   void _confirmRound(GameProvider game) {
+    HapticService.heavyImpact();
     // Emit event to backend to complete the round and switch turns
     debugPrint('🔄 Confirming round completion');
     final auth = context.read<AuthProvider>();
@@ -560,24 +564,33 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildThrowButton(GameProvider game) {
-    final canThrow = game.isMyTurn && game.dartsThrown < 3 && !game.gameEnded;
-    final multiplierLabel = _selectedMultiplier == ScoreMultiplier.single 
-        ? 'S' 
-        : _selectedMultiplier == ScoreMultiplier.double 
-            ? 'D' 
-            : 'T';
+    final canThrow = game.isMyTurn && _selectedNumber != null;
     
+    String getMultiplierPrefix() {
+      switch (_selectedMultiplier) {
+        case ScoreMultiplier.single:
+          return 'S';
+        case ScoreMultiplier.double:
+          return 'D';
+        case ScoreMultiplier.triple:
+          return 'T';
+      }
+    }
+
     return SizedBox(
       width: double.infinity,
-      height: 60,
+      height: 56,
       child: ElevatedButton(
         onPressed: canThrow
             ? () {
+                HapticService.mediumImpact();
                 game.throwDart(
-                  baseScore: _selectedNumber,
+                  baseScore: _selectedNumber!,
                   multiplier: _selectedMultiplier,
                 );
-                _scoreAnimationController.forward(from: 0);
+                setState(() {
+                  _selectedNumber = null;
+                });
               }
             : null,
         style: ElevatedButton.styleFrom(
@@ -591,10 +604,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
         child: Text(
           canThrow 
-              ? 'THROW $multiplierLabel$_selectedNumber'
-              : game.dartsThrown >= 3 
-                  ? 'ROUND COMPLETE'
-                  : 'WAIT FOR YOUR TURN',
+              ? 'THROW ${getMultiplierPrefix()}$_selectedNumber'
+              : !game.isMyTurn
+                  ? 'WAIT FOR YOUR TURN'
+                  : game.dartsThrown >= 3 || game.currentRoundThrows.length >= 3
+                      ? 'ROUND COMPLETE'
+                      : 'SELECT A NUMBER',
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,

@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
 
 class ApiService {
+  static const Duration _timeout = Duration(seconds: 30);
+
   static Future<Map<String, String>> _getHeaders({bool includeAuth = true}) async {
     final headers = {
       'Content-Type': 'application/json',
@@ -21,15 +24,20 @@ class ApiService {
 
   static Future<dynamic> get(String endpoint, {bool includeAuth = true}) async {
     try {
+      final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
-      final response = await http.get(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-      );
-
+      
+      final response = await http.get(url, headers: headers).timeout(_timeout);
+      
       return _handleResponse(response);
+    } on TimeoutException {
+      throw Exception('Connection timeout - Please check your internet');
     } catch (e) {
-      throw Exception('Network error: $e');
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('HandshakeException')) {
+        throw Exception('Unable to connect - Check your internet connection');
+      }
+      rethrow;
     }
   }
 
@@ -39,16 +47,24 @@ class ApiService {
     bool includeAuth = true,
   }) async {
     try {
+      final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
+      
       final response = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
+        url,
         headers: headers,
         body: jsonEncode(body),
-      );
-
+      ).timeout(_timeout);
+      
       return _handleResponse(response);
+    } on TimeoutException {
+      throw Exception('Connection timeout - Please check your internet');
     } catch (e) {
-      throw Exception('Network error: $e');
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('HandshakeException')) {
+        throw Exception('Unable to connect - Check your internet connection');
+      }
+      rethrow;
     }
   }
 
@@ -63,11 +79,17 @@ class ApiService {
         Uri.parse('$baseUrl$endpoint'),
         headers: headers,
         body: jsonEncode(body),
-      );
+      ).timeout(_timeout);
 
       return _handleResponse(response);
+    } on TimeoutException {
+      throw Exception('Connection timeout - Please check your internet');
     } catch (e) {
-      throw Exception('Network error: $e');
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('HandshakeException')) {
+        throw Exception('Unable to connect - Check your internet connection');
+      }
+      rethrow;
     }
   }
 

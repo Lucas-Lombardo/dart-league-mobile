@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/matchmaking_service.dart';
 import '../services/socket_service.dart';
+import '../utils/haptic_service.dart';
 import 'game_provider.dart';
 
 class MatchmakingProvider with ChangeNotifier {
@@ -110,6 +111,8 @@ class MatchmakingProvider with ChangeNotifier {
 
   void _handleMatchFound(dynamic data) {
     debugPrint('🎮 Match found: $data');
+    
+    HapticService.heavyImpact();
     
     _stopSearchTimer();
     _matchFound = true;
