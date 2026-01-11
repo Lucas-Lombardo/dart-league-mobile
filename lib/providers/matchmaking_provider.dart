@@ -63,6 +63,7 @@ class MatchmakingProvider with ChangeNotifier {
         _handleMatchFound({
           'matchId': response['matchId'],
           'opponentId': response['opponentId'],
+          'opponentUsername': response['opponentUsername'],
           'playerElo': response['playerElo'],
           'opponentElo': response['opponentElo'],
         });
@@ -122,6 +123,13 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentElo = data['opponentElo'] as int?;
     _playerElo = data['playerElo'] as int?;
     _isSearching = false;
+    
+    // Debug opponent data
+    debugPrint('📊 Opponent data:');
+    debugPrint('   - opponentId: $_opponentId');
+    debugPrint('   - opponentUsername: $_opponentUsername');
+    debugPrint('   - opponentElo: $_opponentElo');
+    debugPrint('   - playerElo: $_playerElo');
     
     // Backend auto-joins players to room and emits game_started immediately
     // GameProvider listeners are already set up and ready to receive the event

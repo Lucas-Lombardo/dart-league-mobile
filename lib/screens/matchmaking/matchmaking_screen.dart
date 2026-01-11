@@ -119,16 +119,18 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        matchmaking.opponentUsername ?? matchmaking.opponentId ?? 'Unknown',
+                        matchmaking.opponentUsername ?? 'Unknown Player',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ELO: ${matchmaking.opponentElo ?? matchmaking.playerElo ?? 1200}',
+                        'ELO: ${matchmaking.opponentElo ?? '???'}',
                         style: const TextStyle(
                           color: AppTheme.primary,
                           fontSize: 18,

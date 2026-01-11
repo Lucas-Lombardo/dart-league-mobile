@@ -18,6 +18,7 @@ class GameProvider with ChangeNotifier {
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
   bool _listenersSetUp = false;
+  bool _pendingConfirmation = false;
 
   GameProvider() {
     debugPrint('🎮 GameProvider created');
@@ -46,6 +47,7 @@ class GameProvider with ChangeNotifier {
   String? get winnerId => _winnerId;
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
+  bool get pendingConfirmation => _pendingConfirmation;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
   
@@ -96,6 +98,10 @@ class GameProvider with ChangeNotifier {
 
     SocketService.on('score_updated', (data) {
       _handleScoreUpdated(data);
+    });
+
+    SocketService.on('round_ready_confirm', (data) {
+      _handleRoundReadyConfirm(data);
     });
 
     SocketService.on('round_complete', (data) {
@@ -169,6 +175,14 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleRoundReadyConfirm(dynamic data) {
+    debugPrint('✅ Round ready to confirm: $data');
+    debugPrint('   3 darts thrown - waiting for user confirmation');
+    
+    _pendingConfirmation = true;
+    notifyListeners();
+  }
+
   void _handleRoundComplete(dynamic data) {
     debugPrint('🎯 Round complete: $data');
     
@@ -177,6 +191,7 @@ class GameProvider with ChangeNotifier {
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _currentPlayerId = data['nextPlayerId'] as String?;
+    _pendingConfirmation = false;
     
     debugPrint('   🔄 Turn switched: $oldCurrentPlayer -> $_currentPlayerId');
     debugPrint('   🎲 Is my turn now: $isMyTurn');
@@ -192,6 +207,29 @@ class GameProvider with ChangeNotifier {
     }
     
     notifyListeners();
+  }
+  
+  void confirmRound() {
+    // Auto-fill remaining darts with 0s if less than 3
+    while (_currentRoundThrows.length < 3) {
+      debugPrint('🔢 Auto-filling dart ${_currentRoundThrows.length + 1} with 0');
+      throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
+    }
+    
+    // Emit confirm event if pending, otherwise force it
+    debugPrint('✅ User confirmed round - emitting confirm_round event');
+    SocketService.emit('confirm_round', {
+      'matchId': _matchId,
+      'playerId': _myUserId,
+    });
+  }
+  
+  void cancelConfirmation() {
+    if (_pendingConfirmation) {
+      debugPrint('↩️ User cancelled confirmation - returning to throw editing');
+      _pendingConfirmation = false;
+      notifyListeners();
+    }
   }
 
   void _handleGameWon(dynamic data) {

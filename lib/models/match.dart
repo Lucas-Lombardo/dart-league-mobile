@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class Match {
   final String id;
   final String player1Id;
@@ -29,35 +31,41 @@ class Match {
     this.rounds,
   });
 
-  factory Match.fromJson(Map<String, dynamic> json) {
+  factory Match.fromJson(Map<String, dynamic> json, [String? currentUserId]) {
     // Backend format: matchId, opponentId, opponentEmail, opponentElo, 
     // playerScore, opponentScore, result, playerRounds, opponentRounds, createdAt
     
     final result = json['result'] as String? ?? '';
     final isWin = result.toLowerCase() == 'win';
     
-    // In this format, we don't have current user's ID, so we use a placeholder
-    // The actual player ID will be determined by the context where this is used
-    final playerId = 'current_user'; // Placeholder
+    // Use provided userId or fallback to placeholder
+    final playerId = currentUserId ?? 'current_user';
     final opponentId = json['opponentId'] as String? ?? '';
     
     final playerScore = json['playerScore'] as int? ?? 501;
     final opponentScore = json['opponentScore'] as int? ?? 501;
     
-    // opponentElo is actually the ELO change (confusing backend naming)
-    final eloChange = json['opponentElo'] as int? ?? 0;
+    // Backend sends playerEloChange for this match
+    final eloChange = json['playerEloChange'] as int? ?? 0;
+    
+    // Get opponent username from opponentUsername or opponentEmail
+    final opponentName = json['opponentUsername'] as String? ?? 
+                         json['opponentEmail'] as String? ?? 
+                         'Unknown Player';
+    
+    debugPrint('🎮 Parsing match: result=$result, opponentName=$opponentName, eloChange=$eloChange');
     
     return Match(
       id: json['matchId'] as String? ?? '',
       player1Id: playerId,
       player2Id: opponentId,
       player1Username: 'You',
-      player2Username: json['opponentEmail'] as String? ?? 'Player 1',
+      player2Username: opponentName,
       player1Score: playerScore,
       player2Score: opponentScore,
       winnerId: isWin ? playerId : opponentId,
       player1EloChange: eloChange,
-      player2EloChange: -eloChange, // Opponent gets opposite
+      player2EloChange: -eloChange,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),

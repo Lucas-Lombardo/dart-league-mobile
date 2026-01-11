@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/user.dart';
 import '../models/match.dart';
 import 'api_service.dart';
@@ -92,7 +93,9 @@ class UserService {
         return [];
       }
       
-      return data.map((json) => Match.fromJson(json)).toList();
+      debugPrint('📊 Match history data: ${data.take(1)}');
+      
+      return data.map((json) => Match.fromJson(json, userId)).toList();
     } catch (e) {
       rethrow;
     }
