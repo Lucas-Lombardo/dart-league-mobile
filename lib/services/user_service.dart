@@ -1,4 +1,5 @@
 import '../models/user.dart';
+import '../models/match.dart';
 import 'api_service.dart';
 
 class UserStats {
@@ -74,5 +75,103 @@ class UserService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  static Future<List<Match>> getUserMatches(String userId, {int limit = 50}) async {
+    try {
+      final response = await ApiService.get('/users/$userId/matches?limit=$limit');
+      
+      // Handle both array response and object with 'matches' key
+      final List<dynamic> data;
+      if (response is List) {
+        data = response;
+      } else if (response is Map && response['matches'] != null) {
+        data = response['matches'] as List<dynamic>;
+      } else {
+        // If response format is unexpected, return empty list
+        return [];
+      }
+      
+      return data.map((json) => Match.fromJson(json)).toList();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<Match> getMatchDetail(String matchId) async {
+    try {
+      final response = await ApiService.get('/matches/$matchId');
+      return Match.fromJson(response);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static UserStats calculateStatsFromMatches(List<Match> matches, String userId) {
+    if (matches.isEmpty) {
+      return UserStats(
+        totalMatches: 0,
+        winRate: 0.0,
+        averageScore: 0.0,
+        highestScore: 0,
+        currentStreak: 0,
+        wins: 0,
+        losses: 0,
+      );
+    }
+
+    int wins = 0;
+    int losses = 0;
+    int totalScore = 0;
+    int highestScore = 0;
+    int currentStreak = 0;
+    bool lastWasWin = false;
+
+    for (var match in matches) {
+      final isWin = match.isWinner(userId);
+      final myScore = match.getMyScore(userId);
+
+      if (isWin) {
+        wins++;
+        if (lastWasWin) {
+          currentStreak++;
+        } else {
+          currentStreak = 1;
+          lastWasWin = true;
+        }
+      } else {
+        losses++;
+        if (!lastWasWin) {
+          currentStreak--;
+        } else {
+          currentStreak = -1;
+          lastWasWin = false;
+        }
+      }
+
+      // In darts 501, lower score at end is better (closer to 0)
+      // But for "highest score in a round", we want the highest round score
+      // For now, use the starting score minus final score as "points scored"
+      final pointsScored = 501 - myScore;
+      totalScore += pointsScored;
+      
+      if (pointsScored > highestScore) {
+        highestScore = pointsScored;
+      }
+    }
+
+    final totalMatches = matches.length;
+    final winRate = totalMatches > 0 ? (wins / totalMatches) * 100 : 0.0;
+    final averageScore = totalMatches > 0 ? totalScore / totalMatches : 0.0;
+
+    return UserStats(
+      totalMatches: totalMatches,
+      winRate: winRate,
+      averageScore: averageScore,
+      highestScore: highestScore,
+      currentStreak: currentStreak,
+      wins: wins,
+      losses: losses,
+    );
   }
 }

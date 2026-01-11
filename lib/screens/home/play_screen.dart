@@ -4,6 +4,9 @@ import '../../providers/auth_provider.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../widgets/rank_badge.dart';
+import '../../widgets/recent_matches_widget.dart';
+import '../../services/user_service.dart';
+import '../../models/match.dart';
 import '../matchmaking/matchmaking_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -16,6 +19,8 @@ class PlayScreen extends StatefulWidget {
 class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  List<Match> _recentMatches = [];
+  bool _loadingMatches = false;
 
   @override
   void initState() {
@@ -31,6 +36,28 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         curve: Curves.easeInOut,
       ),
     );
+    
+    _loadRecentMatches();
+  }
+
+  Future<void> _loadRecentMatches() async {
+    setState(() => _loadingMatches = true);
+    try {
+      final auth = context.read<AuthProvider>();
+      if (auth.currentUser?.id != null) {
+        final matches = await UserService.getUserMatches(auth.currentUser!.id, limit: 3);
+        if (mounted) {
+          setState(() {
+            _recentMatches = matches;
+            _loadingMatches = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingMatches = false);
+      }
+    }
   }
 
   @override
@@ -257,6 +284,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
+          const SizedBox(height: 24),
+          if (_loadingMatches)
+            const Center(
+              child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+            )
+          else if (_recentMatches.isNotEmpty)
+            RecentMatchesWidget(
+              matches: _recentMatches,
+              userId: user.id,
+            ),
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(20),

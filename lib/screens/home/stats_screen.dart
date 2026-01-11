@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
+import '../profile/match_history_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -32,7 +33,21 @@ class _StatsScreenState extends State<StatsScreen> {
       final userId = authProvider.currentUser?.id;
       
       if (userId != null) {
-        final stats = await UserService.getUserStats(userId);
+        var stats = await UserService.getUserStats(userId);
+        
+        // If backend returns zeros, calculate from match history
+        if (stats.totalMatches == 0) {
+          try {
+            final matches = await UserService.getUserMatches(userId);
+            if (matches.isNotEmpty) {
+              stats = UserService.calculateStatsFromMatches(matches, userId);
+            }
+          } catch (e) {
+            // If match history fails, use backend stats (even if zeros)
+            debugPrint('Failed to load matches for stats calculation: $e');
+          }
+        }
+        
         setState(() {
           _stats = stats;
           _isLoading = false;
@@ -97,6 +112,36 @@ class _StatsScreenState extends State<StatsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MatchHistoryScreen(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00E5FF),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.history),
+                label: const Text(
+                  'View Match History',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
             _buildStatCard(
               'Total Matches',
               _stats!.totalMatches.toString(),
