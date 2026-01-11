@@ -21,9 +21,8 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
-  int? _selectedNumber;
-  ScoreMultiplier _selectedMultiplier = ScoreMultiplier.single;
   late AnimationController _scoreAnimationController;
+  int? _editingDartIndex;
 
   @override
   void initState() {
@@ -414,46 +413,71 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       children: List.generate(3, (index) {
         final hasThrow = index < throws.length;
         final isNext = index == throws.length;
+        final isEditing = _editingDartIndex == index;
         
-        return Container(
-          width: 60,
-          height: 60,
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: hasThrow 
-                ? AppTheme.primary.withValues(alpha: 0.2)
-                : AppTheme.background,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
+        return GestureDetector(
+          onTap: hasThrow && game.isMyTurn ? () {
+            HapticService.lightImpact();
+            setState(() {
+              _editingDartIndex = isEditing ? null : index;
+            });
+          } : null,
+          child: Container(
+            width: 60,
+            height: 60,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
               color: hasThrow 
-                  ? AppTheme.primary 
-                  : isNext && game.isMyTurn 
-                      ? Colors.white24 
-                      : Colors.transparent,
-              width: hasThrow || (isNext && game.isMyTurn) ? 2 : 1,
-            ),
-            boxShadow: hasThrow ? [
-              BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.2),
-                blurRadius: 8,
-              )
-            ] : null,
-          ),
-          child: Center(
-            child: hasThrow 
-              ? Text(
-                  throws[index],
-                  style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  ? (isEditing ? AppTheme.error.withValues(alpha: 0.3) : AppTheme.primary.withValues(alpha: 0.2))
+                  : AppTheme.background,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isEditing
+                    ? AppTheme.error
+                    : hasThrow 
+                        ? AppTheme.primary 
+                        : isNext && game.isMyTurn 
+                            ? Colors.white24 
+                            : Colors.transparent,
+                width: hasThrow || (isNext && game.isMyTurn) || isEditing ? 2 : 1,
+              ),
+              boxShadow: hasThrow ? [
+                BoxShadow(
+                  color: (isEditing ? AppTheme.error : AppTheme.primary).withValues(alpha: 0.2),
+                  blurRadius: 8,
                 )
-              : Icon(
-                  Icons.adjust,
-                  color: isNext && game.isMyTurn ? Colors.white54 : Colors.white10,
-                  size: 20,
+              ] : null,
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: hasThrow 
+                    ? Text(
+                        throws[index],
+                        style: TextStyle(
+                          color: isEditing ? AppTheme.error : AppTheme.primary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : Icon(
+                        Icons.adjust,
+                        color: isNext && game.isMyTurn ? Colors.white54 : Colors.white10,
+                        size: 20,
+                      ),
                 ),
+                if (hasThrow && game.isMyTurn)
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: Icon(
+                      isEditing ? Icons.edit : Icons.edit_outlined,
+                      size: 12,
+                      color: isEditing ? AppTheme.error : AppTheme.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       }),
@@ -569,72 +593,124 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     // Active Input State
     return Column(
       children: [
-        // Multiplier Toggles
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(16),
-            ),
+        // Edit mode indicator
+        if (_editingDartIndex != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: AppTheme.error.withValues(alpha: 0.2),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: _buildMultiplierButton('SINGLE', ScoreMultiplier.single, const Color(0xFF00E5FF))),
-                Expanded(child: _buildMultiplierButton('DOUBLE', ScoreMultiplier.double, const Color(0xFF4CAF50))),
-                Expanded(child: _buildMultiplierButton('TRIPLE', ScoreMultiplier.triple, const Color(0xFFFF9800))),
+                Row(
+                  children: [
+                    const Icon(Icons.edit, color: AppTheme.error, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Editing Dart ${(_editingDartIndex ?? 0) + 1}',
+                      style: const TextStyle(
+                        color: AppTheme.error,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _editingDartIndex = null;
+                    });
+                  },
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(50, 30)),
+                  child: const Text(
+                    'CANCEL',
+                    style: TextStyle(color: AppTheme.error, fontSize: 12),
+                  ),
+                ),
               ],
             ),
           ),
-        ),
         
-        // Number Grid
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _buildNumberGrid(),
-          ),
-        ),
-
-        // Action Button
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: _selectedNumber != null
-                  ? () {
-                      HapticService.mediumImpact();
-                      game.throwDart(
-                        baseScore: _selectedNumber!,
-                        multiplier: _selectedMultiplier,
-                      );
+        // Action buttons row (Delete, Miss, Bulls)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          color: AppTheme.surface,
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.delete_outline,
+                  label: 'DELETE',
+                  color: AppTheme.error,
+                  onTap: () {
+                    if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
+                      game.deleteDartThrow(_editingDartIndex!);
                       setState(() {
-                        _selectedNumber = null;
-                        _selectedMultiplier = ScoreMultiplier.single; // Reset multiplier
+                        _editingDartIndex = null;
                       });
                     }
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppTheme.surfaceLight,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: _selectedNumber != null ? 4 : 0,
-              ),
-              child: Text(
-                _selectedNumber != null 
-                    ? 'THROW ${_getMultiplierPrefix()}$_selectedNumber'
-                    : 'SELECT SCORE',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
+                  },
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildScoreButton(0, 'MISS'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildScoreButton(25, 'S-BULL'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildScoreButton(50, 'D-BULL'),
+              ),
+            ],
+          ),
+        ),
+        
+        // Number grid
+        Expanded(
+          child: Container(
+            color: AppTheme.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: GridView.builder(
+              padding: const EdgeInsets.only(bottom: 8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 10,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
+                childAspectRatio: 1.1,
+              ),
+              itemCount: 60,
+              itemBuilder: (context, index) {
+                final row = index ~/ 10; // 0-5
+                final col = index % 10;
+                
+                // Determine multiplier based on row groups
+                ScoreMultiplier multiplier;
+                if (row < 2) {
+                  // Rows 0-1: Singles
+                  multiplier = ScoreMultiplier.single;
+                } else if (row < 4) {
+                  // Rows 2-3: Doubles
+                  multiplier = ScoreMultiplier.double;
+                } else {
+                  // Rows 4-5: Triples
+                  multiplier = ScoreMultiplier.triple;
+                }
+                
+                // Determine number based on even/odd row within each group
+                int number;
+                if (row % 2 == 0) {
+                  // Even rows: 20 down to 11
+                  number = 20 - col;
+                } else {
+                  // Odd rows: 10 down to 1
+                  number = 10 - col;
+                }
+                
+                return _buildNumberButton(number, multiplier);
+              },
             ),
           ),
         ),
@@ -642,108 +718,156 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
-  String _getMultiplierPrefix() {
-    switch (_selectedMultiplier) {
-      case ScoreMultiplier.single: return '';
-      case ScoreMultiplier.double: return 'D';
-      case ScoreMultiplier.triple: return 'T';
-    }
-  }
-
-  Widget _buildMultiplierButton(String label, ScoreMultiplier multiplier, Color color) {
-    final isSelected = _selectedMultiplier == multiplier;
-    
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: () {
-        HapticService.lightImpact();
-        setState(() {
-          _selectedMultiplier = multiplier;
-        });
+        HapticService.mediumImpact();
+        onTap();
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? color : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: isSelected ? Colors.black : AppTheme.textSecondary,
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildNumberGrid() {
-    // Standard dartboard order + Bull
-    final numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5, 25, 0];
+  Widget _buildScoreButton(int score, String label) {
+    final game = context.read<GameProvider>();
     
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 6, // Wider grid for easy access
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.1,
-      ),
-      itemCount: numbers.length,
-      itemBuilder: (context, index) {
-        final number = numbers[index];
-        final isSelected = _selectedNumber == number;
-        final isBull = number == 25;
-        final isMiss = number == 0;
+    return GestureDetector(
+      onTap: () {
+        HapticService.mediumImpact();
+        final multiplier = score == 50 ? ScoreMultiplier.double : ScoreMultiplier.single;
+        final baseScore = score == 50 ? 25 : score;
         
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              HapticService.lightImpact();
-              setState(() {
-                _selectedNumber = number;
-              });
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              decoration: BoxDecoration(
-                color: isSelected 
-                    ? AppTheme.primary 
-                    : isBull 
-                        ? AppTheme.error.withValues(alpha: 0.2)
-                        : AppTheme.background,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected 
-                      ? AppTheme.primary 
-                      : isBull 
-                          ? AppTheme.error.withValues(alpha: 0.5)
-                          : AppTheme.surfaceLight.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Center(
-                child: isBull 
-                  ? const Icon(Icons.radio_button_checked, size: 20, color: AppTheme.error)
-                  : isMiss
-                      ? const Text('MISS', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary))
-                      : Text(
-                          '$number',
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.white70,
-                            fontSize: 18,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          ),
-                        ),
+        if (_editingDartIndex != null) {
+          game.editDartThrow(_editingDartIndex!, baseScore, multiplier);
+          setState(() {
+            _editingDartIndex = null;
+          });
+        } else {
+          game.throwDart(baseScore: baseScore, multiplier: multiplier);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumberButton(int number, ScoreMultiplier multiplier) {
+    final game = context.read<GameProvider>();
+    
+    // Determine color and dots based on multiplier
+    Color backgroundColor;
+    int dotCount;
+    String label;
+    
+    if (multiplier == ScoreMultiplier.single) {
+      backgroundColor = AppTheme.background;
+      dotCount = 1;
+      label = '$number';
+    } else if (multiplier == ScoreMultiplier.double) {
+      backgroundColor = const Color(0xFF1A3A1A); // Dark green tint
+      dotCount = 2;
+      label = '$number';
+    } else {
+      backgroundColor = const Color(0xFF3A1A1A); // Dark red tint
+      dotCount = 3;
+      label = '$number';
+    }
+    
+    return GestureDetector(
+      onTap: () {
+        HapticService.lightImpact();
+        
+        if (_editingDartIndex != null) {
+          game.editDartThrow(_editingDartIndex!, number, multiplier);
+          setState(() {
+            _editingDartIndex = null;
+          });
+        } else {
+          game.throwDart(baseScore: number, multiplier: multiplier);
+        }
       },
+      child: Container(
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                dotCount,
+                (index) => Container(
+                  width: 3,
+                  height: 3,
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

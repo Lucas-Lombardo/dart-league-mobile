@@ -290,6 +290,30 @@ class GameProvider with ChangeNotifier {
     }
   }
 
+  void editDartThrow(int index, int baseScore, ScoreMultiplier multiplier) {
+    if (index < 0 || index >= _currentRoundThrows.length) {
+      debugPrint('❌ Invalid dart index for editing: $index');
+      return;
+    }
+    
+    final notation = _getScoreNotation(baseScore, multiplier);
+    _currentRoundThrows[index] = notation;
+    
+    debugPrint('✏️ Edited dart at index $index to: $notation');
+    notifyListeners();
+  }
+
+  void deleteDartThrow(int index) {
+    if (index < 0 || index >= _currentRoundThrows.length) {
+      debugPrint('❌ Invalid dart index for deletion: $index');
+      return;
+    }
+    
+    _currentRoundThrows.removeAt(index);
+    debugPrint('🗑️ Deleted dart at index $index');
+    notifyListeners();
+  }
+
   String _getScoreNotation(int baseScore, ScoreMultiplier multiplier) {
     final prefix = multiplier == ScoreMultiplier.single 
         ? 'S' 
