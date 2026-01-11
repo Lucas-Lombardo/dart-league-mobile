@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/match.dart';
 import '../screens/profile/match_detail_screen.dart';
+import '../utils/app_theme.dart';
 
 class RecentMatchesWidget extends StatelessWidget {
   final List<Match> matches;
@@ -17,37 +18,23 @@ class RecentMatchesWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (matches.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
             'No recent matches',
-            style: TextStyle(color: Colors.white54),
+            style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
           ),
         ),
       );
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            'Recent Matches',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...matches.take(3).map((match) => _buildMatchItem(context, match)),
-      ],
+      children: matches.take(3).map((match) => _buildMatchItem(context, match)).toList(),
     );
   }
 
@@ -59,94 +46,105 @@ class RecentMatchesWidget extends StatelessWidget {
     final opponentScore = match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d');
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: const Color(0xFF1A1A1A),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: isWin ? Colors.green.withValues(alpha: 0.3) : Colors.red.withValues(alpha: 0.3),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isWin 
+              ? AppTheme.success.withValues(alpha: 0.3) 
+              : AppTheme.error.withValues(alpha: 0.3),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MatchDetailScreen(matchId: match.id),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isWin ? Colors.green : Colors.red,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MatchDetailScreen(matchId: match.id),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isWin ? AppTheme.success : AppTheme.error,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'vs $opponentUsername',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateFormat.format(match.createdAt),
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'vs $opponentUsername',
+                      '$myScore - $opponentScore',
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
+                        color: AppTheme.primary,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      dateFormat.format(match.createdAt),
-                      style: const TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${eloChange >= 0 ? '+' : ''}$eloChange',
+                        style: TextStyle(
+                          color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$myScore - $opponentScore',
-                    style: const TextStyle(
-                      color: Color(0xFF00E5FF),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: eloChange >= 0
-                          ? Colors.green.withValues(alpha: 0.2)
-                          : Colors.red.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${eloChange >= 0 ? '+' : ''}$eloChange',
-                      style: TextStyle(
-                        color: eloChange >= 0 ? Colors.green : Colors.red,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

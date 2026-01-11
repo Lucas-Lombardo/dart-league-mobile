@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/app_theme.dart';
 
 class LoadingWidget extends StatelessWidget {
   final String? message;
@@ -20,7 +21,7 @@ class LoadingWidget extends StatelessWidget {
             width: size,
             height: size,
             child: const CircularProgressIndicator(
-              color: Color(0xFF00E5FF),
+              color: AppTheme.primary,
               strokeWidth: 4,
             ),
           ),
@@ -29,8 +30,9 @@ class LoadingWidget extends StatelessWidget {
             Text(
               message!,
               style: const TextStyle(
-                color: Colors.white70,
+                color: AppTheme.textSecondary,
                 fontSize: 16,
+                fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
             ),

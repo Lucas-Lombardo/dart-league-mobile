@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../profile/match_history_screen.dart';
+import '../../utils/app_theme.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -66,7 +67,7 @@ class _StatsScreenState extends State<StatsScreen> {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
-          color: Color(0xFF00E5FF),
+          color: AppTheme.primary,
         ),
       );
     }
@@ -76,20 +77,16 @@ class _StatsScreenState extends State<StatsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: Color(0xFFFF5252), size: 64),
+            const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
             const SizedBox(height: 16),
             Text(
               _errorMessage!,
-              style: const TextStyle(color: Color(0xFFFF5252)),
+              style: const TextStyle(color: AppTheme.error),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadStats,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00E5FF),
-                foregroundColor: Colors.black,
-              ),
               child: const Text('Retry'),
             ),
           ],
@@ -105,100 +102,152 @@ class _StatsScreenState extends State<StatsScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadStats,
-      color: const Color(0xFF00E5FF),
+      color: AppTheme.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MatchHistoryScreen(),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.history),
-                label: const Text(
-                  'View Match History',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+            Text(
+              'Performance Overview',
+              style: AppTheme.titleLarge,
             ),
-            const SizedBox(height: 24),
-            _buildStatCard(
-              'Total Matches',
-              _stats!.totalMatches.toString(),
-              Icons.sports_esports,
-              const Color(0xFF00E5FF),
-            ),
-            const SizedBox(height: 12),
-            _buildStatCard(
-              'Win Rate',
-              '${_stats!.winRate.toStringAsFixed(1)}%',
-              Icons.trending_up,
-              const Color(0xFF4CAF50),
-            ),
-            const SizedBox(height: 12),
-            Row(
+            const SizedBox(height: 16),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.3,
               children: [
-                Expanded(
-                  child: _buildStatCard(
-                    'Wins',
-                    _stats!.wins.toString(),
-                    Icons.check_circle,
-                    const Color(0xFF4CAF50),
-                    compact: true,
-                  ),
+                _buildStatCard(
+                  'Win Rate',
+                  '${_stats!.winRate.toStringAsFixed(1)}%',
+                  Icons.trending_up,
+                  AppTheme.success,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    'Losses',
-                    _stats!.losses.toString(),
-                    Icons.cancel,
-                    const Color(0xFFFF5252),
-                    compact: true,
-                  ),
+                _buildStatCard(
+                  'Total Matches',
+                  _stats!.totalMatches.toString(),
+                  Icons.sports_esports,
+                  AppTheme.primary,
+                ),
+                _buildStatCard(
+                  'Avg Score',
+                  _stats!.averageScore.toStringAsFixed(1),
+                  Icons.calculate,
+                  AppTheme.accent,
+                ),
+                _buildStatCard(
+                  'Highest Score',
+                  _stats!.highestScore.toString(),
+                  Icons.emoji_events,
+                  const Color(0xFFFFD700),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _buildStatCard(
-              'Average Score',
-              _stats!.averageScore.toStringAsFixed(1),
-              Icons.calculate,
-              const Color(0xFFFFB74D),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'WINS',
+                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _stats!.wins.toString(),
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: AppTheme.surfaceLight,
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'LOSSES',
+                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _stats!.losses.toString(),
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: AppTheme.surfaceLight,
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'STREAK',
+                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _stats!.currentStreak.toString(),
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: _stats!.currentStreak > 0 ? const Color(0xFFFF6B35) : AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            _buildStatCard(
-              'Highest Score',
-              _stats!.highestScore.toString(),
-              Icons.emoji_events,
-              const Color(0xFFFFD700),
-            ),
-            const SizedBox(height: 12),
-            _buildStatCard(
-              'Current Streak',
-              _stats!.currentStreak.toString(),
-              Icons.local_fire_department,
-              _stats!.currentStreak > 0 ? const Color(0xFFFF6B35) : Colors.grey,
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MatchHistoryScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.surfaceLight,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 20),
+              ),
+              icon: const Icon(Icons.history_rounded),
+              label: const Text('VIEW FULL MATCH HISTORY'),
             ),
           ],
         ),
@@ -210,49 +259,54 @@ class _StatsScreenState extends State<StatsScreen> {
     String label,
     String value,
     IconData icon,
-    Color color, {
-    bool compact = false,
-  }) {
+    Color color,
+  ) {
     return Container(
-      padding: EdgeInsets.all(compact ? 16 : 20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 2),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: color, size: compact ? 24 : 32),
+            child: Icon(icon, color: color, size: 24),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: compact ? 12 : 14,
-                  ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: compact ? 24 : 32,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: AppTheme.labelLarge.copyWith(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),

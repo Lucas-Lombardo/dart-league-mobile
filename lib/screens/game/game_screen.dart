@@ -4,6 +4,7 @@ import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/app_theme.dart';
 
 class GameScreen extends StatefulWidget {
   final String matchId;
@@ -40,12 +41,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         final game = context.read<GameProvider>();
         final auth = context.read<AuthProvider>();
         
-        debugPrint('🎮 GameScreen postFrameCallback - auth.currentUser: ${auth.currentUser?.id}');
-        
         if (auth.currentUser != null) {
           game.initGame(widget.matchId, auth.currentUser!.id, widget.opponentId);
-        } else {
-          debugPrint('❌ GameScreen - currentUser is null!');
         }
       } catch (e, stackTrace) {
         debugPrint('❌ GameScreen initState error: $e');
@@ -62,342 +59,344 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🎮 GameScreen build called');
-    
     try {
-      debugPrint('🎮 Step 1: Getting GameProvider...');
       final game = context.watch<GameProvider>();
-      debugPrint('🎮 Step 2: GameProvider obtained');
-      
-      debugPrint('🎮 Step 3: Getting AuthProvider...');
       final auth = context.watch<AuthProvider>();
-      debugPrint('🎮 Step 4: AuthProvider obtained');
       
-      debugPrint('🎮 Step 5: Accessing game.matchId...');
       final matchId = game.matchId;
-      debugPrint('🎮 Step 6: matchId = $matchId');
-      
-      debugPrint('🎮 Step 7: Accessing game.gameStarted...');
       final gameStarted = game.gameStarted;
-      debugPrint('🎮 Step 8: gameStarted = $gameStarted');
 
       // Show loading if game not initialized or started
       if (matchId == null || !gameStarted) {
-        debugPrint('🎮 Step 9: Showing loading screen (matchId=$matchId, gameStarted=$gameStarted)');
         return Scaffold(
+          backgroundColor: AppTheme.background,
           appBar: AppBar(
-            title: const Text('Game'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
           ),
           body: const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(color: Color(0xFF00E5FF)),
+                CircularProgressIndicator(color: AppTheme.primary),
                 SizedBox(height: 16),
-                Text('Waiting for game to start...'),
+                Text(
+                  'INITIALIZING MATCH...',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
         );
       }
 
-      debugPrint('🎮 Step 10: Checking if game ended...');
       final gameEnded = game.gameEnded;
-      debugPrint('🎮 Step 11: gameEnded = $gameEnded');
       
       if (gameEnded) {
-        debugPrint('🎮 Step 12: Game has ended, showing game over screen');
         final winnerId = game.winnerId;
         final currentUserId = auth.currentUser?.id;
         final didWin = winnerId == currentUserId;
-        debugPrint('🏁 Game ended - winnerId: $winnerId, currentUserId: $currentUserId');
+        
         return Scaffold(
-        appBar: AppBar(
-          title: const Text('Game Over'),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-                color: didWin ? const Color(0xFFFFD700) : const Color(0xFFFF5252),
-                size: 100,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                didWin ? 'YOU WIN!' : 'YOU LOSE',
-                style: TextStyle(
-                  color: didWin ? const Color(0xFFFFD700) : const Color(0xFFFF5252),
-                  fontSize: 48,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 48),
-              ElevatedButton(
-                onPressed: () {
-                  HapticService.mediumImpact();
-                  debugPrint('🏠 Back to home pressed from game over screen');
-                  Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                ),
-                child: const Text(
-                  'BACK TO HOME',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    debugPrint('🎮 Step 13: Rendering main game UI');
-    debugPrint('🎮 Step 14: Getting dartsThrown...');
-    final dartsThrown = game.dartsThrown;
-    debugPrint('🎮 Step 15: dartsThrown = $dartsThrown');
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Game'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            debugPrint('⬅️ Back button pressed - navigating home');
-            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-          },
-        ),
-        actions: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Text(
-                'Dart ${dartsThrown + 1}/3',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF00E5FF),
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: AppTheme.surfaceGradient,
+            ),
+            child: SafeArea(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: didWin 
+                            ? AppTheme.success.withValues(alpha: 0.1) 
+                            : AppTheme.error.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: didWin ? AppTheme.success : AppTheme.error,
+                          width: 4,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4),
+                            blurRadius: 40,
+                            spreadRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+                        color: didWin ? AppTheme.success : AppTheme.error,
+                        size: 80,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      didWin ? 'VICTORY!' : 'DEFEAT',
+                      style: AppTheme.displayLarge.copyWith(
+                        color: didWin ? AppTheme.success : AppTheme.error,
+                        fontSize: 48,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      didWin 
+                          ? 'You have proven yourself a legend.' 
+                          : 'Training is the path to greatness.',
+                      style: AppTheme.bodyLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 64),
+                    ElevatedButton(
+                      onPressed: () {
+                        HapticService.mediumImpact();
+                        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: const Text(
+                        'RETURN TO LOBBY',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildOpponentSection(game),
-          _buildTurnIndicator(game),
-          _buildPlayerSection(game),
-          const SizedBox(height: 16),
-          _buildCurrentRoundDisplay(game),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _buildScoreInput(game),
+        );
+      }
+
+      final dartsThrown = game.dartsThrown;
+
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          backgroundColor: AppTheme.surface,
+          title: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppTheme.error,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'LIVE MATCH',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            onPressed: () {
+              // Confirm exit dialog could be added here
+              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+            },
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.sports_esports_outlined, size: 16, color: AppTheme.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Dart ${dartsThrown + 1}/3',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            // Scoreboard Area
+            Expanded(
+              flex: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Player (You)
+                    Expanded(
+                      child: _buildPlayerScoreCard(
+                        'YOU',
+                        game.myScore,
+                        game.isMyTurn,
+                        true,
+                      ),
+                    ),
+                    // Vs Divider / Info
+                    SizedBox(
+                      width: 40,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 1,
+                            height: 40,
+                            color: AppTheme.surfaceLight,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'VS',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: 1,
+                            height: 40,
+                            color: AppTheme.surfaceLight,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Opponent
+                    Expanded(
+                      child: _buildPlayerScoreCard(
+                        'OPPONENT',
+                        game.opponentScore,
+                        !game.isMyTurn,
+                        false,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Current Round Darts Display
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              color: AppTheme.surface.withValues(alpha: 0.5),
+              child: _buildCurrentRoundDisplay(game),
+            ),
+
+            // Controls Area
+            Expanded(
+              flex: 6,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: _buildScoreInput(game),
+              ),
+            ),
+          ],
+        ),
+      );
     } catch (e, stackTrace) {
-      debugPrint('❌ GameScreen build error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      
       return Scaffold(
         appBar: AppBar(title: const Text('Error')),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 64),
-              const SizedBox(height: 16),
-              Text('Error: $e', textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Go Back'),
-              ),
-            ],
-          ),
+          child: Text('Error: $e\n$stackTrace'),
         ),
       );
     }
   }
 
-  Widget _buildOpponentSection(GameProvider game) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+  Widget _buildPlayerScoreCard(String label, int score, bool isActive, bool isMe) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: isActive 
+            ? (isMe ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isActive 
+              ? (isMe ? AppTheme.primary : AppTheme.error)
+              : Colors.transparent,
+          width: 2,
         ),
       ),
       child: Column(
-        children: [
-          const Text(
-            'OPPONENT',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${game.opponentScore}',
-            style: TextStyle(
-              color: !game.isMyTurn ? const Color(0xFF00E5FF) : Colors.white,
-              fontSize: 64,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTurnIndicator(GameProvider game) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      color: game.isMyTurn 
-          ? const Color(0xFF00E5FF).withValues(alpha: 0.2)
-          : const Color(0xFFFF5252).withValues(alpha: 0.2),
-      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            game.isMyTurn ? Icons.arrow_downward : Icons.arrow_upward,
-            color: game.isMyTurn ? const Color(0xFF00E5FF) : const Color(0xFFFF5252),
-            size: 20,
-          ),
-          const SizedBox(width: 8),
           Text(
-            game.isMyTurn ? 'YOUR TURN' : 'OPPONENT\'S TURN',
+            label,
             style: TextStyle(
-              color: game.isMyTurn ? const Color(0xFF00E5FF) : const Color(0xFFFF5252),
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlayerSection(GameProvider game) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0A0A0A), Color(0xFF1A1A1A)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Column(
-        children: [
-          Text(
-            '${game.myScore}',
-            style: TextStyle(
-              color: game.isMyTurn ? const Color(0xFF00E5FF) : Colors.white,
-              fontSize: 64,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'YOU',
-            style: TextStyle(
-              color: Colors.white54,
+              color: isActive 
+                  ? (isMe ? AppTheme.primary : AppTheme.error)
+                  : AppTheme.textSecondary,
               fontSize: 12,
-              letterSpacing: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCurrentRoundDisplay(GameProvider game) {
-    final throws = game.currentRoundThrows;
-    
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF00E5FF)),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            'Current Round',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
               fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(3, (index) {
-              final hasThrow = index < throws.length;
-              return Container(
-                width: 80,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: hasThrow 
-                      ? const Color(0xFF00E5FF).withValues(alpha: 0.2)
-                      : const Color(0xFF0A0A0A),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: hasThrow ? const Color(0xFF00E5FF) : Colors.white24,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    hasThrow ? throws[index] : 'Dart ${index + 1}',
-                    style: TextStyle(
-                      color: hasThrow ? const Color(0xFF00E5FF) : Colors.white38,
-                      fontSize: hasThrow ? 20 : 14,
-                      fontWeight: hasThrow ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              );
-            }),
+          Text(
+            '$score',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 64,
+              fontWeight: FontWeight.bold,
+              shadows: isActive ? [
+                BoxShadow(
+                  color: (isMe ? AppTheme.primary : AppTheme.error).withValues(alpha: 0.5),
+                  blurRadius: 20,
+                )
+              ] : [],
+            ),
           ),
-          if (throws.length == 3) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () => _confirmRound(game),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'CONFIRM ROUND - NEXT TURN',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
+          if (isActive) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: (isMe ? AppTheme.primary : AppTheme.error),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'THROWING',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
@@ -407,93 +406,274 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _confirmRound(GameProvider game) {
-    HapticService.heavyImpact();
-    // Emit event to backend to complete the round and switch turns
-    debugPrint('🔄 Confirming round completion');
-    final auth = context.read<AuthProvider>();
-    SocketService.emit('confirm_round', {
-      'matchId': game.matchId,
-      'playerId': auth.currentUser?.id,
-    });
-  }
-
-  Widget _buildScoreInput(GameProvider game) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildMultiplierSelector(),
-          const SizedBox(height: 24),
-          _buildNumberGrid(),
-          const SizedBox(height: 24),
-          _buildThrowButton(game),
-        ],
-      ),
+  Widget _buildCurrentRoundDisplay(GameProvider game) {
+    final throws = game.currentRoundThrows;
+    
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (index) {
+        final hasThrow = index < throws.length;
+        final isNext = index == throws.length;
+        
+        return Container(
+          width: 60,
+          height: 60,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: hasThrow 
+                ? AppTheme.primary.withValues(alpha: 0.2)
+                : AppTheme.background,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: hasThrow 
+                  ? AppTheme.primary 
+                  : isNext && game.isMyTurn 
+                      ? Colors.white24 
+                      : Colors.transparent,
+              width: hasThrow || (isNext && game.isMyTurn) ? 2 : 1,
+            ),
+            boxShadow: hasThrow ? [
+              BoxShadow(
+                color: AppTheme.primary.withValues(alpha: 0.2),
+                blurRadius: 8,
+              )
+            ] : null,
+          ),
+          child: Center(
+            child: hasThrow 
+              ? Text(
+                  throws[index],
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : Icon(
+                  Icons.adjust,
+                  color: isNext && game.isMyTurn ? Colors.white54 : Colors.white10,
+                  size: 20,
+                ),
+          ),
+        );
+      }),
     );
   }
 
-  Widget _buildMultiplierSelector() {
-    return Row(
+  Widget _buildScoreInput(GameProvider game) {
+    // Round Completion State
+    if (game.currentRoundThrows.length >= 3) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'ROUND COMPLETE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Score: ${game.currentRoundScore}',
+                style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 64,
+                child: ElevatedButton(
+                  onPressed: () {
+                    HapticService.heavyImpact();
+                    final auth = context.read<AuthProvider>();
+                    SocketService.emit('confirm_round', {
+                      'matchId': game.matchId,
+                      'playerId': auth.currentUser?.id,
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'CONFIRM & END TURN',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.check_circle_outline),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Waiting for Turn State
+    if (!game.isMyTurn) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                color: AppTheme.error,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              "OPPONENT'S TURN",
+              style: TextStyle(
+                color: AppTheme.error.withValues(alpha: 0.8),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Please wait...",
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Active Input State
+    return Column(
       children: [
-        Expanded(
-          child: _buildMultiplierButton(
-            'Single',
-            ScoreMultiplier.single,
-            const Color(0xFF00E5FF),
+        // Multiplier Toggles
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppTheme.background,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _buildMultiplierButton('SINGLE', ScoreMultiplier.single, const Color(0xFF00E5FF))),
+                Expanded(child: _buildMultiplierButton('DOUBLE', ScoreMultiplier.double, const Color(0xFF4CAF50))),
+                Expanded(child: _buildMultiplierButton('TRIPLE', ScoreMultiplier.triple, const Color(0xFFFF9800))),
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: 8),
+        
+        // Number Grid
         Expanded(
-          child: _buildMultiplierButton(
-            'Double',
-            ScoreMultiplier.double,
-            const Color(0xFF4CAF50),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildNumberGrid(),
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildMultiplierButton(
-            'Triple',
-            ScoreMultiplier.triple,
-            const Color(0xFFFF9800),
+
+        // Action Button
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _selectedNumber != null
+                  ? () {
+                      HapticService.mediumImpact();
+                      game.throwDart(
+                        baseScore: _selectedNumber!,
+                        multiplier: _selectedMultiplier,
+                      );
+                      setState(() {
+                        _selectedNumber = null;
+                        _selectedMultiplier = ScoreMultiplier.single; // Reset multiplier
+                      });
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppTheme.surfaceLight,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: _selectedNumber != null ? 4 : 0,
+              ),
+              child: Text(
+                _selectedNumber != null 
+                    ? 'THROW ${_getMultiplierPrefix()}$_selectedNumber'
+                    : 'SELECT SCORE',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
+  String _getMultiplierPrefix() {
+    switch (_selectedMultiplier) {
+      case ScoreMultiplier.single: return '';
+      case ScoreMultiplier.double: return 'D';
+      case ScoreMultiplier.triple: return 'T';
+    }
+  }
+
   Widget _buildMultiplierButton(String label, ScoreMultiplier multiplier, Color color) {
     final isSelected = _selectedMultiplier == multiplier;
     
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        color: isSelected ? color.withValues(alpha: 0.3) : const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isSelected ? color : Colors.white24,
-          width: 2,
+    return GestureDetector(
+      onTap: () {
+        HapticService.lightImpact();
+        setState(() {
+          _selectedMultiplier = multiplier;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
         ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              _selectedMultiplier = multiplier;
-            });
-          },
-          borderRadius: BorderRadius.circular(8),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? color : Colors.white70,
-                fontSize: 16,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isSelected ? Colors.black : AppTheme.textSecondary,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
           ),
         ),
       ),
@@ -501,122 +681,69 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildNumberGrid() {
-    final numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5, 25];
+    // Standard dartboard order + Bull
+    final numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5, 25, 0];
     
     return GridView.builder(
-      shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5,
+        crossAxisCount: 6, // Wider grid for easy access
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: 1,
+        childAspectRatio: 1.1,
       ),
       itemCount: numbers.length,
       itemBuilder: (context, index) {
         final number = numbers[index];
         final isSelected = _selectedNumber == number;
-        final isBullseye = number == 25;
+        final isBull = number == 25;
+        final isMiss = number == 0;
         
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isSelected 
-                ? const Color(0xFF00E5FF).withValues(alpha: 0.3)
-                : const Color(0xFF1A1A1A),
-            border: Border.all(
-              color: isSelected 
-                  ? const Color(0xFF00E5FF)
-                  : isBullseye 
-                      ? const Color(0xFFFF1744)
-                      : Colors.white24,
-              width: 2,
-            ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  _selectedNumber = number;
-                });
-              },
-              customBorder: const CircleBorder(),
-              child: Center(
-                child: Text(
-                  isBullseye ? 'Bull' : '$number',
-                  style: TextStyle(
-                    color: isSelected 
-                        ? const Color(0xFF00E5FF)
-                        : isBullseye 
-                            ? const Color(0xFFFF1744)
-                            : Colors.white,
-                    fontSize: isBullseye ? 12 : 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HapticService.lightImpact();
+              setState(() {
+                _selectedNumber = number;
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? AppTheme.primary 
+                    : isBull 
+                        ? AppTheme.error.withValues(alpha: 0.2)
+                        : AppTheme.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected 
+                      ? AppTheme.primary 
+                      : isBull 
+                          ? AppTheme.error.withValues(alpha: 0.5)
+                          : AppTheme.surfaceLight.withValues(alpha: 0.3),
                 ),
+              ),
+              child: Center(
+                child: isBull 
+                  ? const Icon(Icons.radio_button_checked, size: 20, color: AppTheme.error)
+                  : isMiss
+                      ? const Text('MISS', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary))
+                      : Text(
+                          '$number',
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white70,
+                            fontSize: 18,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          ),
+                        ),
               ),
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildThrowButton(GameProvider game) {
-    final canThrow = game.isMyTurn && _selectedNumber != null;
-    
-    String getMultiplierPrefix() {
-      switch (_selectedMultiplier) {
-        case ScoreMultiplier.single:
-          return 'S';
-        case ScoreMultiplier.double:
-          return 'D';
-        case ScoreMultiplier.triple:
-          return 'T';
-      }
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: canThrow
-            ? () {
-                HapticService.mediumImpact();
-                game.throwDart(
-                  baseScore: _selectedNumber!,
-                  multiplier: _selectedMultiplier,
-                );
-                setState(() {
-                  _selectedNumber = null;
-                });
-              }
-            : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF00E5FF),
-          foregroundColor: Colors.black,
-          disabledBackgroundColor: const Color(0xFF1A1A1A),
-          disabledForegroundColor: Colors.white24,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: Text(
-          canThrow 
-              ? 'THROW ${getMultiplierPrefix()}$_selectedNumber'
-              : !game.isMyTurn
-                  ? 'WAIT FOR YOUR TURN'
-                  : game.dartsThrown >= 3 || game.currentRoundThrows.length >= 3
-                      ? 'ROUND COMPLETE'
-                      : 'SELECT A NUMBER',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
-      ),
     );
   }
 }

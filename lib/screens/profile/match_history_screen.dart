@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
 import 'match_detail_screen.dart';
+import '../../utils/app_theme.dart';
 
 class MatchHistoryScreen extends StatefulWidget {
   const MatchHistoryScreen({super.key});
@@ -55,19 +56,21 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     final userId = auth.currentUser?.id ?? '';
 
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Match History'),
+        backgroundColor: AppTheme.surface,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)))
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : _error != null
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                      const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
                       const SizedBox(height: 16),
-                      Text('Error: $_error'),
+                      Text('Error: $_error', style: const TextStyle(color: AppTheme.error)),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadMatches,
@@ -77,27 +80,27 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                   ),
                 )
               : _matches.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.history, size: 64, color: Colors.white38),
-                          SizedBox(height: 16),
+                          Icon(Icons.history, size: 64, color: AppTheme.textSecondary),
+                          const SizedBox(height: 16),
                           Text(
                             'No matches yet',
-                            style: TextStyle(fontSize: 18, color: Colors.white70),
+                            style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
                           ),
-                          SizedBox(height: 8),
-                          Text(
+                          const SizedBox(height: 8),
+                          const Text(
                             'Play a game to see your match history!',
-                            style: TextStyle(fontSize: 14, color: Colors.white54),
+                            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
                           ),
                         ],
                       ),
                     )
                   : RefreshIndicator(
                       onRefresh: _loadMatches,
-                      color: const Color(0xFF00E5FF),
+                      color: AppTheme.primary,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: _matches.length,
@@ -118,142 +121,142 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     final opponentScore = match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d, y • h:mm a');
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      color: const Color(0xFF1A1A1A),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isWin ? Colors.green.withValues(alpha: 0.5) : Colors.red.withValues(alpha: 0.5),
-          width: 2,
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isWin 
+              ? AppTheme.success.withValues(alpha: 0.3) 
+              : AppTheme.error.withValues(alpha: 0.3),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MatchDetailScreen(matchId: match.id),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isWin ? Colors.green : Colors.red,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isWin ? 'WIN' : 'LOSS',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'vs $opponentUsername',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: eloChange >= 0
-                          ? Colors.green.withValues(alpha: 0.2)
-                          : Colors.red.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${eloChange >= 0 ? '+' : ''}$eloChange',
-                      style: TextStyle(
-                        color: eloChange >= 0 ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MatchDetailScreen(matchId: match.id),
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Column(
-                    children: [
-                      const Text(
-                        'You',
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$myScore',
-                        style: const TextStyle(
-                          color: Color(0xFF00E5FF),
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isWin ? AppTheme.success : AppTheme.error,
                         ),
                       ),
-                    ],
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      '-',
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                      child: Text(
+                        isWin ? 'WIN' : 'LOSS',
+                        style: TextStyle(
+                          color: isWin ? AppTheme.success : AppTheme.error,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                  Column(
-                    children: [
-                      const Text(
-                        'Opponent',
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$opponentScore',
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'vs $opponentUsername',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 32,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${eloChange >= 0 ? '+' : ''}$eloChange',
+                        style: TextStyle(
+                          color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildScoreColumn('You', '$myScore', AppTheme.primary),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        '-',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                dateFormat.format(match.createdAt),
-                style: const TextStyle(
-                  color: Colors.white38,
-                  fontSize: 12,
+                    ),
+                    _buildScoreColumn('Opponent', '$opponentScore', Colors.white),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  dateFormat.format(match.createdAt),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildScoreColumn(String label, String score, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          score,
+          style: TextStyle(
+            color: color,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 }

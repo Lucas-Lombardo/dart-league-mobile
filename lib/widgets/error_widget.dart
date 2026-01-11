@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/app_theme.dart';
 
 class CustomErrorWidget extends StatelessWidget {
   final String message;
@@ -23,12 +24,12 @@ class CustomErrorWidget extends StatelessWidget {
             Icon(
               icon,
               size: 80,
-              color: const Color(0xFFFF5252),
+              color: AppTheme.error,
             ),
             const SizedBox(height: 24),
-            Text(
+            const Text(
               'Oops!',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -38,7 +39,7 @@ class CustomErrorWidget extends StatelessWidget {
             Text(
               message,
               style: const TextStyle(
-                color: Colors.white70,
+                color: AppTheme.textSecondary,
                 fontSize: 16,
               ),
               textAlign: TextAlign.center,
@@ -48,22 +49,23 @@ class CustomErrorWidget extends StatelessWidget {
               ElevatedButton.icon(
                 onPressed: onRetry,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 32,
                     vertical: 16,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 icon: const Icon(Icons.refresh),
                 label: const Text(
-                  'Try Again',
+                  'TRY AGAIN',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
                   ),
                 ),
               ),

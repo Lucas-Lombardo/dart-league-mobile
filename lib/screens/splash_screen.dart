@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -64,39 +65,79 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleTransition(
-              scale: _scaleAnimation,
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: Column(
-                  children: [
-                    const Text(
-                      '🎯',
-                      style: TextStyle(fontSize: 120),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Dart Legends',
-                      style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                            fontSize: 56,
-                            letterSpacing: 3,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppTheme.surfaceGradient,
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ScaleTransition(
+                scale: _scaleAnimation,
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppTheme.primary.withValues(alpha: 0.3),
+                            width: 2,
                           ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primary.withValues(alpha: 0.2),
+                              blurRadius: 30,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.sports_esports,
+                          size: 80,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'DART LEAGUE',
+                        style: TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 4,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'COMPETE • RANK • WIN',
+                        style: TextStyle(
+                          fontSize: 14,
+                          letterSpacing: 6,
+                          color: AppTheme.primary.withValues(alpha: 0.8),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 60),
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00E5FF)),
-              strokeWidth: 3,
-            ),
-          ],
+              const SizedBox(height: 80),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
+                  strokeWidth: 2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

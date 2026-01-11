@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/game_provider.dart';
-import '../../widgets/rank_badge.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/app_theme.dart';
 import '../matchmaking/matchmaking_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -31,7 +31,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
       CurvedAnimation(
         parent: _pulseController,
         curve: Curves.easeInOut,
@@ -115,106 +115,73 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final nextRank = _getNextRank(user.rank);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF1A1A1A),
-                  Color(0xFF0A0A0A),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
+              gradient: AppTheme.surfaceGradient,
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
-                width: 2,
+                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               children: [
-                const Text(
-                  'Your Current Rank',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                RankBadge(
-                  rank: user.rank,
-                  size: 80,
-                ),
-                const SizedBox(height: 24),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'ELO: ',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 20,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'NEXT RANK',
+                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          nextRank.toUpperCase(),
+                          style: AppTheme.titleLarge.copyWith(color: AppTheme.primary),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '${user.elo}',
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        eloNeeded > 0 ? '$eloNeeded ELO to go' : 'Max Rank!',
+                        style: TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                if (eloNeeded > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      'You need $eloNeeded ELO to reach $nextRank',
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 14,
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFD700).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFFFFD700).withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: const Text(
-                      '🏆 You\'ve reached the highest rank!',
-                      style: TextStyle(
-                        color: Color(0xFFFFD700),
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                const SizedBox(height: 24),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: eloNeeded > 0 ? (200 - eloNeeded) / 200 : 1.0, // Simplified progress
+                    backgroundColor: AppTheme.surface,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
+                    minHeight: 8,
                   ),
+                ),
               ],
             ),
           ),
@@ -243,97 +210,170 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 }
               },
               child: Container(
-                height: 200,
+                height: 180,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF00E5FF),
-                      Color(0xFF00B8D4),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                      color: AppTheme.primary.withValues(alpha: 0.4),
                       blurRadius: 20,
                       spreadRadius: 2,
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.play_circle_filled,
-                        size: 80,
-                        color: Colors.black,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      right: -20,
+                      top: -20,
+                      child: Icon(
+                        Icons.sports_esports,
+                        size: 150,
+                        color: Colors.white.withValues(alpha: 0.1),
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        'FIND MATCH',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
-                        ),
+                    ),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 48,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'FIND MATCH',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Ranked Competitive',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent Matches',
+                style: AppTheme.titleLarge,
+              ),
+              if (!_loadingMatches)
+                TextButton(
+                  onPressed: () {
+                    // Navigate to history tab via parent controller if possible, or just refresh
+                    _loadRecentMatches();
+                  },
+                  child: const Text('Refresh'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
           if (_loadingMatches)
             const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: CircularProgressIndicator(color: AppTheme.primary),
+              ),
             )
           else if (_recentMatches.isNotEmpty)
             RecentMatchesWidget(
               matches: _recentMatches,
               userId: user.id,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.surfaceLight),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.history, size: 48, color: AppTheme.textSecondary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No matches yet',
+                    style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Play your first game to see history',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(12),
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
               ),
             ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Color(0xFF00E5FF), size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'How It Works',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.tips_and_updates_outlined, color: AppTheme.primary),
                 ),
-                SizedBox(height: 12),
-                Text(
-                  '• You\'ll be matched with players of similar ELO\n'
-                  '• Win matches to gain ELO and climb ranks\n'
-                  '• Lose matches and you\'ll lose ELO\n'
-                  '• Reach rank thresholds to advance',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    height: 1.5,
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pro Tip',
+                        style: TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Practice your doubles! They are crucial for closing out games.',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

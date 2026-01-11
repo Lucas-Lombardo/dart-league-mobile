@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
+import '../../utils/app_theme.dart';
 
 class MatchDetailScreen extends StatefulWidget {
   final String matchId;
@@ -51,19 +52,21 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final userId = auth.currentUser?.id ?? '';
 
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Match Details'),
+        backgroundColor: AppTheme.surface,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)))
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : _error != null
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                      const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
                       const SizedBox(height: 16),
-                      Text('Error: $_error'),
+                      Text('Error: $_error', style: const TextStyle(color: AppTheme.error)),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadMatchDetail,
@@ -77,7 +80,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   : SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _buildMatchHeader(_match!, userId),
                           const SizedBox(height: 24),
@@ -100,28 +103,28 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final dateFormat = DateFormat('EEEE, MMMM d, y • h:mm a');
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isWin
-              ? [Colors.green.withValues(alpha: 0.3), Colors.green.withValues(alpha: 0.1)]
-              : [Colors.red.withValues(alpha: 0.3), Colors.red.withValues(alpha: 0.1)],
+              ? [AppTheme.success.withValues(alpha: 0.2), AppTheme.success.withValues(alpha: 0.05)]
+              : [AppTheme.error.withValues(alpha: 0.2), AppTheme.error.withValues(alpha: 0.05)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isWin ? Colors.green : Colors.red,
+          color: isWin ? AppTheme.success : AppTheme.error,
           width: 2,
         ),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: isWin ? Colors.green : Colors.red,
-              borderRadius: BorderRadius.circular(24),
+              color: isWin ? AppTheme.success : AppTheme.error,
+              borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
               isWin ? '🏆 VICTORY' : '💔 DEFEAT',
@@ -129,29 +132,29 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
+                letterSpacing: 1,
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                'ELO Change: ',
-                style: TextStyle(color: Colors.white70, fontSize: 16),
+                'ELO Change',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
               ),
+              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: eloChange >= 0
-                      ? Colors.green.withValues(alpha: 0.3)
-                      : Colors.red.withValues(alpha: 0.3),
+                  color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '${eloChange >= 0 ? '+' : ''}$eloChange',
                   style: TextStyle(
-                    color: eloChange >= 0 ? Colors.green : Colors.red,
+                    color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -159,10 +162,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
             dateFormat.format(match.createdAt),
-            style: const TextStyle(color: Colors.white54, fontSize: 14),
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 14,
+            ),
           ),
         ],
       ),
@@ -173,141 +179,117 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final myScore = match.getMyScore(userId);
     final opponentScore = match.getOpponentScore(userId);
     final opponentUsername = match.getOpponentUsername(userId);
-    final isWin = match.isWinner(userId);
-    final auth = context.read<AuthProvider>();
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF00E5FF)),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          const Text(
-            'Final Score',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            child: _buildPlayerInfo('YOU', myScore, true),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: const Text(
+              'VS',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      auth.currentUser?.username ?? 'You',
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$myScore',
-                      style: TextStyle(
-                        color: isWin ? Colors.green : Colors.white,
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'vs',
-                  style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      opponentUsername,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$opponentScore',
-                      style: TextStyle(
-                        color: !isWin ? Colors.red : Colors.white,
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Expanded(
+            child: _buildPlayerInfo(opponentUsername, opponentScore, false),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildPlayerInfo(String name, int score, bool isMe) {
+    return Column(
+      children: [
+        Text(
+          name,
+          style: TextStyle(
+            color: isMe ? AppTheme.primary : Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '$score',
+          style: TextStyle(
+            color: isMe ? AppTheme.primary : Colors.white,
+            fontSize: 48,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMatchStats(Match match, String userId) {
     final rounds = match.rounds ?? [];
+    if (rounds.isEmpty) return const SizedBox.shrink();
+
+    // Calculate stats
     final myRounds = rounds.where((r) => r.playerId == userId).toList();
     final opponentRounds = rounds.where((r) => r.playerId != userId).toList();
 
-    final myAvgScore = myRounds.isEmpty
-        ? 0.0
+    double myAvgScore = myRounds.isEmpty
+        ? 0
         : myRounds.map((r) => r.roundScore).reduce((a, b) => a + b) / myRounds.length;
-    final opponentAvgScore = opponentRounds.isEmpty
-        ? 0.0
+    double opponentAvgScore = opponentRounds.isEmpty
+        ? 0
         : opponentRounds.map((r) => r.roundScore).reduce((a, b) => a + b) / opponentRounds.length;
 
-    final myHighestRound = myRounds.isEmpty ? 0 : myRounds.map((r) => r.roundScore).reduce((a, b) => a > b ? a : b);
-    final opponentHighestRound = opponentRounds.isEmpty
+    int myHighestRound = myRounds.isEmpty
+        ? 0
+        : myRounds.map((r) => r.roundScore).reduce((a, b) => a > b ? a : b);
+    int opponentHighestRound = opponentRounds.isEmpty
         ? 0
         : opponentRounds.map((r) => r.roundScore).reduce((a, b) => a > b ? a : b);
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Match Statistics',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppTheme.titleLarge,
           ),
           const SizedBox(height: 20),
           _buildStatRow('Total Rounds', '${rounds.length ~/ 2}', '${rounds.length ~/ 2}'),
-          const SizedBox(height: 12),
+          const Divider(height: 24, color: AppTheme.surfaceLight),
           _buildStatRow(
-            'Average Score/Round',
+            'Avg Score/Round',
             myAvgScore.toStringAsFixed(1),
             opponentAvgScore.toStringAsFixed(1),
           ),
-          const SizedBox(height: 12),
+          const Divider(height: 24, color: AppTheme.surfaceLight),
           _buildStatRow('Highest Round', '$myHighestRound', '$opponentHighestRound'),
         ],
       ),
@@ -321,8 +303,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           child: Text(
             myValue,
             style: const TextStyle(
-              color: Color(0xFF00E5FF),
-              fontSize: 16,
+              color: AppTheme.primary,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
@@ -332,7 +314,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           flex: 2,
           child: Text(
             label,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
             textAlign: TextAlign.center,
           ),
         ),
@@ -341,7 +323,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             opponentValue,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 16,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
@@ -358,19 +340,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Round History',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppTheme.titleLarge,
           ),
           const SizedBox(height: 16),
           ...roundNumbers.map((roundNum) {
@@ -395,18 +374,19 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0A0A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white12),
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
           Text(
-            'Round $roundNumber',
+            'ROUND $roundNumber',
             style: const TextStyle(
-              color: Color(0xFF00E5FF),
-              fontSize: 14,
+              color: AppTheme.textSecondary,
+              fontSize: 12,
               fontWeight: FontWeight.bold,
+              letterSpacing: 1,
             ),
           ),
           const SizedBox(height: 8),
@@ -417,15 +397,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   children: [
                     Text(
                       myRound.throws.join(' • '),
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${myRound.roundScore} pts',
+                      '${myRound.roundScore}',
                       style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 16,
+                        color: AppTheme.primary,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -434,8 +414,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ),
               Container(
                 width: 1,
-                height: 40,
-                color: Colors.white12,
+                height: 30,
+                color: AppTheme.surfaceLight,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
               ),
               Expanded(
@@ -443,15 +423,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   children: [
                     Text(
                       opponentRound.throws.join(' • '),
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${opponentRound.roundScore} pts',
+                      '${opponentRound.roundScore}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

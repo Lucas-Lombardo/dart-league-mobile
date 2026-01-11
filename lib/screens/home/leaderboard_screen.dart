@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../widgets/rank_badge.dart';
+import '../../utils/app_theme.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -49,7 +50,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
-          color: Color(0xFF00E5FF),
+          color: AppTheme.primary,
         ),
       );
     }
@@ -57,25 +58,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     if (_errorMessage != null) {
       return RefreshIndicator(
         onRefresh: _loadLeaderboard,
-        color: const Color(0xFF00E5FF),
+        color: AppTheme.primary,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: Color(0xFFFF5252), size: 64),
+              const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
               const SizedBox(height: 16),
               Text(
                 _errorMessage!,
-                style: const TextStyle(color: Color(0xFFFF5252)),
+                style: const TextStyle(color: AppTheme.error),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadLeaderboard,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  foregroundColor: Colors.black,
-                ),
                 child: const Text('Retry'),
               ),
             ],
@@ -92,110 +89,122 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadLeaderboard,
-      color: const Color(0xFF00E5FF),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _entries.length,
-        itemBuilder: (context, index) {
-          final entry = _entries[index];
-          final isCurrentUser = entry.user.id == currentUserId;
-          final isTopThree = index < 3;
+      color: AppTheme.primary,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(child: _buildHeaderCell('Rank', TextAlign.center)),
+                Expanded(flex: 3, child: _buildHeaderCell('Player', TextAlign.left)),
+                Expanded(child: _buildHeaderCell('ELO', TextAlign.right)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              itemCount: _entries.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final entry = _entries[index];
+                final isCurrentUser = entry.user.id == currentUserId;
+                final isTopThree = index < 3;
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: isCurrentUser
-                  ? const Color(0xFF00E5FF).withValues(alpha: 0.15)
-                  : const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isCurrentUser
-                    ? const Color(0xFF00E5FF)
-                    : Colors.transparent,
-                width: 2,
-              ),
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: isTopThree
-                            ? [
-                                _getRankColor(index),
-                                _getRankColor(index).withValues(alpha: 0.6),
-                              ]
-                            : [
-                                const Color(0xFF333333),
-                                const Color(0xFF1A1A1A),
-                              ],
-                      ),
+                return Container(
+                  decoration: BoxDecoration(
+                    color: isCurrentUser
+                        ? AppTheme.primary.withValues(alpha: 0.15)
+                        : AppTheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isCurrentUser
+                          ? AppTheme.primary
+                          : Colors.transparent,
+                      width: 1,
                     ),
-                    child: Center(
-                      child: Text(
-                        '${entry.rank}',
-                        style: TextStyle(
-                          color: isTopThree ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                    boxShadow: [
+                      if (isTopThree)
+                        BoxShadow(
+                          color: _getRankColor(index).withValues(alpha: 0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
                         ),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    leading: SizedBox(
+                      width: 40,
+                      child: Center(
+                        child: isTopThree
+                          ? Icon(
+                              Icons.emoji_events,
+                              color: _getRankColor(index),
+                              size: 32,
+                            )
+                          : Text(
+                              '${entry.rank}',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        RankBadge(
+                          rank: entry.user.rank,
+                          size: 24,
+                          showLabel: false,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            entry.user.username,
+                            style: TextStyle(
+                              color: isCurrentUser ? AppTheme.primary : Colors.white,
+                              fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Text(
+                      '${entry.wins}W - ${entry.losses}L',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                    trailing: Text(
+                      '${entry.user.elo}',
+                      style: TextStyle(
+                        color: isTopThree ? _getRankColor(index) : AppTheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  RankBadge(
-                    rank: entry.user.rank,
-                    size: 32,
-                    showLabel: false,
-                  ),
-                ],
-              ),
-              title: Text(
-                entry.user.username,
-                style: TextStyle(
-                  color: isCurrentUser ? const Color(0xFF00E5FF) : Colors.white,
-                  fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 16,
-                ),
-              ),
-              subtitle: Text(
-                '${entry.wins}W - ${entry.losses}L',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${entry.user.elo}',
-                    style: const TextStyle(
-                      color: Color(0xFF00E5FF),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                    ),
-                  ),
-                  const Text(
-                    'ELO',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildHeaderCell(String text, TextAlign align) {
+    return Text(
+      text.toUpperCase(),
+      textAlign: align,
+      style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
     );
   }
 
@@ -208,7 +217,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       case 2:
         return const Color(0xFFCD7F32);
       default:
-        return Colors.grey;
+        return AppTheme.textSecondary;
     }
   }
 }

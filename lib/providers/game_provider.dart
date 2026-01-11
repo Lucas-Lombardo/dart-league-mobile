@@ -48,6 +48,20 @@ class GameProvider with ChangeNotifier {
   List<String> get currentRoundThrows => _currentRoundThrows;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
+  
+  int get currentRoundScore {
+    int score = 0;
+    for (final dart in _currentRoundThrows) {
+      if (dart.startsWith('S')) {
+        score += int.parse(dart.substring(1));
+      } else if (dart.startsWith('D')) {
+        score += int.parse(dart.substring(1)) * 2;
+      } else if (dart.startsWith('T')) {
+        score += int.parse(dart.substring(1)) * 3;
+      }
+    }
+    return score;
+  }
 
   void initGame(String matchId, String myUserId, String opponentUserId) {
     debugPrint('🎮 Initializing game: matchId=$matchId, myUserId=$myUserId, opponentUserId=$opponentUserId, currentGameStarted=$_gameStarted');

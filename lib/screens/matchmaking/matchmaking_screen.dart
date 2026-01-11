@@ -5,6 +5,7 @@ import '../../providers/matchmaking_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
 import '../game/game_screen.dart';
+import '../../utils/app_theme.dart';
 
 class MatchmakingScreen extends StatefulWidget {
   const MatchmakingScreen({super.key});
@@ -76,10 +77,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 2),
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.primary, width: 2),
         ),
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -88,16 +89,16 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             children: [
               const Icon(
                 Icons.check_circle,
-                color: Color(0xFF00E5FF),
+                color: AppTheme.primary,
                 size: 80,
               ),
               const SizedBox(height: 16),
               const Text(
                 'MATCH FOUND!',
                 style: TextStyle(
-                  color: Color(0xFF00E5FF),
+                  color: AppTheme.primary,
                   fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 2,
                 ),
               ),
@@ -106,17 +107,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppTheme.background,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
                   ),
                   child: Column(
                     children: [
-                      const Text(
-                        'Opponent',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
+                      Text(
+                        'OPPONENT',
+                        style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -131,8 +130,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       Text(
                         'ELO: ${matchmaking.opponentElo ?? matchmaking.playerElo ?? 1200}',
                         style: const TextStyle(
-                          color: Color(0xFF00E5FF),
+                          color: AppTheme.primary,
                           fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
@@ -142,8 +142,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
               const Text(
                 'Starting game...',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppTheme.textSecondary,
                   fontSize: 14,
+                  fontStyle: FontStyle.italic,
                 ),
               ),
             ],
@@ -231,15 +232,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
         ),
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Color(0xFF0A0A0A),
-                Color(0xFF1A1A1A),
-                Color(0xFF0A0A0A),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
+            gradient: AppTheme.surfaceGradient,
           ),
           child: Center(
             child: SingleChildScrollView(
@@ -251,13 +244,13 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                     decoration: BoxDecoration(
                       color: SocketService.isConnected 
-                          ? const Color(0xFF4CAF50).withValues(alpha: 0.2)
-                          : const Color(0xFFFF5252).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
+                          ? AppTheme.success.withValues(alpha: 0.1)
+                          : AppTheme.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: SocketService.isConnected 
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFFFF5252),
+                            ? AppTheme.success.withValues(alpha: 0.5)
+                            : AppTheme.error.withValues(alpha: 0.5),
                       ),
                     ),
                     child: Row(
@@ -266,8 +259,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                         Icon(
                           SocketService.isConnected ? Icons.wifi : Icons.wifi_off,
                           color: SocketService.isConnected 
-                              ? const Color(0xFF4CAF50) 
-                              : const Color(0xFFFF5252),
+                              ? AppTheme.success 
+                              : AppTheme.error,
                           size: 16,
                         ),
                         const SizedBox(width: 8),
@@ -277,8 +270,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                               : 'Not connected',
                           style: TextStyle(
                             color: SocketService.isConnected 
-                                ? const Color(0xFF4CAF50) 
-                                : const Color(0xFFFF5252),
+                                ? AppTheme.success 
+                                : AppTheme.error,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -286,7 +279,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 40),
                   AnimatedBuilder(
                     animation: _rotationController,
                     builder: (context, child) {
@@ -304,43 +297,64 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
                             colors: [
-                              const Color(0xFF00E5FF).withValues(alpha: 0.3),
-                              const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                              AppTheme.primary.withValues(alpha: 0.2),
+                              AppTheme.primary.withValues(alpha: 0.05),
                               Colors.transparent,
                             ],
                           ),
                           border: Border.all(
-                            color: const Color(0xFF00E5FF),
-                            width: 3,
+                            color: AppTheme.primary,
+                            width: 2,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primary.withValues(alpha: 0.2),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                            ),
+                          ],
                         ),
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            ...List.generate(8, (index) {
-                              final angle = (index * math.pi / 4);
+                            ...List.generate(4, (index) {
+                              final angle = (index * math.pi / 2);
                               return Transform.rotate(
                                 angle: angle,
                                 child: Container(
-                                  width: 3,
-                                  height: 100,
+                                  width: 2,
+                                  height: 200,
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        const Color(0xFF00E5FF),
+                                        Colors.transparent,
+                                        AppTheme.primary.withValues(alpha: 0.5),
                                         Colors.transparent,
                                       ],
-                                      begin: Alignment.center,
-                                      end: Alignment.topCenter,
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
                                     ),
                                   ),
                                 ),
                               );
                             }),
+                            ...List.generate(2, (index) {
+                              return Container(
+                                width: 100 + (index * 60.0),
+                                height: 100 + (index * 60.0),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppTheme.primary.withValues(alpha: 0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                              );
+                            }),
                             const Icon(
-                              Icons.gps_fixed,
-                              color: Color(0xFF00E5FF),
-                              size: 64,
+                              Icons.radar,
+                              color: AppTheme.primary,
+                              size: 48,
                             ),
                           ],
                         ),
@@ -349,80 +363,89 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   ),
                   const SizedBox(height: 48),
                   const Text(
-                    'Searching for opponent...',
+                    'SEARCHING FOR OPPONENT',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Text(
                     _formatTime(matchmaking.searchTime),
                     style: const TextStyle(
-                      color: Color(0xFF00E5FF),
+                      color: AppTheme.primary,
                       fontSize: 48,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'monospace', // Monospaced font for timer
                     ),
                   ),
                   const SizedBox(height: 32),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
-                      vertical: 16,
+                      vertical: 20,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(12),
+                      color: AppTheme.background,
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
                       ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Your ELO',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              '${user?.elo ?? 0}',
-                              style: const TextStyle(
-                                color: Color(0xFF00E5FF),
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Search Range',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              '±${matchmaking.eloRange} ELO',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
+                    ),
+                    child: IntrinsicHeight(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                Text(
+                                  'YOUR ELO',
+                                  style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${user?.elo ?? 0}',
+                                  style: const TextStyle(
+                                    color: AppTheme.primary,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          VerticalDivider(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                Text(
+                                  'RANGE',
+                                  style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '±${matchmaking.eloRange}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 48),
@@ -440,17 +463,17 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF1744),
+                        backgroundColor: AppTheme.error,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        elevation: 8,
+                        elevation: 4,
                       ),
                       child: const Text(
                         'CANCEL SEARCH',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1,
                         ),
@@ -462,24 +485,24 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFF1744).withValues(alpha: 0.1),
+                        color: AppTheme.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(0xFFFF1744),
+                          color: AppTheme.error,
                         ),
                       ),
                       child: Row(
                         children: [
                           const Icon(
                             Icons.error_outline,
-                            color: Color(0xFFFF1744),
+                            color: AppTheme.error,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               matchmaking.errorMessage!,
                               style: const TextStyle(
-                                color: Color(0xFFFF1744),
+                                color: AppTheme.error,
                                 fontSize: 14,
                               ),
                             ),

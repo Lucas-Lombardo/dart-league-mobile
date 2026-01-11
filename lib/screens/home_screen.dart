@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/rank_badge.dart';
 import '../utils/haptic_service.dart';
+import '../utils/app_theme.dart';
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
@@ -31,22 +32,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Text('🎯'),
-            SizedBox(width: 8),
-            Text(
-              'Dart Legends',
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.sports_esports, color: AppTheme.primary, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'DART LEAGUE',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
                 letterSpacing: 1,
+                fontSize: 18,
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
             onPressed: () {
               HapticService.lightImpact();
               Navigator.push(
@@ -58,35 +67,34 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             tooltip: 'Settings',
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         children: [
           if (user != null)
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1A1A1A),
-                    Color(0xFF0A0A0A),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                border: Border(
-                  bottom: BorderSide(
-                    color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
-                    width: 1,
+                gradient: AppTheme.surfaceGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
+                ],
+                border: Border.all(
+                  color: AppTheme.surfaceLight.withValues(alpha: 0.5),
                 ),
               ),
               child: Row(
                 children: [
                   RankBadge(
                     rank: user.rank,
-                    size: 50,
+                    size: 56,
                     showLabel: false,
                   ),
                   const SizedBox(width: 16),
@@ -96,88 +104,137 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           user.username,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                          style: AppTheme.titleLarge,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          user.email,
-                          style: const TextStyle(
+                          user.rank.toUpperCase(),
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white54,
+                            fontWeight: FontWeight.bold,
+                            color: _getRankColor(user.rank),
+                            letterSpacing: 1,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '${user.elo}',
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF00E5FF),
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.background,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.3),
                       ),
-                      Text(
-                        user.rank.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: _getRankColor(user.rank),
-                          letterSpacing: 1,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          'ELO',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                        Text(
+                          '${user.elo}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
           Expanded(
-            child: _screens[_currentIndex],
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+                child: _screens[_currentIndex],
+              ),
+            ),
           ),
         ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
-              width: 1,
+          color: AppTheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildNavItem(0, Icons.play_circle_outline, Icons.play_circle_filled, 'Play'),
+                  _buildNavItem(1, Icons.bar_chart, Icons.bar_chart_rounded, 'Stats'),
+                  _buildNavItem(2, Icons.leaderboard_outlined, Icons.leaderboard, 'Rankings'),
+                ],
+              ),
             ),
           ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          backgroundColor: const Color(0xFF0A0A0A),
-          selectedItemColor: const Color(0xFF00E5FF),
-          unselectedItemColor: Colors.white54,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.play_circle_outline),
-              activeIcon: Icon(Icons.play_circle_filled),
-              label: 'Play',
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        HapticService.lightImpact();
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+              size: 24,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Stats',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.leaderboard),
-              activeIcon: Icon(Icons.leaderboard),
-              label: 'Leaderboard',
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -200,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'master':
         return const Color(0xFFFF1744);
       default:
-        return Colors.grey;
+        return AppTheme.textSecondary;
     }
   }
 }

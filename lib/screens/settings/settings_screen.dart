@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -41,10 +42,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final user = auth.currentUser;
 
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Settings'),
+        backgroundColor: AppTheme.surface,
       ),
       body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
           _buildSection('Account'),
           _buildAccountInfo(user?.username ?? 'User', user?.email ?? 'No email'),
@@ -80,19 +84,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ElevatedButton.icon(
               onPressed: () => _showLogoutDialog(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5252),
+                backgroundColor: AppTheme.error,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                elevation: 4,
               ),
               icon: const Icon(Icons.logout),
               label: const Text(
-                'Logout',
+                'LOGOUT',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
                 ),
               ),
             ),
@@ -105,15 +111,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSection(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
-          color: Color(0xFF00E5FF),
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
-        ),
+        style: AppTheme.labelLarge.copyWith(color: AppTheme.primary),
       ),
     );
   }
@@ -123,8 +124,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -132,7 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(
             label,
             style: const TextStyle(
-              color: Colors.white70,
+              color: AppTheme.textSecondary,
               fontSize: 16,
             ),
           ),
@@ -160,18 +162,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(8),
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: const Color(0xFF00E5FF)),
+            child: Icon(icon, color: AppTheme.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -189,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    color: Colors.white54,
+                    color: AppTheme.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -199,7 +202,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeTrackColor: const Color(0xFF00E5FF),
+            activeThumbColor: AppTheme.primary,
+            activeTrackColor: AppTheme.primary.withValues(alpha: 0.3),
+            inactiveTrackColor: AppTheme.surfaceLight,
           ),
         ],
       ),
@@ -211,18 +216,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF00E5FF)),
+          Icon(icon, color: AppTheme.textSecondary),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
               label,
               style: const TextStyle(
-                color: Colors.white70,
+                color: AppTheme.textSecondary,
                 fontSize: 16,
               ),
             ),
@@ -243,20 +249,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Logout',
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
           'Are you sure you want to logout?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppTheme.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -267,7 +273,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF5252),
+              backgroundColor: AppTheme.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             child: const Text('Logout'),
           ),
