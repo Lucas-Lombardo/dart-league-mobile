@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
+import '../game/game_screen.dart';
 
 class MatchmakingScreen extends StatefulWidget {
   const MatchmakingScreen({super.key});
@@ -91,41 +92,42 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                 ),
               ),
               const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12),
+              if (matchmaking.opponentId != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Opponent',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        matchmaking.opponentUsername ?? matchmaking.opponentId ?? 'Unknown',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'ELO: ${matchmaking.opponentElo ?? matchmaking.playerElo ?? 1200}',
+                        style: const TextStyle(
+                          color: Color(0xFF00E5FF),
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Opponent',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      matchmaking.opponentUsername ?? 'Unknown',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'ELO: ${matchmaking.opponentElo ?? 0}',
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 24),
               const Text(
                 'Starting game...',
@@ -141,26 +143,52 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     );
 
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-        Navigator.of(context).pop();
+      if (!mounted) {
+        debugPrint('⚠️ MatchmakingScreen not mounted, skipping navigation');
+        return;
+      }
+      
+      if (matchmaking.matchId == null || matchmaking.opponentId == null) {
+        debugPrint('⚠️ Missing match data - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+        return;
+      }
+      
+      try {
+        debugPrint('🎮 Navigating to GameScreen - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Game screen coming soon!'),
-            backgroundColor: Color(0xFF00E5FF),
+        Navigator.of(context).pop(); // Close dialog
+        Navigator.of(context).pop(); // Go back from matchmaking screen
+        
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => GameScreen(
+              matchId: matchmaking.matchId!,
+              opponentId: matchmaking.opponentId!,
+            ),
           ),
         );
         
-        matchmaking.resetMatch();
+        debugPrint('✅ Navigation to GameScreen complete');
+        
+        // Don't reset match here - it will be reset when matchmaking screen disposes
+      } catch (e, stackTrace) {
+        debugPrint('❌ Error navigating to GameScreen: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
     });
   }
 
   @override
   void dispose() {
-    final matchmaking = context.read<MatchmakingProvider>();
-    matchmaking.removeListener(_onMatchmakingUpdate);
+    debugPrint('🧹 MatchmakingScreen dispose called');
+    try {
+      if (mounted) {
+        final matchmaking = context.read<MatchmakingProvider>();
+        matchmaking.removeListener(_onMatchmakingUpdate);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error in dispose: $e');
+    }
     _rotationController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -180,8 +208,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop && user?.id != null) {
-          await matchmaking.leaveQueue(user!.id);
+        if (didPop && mounted && user?.id != null) {
+          debugPrint('🚪 PopScope: Leaving queue for user ${user!.id}');
+          await matchmaking.leaveQueue(user.id);
         }
       },
       child: Scaffold(
@@ -190,10 +219,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
-              if (user?.id != null) {
+              debugPrint('⬅️ Back button pressed');
+              if (mounted && user?.id != null) {
                 await matchmaking.leaveQueue(user!.id);
               }
-              if (context.mounted) {
+              if (mounted && context.mounted) {
                 Navigator.of(context).pop();
               }
             },
@@ -401,10 +431,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     height: 56,
                     child: ElevatedButton(
                       onPressed: () async {
-                        if (user?.id != null) {
+                        debugPrint('❌ Cancel search pressed');
+                        if (mounted && user?.id != null) {
                           await matchmaking.leaveQueue(user!.id);
                         }
-                        if (context.mounted) {
+                        if (mounted && context.mounted) {
                           Navigator.of(context).pop();
                         }
                       },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/matchmaking_provider.dart';
+import '../../providers/game_provider.dart';
 import '../../widgets/rank_badge.dart';
 import '../matchmaking/matchmaking_screen.dart';
 
@@ -192,65 +193,65 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           const SizedBox(height: 32),
           ScaleTransition(
             scale: _pulseAnimation,
-            child: Container(
-              height: 200,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF00E5FF),
-                    Color(0xFF00B8D4),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+            child: GestureDetector(
+              onTap: () async {
+                final matchmaking = context.read<MatchmakingProvider>();
+                final game = context.read<GameProvider>();
+                final user = context.read<AuthProvider>().currentUser;
+                
+                if (user?.id != null) {
+                  matchmaking.setGameProvider(game);
+                  await matchmaking.joinQueue(user!.id);
+                  
+                  if (context.mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const MatchmakingScreen(),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF00E5FF),
+                      Color(0xFF00B8D4),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () async {
-                    final matchmaking = context.read<MatchmakingProvider>();
-                    final userId = user.id;
-                    
-                    await matchmaking.joinQueue(userId);
-                    
-                    if (context.mounted) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const MatchmakingScreen(),
-                        ),
-                      );
-                    }
-                  },
                   borderRadius: BorderRadius.circular(16),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.play_circle_filled,
-                          size: 80,
-                          color: Colors.black,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'FIND MATCH',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                      blurRadius: 20,
+                      spreadRadius: 2,
                     ),
+                  ],
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.play_circle_filled,
+                        size: 80,
+                        color: Colors.black,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'FIND MATCH',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

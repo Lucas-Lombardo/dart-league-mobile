@@ -1,21 +1,23 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../services/socket_service.dart';
 import '../services/matchmaking_service.dart';
+import '../services/socket_service.dart';
+import 'game_provider.dart';
 
 class MatchmakingProvider with ChangeNotifier {
   bool _isSearching = false;
-  int _searchTime = 0;
-  int _eloRange = 100;
   bool _matchFound = false;
   String? _matchId;
   String? _opponentId;
   String? _opponentUsername;
   int? _opponentElo;
   int? _playerElo;
-  String? _errorMessage;
+  int _searchTime = 0;
+  int _eloRange = 0;
   Timer? _searchTimer;
+  GameProvider? _gameProvider;
+  String? _errorMessage;
 
   bool get isSearching => _isSearching;
   int get searchTime => _searchTime;
@@ -28,6 +30,10 @@ class MatchmakingProvider with ChangeNotifier {
   int? get playerElo => _playerElo;
   String? get errorMessage => _errorMessage;
 
+  void setGameProvider(GameProvider provider) {
+    _gameProvider = provider;
+  }
+
   Future<void> joinQueue(String userId) async {
     try {
       debugPrint('🎮 Attempting to join queue via HTTP...');
@@ -36,6 +42,9 @@ class MatchmakingProvider with ChangeNotifier {
 
       await SocketService.ensureConnected();
       debugPrint('✅ Socket connection ensured');
+
+      // Ensure game listeners are set up now that socket is connected
+      _gameProvider?.ensureListenersSetup();
 
       _setupSocketListeners();
       debugPrint('✅ Socket listeners set up');
@@ -111,14 +120,9 @@ class MatchmakingProvider with ChangeNotifier {
     _playerElo = data['playerElo'] as int?;
     _isSearching = false;
     
-    if (_matchId != null) {
-      try {
-        SocketService.emit('join_room', {'roomId': _matchId});
-        debugPrint('✅ Emitted join_room for matchId: $_matchId');
-      } catch (e) {
-        debugPrint('❌ Failed to emit join_room: $e');
-      }
-    }
+    // Backend auto-joins players to room and emits game_started immediately
+    // GameProvider listeners are already set up and ready to receive the event
+    debugPrint('✅ Match found - game_started event should arrive momentarily');
     
     notifyListeners();
   }
