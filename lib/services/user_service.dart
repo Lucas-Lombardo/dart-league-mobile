@@ -48,10 +48,10 @@ class LeaderboardEntry {
     required this.losses,
   });
 
-  factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
+  factory LeaderboardEntry.fromJson(Map<String, dynamic> json, [int? position]) {
     return LeaderboardEntry(
       user: User.fromJson(json['user'] ?? json),
-      rank: json['rank'] as int? ?? 0,
+      rank: position ?? (json['position'] as int? ?? 0),
       wins: json['wins'] as int? ?? 0,
       losses: json['losses'] as int? ?? 0,
     );
@@ -72,8 +72,24 @@ class UserService {
     try {
       final response = await ApiService.get('/users/leaderboard');
       final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => LeaderboardEntry.fromJson(json)).toList();
+      
+      debugPrint('🏆 Leaderboard data: ${data.take(2)}');
+      
+      // Backend sends flat user objects, we need to add position index
+      return data.asMap().entries.map((entry) {
+        final index = entry.key;
+        final json = entry.value as Map<String, dynamic>;
+        
+        // Add username if missing (use email)
+        if (json['username'] == null) {
+          final email = json['email'] as String? ?? '';
+          json['username'] = email.split('@').first;
+        }
+        
+        return LeaderboardEntry.fromJson(json, index + 1);
+      }).toList();
     } catch (e) {
+      debugPrint('❌ Leaderboard error: $e');
       rethrow;
     }
   }

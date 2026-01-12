@@ -17,9 +17,9 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as String,
-      username: json['username'] as String,
-      email: json['email'] as String,
+      id: json['id'] as String? ?? '',
+      username: json['username'] as String? ?? 'Unknown',
+      email: json['email'] as String? ?? '',
       elo: json['elo'] as int? ?? 1200,
       rank: json['rank'] as String? ?? 'unranked',
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String) : null,
