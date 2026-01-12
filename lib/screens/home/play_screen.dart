@@ -8,6 +8,7 @@ import '../../services/user_service.dart';
 import '../../models/match.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/rank_utils.dart';
 import '../matchmaking/matchmaking_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -119,6 +120,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     return threshold - currentElo;
   }
 
+  int _getEloBelowPreviousRank(String currentRank, int currentElo) {
+    final currentThreshold = _rankThresholds[currentRank.toLowerCase()] ?? 0;
+    return currentThreshold - currentElo;
+  }
+
   double _getRankProgress(String currentRank, int currentElo) {
     final currentThreshold = _rankThresholds[currentRank.toLowerCase()] ?? 1200;
     final nextRank = _getNextRank(currentRank).toLowerCase();
@@ -155,7 +161,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: AppTheme.surfaceGradient,
               borderRadius: BorderRadius.circular(24),
@@ -172,182 +178,121 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
             child: Column(
               children: [
-                // Rank Progression Bar
-                Row(
+                // Rank Progression
+                Column(
                   children: [
-                    // Previous Rank
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.textSecondary.withValues(alpha: 0.3),
-                                width: 2,
+                    // Rank badges row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // Previous Rank
+                        Opacity(
+                          opacity: 0.5,
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                width: 70,
+                                height: 70,
+                                child: RankUtils.getRankBadge(
+                                  previousRank,
+                                  size: 70,
+                                ),
                               ),
-                            ),
-                            child: Icon(
-                              Icons.star_outline,
-                              color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            previousRank.toUpperCase(),
-                            style: const TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Progress Line to Current
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppTheme.textSecondary.withValues(alpha: 0.3),
-                              AppTheme.primary,
+                              const SizedBox(height: 4),
+                              Text(
+                                '-${_getEloBelowPreviousRank(currentRank, user.elo)}',
+                                style: const TextStyle(
+                                  color: Color(0xFFEF4444),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(2),
                         ),
-                      ),
-                    ),
-                    
-                    // Current Rank
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.primary,
-                                width: 3,
+                        
+                        // Current Rank
+                        Column(
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              height: 100,
+                              child: RankUtils.getRankBadge(
+                                currentRank,
+                                size: 100,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.primary.withValues(alpha: 0.4),
-                                  blurRadius: 12,
-                                  spreadRadius: 2,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                        ),
+                        
+                        // Next Rank
+                        Opacity(
+                          opacity: 0.3,
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                width: 75,
+                                height: 75,
+                                child: RankUtils.getRankBadge(
+                                  nextRank,
+                                  size: 75,
                                 ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 24,
-                            ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '+${eloNeeded > 0 ? eloNeeded : 0}',
+                                style: TextStyle(
+                                  color: AppTheme.primary.withValues(alpha: 0.8),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            currentRank.toUpperCase(),
-                            style: const TextStyle(
-                              color: AppTheme.primary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     
-                    // Progress Line to Next
-                    Expanded(
-                      flex: 2,
+                    const SizedBox(height: 8),
+                    
+                    // Progress bar
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Stack(
                         children: [
-                          // Background
+                          // Background bar
                           Container(
-                            height: 4,
+                            height: 12,
                             decoration: BoxDecoration(
                               color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(2),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                           ),
-                          // Progress
-                          FractionallySizedBox(
-                            widthFactor: progress,
-                            child: Container(
-                              height: 4,
-                              decoration: BoxDecoration(
-                                gradient: AppTheme.primaryGradient,
-                                borderRadius: BorderRadius.circular(2),
+                          // Progress bar
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: FractionallySizedBox(
+                              widthFactor: progress,
+                              child: Container(
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  gradient: AppTheme.primaryGradient,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primary.withValues(alpha: 0.4),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Next Rank
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.primary.withValues(alpha: 0.5),
-                                width: 2,
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.star,
-                              color: AppTheme.primary.withValues(alpha: 0.7),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            nextRank.toUpperCase(),
-                            style: TextStyle(
-                              color: AppTheme.primary.withValues(alpha: 0.8),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ],
-                ),
-                
-                const SizedBox(height: 20),
-                
-                // ELO Info
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    eloNeeded > 0 
-                        ? '$eloNeeded ELO to ${nextRank.toUpperCase()}'
-                        : 'Max Rank Achieved!',
-                    style: const TextStyle(
-                      color: AppTheme.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
                 ),
               ],
             ),

@@ -17,11 +17,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = 1; // Start at Play (middle)
 
   final List<Widget> _screens = const [
-    PlayScreen(),
     StatsScreen(),
+    PlayScreen(),
     LeaderboardScreen(),
   ];
 
@@ -32,26 +32,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+        title: Container(
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                height: 80,
+                child: Image.asset(
+                  'assets/logo/logo-without-letters.png',
+                  fit: BoxFit.contain,
+                ),
               ),
-              child: const Icon(Icons.sports_esports, color: AppTheme.primary, size: 20),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'DART LEAGUE',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-                fontSize: 18,
+              const SizedBox(width: 12),
+              const Text(
+                'DART RIVALS',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  fontSize: 20,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           IconButton(
@@ -75,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (user != null)
             Container(
               margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: AppTheme.surfaceGradient,
                 borderRadius: BorderRadius.circular(20),
@@ -94,29 +98,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   RankBadge(
                     rank: user.rank,
-                    size: 56,
+                    size: 80,
                     showLabel: false,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user.username,
-                          style: AppTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          user.rank.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: _getRankColor(user.rank),
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      user.username,
+                      style: AppTheme.titleLarge,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                   Container(
@@ -186,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Container(
               decoration: BoxDecoration(
                 color: AppTheme.surfaceLight.withValues(alpha: 0.5),
@@ -195,8 +186,8 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildNavItem(0, Icons.play_circle_outline, Icons.play_circle_filled, 'Play'),
-                  _buildNavItem(1, Icons.bar_chart, Icons.bar_chart_rounded, 'Stats'),
+                  _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, 'Stats'),
+                  _buildNavItem(1, Icons.play_circle_outline, Icons.play_circle_filled, 'Play'),
                   _buildNavItem(2, Icons.leaderboard_outlined, Icons.leaderboard, 'Rankings'),
                 ],
               ),
@@ -209,6 +200,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
     final isSelected = _currentIndex == index;
+    final isPlayTab = index == 1; // Play is middle tab
+    final showCircle = isSelected && isPlayTab;
+    
     return GestureDetector(
       onTap: () {
         HapticService.lightImpact();
@@ -218,16 +212,35 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
-              size: 24,
+            Container(
+              width: 48,
+              height: 48,
+              decoration: showCircle
+                  ? BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    )
+                  : null,
+              child: Center(
+                child: Icon(
+                  isSelected ? activeIcon : icon,
+                  color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+                  size: 24,
+                ),
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(

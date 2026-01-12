@@ -76,27 +76,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppTheme.primary.withValues(alpha: 0.2),
-                        width: 2,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.person_add_outlined,
-                      size: 48,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'JOIN THE LEAGUE',
-                    style: AppTheme.displayLarge,
-                    textAlign: TextAlign.center,
+                  Image.asset(
+                    'assets/logo/logo.png',
+                    width: 180,
+                    height: 180,
+                    fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 8),
                   const Text(

@@ -79,39 +79,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   opacity: _fadeAnimation,
                   child: Column(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme.primary.withValues(alpha: 0.3),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primary.withValues(alpha: 0.2),
-                              blurRadius: 30,
-                              spreadRadius: 5,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.sports_esports,
-                          size: 80,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      const Text(
-                        'DART LEAGUE',
-                        style: TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 4,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
+                      Image.asset(
+                        'assets/logo/logo.png',
+                        width: 280,
+                        height: 280,
+                        fit: BoxFit.contain,
                       ),
                       const SizedBox(height: 8),
                       Text(

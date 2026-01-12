@@ -161,7 +161,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       children: [
                         RankBadge(
                           rank: entry.user.rank,
-                          size: 24,
+                          size: 40,
                           showLabel: false,
                         ),
                         const SizedBox(width: 12),
