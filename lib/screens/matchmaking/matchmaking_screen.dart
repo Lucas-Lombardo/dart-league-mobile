@@ -175,6 +175,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             builder: (context) => GameScreen(
               matchId: matchmaking.matchId!,
               opponentId: matchmaking.opponentId!,
+              agoraAppId: matchmaking.agoraAppId,
+              agoraToken: matchmaking.agoraToken,
+              agoraChannelName: matchmaking.agoraChannelName,
             ),
           ),
           (route) => route.isFirst, // Keep only the first route (home screen)

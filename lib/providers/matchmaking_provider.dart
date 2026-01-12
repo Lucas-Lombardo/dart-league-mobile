@@ -14,9 +14,14 @@ class MatchmakingProvider with ChangeNotifier {
   String? _opponentUsername;
   int? _opponentElo;
   int? _playerElo;
+  int _eloRange = 100;
   int _searchTime = 0;
-  int _eloRange = 0;
   Timer? _searchTimer;
+  
+  // Agora video credentials
+  String? _agoraAppId;
+  String? _agoraToken;
+  String? _agoraChannelName;
   GameProvider? _gameProvider;
   String? _errorMessage;
 
@@ -29,6 +34,9 @@ class MatchmakingProvider with ChangeNotifier {
   String? get opponentUsername => _opponentUsername;
   int? get opponentElo => _opponentElo;
   int? get playerElo => _playerElo;
+  String? get agoraAppId => _agoraAppId;
+  String? get agoraToken => _agoraToken;
+  String? get agoraChannelName => _agoraChannelName;
   String? get errorMessage => _errorMessage;
 
   void setGameProvider(GameProvider provider) {
@@ -57,6 +65,9 @@ class MatchmakingProvider with ChangeNotifier {
       _searchTime = 0;
       _eloRange = 100;
       _playerElo = response['playerElo'] as int?;
+      _agoraAppId = null;
+      _agoraToken = null;
+      _agoraChannelName = null;
 
       if (response['matched'] == true) {
         debugPrint('✅ Immediate match found!');
@@ -66,6 +77,9 @@ class MatchmakingProvider with ChangeNotifier {
           'opponentUsername': response['opponentUsername'],
           'playerElo': response['playerElo'],
           'opponentElo': response['opponentElo'],
+          'agoraAppId': response['agoraAppId'],
+          'agoraToken': response['agoraToken'],
+          'agoraChannelName': response['agoraChannelName'],
         });
       } else {
         _matchFound = false;
@@ -122,6 +136,9 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentUsername = data['opponentUsername'] as String?;
     _opponentElo = data['opponentElo'] as int?;
     _playerElo = data['playerElo'] as int?;
+    _agoraAppId = data['agoraAppId'] as String?;
+    _agoraToken = data['agoraToken'] as String?;
+    _agoraChannelName = data['agoraChannelName'] as String?;
     _isSearching = false;
     
     // Debug opponent data
@@ -130,6 +147,10 @@ class MatchmakingProvider with ChangeNotifier {
     debugPrint('   - opponentUsername: $_opponentUsername');
     debugPrint('   - opponentElo: $_opponentElo');
     debugPrint('   - playerElo: $_playerElo');
+    debugPrint('📹 Agora credentials:');
+    debugPrint('   - appId: ${_agoraAppId != null}');
+    debugPrint('   - token: ${_agoraToken != null}');
+    debugPrint('   - channel: $_agoraChannelName');
     
     // Backend auto-joins players to room and emits game_started immediately
     // GameProvider listeners are already set up and ready to receive the event
@@ -174,6 +195,9 @@ class MatchmakingProvider with ChangeNotifier {
       _opponentUsername = null;
       _opponentElo = null;
       _playerElo = null;
+      _agoraAppId = null;
+      _agoraToken = null;
+      _agoraChannelName = null;
       _errorMessage = null;
       notifyListeners();
     } catch (e) {

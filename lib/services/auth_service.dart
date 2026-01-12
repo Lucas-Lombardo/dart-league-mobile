@@ -69,12 +69,14 @@ class AuthService {
 
   static Future<User?> getCurrentUser() async {
     try {
+      print('🔍 Fetching current user profile...');
       final token = await StorageService.getToken();
       if (token == null) {
         return null;
       }
 
       final response = await ApiService.get('/auth/me');
+      print('✅ User profile fetched successfully');
       return User.fromJson(response['user']);
     } catch (e) {
       await StorageService.deleteToken();

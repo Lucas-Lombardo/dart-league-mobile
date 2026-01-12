@@ -19,6 +19,13 @@ class GameProvider with ChangeNotifier {
   List<String> _currentRoundThrows = [];
   bool _listenersSetUp = false;
   bool _pendingConfirmation = false;
+  
+  // Agora video calling
+  String? _agoraAppId;
+  String? _agoraToken;
+  String? _agoraChannelName;
+  int? _remoteUid;
+  bool _localUserJoined = false;
 
   GameProvider() {
     debugPrint('🎮 GameProvider created');
@@ -48,6 +55,13 @@ class GameProvider with ChangeNotifier {
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
   bool get pendingConfirmation => _pendingConfirmation;
+  
+  // Agora getters
+  String? get agoraAppId => _agoraAppId;
+  String? get agoraToken => _agoraToken;
+  String? get agoraChannelName => _agoraChannelName;
+  int? get remoteUid => _remoteUid;
+  bool get localUserJoined => _localUserJoined;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
   
@@ -65,13 +79,24 @@ class GameProvider with ChangeNotifier {
     return score;
   }
 
-  void initGame(String matchId, String myUserId, String opponentUserId) {
+  void initGame(String matchId, String myUserId, String opponentUserId, {
+    String? agoraAppId,
+    String? agoraToken,
+    String? agoraChannelName,
+  }) {
     debugPrint('🎮 Initializing game: matchId=$matchId, myUserId=$myUserId, opponentUserId=$opponentUserId, currentGameStarted=$_gameStarted');
     
     // Always set these - they're needed for the game to work
     _matchId = matchId;
     _myUserId = myUserId;
     _opponentUserId = opponentUserId;
+    
+    // Store Agora credentials if provided
+    if (agoraAppId != null) _agoraAppId = agoraAppId;
+    if (agoraToken != null) _agoraToken = agoraToken;
+    if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
+    
+    debugPrint('📹 Agora credentials: appId=${_agoraAppId != null}, token=${_agoraToken != null}, channel=$_agoraChannelName');
     
     // Only initialize scores if game hasn't started yet
     // Once gameStarted is true, we keep the state from the game_started event
@@ -369,6 +394,18 @@ class GameProvider with ChangeNotifier {
     SocketService.off('match_ended');
   }
 
+  void setRemoteUser(int? uid) {
+    _remoteUid = uid;
+    debugPrint('📹 Remote user ${uid != null ? "joined: uid=$uid" : "left"}');
+    notifyListeners();
+  }
+  
+  void setLocalUserJoined(bool joined) {
+    _localUserJoined = joined;
+    debugPrint('📹 Local user joined: $joined');
+    notifyListeners();
+  }
+
   void reset() {
     _cleanupSocketListeners();
     _matchId = null;
@@ -383,6 +420,11 @@ class GameProvider with ChangeNotifier {
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _agoraAppId = null;
+    _agoraToken = null;
+    _agoraChannelName = null;
+    _remoteUid = null;
+    _localUserJoined = false;
     notifyListeners();
   }
 

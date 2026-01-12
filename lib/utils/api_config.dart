@@ -1,1 +1,1 @@
-const String baseUrl = 'https://buddy-salon-satisfactory-sydney.trycloudflare.com';
+const String baseUrl = 'https://solar-tremendous-beats-app.trycloudflare.com';
