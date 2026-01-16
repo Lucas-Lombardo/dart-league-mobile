@@ -155,40 +155,93 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       ),
     );
 
-    Future.delayed(const Duration(seconds: 3), () {
+    _waitForAgoraCredentialsAndNavigate();
+  }
+
+  void _waitForAgoraCredentialsAndNavigate() {
+    // Check every 100ms for up to 5 seconds for Agora credentials
+    int attempts = 0;
+    const maxAttempts = 50; // 5 seconds
+    
+    void checkAndNavigate() {
       if (!mounted) {
         debugPrint('⚠️ MatchmakingScreen not mounted, skipping navigation');
         return;
       }
       
-      if (matchmaking.matchId == null || matchmaking.opponentId == null) {
-        debugPrint('⚠️ Missing match data - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+      attempts++;
+      
+      // Re-read provider on each iteration to get latest state
+      final matchmaking = context.read<MatchmakingProvider>();
+      
+      debugPrint('🔍 Polling attempt $attempts: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
+      
+      // Check if we have Agora credentials
+      if (matchmaking.agoraAppId != null && 
+          matchmaking.agoraToken != null && 
+          matchmaking.agoraChannelName != null) {
+        
+        debugPrint('✅ Agora credentials received, navigating to GameScreen');
+        
+        if (matchmaking.matchId == null || matchmaking.opponentId == null) {
+          debugPrint('⚠️ Missing match data - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+          return;
+        }
+        
+        try {
+          debugPrint('🎮 Navigating to GameScreen - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+          debugPrint('📹 With Agora credentials: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
+          
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => GameScreen(
+                matchId: matchmaking.matchId!,
+                opponentId: matchmaking.opponentId!,
+                agoraAppId: matchmaking.agoraAppId,
+                agoraToken: matchmaking.agoraToken,
+                agoraChannelName: matchmaking.agoraChannelName,
+              ),
+            ),
+            (route) => route.isFirst,
+          );
+          
+          debugPrint('✅ Navigation to GameScreen complete');
+        } catch (e, stackTrace) {
+          debugPrint('❌ Error navigating to GameScreen: $e');
+          debugPrint('Stack trace: $stackTrace');
+        }
         return;
       }
       
-      try {
-        debugPrint('🎮 Navigating to GameScreen - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+      // If we've tried for 5 seconds, give up and navigate anyway
+      if (attempts >= maxAttempts) {
+        debugPrint('⚠️ Timeout waiting for Agora credentials after $attempts attempts, navigating anyway');
         
-        // Use Navigator to replace the entire stack with GameScreen
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => GameScreen(
-              matchId: matchmaking.matchId!,
-              opponentId: matchmaking.opponentId!,
-              agoraAppId: matchmaking.agoraAppId,
-              agoraToken: matchmaking.agoraToken,
-              agoraChannelName: matchmaking.agoraChannelName,
+        try {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => GameScreen(
+                matchId: matchmaking.matchId!,
+                opponentId: matchmaking.opponentId!,
+                agoraAppId: matchmaking.agoraAppId,
+                agoraToken: matchmaking.agoraToken,
+                agoraChannelName: matchmaking.agoraChannelName,
+              ),
             ),
-          ),
-          (route) => route.isFirst, // Keep only the first route (home screen)
-        );
-        
-        debugPrint('✅ Navigation to GameScreen complete');
-      } catch (e, stackTrace) {
-        debugPrint('❌ Error navigating to GameScreen: $e');
-        debugPrint('Stack trace: $stackTrace');
+            (route) => route.isFirst,
+          );
+        } catch (e) {
+          debugPrint('❌ Error navigating to GameScreen: $e');
+        }
+        return;
       }
-    });
+      
+      // Try again in 100ms
+      Future.delayed(const Duration(milliseconds: 100), checkAndNavigate);
+    }
+    
+    // Start checking after a brief delay
+    Future.delayed(const Duration(milliseconds: 500), checkAndNavigate);
   }
 
   @override

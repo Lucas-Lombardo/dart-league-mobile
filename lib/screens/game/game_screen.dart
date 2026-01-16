@@ -152,6 +152,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     
     await AgoraService.toggleLocalAudio(_agoraEngine!, _isAudioMuted);
   }
+  
+  Future<void> _switchCamera() async {
+    if (_agoraEngine == null) return;
+    await AgoraService.switchCamera(_agoraEngine!);
+  }
 
   @override
   void dispose() {
@@ -196,12 +201,36 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         auth.currentUser!.id,
       );
       
-      if (!mounted) return;
-      
-      // Refresh user profile to get updated ELO and rank
-      await auth.checkAuthStatus();
+      debugPrint('📊 Accept match result response: $result');
       
       if (!mounted) return;
+      
+      // Update user ELO and rank from match result
+      if (result['updatedUser'] != null) {
+        debugPrint('✅ Updating user from backend response');
+        auth.updateUserFromJson(result['updatedUser']);
+      } else {
+        debugPrint('⚠️ No updatedUser in response, backend needs to return updated user data');
+        debugPrint('📊 Available keys in response: ${result.keys.toList()}');
+        
+        // Try to extract ELO updates if available in other format
+        if (result['newElo'] != null) {
+          debugPrint('✅ Found newElo in response: ${result['newElo']}');
+          final currentUser = auth.currentUser;
+          if (currentUser != null) {
+            auth.updateUserFromJson({
+              'id': currentUser.id,
+              'email': currentUser.email,
+              'username': currentUser.username,
+              'elo': result['newElo'],
+              'rank': result['newRank'] ?? currentUser.rank,
+            });
+          }
+        }
+      }
+      
+      // Reset game state to prevent duplicate dialogs
+      game.reset();
       
       // Show success message
       final message = result['message'] as String? ?? 'Match result accepted';
@@ -209,16 +238,16 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         SnackBar(
           content: Text(message),
           backgroundColor: AppTheme.success,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(milliseconds: 500),
         ),
       );
       
-      // Navigate back to home after delay
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          navigator.pushNamedAndRemoveUntil('/home', (route) => false);
-        }
-      });
+      // Navigate back to home and clear navigation stack
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      if (mounted) {
+        navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+      }
     } catch (e) {
       if (!mounted) return;
       
@@ -903,6 +932,31 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                         ),
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    // Camera switch
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _switchCamera,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.cameraswitch,
+                            color: AppTheme.primary,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1157,9 +1211,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                     padding: const EdgeInsets.only(bottom: 8),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 10,
-                      crossAxisSpacing: 6,
-                      mainAxisSpacing: 6,
-                      childAspectRatio: 1.1,
+                      crossAxisSpacing: 4,
+                      mainAxisSpacing: 4,
+                      childAspectRatio: 0.85,
                     ),
                     itemCount: 60,
                     itemBuilder: (context, index) {
@@ -1367,19 +1421,21 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               label,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
+              overflow: TextOverflow.clip,
+              maxLines: 1,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
                 dotCount,
                 (index) => Container(
-                  width: 3,
-                  height: 3,
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  width: 2,
+                  height: 2,
+                  margin: const EdgeInsets.symmetric(horizontal: 0.5),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withValues(alpha: 0.6),
                     shape: BoxShape.circle,

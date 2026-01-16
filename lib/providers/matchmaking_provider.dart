@@ -65,22 +65,31 @@ class MatchmakingProvider with ChangeNotifier {
       _searchTime = 0;
       _eloRange = 100;
       _playerElo = response['playerElo'] as int?;
-      _agoraAppId = null;
-      _agoraToken = null;
-      _agoraChannelName = null;
+      
+      // DON'T reset Agora credentials here - the socket match_found event may have
+      // already arrived and set them before this HTTP response was processed
+      // Only reset them if we're NOT matched (i.e., actually searching)
+      if (response['matched'] != true) {
+        _agoraAppId = null;
+        _agoraToken = null;
+        _agoraChannelName = null;
+      }
 
       if (response['matched'] == true) {
-        debugPrint('✅ Immediate match found!');
-        _handleMatchFound({
-          'matchId': response['matchId'],
-          'opponentId': response['opponentId'],
-          'opponentUsername': response['opponentUsername'],
-          'playerElo': response['playerElo'],
-          'opponentElo': response['opponentElo'],
-          'agoraAppId': response['agoraAppId'],
-          'agoraToken': response['agoraToken'],
-          'agoraChannelName': response['agoraChannelName'],
-        });
+        debugPrint('✅ Immediate match found via HTTP - checking if socket event already arrived...');
+        debugPrint('📹 Current Agora state: appId=${_agoraAppId != null}, token=${_agoraToken != null}, channel=$_agoraChannelName');
+        
+        // Socket event may have already arrived and set credentials
+        // If credentials are already set, trigger match found immediately
+        if (_agoraAppId != null && _agoraToken != null && _agoraChannelName != null) {
+          debugPrint('✅ Socket match_found already processed, credentials available');
+          // Credentials already set by socket event, let the listener handle navigation
+        } else {
+          debugPrint('⏳ Waiting for socket match_found event with Agora credentials...');
+        }
+        
+        _isSearching = true; // Keep showing searching state until socket event arrives
+        notifyListeners();
       } else {
         _matchFound = false;
         _matchId = null;
@@ -136,9 +145,19 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentUsername = data['opponentUsername'] as String?;
     _opponentElo = data['opponentElo'] as int?;
     _playerElo = data['playerElo'] as int?;
-    _agoraAppId = data['agoraAppId'] as String?;
-    _agoraToken = data['agoraToken'] as String?;
-    _agoraChannelName = data['agoraChannelName'] as String?;
+    
+    // Only update Agora credentials if they're provided in this data
+    // This prevents HTTP responses from overwriting socket credentials with null
+    final newAgoraAppId = data['agoraAppId'] as String?;
+    final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraChannelName = data['agoraChannelName'] as String?;
+    
+    if (newAgoraAppId != null && newAgoraToken != null && newAgoraChannelName != null) {
+      _agoraAppId = newAgoraAppId;
+      _agoraToken = newAgoraToken;
+      _agoraChannelName = newAgoraChannelName;
+    }
+    
     _isSearching = false;
     
     // Debug opponent data

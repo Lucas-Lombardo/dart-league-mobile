@@ -260,6 +260,12 @@ class GameProvider with ChangeNotifier {
   void _handleGameWon(dynamic data) {
     debugPrint('🏆 Game won: $data');
     
+    // Prevent duplicate processing if game already ended
+    if (_gameEnded) {
+      debugPrint('⚠️ Game already ended, ignoring duplicate game_won event');
+      return;
+    }
+    
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;
     
@@ -268,6 +274,12 @@ class GameProvider with ChangeNotifier {
 
   void _handleMatchEnded(dynamic data) {
     debugPrint('🏁 Match ended: $data');
+    
+    // Prevent duplicate processing if game already ended
+    if (_gameEnded) {
+      debugPrint('⚠️ Game already ended, ignoring duplicate match_ended event');
+      return;
+    }
     
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;

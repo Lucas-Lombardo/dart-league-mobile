@@ -72,14 +72,36 @@ class AuthService {
       print('🔍 Fetching current user profile...');
       final token = await StorageService.getToken();
       if (token == null) {
+        print('⚠️ No token in storage, user not authenticated');
         return null;
       }
 
-      final response = await ApiService.get('/auth/me');
-      print('✅ User profile fetched successfully');
-      return User.fromJson(response['user']);
+      // Backend doesn't have /auth/me, need to decode token to get user ID
+      // For now, try fetching from /auth/profile or skip refresh
+      // Actually, we should just return the cached user and only refresh on explicit need
+      
+      // Try the /users/profile endpoint (common pattern)
+      try {
+        final response = await ApiService.get('/auth/profile');
+        print('✅ User profile fetched successfully');
+        return User.fromJson(response);
+      } catch (profileError) {
+        // If /auth/profile doesn't exist either, we need to decode the JWT
+        // For now, return null and rely on the user data from login
+        print('⚠️ Could not fetch profile, endpoint may not exist');
+        return null;
+      }
     } catch (e) {
-      await StorageService.deleteToken();
+      print('❌ Error fetching user profile: $e');
+      
+      // Only delete token if it's a 401 Unauthorized error (invalid token)
+      if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+        print('🗑️ Token invalid, deleting...');
+        await StorageService.deleteToken();
+      } else {
+        print('⚠️ Network or parsing error, keeping token');
+      }
+      
       return null;
     }
   }

@@ -101,4 +101,14 @@ class AuthProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
+
+  void updateUserFromJson(Map<String, dynamic> json) {
+    try {
+      _currentUser = User.fromJson(json);
+      notifyListeners();
+      debugPrint('✅ User updated from match result: ELO=${_currentUser?.elo}, Rank=${_currentUser?.rank}');
+    } catch (e) {
+      debugPrint('❌ Error updating user from JSON: $e');
+    }
+  }
 }

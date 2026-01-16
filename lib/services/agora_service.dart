@@ -128,6 +128,18 @@ class AgoraService {
     }
   }
 
+  /// Switch between front and back camera
+  static Future<void> switchCamera(RtcEngine engine) async {
+    debugPrint('📹 Switching camera');
+    
+    try {
+      await engine.switchCamera();
+      debugPrint('✅ Camera switched');
+    } catch (e) {
+      debugPrint('❌ Error switching camera: $e');
+    }
+  }
+
   /// Release the Agora engine and cleanup resources
   static Future<void> dispose() async {
     debugPrint('📹 Disposing Agora engine');
