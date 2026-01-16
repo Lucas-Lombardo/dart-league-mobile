@@ -53,7 +53,7 @@ class Match {
                          json['opponentEmail'] as String? ?? 
                          'Unknown Player';
     
-    debugPrint('🎮 Parsing match: result=$result, opponentName=$opponentName, eloChange=$eloChange');
+    // debugPrint('🎮 Parsing match: result=$result, opponentName=$opponentName, eloChange=$eloChange');
     
     return Match(
       id: json['matchId'] as String? ?? '',

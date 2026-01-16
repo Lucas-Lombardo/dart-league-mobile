@@ -174,7 +174,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       // Re-read provider on each iteration to get latest state
       final matchmaking = context.read<MatchmakingProvider>();
       
-      debugPrint('🔍 Polling attempt $attempts: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
+      // debugPrint('🔍 Polling attempt $attempts: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
       
       // Check if we have Agora credentials
       if (matchmaking.agoraAppId != null && 

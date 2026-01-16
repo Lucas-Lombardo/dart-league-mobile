@@ -82,7 +82,7 @@ class SocketService {
     if (_socket == null) {
       throw Exception('Socket not initialized');
     }
-    debugPrint('👂 Listening to event: $event');
+    // debugPrint('👂 Listening to event: $event');
     _socket!.on(event, handler);
   }
 

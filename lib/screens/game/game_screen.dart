@@ -201,32 +201,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         auth.currentUser!.id,
       );
       
-      debugPrint('📊 Accept match result response: $result');
+      debugPrint('✅ Match result accepted');
       
       if (!mounted) return;
       
-      // Update user ELO and rank from match result
-      if (result['updatedUser'] != null) {
-        debugPrint('✅ Updating user from backend response');
-        auth.updateUserFromJson(result['updatedUser']);
+      // Fetch updated user profile from database
+      debugPrint('🔄 Fetching updated user profile from database...');
+      await auth.checkAuthStatus();
+      
+      if (auth.currentUser != null) {
+        debugPrint('✅ User profile updated: ELO=${auth.currentUser!.elo}, Rank=${auth.currentUser!.rank}');
       } else {
-        debugPrint('⚠️ No updatedUser in response, backend needs to return updated user data');
-        debugPrint('📊 Available keys in response: ${result.keys.toList()}');
-        
-        // Try to extract ELO updates if available in other format
-        if (result['newElo'] != null) {
-          debugPrint('✅ Found newElo in response: ${result['newElo']}');
-          final currentUser = auth.currentUser;
-          if (currentUser != null) {
-            auth.updateUserFromJson({
-              'id': currentUser.id,
-              'email': currentUser.email,
-              'username': currentUser.username,
-              'elo': result['newElo'],
-              'rank': result['newRank'] ?? currentUser.rank,
-            });
-          }
-        }
+        debugPrint('⚠️ Failed to fetch updated profile - /auth/profile endpoint may not exist or returned null');
       }
       
       // Reset game state to prevent duplicate dialogs
