@@ -33,7 +33,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     });
 
     try {
-      final match = await UserService.getMatchDetail(widget.matchId);
+      final auth = context.read<AuthProvider>();
+      final userId = auth.currentUser?.id ?? '';
+      
+      final match = await UserService.getMatchDetail(widget.matchId, userId);
       setState(() {
         _match = match;
         _isLoading = false;
@@ -246,26 +249,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   Widget _buildMatchStats(Match match, String userId) {
-    final rounds = match.rounds ?? [];
-    if (rounds.isEmpty) return const SizedBox.shrink();
+    // Use statistics from backend if available
+    if (match.statistics == null) return const SizedBox.shrink();
 
-    // Calculate stats
-    final myRounds = rounds.where((r) => r.playerId == userId).toList();
-    final opponentRounds = rounds.where((r) => r.playerId != userId).toList();
-
-    double myAvgScore = myRounds.isEmpty
-        ? 0
-        : myRounds.map((r) => r.roundScore).reduce((a, b) => a + b) / myRounds.length;
-    double opponentAvgScore = opponentRounds.isEmpty
-        ? 0
-        : opponentRounds.map((r) => r.roundScore).reduce((a, b) => a + b) / opponentRounds.length;
-
-    int myHighestRound = myRounds.isEmpty
-        ? 0
-        : myRounds.map((r) => r.roundScore).reduce((a, b) => a > b ? a : b);
-    int opponentHighestRound = opponentRounds.isEmpty
-        ? 0
-        : opponentRounds.map((r) => r.roundScore).reduce((a, b) => a > b ? a : b);
+    final stats = match.statistics!;
+    final isPlayer1 = userId == match.player1Id;
+    final myStats = isPlayer1 ? stats.player1 : stats.player2;
+    final opponentStats = isPlayer1 ? stats.player2 : stats.player1;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -282,15 +272,17 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             style: AppTheme.titleLarge,
           ),
           const SizedBox(height: 20),
-          _buildStatRow('Total Rounds', '${rounds.length ~/ 2}', '${rounds.length ~/ 2}'),
+          _buildStatRow('Total Rounds', '${myStats.rounds}', '${opponentStats.rounds}'),
           const Divider(height: 24, color: AppTheme.surfaceLight),
           _buildStatRow(
             'Avg Score/Round',
-            myAvgScore.toStringAsFixed(1),
-            opponentAvgScore.toStringAsFixed(1),
+            myStats.average.toStringAsFixed(1),
+            opponentStats.average.toStringAsFixed(1),
           ),
           const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow('Highest Round', '$myHighestRound', '$opponentHighestRound'),
+          _buildStatRow('Highest Round', '${myStats.highest}', '${opponentStats.highest}'),
+          const Divider(height: 24, color: AppTheme.surfaceLight),
+          _buildStatRow('Perfect 180s', '${myStats.total180s}', '${opponentStats.total180s}'),
         ],
       ),
     );

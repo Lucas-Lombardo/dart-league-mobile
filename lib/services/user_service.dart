@@ -109,18 +109,16 @@ class UserService {
         return [];
       }
       
-      debugPrint('📊 Match history data: ${data.take(1)}');
-      
       return data.map((json) => Match.fromJson(json, userId)).toList();
     } catch (e) {
       rethrow;
     }
   }
 
-  static Future<Match> getMatchDetail(String matchId) async {
+  static Future<Match> getMatchDetail(String matchId, String currentUserId) async {
     try {
       final response = await ApiService.get('/matches/$matchId');
-      return Match.fromJson(response);
+      return Match.fromJson(response, currentUserId);
     } catch (e) {
       rethrow;
     }

@@ -12,6 +12,7 @@ class Match {
   final DateTime createdAt;
   final String status;
   final List<MatchRound>? rounds;
+  final MatchStatistics? statistics;
 
   Match({
     required this.id,
@@ -27,48 +28,30 @@ class Match {
     required this.createdAt,
     required this.status,
     this.rounds,
+    this.statistics,
   });
 
   factory Match.fromJson(Map<String, dynamic> json, [String? currentUserId]) {
-    // Backend format: matchId, opponentId, opponentEmail, opponentElo, 
-    // playerScore, opponentScore, result, playerRounds, opponentRounds, createdAt
-    
-    final result = json['result'] as String? ?? '';
-    final isWin = result.toLowerCase() == 'win';
-    
-    // Use provided userId or fallback to placeholder
-    final playerId = currentUserId ?? 'current_user';
-    final opponentId = json['opponentId'] as String? ?? '';
-    
-    final playerScore = json['playerScore'] as int? ?? 501;
-    final opponentScore = json['opponentScore'] as int? ?? 501;
-    
-    // Backend sends playerEloChange for this match
-    final eloChange = json['playerEloChange'] as int? ?? 0;
-    
-    // Get opponent username from opponentUsername or opponentEmail
-    final opponentName = json['opponentUsername'] as String? ?? 
-                         json['opponentEmail'] as String? ?? 
-                         'Unknown Player';
-    
-    // debugPrint('🎮 Parsing match: result=$result, opponentName=$opponentName, eloChange=$eloChange');
-    
+    // New format: player1/player2 (absolute)
     return Match(
-      id: json['matchId'] as String? ?? '',
-      player1Id: playerId,
-      player2Id: opponentId,
-      player1Username: 'You',
-      player2Username: opponentName,
-      player1Score: playerScore,
-      player2Score: opponentScore,
-      winnerId: isWin ? playerId : opponentId,
-      player1EloChange: eloChange,
-      player2EloChange: -eloChange,
+      id: json['id'] as String? ?? '',
+      player1Id: json['player1Id'] as String? ?? '',
+      player2Id: json['player2Id'] as String? ?? '',
+      player1Username: json['player1Username'] as String? ?? 'Unknown',
+      player2Username: json['player2Username'] as String? ?? 'Unknown',
+      player1Score: json['player1Score'] as int? ?? 501,
+      player2Score: json['player2Score'] as int? ?? 501,
+      winnerId: json['winnerId'] as String? ?? '',
+      player1EloChange: json['player1EloChange'] as int? ?? 0,
+      player2EloChange: json['player2EloChange'] as int? ?? 0,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
-      status: 'completed',
+      status: json['status'] as String? ?? 'completed',
       rounds: _parseRounds(json),
+      statistics: json['statistics'] != null
+          ? MatchStatistics.fromJson(json['statistics'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -180,6 +163,49 @@ class MatchRound {
               .toList() ??
           [],
       roundScore: json['roundScore'] as int? ?? 0,
+    );
+  }
+}
+
+class MatchStatistics {
+  final PlayerStatistics player1;
+  final PlayerStatistics player2;
+  final int totalRounds;
+
+  MatchStatistics({
+    required this.player1,
+    required this.player2,
+    required this.totalRounds,
+  });
+
+  factory MatchStatistics.fromJson(Map<String, dynamic> json) {
+    return MatchStatistics(
+      player1: PlayerStatistics.fromJson(json['player1'] as Map<String, dynamic>),
+      player2: PlayerStatistics.fromJson(json['player2'] as Map<String, dynamic>),
+      totalRounds: json['totalRounds'] as int? ?? 0,
+    );
+  }
+}
+
+class PlayerStatistics {
+  final int rounds;
+  final double average;
+  final int highest;
+  final int total180s;
+
+  PlayerStatistics({
+    required this.rounds,
+    required this.average,
+    required this.highest,
+    required this.total180s,
+  });
+
+  factory PlayerStatistics.fromJson(Map<String, dynamic> json) {
+    return PlayerStatistics(
+      rounds: json['rounds'] as int? ?? 0,
+      average: (json['average'] as num?)?.toDouble() ?? 0.0,
+      highest: json['highest'] as int? ?? 0,
+      total180s: json['total180s'] as int? ?? 0,
     );
   }
 }
