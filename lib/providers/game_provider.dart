@@ -19,6 +19,9 @@ class GameProvider with ChangeNotifier {
   List<String> _currentRoundThrows = [];
   bool _listenersSetUp = false;
   bool _pendingConfirmation = false;
+  String? _pendingType; // 'win' or 'bust'
+  String? _pendingReason;
+  Map<String, dynamic>? _pendingData;
   
   // Agora video calling
   String? _agoraAppId;
@@ -55,6 +58,9 @@ class GameProvider with ChangeNotifier {
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
   bool get pendingConfirmation => _pendingConfirmation;
+  String? get pendingType => _pendingType;
+  String? get pendingReason => _pendingReason;
+  Map<String, dynamic>? get pendingData => _pendingData;
   
   // Agora getters
   String? get agoraAppId => _agoraAppId;
@@ -148,6 +154,14 @@ class GameProvider with ChangeNotifier {
     SocketService.on('must_finish_double', (data) {
       _handleMustFinishDouble(data);
     });
+
+    SocketService.on('pending_win', (data) {
+      _handlePendingWin(data);
+    });
+
+    SocketService.on('pending_bust', (data) {
+      _handlePendingBust(data);
+    });
   }
 
   void _handleGameStarted(dynamic data) {
@@ -165,9 +179,7 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleScoreUpdated(dynamic data) {
-    // debugPrint('📊 Score updated: $data');
-    
-    final oldDartsThrown = _dartsThrown;
+    debugPrint('📊 Score updated: $data');
     
     // Backend sends player1Score and player2Score directly
     final player1Score = data['player1Score'] as int?;
@@ -188,6 +200,15 @@ class GameProvider with ChangeNotifier {
     
     _lastThrow = data['notation'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
+    
+    // If backend sends currentRoundThrows array (e.g., after edit_dart), sync it
+    if (data['currentRoundThrows'] != null) {
+      final throws = data['currentRoundThrows'] as List<dynamic>?;
+      if (throws != null) {
+        _currentRoundThrows = throws.map((t) => t.toString()).toList();
+        debugPrint('   📝 Synced currentRoundThrows from backend: $_currentRoundThrows');
+      }
+    }
     
     // DON'T update currentPlayerId here - it should only change in round_complete
     // This prevents premature turn switching after each dart
@@ -254,6 +275,46 @@ class GameProvider with ChangeNotifier {
       _pendingConfirmation = false;
       notifyListeners();
     }
+  }
+
+  void confirmWin() {
+    if (_pendingType != 'win') {
+      debugPrint('⚠️ Cannot confirm win - not in pending win state');
+      return;
+    }
+    
+    debugPrint('✅ User confirmed win - emitting confirm_win event');
+    SocketService.emit('confirm_win', {
+      'matchId': _matchId,
+      'playerId': _myUserId,
+    });
+    
+    // Clear pending state - backend will emit game_won
+    _clearPendingState();
+  }
+
+  void confirmBust() {
+    if (_pendingType != 'bust') {
+      debugPrint('⚠️ Cannot confirm bust - not in pending bust state');
+      return;
+    }
+    
+    debugPrint('✅ User confirmed bust - emitting confirm_bust event');
+    SocketService.emit('confirm_bust', {
+      'matchId': _matchId,
+      'playerId': _myUserId,
+    });
+    
+    // Clear pending state - backend will emit round_complete
+    _clearPendingState();
+  }
+
+  void _clearPendingState() {
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
+    notifyListeners();
   }
 
   void _handleGameWon(dynamic data) {
@@ -328,6 +389,50 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void _handlePendingWin(dynamic data) {
+    debugPrint('🎯 Pending win: $data');
+    
+    // Only show dialog if this is MY pending win, not opponent's
+    final playerId = data['playerId'] as String?;
+    if (playerId != _myUserId) {
+      debugPrint('   ⚠️ Ignoring pending win - not my event (opponent won)');
+      return;
+    }
+    
+    _pendingConfirmation = true;
+    _pendingType = 'win';
+    _pendingData = Map<String, dynamic>.from(data);
+    
+    final finalDart = data['finalDart'];
+    if (finalDart != null) {
+      final notation = finalDart['notation'] as String? ?? 'Unknown';
+      debugPrint('   🎯 Final dart: $notation');
+    }
+    
+    notifyListeners();
+  }
+
+  void _handlePendingBust(dynamic data) {
+    debugPrint('❌ Pending bust: $data');
+    
+    // Only show dialog if this is MY pending bust, not opponent's
+    final playerId = data['playerId'] as String?;
+    if (playerId != _myUserId) {
+      debugPrint('   ⚠️ Ignoring pending bust - not my event (opponent busted)');
+      return;
+    }
+    
+    _pendingConfirmation = true;
+    _pendingType = 'bust';
+    _pendingReason = data['reason'] as String?;
+    _pendingData = Map<String, dynamic>.from(data);
+    
+    final message = data['message'] as String? ?? 'Bust!';
+    debugPrint('   ⚠️ $message');
+    
+    notifyListeners();
+  }
+
   Future<void> throwDart({
     required int baseScore,
     required ScoreMultiplier multiplier,
@@ -374,6 +479,20 @@ class GameProvider with ChangeNotifier {
     _currentRoundThrows[index] = notation;
     
     debugPrint('✏️ Edited dart at index $index to: $notation');
+    
+    // Emit edit event to backend
+    final isDouble = multiplier == ScoreMultiplier.double;
+    final isTriple = multiplier == ScoreMultiplier.triple;
+    
+    SocketService.emit('edit_dart', {
+      'matchId': _matchId,
+      'playerId': _myUserId,
+      'dartIndex': index,
+      'baseScore': baseScore,
+      'isDouble': isDouble,
+      'isTriple': isTriple,
+    });
+    
     notifyListeners();
   }
 

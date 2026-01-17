@@ -68,12 +68,32 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           if (widget.agoraAppId != null) {
             _initializeAgora();
           }
+          
+          // Listen for pending confirmation state changes
+          game.addListener(_handlePendingStateChange);
         }
       } catch (e, stackTrace) {
         debugPrint('❌ GameScreen initState error: $e');
         debugPrint('Stack trace: $stackTrace');
       }
     });
+  }
+  
+  void _handlePendingStateChange() {
+    final game = context.read<GameProvider>();
+    
+    // Show dialog when entering pending state
+    if (game.pendingConfirmation && game.pendingType != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          if (game.pendingType == 'win') {
+            _showPendingWinDialog();
+          } else if (game.pendingType == 'bust') {
+            _showPendingBustDialog();
+          }
+        }
+      });
+    }
   }
 
   Future<void> _initializeAgora() async {
@@ -245,6 +265,153 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
       );
     }
+  }
+
+  void _showPendingWinDialog() {
+    final game = context.read<GameProvider>();
+    final pendingData = game.pendingData;
+    final finalDart = pendingData?['finalDart'];
+    final notation = finalDart?['notation'] ?? 'Unknown';
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.success, width: 2),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.emoji_events, color: AppTheme.success, size: 32),
+            const SizedBox(width: 12),
+            Text(
+              'CHECKOUT!',
+              style: AppTheme.titleLarge.copyWith(
+                color: AppTheme.success,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'You hit $notation to finish!',
+              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Is this correct?',
+              style: AppTheme.labelLarge.copyWith(
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Player can now edit darts - pending state stays active
+            },
+            child: const Text('Edit Darts'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              game.confirmWin();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.success,
+            ),
+            child: const Text('Confirm Win'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPendingBustDialog() {
+    final game = context.read<GameProvider>();
+    final reason = game.pendingReason ?? 'unknown';
+    
+    String reasonText = '';
+    switch (reason) {
+      case 'score_below_zero':
+        reasonText = 'Score went below zero';
+        break;
+      case 'must_finish_double':
+        reasonText = 'Must finish on a double';
+        break;
+      default:
+        reasonText = 'Invalid throw';
+    }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.error, width: 2),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.warning, color: AppTheme.error, size: 32),
+            const SizedBox(width: 12),
+            Text(
+              'BUST!',
+              style: AppTheme.titleLarge.copyWith(
+                color: AppTheme.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              reasonText,
+              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Confirm to pass turn or edit if incorrect',
+              style: AppTheme.labelLarge.copyWith(
+                color: AppTheme.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Player can now edit darts - pending state stays active
+            },
+            child: const Text('Edit Darts'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              game.confirmBust();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error,
+            ),
+            child: const Text('Confirm Bust'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showReportDialog(BuildContext context) {

@@ -21,6 +21,9 @@ class AgoraService {
         channelProfile: ChannelProfileType.channelProfileCommunication,
       ));
 
+      // Suppress excessive debug logs - only show errors
+      await _engine!.setLogLevel(LogLevel.logLevelError);
+
       // Enable video module
       await _engine!.enableVideo();
       await _engine!.enableAudio();

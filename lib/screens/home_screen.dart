@@ -254,23 +254,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Color _getRankColor(String rank) {
-    switch (rank.toLowerCase()) {
-      case 'bronze':
-        return const Color(0xFFCD7F32);
-      case 'silver':
-        return const Color(0xFFC0C0C0);
-      case 'gold':
-        return const Color(0xFFFFD700);
-      case 'platinum':
-        return const Color(0xFFE5E4E2);
-      case 'diamond':
-        return const Color(0xFFB9F2FF);
-      case 'master':
-        return const Color(0xFFFF1744);
-      default:
-        return AppTheme.textSecondary;
-    }
-  }
 }

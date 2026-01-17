@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class Match {
   final String id;
   final String player1Id;
