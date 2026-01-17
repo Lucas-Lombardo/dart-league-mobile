@@ -182,6 +182,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void dispose() {
     _scoreAnimationController.dispose();
     
+    // Remove listener to prevent unmounted widget errors
+    try {
+      final game = context.read<GameProvider>();
+      game.removeListener(_handlePendingStateChange);
+    } catch (e) {
+      debugPrint('⚠️ Error removing listener: $e');
+    }
+    
     // Leave Agora channel and cleanup
     if (_agoraEngine != null) {
       AgoraService.leaveChannel(_agoraEngine!);
