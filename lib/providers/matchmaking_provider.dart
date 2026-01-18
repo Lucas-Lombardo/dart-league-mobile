@@ -24,6 +24,7 @@ class MatchmakingProvider with ChangeNotifier {
   String? _agoraChannelName;
   GameProvider? _gameProvider;
   String? _errorMessage;
+  String? _currentUserId; // Store userId for initGame call
 
   bool get isSearching => _isSearching;
   int get searchTime => _searchTime;
@@ -45,60 +46,53 @@ class MatchmakingProvider with ChangeNotifier {
 
   Future<void> joinQueue(String userId) async {
     try {
-      debugPrint('🎮 Attempting to join queue via HTTP...');
+      // Reset ALL state from previous match before starting new search
+      _matchFound = false;
+      _matchId = null;
+      _opponentId = null;
+      _opponentUsername = null;
+      _opponentElo = null;
+      _agoraAppId = null;
+      _agoraToken = null;
+      _agoraChannelName = null;
       _errorMessage = null;
+      _currentUserId = userId;
       notifyListeners();
 
       await SocketService.ensureConnected();
-      debugPrint('✅ Socket connection ensured');
 
       // Ensure game listeners are set up now that socket is connected
       _gameProvider?.ensureListenersSetup();
 
+      // Setup reconnection handler to re-register listeners
+      SocketService.setReconnectHandler(() {
+        _setupSocketListeners();
+        _gameProvider?.ensureListenersSetup();
+      });
+
       _setupSocketListeners();
-      debugPrint('✅ Socket listeners set up');
 
       final response = await MatchmakingService.joinQueue(userId);
-      debugPrint('✅ HTTP join response: $response');
 
-      _isSearching = true;
-      _searchTime = 0;
-      _eloRange = 100;
       _playerElo = response['playerElo'] as int?;
       
-      // DON'T reset Agora credentials here - the socket match_found event may have
-      // already arrived and set them before this HTTP response was processed
-      // Only reset them if we're NOT matched (i.e., actually searching)
-      if (response['matched'] != true) {
-        _agoraAppId = null;
-        _agoraToken = null;
-        _agoraChannelName = null;
-      }
-
-      if (response['matched'] == true) {
-        debugPrint('✅ Immediate match found via HTTP - checking if socket event already arrived...');
-        debugPrint('📹 Current Agora state: appId=${_agoraAppId != null}, token=${_agoraToken != null}, channel=$_agoraChannelName');
-        
-        // Socket event may have already arrived and set credentials
-        // If credentials are already set, trigger match found immediately
-        if (_agoraAppId != null && _agoraToken != null && _agoraChannelName != null) {
-          debugPrint('✅ Socket match_found already processed, credentials available');
-          // Credentials already set by socket event, let the listener handle navigation
-        } else {
-          debugPrint('⏳ Waiting for socket match_found event with Agora credentials...');
-        }
-        
-        _isSearching = true; // Keep showing searching state until socket event arrives
-        notifyListeners();
-      } else {
-        _matchFound = false;
+      // Only update these if match wasn't already found via socket
+      // (socket event can arrive before HTTP response)
+      if (!_matchFound) {
+        _isSearching = true;
+        _searchTime = 0;
+        _eloRange = 100;
         _matchId = null;
         _opponentId = null;
         _opponentUsername = null;
         _opponentElo = null;
-        notifyListeners();
-        _startSearchTimer();
+        _agoraAppId = null;
+        _agoraToken = null;
+        _agoraChannelName = null;
       }
+      
+      notifyListeners();
+      _startSearchTimer();
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _isSearching = false;
@@ -134,7 +128,6 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _handleMatchFound(dynamic data) {
-    debugPrint('🎮 Match found: $data');
     
     HapticService.heavyImpact();
     
@@ -161,25 +154,28 @@ class MatchmakingProvider with ChangeNotifier {
     _isSearching = false;
     
     // Debug opponent data
-    debugPrint('📊 Opponent data:');
-    debugPrint('   - opponentId: $_opponentId');
-    debugPrint('   - opponentUsername: $_opponentUsername');
-    debugPrint('   - opponentElo: $_opponentElo');
-    debugPrint('   - playerElo: $_playerElo');
-    debugPrint('📹 Agora credentials:');
-    debugPrint('   - appId: ${_agoraAppId != null}');
-    debugPrint('   - token: ${_agoraToken != null}');
-    debugPrint('   - channel: $_agoraChannelName');
     
-    // Backend auto-joins players to room and emits game_started immediately
-    // GameProvider listeners are already set up and ready to receive the event
-    debugPrint('✅ Match found - game_started event should arrive momentarily');
+    // Initialize game IMMEDIATELY so myUserId is set before game_started arrives
+    // This fixes the race condition where game_started arrives before navigation
+    if (_gameProvider != null && _currentUserId != null && _matchId != null && _opponentId != null) {
+      debugPrint('DEBUG: initGame called with userId=$_currentUserId');
+      _gameProvider!.initGame(
+        _matchId!,
+        _currentUserId!,
+        _opponentId!,
+        agoraAppId: _agoraAppId,
+        agoraToken: _agoraToken,
+        agoraChannelName: _agoraChannelName,
+      );
+    } else {
+      debugPrint('DEBUG: initGame SKIPPED - gameProvider=$_gameProvider, userId=$_currentUserId, matchId=$_matchId, opponentId=$_opponentId');
+    }
+    
     
     notifyListeners();
   }
 
   void _handleSearchingExpanded(dynamic data) {
-    debugPrint('🔍 Search expanded: $data');
     
     if (data is Map && data['range'] != null) {
       _eloRange = data['range'] as int;
@@ -188,7 +184,6 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _handleQueueError(dynamic data) {
-    debugPrint('❌ Queue error: $data');
     
     _errorMessage = data['message'] as String? ?? 'Queue error occurred';
     _isSearching = false;
@@ -198,9 +193,7 @@ class MatchmakingProvider with ChangeNotifier {
 
   Future<void> leaveQueue(String userId) async {
     try {
-      debugPrint('🚪 Leaving queue via HTTP...');
       await MatchmakingService.leaveQueue(userId);
-      debugPrint('✅ Left queue successfully');
 
       _cleanupSocketListeners();
       _stopSearchTimer();
@@ -220,7 +213,6 @@ class MatchmakingProvider with ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
     } catch (e) {
-      debugPrint('Error leaving queue: $e');
     }
   }
 
@@ -242,6 +234,7 @@ class MatchmakingProvider with ChangeNotifier {
   @override
   void dispose() {
     _stopSearchTimer();
+    SocketService.clearReconnectHandler();
     _cleanupSocketListeners();
     super.dispose();
   }

@@ -6,8 +6,10 @@ import '../utils/storage_service.dart';
 class SocketService {
   static io.Socket? _socket;
   static bool _isConnecting = false;
+  static Function()? _onReconnectHandler;
 
   static bool get isConnected => _socket?.connected ?? false;
+  static String? get socketId => _socket?.id;
 
   static Future<void> connect() async {
     if (_isConnecting || isConnected) return;
@@ -22,7 +24,6 @@ class SocketService {
       }
 
       final socketUrl = baseUrl.replaceAll('/api', '');
-      debugPrint('🔌 Connecting to socket: $socketUrl');
 
       _socket = io.io(
         socketUrl,
@@ -37,24 +38,24 @@ class SocketService {
       );
 
       _socket!.onConnect((_) {
-        debugPrint('✅ Socket connected to $socketUrl');
       });
 
       _socket!.onDisconnect((_) {
-        debugPrint('❌ Socket disconnected');
+      });
+
+      _socket!.on('reconnect', (_) {
+        // Trigger reconnection handler if registered
+        _onReconnectHandler?.call();
       });
 
       _socket!.onConnectError((error) {
-        debugPrint('⚠️ Socket connection error: $error');
       });
 
       _socket!.onError((error) {
-        debugPrint('⚠️ Socket error: $error');
       });
 
       _socket!.connect();
     } catch (e) {
-      debugPrint('Failed to connect socket: $e');
       rethrow;
     } finally {
       _isConnecting = false;
@@ -71,10 +72,8 @@ class SocketService {
 
   static void emit(String event, dynamic data) {
     if (!isConnected) {
-      debugPrint('❌ Cannot emit $event - Socket not connected');
       throw Exception('Socket not connected');
     }
-    debugPrint('📤 Emitting event: $event with data: $data');
     _socket!.emit(event, data);
   }
 
@@ -82,7 +81,6 @@ class SocketService {
     if (_socket == null) {
       throw Exception('Socket not initialized');
     }
-    // debugPrint('👂 Listening to event: $event');
     _socket!.on(event, handler);
   }
 
@@ -96,5 +94,13 @@ class SocketService {
       await connect();
       await Future.delayed(const Duration(milliseconds: 500));
     }
+  }
+
+  static void setReconnectHandler(Function() handler) {
+    _onReconnectHandler = handler;
+  }
+
+  static void clearReconnectHandler() {
+    _onReconnectHandler = null;
   }
 }

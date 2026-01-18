@@ -73,7 +73,6 @@ class UserService {
       final response = await ApiService.get('/users/leaderboard');
       final List<dynamic> data = response as List<dynamic>;
       
-      debugPrint('🏆 Leaderboard data: ${data.take(2)}');
       
       // Backend sends flat user objects, we need to add position index
       return data.asMap().entries.map((entry) {
@@ -89,7 +88,6 @@ class UserService {
         return LeaderboardEntry.fromJson(json, index + 1);
       }).toList();
     } catch (e) {
-      debugPrint('❌ Leaderboard error: $e');
       rethrow;
     }
   }

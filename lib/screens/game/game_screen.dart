@@ -5,6 +5,7 @@ import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../services/agora_service.dart';
+import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 
@@ -32,6 +33,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   late AnimationController _scoreAnimationController;
   int? _editingDartIndex;
   
+  // Store for leave_match event (needed in dispose)
+  String? _storedMatchId;
+  String? _storedPlayerId;
+  bool _gameStarted = false;
+  bool _gameEnded = false;
+  
   // Agora video
   RtcEngine? _agoraEngine;
   bool _isVideoEnabled = true;
@@ -42,7 +49,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     
-    debugPrint('🎮 GameScreen initState - matchId: ${widget.matchId}, opponentId: ${widget.opponentId}');
     
     _scoreAnimationController = AnimationController(
       vsync: this,
@@ -55,6 +61,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         final auth = context.read<AuthProvider>();
         
         if (auth.currentUser != null) {
+          // Store matchId and playerId for use in dispose
+          _storedMatchId = widget.matchId;
+          _storedPlayerId = auth.currentUser!.id;
+          
           game.initGame(
             widget.matchId, 
             auth.currentUser!.id, 
@@ -63,6 +73,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             agoraToken: widget.agoraToken,
             agoraChannelName: widget.agoraChannelName,
           );
+          
+          // Sync initial game state
+          _gameStarted = game.gameStarted;
+          _gameEnded = game.gameEnded;
           
           // Initialize Agora if credentials are available
           if (widget.agoraAppId != null) {
@@ -73,36 +87,51 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           game.addListener(_handlePendingStateChange);
         }
       } catch (e, stackTrace) {
-        debugPrint('❌ GameScreen initState error: $e');
-        debugPrint('Stack trace: $stackTrace');
       }
     });
   }
   
   void _handlePendingStateChange() {
-    final game = context.read<GameProvider>();
+    // Early exit if widget is not mounted
+    if (!mounted) return;
     
-    // Show dialog when entering pending state
-    if (game.pendingConfirmation && game.pendingType != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          if (game.pendingType == 'win') {
-            _showPendingWinDialog();
-          } else if (game.pendingType == 'bust') {
-            _showPendingBustDialog();
+    try {
+      final game = context.read<GameProvider>();
+      
+      // Track game state
+      _gameStarted = game.gameStarted;
+      _gameEnded = game.gameEnded;
+      
+      // Show dialog when entering pending state
+      if (game.pendingConfirmation && game.pendingType != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && context.mounted) {
+            if (game.pendingType == 'win') {
+              _showPendingWinDialog();
+            } else if (game.pendingType == 'bust') {
+              _showPendingBustDialog();
+            }
           }
-        }
-      });
+        });
+      }
+      
+      // Show forfeit dialog when opponent leaves
+      if (game.gameEnded && game.pendingType == 'forfeit') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && context.mounted) {
+            _showForfeitDialog();
+          }
+        });
+      }
+    } catch (e) {
     }
   }
 
   Future<void> _initializeAgora() async {
-    debugPrint('📹 Initializing Agora for video calling');
     
     // Request permissions
     _permissionsGranted = await AgoraService.requestPermissions();
     if (!_permissionsGranted) {
-      debugPrint('❌ Camera/Mic permissions denied');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -122,17 +151,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _agoraEngine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-            debugPrint('📹 Local user joined channel: ${connection.channelId}');
             final game = context.read<GameProvider>();
             game.setLocalUserJoined(true);
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-            debugPrint('📹 Remote user joined: $remoteUid');
             final game = context.read<GameProvider>();
             game.setRemoteUser(remoteUid);
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-            debugPrint('📹 Remote user offline: $remoteUid, reason: $reason');
             final game = context.read<GameProvider>();
             game.setRemoteUser(null);
           },
@@ -149,7 +175,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         );
       }
     } catch (e) {
-      debugPrint('❌ Error initializing Agora: $e');
     }
   }
   
@@ -178,16 +203,33 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     await AgoraService.switchCamera(_agoraEngine!);
   }
 
+  void _leaveMatch() {
+    // Emit leave_match event to trigger forfeit on backend
+    try {
+      // Only emit if game actually started and hasn't ended
+      if (_storedMatchId != null && _storedPlayerId != null && _gameStarted && !_gameEnded) {
+        SocketService.emit('leave_match', {
+          'matchId': _storedMatchId,
+          'playerId': _storedPlayerId,
+        });
+      } else {
+      }
+    } catch (e) {
+    }
+  }
+
   @override
   void dispose() {
     _scoreAnimationController.dispose();
+    
+    // Emit leave_match before cleanup
+    _leaveMatch();
     
     // Remove listener to prevent unmounted widget errors
     try {
       final game = context.read<GameProvider>();
       game.removeListener(_handlePendingStateChange);
     } catch (e) {
-      debugPrint('⚠️ Error removing listener: $e');
     }
     
     // Leave Agora channel and cleanup
@@ -229,18 +271,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         auth.currentUser!.id,
       );
       
-      debugPrint('✅ Match result accepted');
       
       if (!mounted) return;
       
       // Fetch updated user profile from database
-      debugPrint('🔄 Fetching updated user profile from database...');
       await auth.checkAuthStatus();
       
       if (auth.currentUser != null) {
-        debugPrint('✅ User profile updated: ELO=${auth.currentUser!.elo}, Rank=${auth.currentUser!.rank}');
       } else {
-        debugPrint('⚠️ Failed to fetch updated profile - /auth/profile endpoint may not exist or returned null');
       }
       
       // Reset game state to prevent duplicate dialogs
@@ -422,6 +460,103 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
+  void _showForfeitDialog() {
+    final game = context.read<GameProvider>();
+    final auth = context.read<AuthProvider>();
+    final forfeitData = game.pendingData;
+    final winnerId = forfeitData?['winnerId'] as String?;
+    final eloChange = forfeitData?['winnerEloChange'] as int? ?? 0;
+    final isWinner = winnerId == auth.currentUser?.id;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isWinner ? AppTheme.success : AppTheme.error,
+            width: 2,
+          ),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              isWinner ? Icons.emoji_events : Icons.exit_to_app,
+              color: isWinner ? AppTheme.success : AppTheme.error,
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              isWinner ? 'VICTORY!' : 'GAME OVER',
+              style: AppTheme.titleLarge.copyWith(
+                color: isWinner ? AppTheme.success : AppTheme.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isWinner
+                  ? 'Your opponent has left the game.\nYou win by forfeit!'
+                  : 'You have left the game.\nMatch forfeited.',
+              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            if (isWinner) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.success.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'ELO: ${eloChange >= 0 ? '+' : ''}$eloChange',
+                  style: const TextStyle(
+                    color: AppTheme.success,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              
+              // Fetch updated user profile to get new ELO
+              await auth.checkAuthStatus();
+              
+              if (auth.currentUser != null) {
+              } else {
+              }
+              
+              // Reset game state
+              game.reset();
+              
+              // Navigate back to home
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
+            ),
+            child: const Text('Return to Home'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showReportDialog(BuildContext context) {
     String? selectedReason;
     final reasons = [
@@ -562,7 +697,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         reason,
       );
       
-      debugPrint('📢 Report submitted: $reason');
       
       if (!mounted) return;
       
@@ -595,6 +729,78 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<bool> _onWillPop() async {
+    final game = Provider.of<GameProvider>(context, listen: false);
+    
+    // Allow leaving if game hasn't started (stuck on loading) or already ended
+    if (!game.gameStarted || game.gameEnded) {
+      return true;
+    }
+    
+    // Show confirmation dialog
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.error, width: 2),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.warning, color: AppTheme.error, size: 32),
+            const SizedBox(width: 12),
+            Text(
+              'Leave Match?',
+              style: AppTheme.titleLarge.copyWith(
+                color: AppTheme.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'If you leave now, you will forfeit the match and lose ELO points.',
+              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Are you sure you want to leave?',
+              style: AppTheme.labelLarge.copyWith(
+                color: AppTheme.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Stay in Match'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Emit leave_match before leaving
+              _leaveMatch();
+              Navigator.pop(dialogContext, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error,
+            ),
+            child: const Text('Leave & Forfeit'),
+          ),
+        ],
+      ),
+    );
+    
+    return shouldLeave ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     try {
@@ -606,14 +812,23 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
       // Show loading if game not initialized or started
       if (matchId == null || !gameStarted) {
-        return Scaffold(
-          backgroundColor: AppTheme.background,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-          ),
-          body: const Center(
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            final shouldPop = await _onWillPop();
+            if (shouldPop && context.mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: Scaffold(
+            backgroundColor: AppTheme.background,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              iconTheme: const IconThemeData(color: Colors.white),
+            ),
+            body: const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -630,6 +845,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               ],
             ),
           ),
+        ),
         );
       }
 
@@ -791,11 +1007,20 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
       final dartsThrown = game.dartsThrown;
 
-      return Scaffold(
-        backgroundColor: AppTheme.background,
-        appBar: AppBar(
-          backgroundColor: AppTheme.surface,
-          title: Row(
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final shouldPop = await _onWillPop();
+          if (shouldPop && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppTheme.background,
+          appBar: AppBar(
+            backgroundColor: AppTheme.surface,
+            title: Row(
             children: [
               Container(
                 width: 8,
@@ -820,9 +1045,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           centerTitle: true,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-            onPressed: () {
-              // Confirm exit dialog could be added here
-              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+            onPressed: () async {
+              // Show warning dialog before leaving
+              final shouldLeave = await _onWillPop();
+              if (shouldLeave && context.mounted) {
+                Navigator.of(context).pop();
+              }
             },
           ),
           actions: [
@@ -1152,6 +1380,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
+      ),
       );
     } catch (e, stackTrace) {
       return Scaffold(

@@ -20,6 +20,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   MatchmakingProvider? _matchmakingProvider;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -50,27 +51,25 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     if (_matchmakingProvider == null) {
       _matchmakingProvider = context.read<MatchmakingProvider>();
       _matchmakingProvider!.addListener(_onMatchmakingUpdate);
-      
-      // Check if match was already found (immediate match)
-      if (_matchmakingProvider!.matchFound) {
-        debugPrint('🎯 Immediate match detected');
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _showMatchFoundDialog();
-          }
-        });
-      }
+      _isNavigating = false; // Reset navigation flag for new session
     }
   }
 
   void _onMatchmakingUpdate() {
     final matchmaking = context.read<MatchmakingProvider>();
-    if (matchmaking.matchFound && mounted) {
+    debugPrint('DEBUG: _onMatchmakingUpdate called, matchFound=${matchmaking.matchFound}, mounted=$mounted, isNavigating=$_isNavigating');
+    if (matchmaking.matchFound && mounted && !_isNavigating) {
+      debugPrint('DEBUG: Showing match found dialog');
       _showMatchFoundDialog();
     }
   }
 
   void _showMatchFoundDialog() {
+    if (_isNavigating) {
+      return;
+    }
+    
+    _isNavigating = true;
     final matchmaking = context.read<MatchmakingProvider>();
 
     showDialog(
@@ -165,7 +164,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     
     void checkAndNavigate() {
       if (!mounted) {
-        debugPrint('⚠️ MatchmakingScreen not mounted, skipping navigation');
         return;
       }
       
@@ -174,24 +172,19 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       // Re-read provider on each iteration to get latest state
       final matchmaking = context.read<MatchmakingProvider>();
       
-      // debugPrint('🔍 Polling attempt $attempts: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
       
       // Check if we have Agora credentials
       if (matchmaking.agoraAppId != null && 
           matchmaking.agoraToken != null && 
           matchmaking.agoraChannelName != null) {
         
-        debugPrint('✅ Agora credentials received, navigating to GameScreen');
-        
         if (matchmaking.matchId == null || matchmaking.opponentId == null) {
-          debugPrint('⚠️ Missing match data - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
+          debugPrint('DEBUG: matchId or opponentId is null, skipping navigation');
           return;
         }
         
         try {
-          debugPrint('🎮 Navigating to GameScreen - matchId: ${matchmaking.matchId}, opponentId: ${matchmaking.opponentId}');
-          debugPrint('📹 With Agora credentials: appId=${matchmaking.agoraAppId != null}, token=${matchmaking.agoraToken != null}, channel=${matchmaking.agoraChannelName}');
-          
+          debugPrint('DEBUG: Navigating to GameScreen with matchId=${matchmaking.matchId}');
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => GameScreen(
@@ -205,17 +198,13 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             (route) => route.isFirst,
           );
           
-          debugPrint('✅ Navigation to GameScreen complete');
         } catch (e, stackTrace) {
-          debugPrint('❌ Error navigating to GameScreen: $e');
-          debugPrint('Stack trace: $stackTrace');
         }
         return;
       }
       
       // If we've tried for 5 seconds, give up and navigate anyway
       if (attempts >= maxAttempts) {
-        debugPrint('⚠️ Timeout waiting for Agora credentials after $attempts attempts, navigating anyway');
         
         try {
           Navigator.of(context).pushAndRemoveUntil(
@@ -231,7 +220,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             (route) => route.isFirst,
           );
         } catch (e) {
-          debugPrint('❌ Error navigating to GameScreen: $e');
         }
         return;
       }
@@ -246,7 +234,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
 
   @override
   void dispose() {
-    debugPrint('🧹 MatchmakingScreen dispose called');
     _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();
@@ -268,8 +255,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       canPop: true,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop && mounted && user?.id != null) {
-          debugPrint('🚪 PopScope: Leaving queue for user ${user!.id}');
-          await matchmaking.leaveQueue(user.id);
+          await matchmaking.leaveQueue(user!.id);
         }
       },
       child: Scaffold(
@@ -278,7 +264,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
-              debugPrint('⬅️ Back button pressed');
               if (mounted && user?.id != null) {
                 await matchmaking.leaveQueue(user!.id);
               }
@@ -512,7 +497,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     height: 56,
                     child: ElevatedButton(
                       onPressed: () async {
-                        debugPrint('❌ Cancel search pressed');
                         if (mounted && user?.id != null) {
                           await matchmaking.leaveQueue(user!.id);
                         }

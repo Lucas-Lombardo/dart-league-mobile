@@ -7,10 +7,8 @@ class AgoraService {
 
   /// Initialize the Agora RTC Engine with the provided App ID
   static Future<RtcEngine> initializeEngine(String appId) async {
-    debugPrint('📹 Initializing Agora engine with appId: ${appId.substring(0, 8)}...');
     
     if (_engine != null) {
-      debugPrint('⚠️ Engine already initialized, returning existing instance');
       return _engine!;
     }
 
@@ -37,17 +35,14 @@ class AgoraService {
         ),
       );
 
-      debugPrint('✅ Agora engine initialized successfully');
       return _engine!;
     } catch (e) {
-      debugPrint('❌ Error initializing Agora engine: $e');
       rethrow;
     }
   }
 
   /// Request camera and microphone permissions
   static Future<bool> requestPermissions() async {
-    debugPrint('📹 Requesting camera and microphone permissions');
     
     try {
       Map<Permission, PermissionStatus> statuses = await [
@@ -58,12 +53,9 @@ class AgoraService {
       final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
       final micGranted = statuses[Permission.microphone]?.isGranted ?? false;
 
-      debugPrint('📹 Camera permission: ${cameraGranted ? "granted" : "denied"}');
-      debugPrint('📹 Microphone permission: ${micGranted ? "granted" : "denied"}');
 
       return cameraGranted && micGranted;
     } catch (e) {
-      debugPrint('❌ Error requesting permissions: $e');
       return false;
     }
   }
@@ -75,7 +67,6 @@ class AgoraService {
     required String channelName,
     required int uid,
   }) async {
-    debugPrint('📹 Joining Agora channel: $channelName with uid: $uid');
     
     try {
       await engine.joinChannel(
@@ -88,73 +79,56 @@ class AgoraService {
         ),
       );
       
-      debugPrint('✅ Successfully joined Agora channel');
     } catch (e) {
-      debugPrint('❌ Error joining channel: $e');
       rethrow;
     }
   }
 
   /// Leave the current Agora channel
   static Future<void> leaveChannel(RtcEngine engine) async {
-    debugPrint('📹 Leaving Agora channel');
     
     try {
       await engine.leaveChannel();
-      debugPrint('✅ Successfully left Agora channel');
     } catch (e) {
-      debugPrint('❌ Error leaving channel: $e');
     }
   }
 
   /// Toggle local video on/off
   static Future<void> toggleLocalVideo(RtcEngine engine, bool enabled) async {
-    debugPrint('📹 Toggling local video: ${enabled ? "ON" : "OFF"}');
     
     try {
       await engine.enableLocalVideo(enabled);
-      debugPrint('✅ Local video ${enabled ? "enabled" : "disabled"}');
     } catch (e) {
-      debugPrint('❌ Error toggling video: $e');
     }
   }
 
   /// Toggle local audio on/off (mute/unmute)
   static Future<void> toggleLocalAudio(RtcEngine engine, bool muted) async {
-    debugPrint('📹 Toggling local audio: ${muted ? "MUTED" : "UNMUTED"}');
     
     try {
       await engine.muteLocalAudioStream(muted);
-      debugPrint('✅ Local audio ${muted ? "muted" : "unmuted"}');
     } catch (e) {
-      debugPrint('❌ Error toggling audio: $e');
     }
   }
 
   /// Switch between front and back camera
   static Future<void> switchCamera(RtcEngine engine) async {
-    debugPrint('📹 Switching camera');
     
     try {
       await engine.switchCamera();
-      debugPrint('✅ Camera switched');
     } catch (e) {
-      debugPrint('❌ Error switching camera: $e');
     }
   }
 
   /// Release the Agora engine and cleanup resources
   static Future<void> dispose() async {
-    debugPrint('📹 Disposing Agora engine');
     
     if (_engine != null) {
       try {
         await _engine!.leaveChannel();
         await _engine!.release();
         _engine = null;
-        debugPrint('✅ Agora engine disposed');
       } catch (e) {
-        debugPrint('❌ Error disposing engine: $e');
       }
     }
   }

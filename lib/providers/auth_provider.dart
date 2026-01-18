@@ -106,9 +106,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       _currentUser = User.fromJson(json);
       notifyListeners();
-      debugPrint('✅ User updated from match result: ELO=${_currentUser?.elo}, Rank=${_currentUser?.rank}');
     } catch (e) {
-      debugPrint('❌ Error updating user from JSON: $e');
     }
   }
 }

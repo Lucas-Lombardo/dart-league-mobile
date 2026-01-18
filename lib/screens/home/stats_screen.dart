@@ -45,7 +45,6 @@ class _StatsScreenState extends State<StatsScreen> {
             }
           } catch (e) {
             // If match history fails, use backend stats (even if zeros)
-            debugPrint('Failed to load matches for stats calculation: $e');
           }
         }
         

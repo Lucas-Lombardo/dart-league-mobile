@@ -11,6 +11,7 @@ class GameProvider with ChangeNotifier {
   String? _currentPlayerId;
   String? _myUserId;
   String? _opponentUserId;
+  String? _player1Id; // Track which userId is player1 for score mapping
   int _dartsThrown = 0;
   bool _gameStarted = false;
   bool _gameEnded = false;
@@ -31,16 +32,13 @@ class GameProvider with ChangeNotifier {
   bool _localUserJoined = false;
 
   GameProvider() {
-    debugPrint('🎮 GameProvider created');
   }
 
   void ensureListenersSetup() {
     if (_listenersSetUp) {
-      debugPrint('✅ Socket listeners already set up');
       return;
     }
     
-    debugPrint('🎮 Setting up game socket listeners');
     _setupSocketListeners();
     _listenersSetUp = true;
   }
@@ -90,7 +88,6 @@ class GameProvider with ChangeNotifier {
     String? agoraToken,
     String? agoraChannelName,
   }) {
-    debugPrint('🎮 Initializing game: matchId=$matchId, myUserId=$myUserId, opponentUserId=$opponentUserId, currentGameStarted=$_gameStarted');
     
     // Always set these - they're needed for the game to work
     _matchId = matchId;
@@ -102,7 +99,6 @@ class GameProvider with ChangeNotifier {
     if (agoraToken != null) _agoraToken = agoraToken;
     if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
     
-    debugPrint('📹 Agora credentials: appId=${_agoraAppId != null}, token=${_agoraToken != null}, channel=$_agoraChannelName');
     
     // Only initialize scores if game hasn't started yet
     // Once gameStarted is true, we keep the state from the game_started event
@@ -114,9 +110,7 @@ class GameProvider with ChangeNotifier {
       _winnerId = null;
       _lastThrow = null;
       _currentRoundThrows = [];
-      debugPrint('✅ Game state initialized - waiting for game_started event');
     } else {
-      debugPrint('✅ Game already started - keeping state: myScore=$_myScore, opponentScore=$_opponentScore');
     }
     
     notifyListeners();
@@ -162,40 +156,37 @@ class GameProvider with ChangeNotifier {
     SocketService.on('pending_bust', (data) {
       _handlePendingBust(data);
     });
+
+    SocketService.on('player_forfeited', (data) {
+      _handlePlayerForfeited(data);
+    });
   }
 
   void _handleGameStarted(dynamic data) {
-    debugPrint('🎮 Game started: $data');
+    debugPrint('DEBUG: game_started received, myUserId=$_myUserId');
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
+    
+    // Track player1Id for correct score mapping
+    // player1Id is whoever has the first turn (currentPlayerId at game start)
+    _player1Id = _currentPlayerId;
     
     // Both players start at 501
     _myScore = 501;
     _opponentScore = 501;
     
-    debugPrint('✅ Game initialized - myScore: $_myScore, opponentScore: $_opponentScore, currentPlayer: $_currentPlayerId');
-    
     notifyListeners();
   }
 
   void _handleScoreUpdated(dynamic data) {
-    debugPrint('📊 Score updated: $data');
     
     // Backend sends player1Score and player2Score directly
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     
-    // Determine which score is mine based on currentPlayerId
+    // Map scores correctly based on whether I'm player1 or player2
     if (player1Score != null && player2Score != null) {
-      // Check if I'm player1 or player2 by comparing with initial game_started event
-      // For now, update both scores - this will work regardless of player order
-      if (_myUserId != null && _opponentUserId != null) {
-        // We need to figure out which player is which
-        // This is tricky without knowing the original player1Id/player2Id mapping
-        // For now, just update the scores directly
-        _myScore = player1Score;
-        _opponentScore = player2Score;
-      }
+      _updateScoresFromPlayerScores(player1Score, player2Score);
     }
     
     _lastThrow = data['notation'] as String?;
@@ -206,30 +197,23 @@ class GameProvider with ChangeNotifier {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _currentRoundThrows = throws.map((t) => t.toString()).toList();
-        debugPrint('   📝 Synced currentRoundThrows from backend: $_currentRoundThrows');
       }
     }
     
     // DON'T update currentPlayerId here - it should only change in round_complete
     // This prevents premature turn switching after each dart
     
-    // debugPrint('   Darts thrown: $oldDartsThrown -> $_dartsThrown');
-    // debugPrint('   Current player stays: $_currentPlayerId (not switching until round complete)');
-    // debugPrint('   Is my turn: $isMyTurn');
     
     notifyListeners();
   }
 
   void _handleRoundReadyConfirm(dynamic data) {
-    debugPrint('✅ Round ready to confirm: $data');
-    debugPrint('   3 darts thrown - waiting for user confirmation');
     
     _pendingConfirmation = true;
     notifyListeners();
   }
 
   void _handleRoundComplete(dynamic data) {
-    debugPrint('🎯 Round complete: $data');
     
     final oldCurrentPlayer = _currentPlayerId;
     
@@ -238,17 +222,13 @@ class GameProvider with ChangeNotifier {
     _currentPlayerId = data['nextPlayerId'] as String?;
     _pendingConfirmation = false;
     
-    debugPrint('   🔄 Turn switched: $oldCurrentPlayer -> $_currentPlayerId');
-    debugPrint('   🎲 Is my turn now: $isMyTurn');
     
     // Backend sends player1Score and player2Score directly
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     
     if (player1Score != null && player2Score != null) {
-      _myScore = player1Score;
-      _opponentScore = player2Score;
-      debugPrint('   📊 Final scores: player1=$player1Score, player2=$player2Score');
+      _updateScoresFromPlayerScores(player1Score, player2Score);
     }
     
     notifyListeners();
@@ -257,12 +237,10 @@ class GameProvider with ChangeNotifier {
   void confirmRound() {
     // Auto-fill remaining darts with 0s if less than 3
     while (_currentRoundThrows.length < 3) {
-      debugPrint('🔢 Auto-filling dart ${_currentRoundThrows.length + 1} with 0');
       throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
     }
     
     // Emit confirm event if pending, otherwise force it
-    debugPrint('✅ User confirmed round - emitting confirm_round event');
     SocketService.emit('confirm_round', {
       'matchId': _matchId,
       'playerId': _myUserId,
@@ -271,7 +249,6 @@ class GameProvider with ChangeNotifier {
   
   void cancelConfirmation() {
     if (_pendingConfirmation) {
-      debugPrint('↩️ User cancelled confirmation - returning to throw editing');
       _pendingConfirmation = false;
       notifyListeners();
     }
@@ -279,11 +256,9 @@ class GameProvider with ChangeNotifier {
 
   void confirmWin() {
     if (_pendingType != 'win') {
-      debugPrint('⚠️ Cannot confirm win - not in pending win state');
       return;
     }
     
-    debugPrint('✅ User confirmed win - emitting confirm_win event');
     SocketService.emit('confirm_win', {
       'matchId': _matchId,
       'playerId': _myUserId,
@@ -295,11 +270,9 @@ class GameProvider with ChangeNotifier {
 
   void confirmBust() {
     if (_pendingType != 'bust') {
-      debugPrint('⚠️ Cannot confirm bust - not in pending bust state');
       return;
     }
     
-    debugPrint('✅ User confirmed bust - emitting confirm_bust event');
     SocketService.emit('confirm_bust', {
       'matchId': _matchId,
       'playerId': _myUserId,
@@ -318,11 +291,9 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleGameWon(dynamic data) {
-    debugPrint('🏆 Game won: $data');
     
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
-      debugPrint('⚠️ Game already ended, ignoring duplicate game_won event');
       return;
     }
     
@@ -333,11 +304,9 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleMatchEnded(dynamic data) {
-    debugPrint('🏁 Match ended: $data');
     
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
-      debugPrint('⚠️ Game already ended, ignoring duplicate match_ended event');
       return;
     }
     
@@ -348,7 +317,6 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleInvalidThrow(dynamic data) {
-    debugPrint('❌ Invalid throw: $data');
     
     final message = data['message'] as String? ?? 'Invalid throw';
     
@@ -356,46 +324,39 @@ class GameProvider with ChangeNotifier {
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
-      _myScore = player1Score;
-      _opponentScore = player2Score;
+      _updateScoresFromPlayerScores(player1Score, player2Score);
     }
     
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
     
-    debugPrint('   ⚠️ $message - Turn switched');
     
     notifyListeners();
   }
 
   void _handleMustFinishDouble(dynamic data) {
-    debugPrint('⚠️ Must finish on double: $data');
     
     // Update scores and state
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
-      _myScore = player1Score;
-      _opponentScore = player2Score;
+      _updateScoresFromPlayerScores(player1Score, player2Score);
     }
     
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
     
-    debugPrint('   ⚠️ Score reset - must finish on double');
     
     notifyListeners();
   }
 
   void _handlePendingWin(dynamic data) {
-    debugPrint('🎯 Pending win: $data');
     
     // Only show dialog if this is MY pending win, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
-      debugPrint('   ⚠️ Ignoring pending win - not my event (opponent won)');
       return;
     }
     
@@ -406,19 +367,16 @@ class GameProvider with ChangeNotifier {
     final finalDart = data['finalDart'];
     if (finalDart != null) {
       final notation = finalDart['notation'] as String? ?? 'Unknown';
-      debugPrint('   🎯 Final dart: $notation');
     }
     
     notifyListeners();
   }
 
   void _handlePendingBust(dynamic data) {
-    debugPrint('❌ Pending bust: $data');
     
     // Only show dialog if this is MY pending bust, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
-      debugPrint('   ⚠️ Ignoring pending bust - not my event (opponent busted)');
       return;
     }
     
@@ -428,7 +386,28 @@ class GameProvider with ChangeNotifier {
     _pendingData = Map<String, dynamic>.from(data);
     
     final message = data['message'] as String? ?? 'Bust!';
-    debugPrint('   ⚠️ $message');
+    
+    notifyListeners();
+  }
+
+  void _handlePlayerForfeited(dynamic data) {
+    
+    final eventMatchId = data['matchId'] as String?;
+    final winnerId = data['winnerId'] as String?;
+    
+    // Validate this event is for the current match
+    if (eventMatchId != _matchId) {
+      return;
+    }
+    
+    // Mark game as ended
+    _gameEnded = true;
+    _winnerId = winnerId;
+    
+    // Store forfeit data for UI
+    _pendingType = 'forfeit';
+    _pendingData = Map<String, dynamic>.from(data);
+    
     
     notifyListeners();
   }
@@ -438,7 +417,6 @@ class GameProvider with ChangeNotifier {
     required ScoreMultiplier multiplier,
   }) async {
     if (!isMyTurn || _currentRoundThrows.length >= 3 || _gameEnded) {
-      debugPrint('❌ Cannot throw dart: not your turn or round complete');
       return;
     }
 
@@ -447,7 +425,6 @@ class GameProvider with ChangeNotifier {
       final isTriple = multiplier == ScoreMultiplier.triple;
       final notation = _getScoreNotation(baseScore, multiplier);
       
-      debugPrint('🎯 Throwing dart: $notation (baseScore: $baseScore, double: $isDouble, triple: $isTriple)');
       
       SocketService.emit('throw_dart', {
         'matchId': _matchId,
@@ -461,24 +438,20 @@ class GameProvider with ChangeNotifier {
       _currentRoundThrows.add(notation);
       _lastThrow = notation;
       
-      debugPrint('   📍 Dart added to round: ${_currentRoundThrows.length}/3');
       
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Error throwing dart: $e');
     }
   }
 
   void editDartThrow(int index, int baseScore, ScoreMultiplier multiplier) {
     if (index < 0 || index >= _currentRoundThrows.length) {
-      debugPrint('❌ Invalid dart index for editing: $index');
       return;
     }
     
     final notation = _getScoreNotation(baseScore, multiplier);
     _currentRoundThrows[index] = notation;
     
-    debugPrint('✏️ Edited dart at index $index to: $notation');
     
     // Emit edit event to backend
     final isDouble = multiplier == ScoreMultiplier.double;
@@ -498,12 +471,10 @@ class GameProvider with ChangeNotifier {
 
   void deleteDartThrow(int index) {
     if (index < 0 || index >= _currentRoundThrows.length) {
-      debugPrint('❌ Invalid dart index for deletion: $index');
       return;
     }
     
     _currentRoundThrows.removeAt(index);
-    debugPrint('🗑️ Deleted dart at index $index');
     notifyListeners();
   }
 
@@ -516,23 +487,39 @@ class GameProvider with ChangeNotifier {
     return '$prefix$baseScore';
   }
 
+  /// Helper to correctly map player1Score/player2Score to myScore/opponentScore
+  void _updateScoresFromPlayerScores(int player1Score, int player2Score) {
+    final isPlayer1 = _myUserId == _player1Id;
+    if (isPlayer1) {
+      _myScore = player1Score;
+      _opponentScore = player2Score;
+    } else {
+      _myScore = player2Score;
+      _opponentScore = player1Score;
+    }
+  }
+
   void _cleanupSocketListeners() {
     SocketService.off('game_started');
     SocketService.off('score_updated');
+    SocketService.off('round_ready_confirm');
     SocketService.off('round_complete');
     SocketService.off('game_won');
     SocketService.off('match_ended');
+    SocketService.off('invalid_throw');
+    SocketService.off('must_finish_double');
+    SocketService.off('pending_win');
+    SocketService.off('pending_bust');
+    SocketService.off('player_forfeited');
   }
 
   void setRemoteUser(int? uid) {
     _remoteUid = uid;
-    debugPrint('📹 Remote user ${uid != null ? "joined: uid=$uid" : "left"}');
     notifyListeners();
   }
   
   void setLocalUserJoined(bool joined) {
     _localUserJoined = joined;
-    debugPrint('📹 Local user joined: $joined');
     notifyListeners();
   }
 
@@ -544,12 +531,18 @@ class GameProvider with ChangeNotifier {
     _currentPlayerId = null;
     _myUserId = null;
     _opponentUserId = null;
+    _player1Id = null;
     _dartsThrown = 0;
     _gameStarted = false;
     _gameEnded = false;
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _listenersSetUp = false; // Reset so listeners can be set up for next game
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
     _agoraAppId = null;
     _agoraToken = null;
     _agoraChannelName = null;
