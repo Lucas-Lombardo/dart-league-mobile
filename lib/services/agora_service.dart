@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -89,7 +88,8 @@ class AgoraService {
     
     try {
       await engine.leaveChannel();
-    } catch (e) {
+    } catch (_) {
+      // Leave channel error
     }
   }
 
@@ -98,7 +98,8 @@ class AgoraService {
     
     try {
       await engine.enableLocalVideo(enabled);
-    } catch (e) {
+    } catch (_) {
+      // Toggle video error
     }
   }
 
@@ -107,7 +108,8 @@ class AgoraService {
     
     try {
       await engine.muteLocalAudioStream(muted);
-    } catch (e) {
+    } catch (_) {
+      // Toggle audio error
     }
   }
 
@@ -116,7 +118,8 @@ class AgoraService {
     
     try {
       await engine.switchCamera();
-    } catch (e) {
+    } catch (_) {
+      // Switch camera error
     }
   }
 
@@ -128,7 +131,8 @@ class AgoraService {
         await _engine!.leaveChannel();
         await _engine!.release();
         _engine = null;
-      } catch (e) {
+      } catch (_) {
+        // Dispose error
       }
     }
   }

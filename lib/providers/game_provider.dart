@@ -31,8 +31,7 @@ class GameProvider with ChangeNotifier {
   int? _remoteUid;
   bool _localUserJoined = false;
 
-  GameProvider() {
-  }
+  GameProvider();
 
   void ensureListenersSetup() {
     if (_listenersSetUp) {
@@ -215,8 +214,6 @@ class GameProvider with ChangeNotifier {
 
   void _handleRoundComplete(dynamic data) {
     
-    final oldCurrentPlayer = _currentPlayerId;
-    
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _currentPlayerId = data['nextPlayerId'] as String?;
@@ -318,8 +315,6 @@ class GameProvider with ChangeNotifier {
 
   void _handleInvalidThrow(dynamic data) {
     
-    final message = data['message'] as String? ?? 'Invalid throw';
-    
     // Update scores and state
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
@@ -364,11 +359,6 @@ class GameProvider with ChangeNotifier {
     _pendingType = 'win';
     _pendingData = Map<String, dynamic>.from(data);
     
-    final finalDart = data['finalDart'];
-    if (finalDart != null) {
-      final notation = finalDart['notation'] as String? ?? 'Unknown';
-    }
-    
     notifyListeners();
   }
 
@@ -384,8 +374,6 @@ class GameProvider with ChangeNotifier {
     _pendingType = 'bust';
     _pendingReason = data['reason'] as String?;
     _pendingData = Map<String, dynamic>.from(data);
-    
-    final message = data['message'] as String? ?? 'Bust!';
     
     notifyListeners();
   }
@@ -440,7 +428,8 @@ class GameProvider with ChangeNotifier {
       
       
       notifyListeners();
-    } catch (e) {
+    } catch (_) {
+      // Socket emit failed
     }
   }
 

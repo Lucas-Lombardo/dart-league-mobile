@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/user.dart';
 import '../utils/storage_service.dart';
 import 'api_service.dart';
@@ -69,10 +70,10 @@ class AuthService {
 
   static Future<User?> getCurrentUser() async {
     try {
-      print('🔍 Fetching current user profile...');
+      debugPrint('🔍 Fetching current user profile...');
       final token = await StorageService.getToken();
       if (token == null) {
-        print('⚠️ No token in storage, user not authenticated');
+        debugPrint('⚠️ No token in storage, user not authenticated');
         return null;
       }
 
@@ -83,23 +84,23 @@ class AuthService {
       // Try the /users/profile endpoint (common pattern)
       try {
         final response = await ApiService.get('/auth/profile');
-        print('✅ User profile fetched successfully');
+        debugPrint('✅ User profile fetched successfully');
         return User.fromJson(response);
       } catch (profileError) {
         // If /auth/profile doesn't exist either, we need to decode the JWT
         // For now, return null and rely on the user data from login
-        print('⚠️ Could not fetch profile, endpoint may not exist');
+        debugPrint('⚠️ Could not fetch profile, endpoint may not exist');
         return null;
       }
     } catch (e) {
-      print('❌ Error fetching user profile: $e');
+      debugPrint('❌ Error fetching user profile: $e');
       
       // Only delete token if it's a 401 Unauthorized error (invalid token)
       if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
-        print('🗑️ Token invalid, deleting...');
+        debugPrint('🗑️ Token invalid, deleting...');
         await StorageService.deleteToken();
       } else {
-        print('⚠️ Network or parsing error, keeping token');
+        debugPrint('⚠️ Network or parsing error, keeping token');
       }
       
       return null;

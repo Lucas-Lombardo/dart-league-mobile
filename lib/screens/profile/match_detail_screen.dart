@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/user_service.dart';
+import '../../services/match_service.dart';
 import '../../models/match.dart';
 import '../../utils/app_theme.dart';
 
@@ -36,7 +36,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       final auth = context.read<AuthProvider>();
       final userId = auth.currentUser?.id ?? '';
       
-      final match = await UserService.getMatchDetail(widget.matchId, userId);
+      final response = await MatchService.getMatchDetail(widget.matchId);
+      final match = Match.fromJson(response, userId);
       setState(() {
         _match = match;
         _isLoading = false;

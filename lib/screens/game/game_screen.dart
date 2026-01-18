@@ -86,7 +86,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           // Listen for pending confirmation state changes
           game.addListener(_handlePendingStateChange);
         }
-      } catch (e, stackTrace) {
+      } catch (_) {
+        // Initialization error
       }
     });
   }
@@ -123,7 +124,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           }
         });
       }
-    } catch (e) {
+    } catch (_) {
+      // State change handling error
     }
   }
 
@@ -174,7 +176,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           uid: 0, // 0 means Agora will assign a uid
         );
       }
-    } catch (e) {
+    } catch (_) {
+      // Agora initialization error
     }
   }
   
@@ -214,7 +217,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         });
       } else {
       }
-    } catch (e) {
+    } catch (_) {
+      // Leave match error
     }
   }
 
@@ -229,7 +233,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     try {
       final game = context.read<GameProvider>();
       game.removeListener(_handlePendingStateChange);
-    } catch (e) {
+    } catch (_) {
+      // Provider access error during dispose
     }
     
     // Leave Agora channel and cleanup

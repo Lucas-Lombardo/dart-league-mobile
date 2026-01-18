@@ -106,7 +106,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       _currentUser = User.fromJson(json);
       notifyListeners();
-    } catch (e) {
+    } catch (_) {
+      // JSON parsing failed, keep current user
     }
   }
 }

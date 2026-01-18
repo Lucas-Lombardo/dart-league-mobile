@@ -198,7 +198,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             (route) => route.isFirst,
           );
           
-        } catch (e, stackTrace) {
+        } catch (_) {
+          // Navigation error
         }
         return;
       }
@@ -219,7 +220,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             ),
             (route) => route.isFirst,
           );
-        } catch (e) {
+        } catch (_) {
+          // Navigation error
         }
         return;
       }

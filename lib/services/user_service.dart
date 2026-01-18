@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/user.dart';
 import '../models/match.dart';
 import 'api_service.dart';
@@ -62,7 +61,9 @@ class UserService {
   static Future<UserStats> getUserStats(String userId) async {
     try {
       final response = await ApiService.get('/users/$userId/stats');
-      return UserStats.fromJson(response);
+      // Backend wraps stats in { userId, stats } object
+      final statsData = response['stats'] ?? response;
+      return UserStats.fromJson(statsData);
     } catch (e) {
       rethrow;
     }
@@ -113,14 +114,6 @@ class UserService {
     }
   }
 
-  static Future<Match> getMatchDetail(String matchId, String currentUserId) async {
-    try {
-      final response = await ApiService.get('/matches/$matchId');
-      return Match.fromJson(response, currentUserId);
-    } catch (e) {
-      rethrow;
-    }
-  }
 
   static UserStats calculateStatsFromMatches(List<Match> matches, String userId) {
     if (matches.isEmpty) {

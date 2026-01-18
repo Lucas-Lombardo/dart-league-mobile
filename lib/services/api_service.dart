@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
@@ -16,9 +17,8 @@ class ApiService {
       final token = await StorageService.getToken();
       if (token != null) {
         headers['Authorization'] = 'Bearer $token';
-        print('🔐 Token added to headers: ${token.substring(0, 20)}...');
       } else {
-        print('⚠️ No token found in storage');
+        debugPrint('⚠️ No token found in storage');
       }
     }
 
@@ -53,7 +53,7 @@ class ApiService {
       final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
       
-      print('📤 POST $endpoint with body: $body');
+      debugPrint('📤 POST $endpoint with body: $body');
       
       final response = await http.post(
         url,
@@ -61,8 +61,8 @@ class ApiService {
         body: jsonEncode(body),
       ).timeout(_timeout);
       
-      print('📥 Response status: ${response.statusCode}');
-      print('📥 Response body: ${response.body}');
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
       
       return _handleResponse(response);
     } on TimeoutException {

@@ -212,7 +212,8 @@ class MatchmakingProvider with ChangeNotifier {
       _agoraChannelName = null;
       _errorMessage = null;
       notifyListeners();
-    } catch (e) {
+    } catch (_) {
+      // Leave queue failed
     }
   }
 
