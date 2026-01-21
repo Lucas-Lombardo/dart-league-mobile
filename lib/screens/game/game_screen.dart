@@ -1495,118 +1495,62 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 ),
               ),
             
-            // DELETE and MISS buttons in top-right corner (only during user's turn)
+            // MISS button in top-right corner (only during user's turn)
             if (game.isMyTurn)
               Positioned(
                 top: 16,
                 right: 16,
-                child: Column(
-                  children: [
-                    // DELETE button
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {
-                          if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
-                            HapticService.mediumImpact();
-                            game.deleteDartThrow(_editingDartIndex!);
-                            setState(() {
-                              _editingDartIndex = null;
-                            });
-                          }
-                        },
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      HapticService.mediumImpact();
+                      final game = context.read<GameProvider>();
+                      if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
+                        game.editDartThrow(_editingDartIndex!, 0, ScoreMultiplier.single);
+                        setState(() {
+                          _editingDartIndex = null;
+                        });
+                      } else {
+                        game.throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: AppTheme.error.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: AppTheme.error.withValues(alpha: 0.3),
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.delete_outline, color: AppTheme.error, size: 28),
-                              const SizedBox(height: 4),
-                              Text(
-                                'DELETE',
-                                style: TextStyle(
-                                  color: AppTheme.error,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+                        border: Border.all(
+                          color: AppTheme.surfaceLight,
+                          width: 2,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.close, color: Colors.white70, size: 28),
+                          SizedBox(height: 4),
+                          Text(
+                            'MISS',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // MISS button
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {
-                          HapticService.mediumImpact();
-                          final game = context.read<GameProvider>();
-                          if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
-                            game.editDartThrow(_editingDartIndex!, 0, ScoreMultiplier.single);
-                            setState(() {
-                              _editingDartIndex = null;
-                            });
-                          } else {
-                            game.throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: AppTheme.surfaceLight,
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(Icons.close, color: Colors.white70, size: 28),
-                              SizedBox(height: 4),
-                              Text(
-                                'MISS',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
           ],

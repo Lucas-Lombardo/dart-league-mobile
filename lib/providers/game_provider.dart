@@ -192,7 +192,8 @@ class GameProvider with ChangeNotifier {
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
     
     // If backend sends currentRoundThrows array (e.g., after edit_dart), sync it
-    if (data['currentRoundThrows'] != null) {
+    // BUT only if it's MY turn - otherwise we'd get opponent's throws
+    if (data['currentRoundThrows'] != null && isMyTurn) {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _currentRoundThrows = throws.map((t) => t.toString()).toList();
