@@ -17,10 +17,8 @@ class InteractiveDartboard extends StatefulWidget {
 }
 
 class _InteractiveDartboardState extends State<InteractiveDartboard> {
-  int? _hoveredSegment;
-  ScoreMultiplier? _hoveredMultiplier;
-
-  static const List<int> dartboardNumbers = [
+  // Dartboard number sequence (clockwise from top)
+  static const List<int> numbers = [
     20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5
   ];
 
@@ -29,109 +27,83 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = math.min(constraints.maxWidth, constraints.maxHeight);
-        final center = Offset(size / 2, size / 2);
         
         return GestureDetector(
-          onTapUp: (details) => _handleTap(details.localPosition, center, size),
+          onTapUp: (details) => _handleTap(details, size),
           child: CustomPaint(
             size: Size(size, size),
-            painter: DartboardPainter(
-              hoveredSegment: _hoveredSegment,
-              hoveredMultiplier: _hoveredMultiplier,
-            ),
-            child: MouseRegion(
-              onHover: (event) => _handleHover(event.localPosition, center, size),
-              onExit: (_) => setState(() {
-                _hoveredSegment = null;
-                _hoveredMultiplier = null;
-              }),
-              child: Container(),
-            ),
+            painter: DartboardPainter(),
           ),
         );
       },
     );
   }
 
-  void _handleHover(Offset position, Offset center, double size) {
-    final result = _getSegmentFromPosition(position, center, size);
-    if (result != null) {
-      setState(() {
-        _hoveredSegment = result['segment'];
-        _hoveredMultiplier = result['multiplier'];
-      });
-    }
-  }
-
-  void _handleTap(Offset position, Offset center, double size) {
-    final result = _getSegmentFromPosition(position, center, size);
-    if (result != null) {
-      HapticService.mediumImpact();
-      widget.onDartThrow(result['segment'], result['multiplier']);
-    }
-  }
-
-  Map<String, dynamic>? _getSegmentFromPosition(Offset position, Offset center, double size) {
-    final dx = position.dx - center.dx;
-    final dy = position.dy - center.dy;
+  void _handleTap(TapUpDetails details, double size) {
+    final center = size / 2;
+    final dx = details.localPosition.dx - center;
+    final dy = details.localPosition.dy - center;
     final distance = math.sqrt(dx * dx + dy * dy);
-    final radius = size / 2;
+    final radius = center;
     
-    // Define ring boundaries (as percentage of radius)
-    final bullRadius = radius * 0.08;
-    final innerBullRadius = radius * 0.15;
-    final innerTripleRadius = radius * 0.52;
-    final outerTripleRadius = radius * 0.60;
-    final innerDoubleRadius = radius * 0.88;
-    final outerDoubleRadius = radius * 0.98;
+    // Distance ratios for dartboard rings (adjusted to real dartboard proportions)
+    final bullseyeRadius = radius * 0.055;      // Double bull (red center)
+    final bullRadius = radius * 0.11;           // Single bull (green ring)
+    final innerSingleEnd = radius * 0.54;       // Inner single area
+    final tripleStart = radius * 0.54;          // Triple ring starts (wider)
+    final tripleEnd = radius * 0.66;            // Triple ring ends (wider)
+    final outerSingleStart = radius * 0.66;     // Outer single starts
+    final outerSingleEnd = radius * 0.85;       // Outer single ends
+    final doubleStart = radius * 0.85;          // Double ring starts
+    final doubleEnd = radius * 0.95;            // Double ring ends
     
-    // Check if in bullseye
-    if (distance < bullRadius) {
-      return {'segment': 50, 'multiplier': ScoreMultiplier.double}; // Double bull
-    }
-    if (distance < innerBullRadius) {
-      return {'segment': 25, 'multiplier': ScoreMultiplier.single}; // Single bull
-    }
-    
-    // Check if outside the board
-    if (distance > outerDoubleRadius) {
-      return {'segment': 0, 'multiplier': ScoreMultiplier.single}; // Miss
+    // Check bulls
+    if (distance <= bullseyeRadius) {
+      HapticService.mediumImpact();
+      widget.onDartThrow(25, ScoreMultiplier.double); // Double bull = 50
+      return;
     }
     
-    // Calculate angle
-    var angle = math.atan2(dy, dx);
-    angle = (angle + math.pi / 2) % (2 * math.pi); // Rotate so 20 is at top
+    if (distance <= bullRadius) {
+      HapticService.mediumImpact();
+      widget.onDartThrow(25, ScoreMultiplier.single); // Single bull = 25
+      return;
+    }
+    
+    // Outside dartboard
+    if (distance > doubleEnd) {
+      HapticService.mediumImpact();
+      widget.onDartThrow(0, ScoreMultiplier.single); // Miss
+      return;
+    }
+    
+    // Calculate angle (0 at top, clockwise)
+    var angle = math.atan2(dx, -dy);
     if (angle < 0) angle += 2 * math.pi;
     
-    // Each segment is 18 degrees (360/20), offset by 9 degrees
-    final segmentAngle = (angle + (math.pi / 20)) / (math.pi / 10);
-    final segmentIndex = segmentAngle.floor() % 20;
-    final segmentNumber = dartboardNumbers[segmentIndex];
+    // Each segment is π/10 radians (18 degrees)
+    // Add π/20 to align with segment boundaries
+    final adjustedAngle = angle + math.pi / 20;
+    final segmentIndex = ((adjustedAngle / (math.pi / 10)) % 20).floor();
+    final number = numbers[segmentIndex];
     
     // Determine multiplier based on distance
     ScoreMultiplier multiplier;
-    if (distance >= innerDoubleRadius && distance <= outerDoubleRadius) {
-      multiplier = ScoreMultiplier.double;
-    } else if (distance >= innerTripleRadius && distance <= outerTripleRadius) {
+    if (distance >= tripleStart && distance <= tripleEnd) {
       multiplier = ScoreMultiplier.triple;
+    } else if (distance >= doubleStart && distance <= doubleEnd) {
+      multiplier = ScoreMultiplier.double;
     } else {
       multiplier = ScoreMultiplier.single;
     }
     
-    return {'segment': segmentNumber, 'multiplier': multiplier};
+    HapticService.mediumImpact();
+    widget.onDartThrow(number, multiplier);
   }
 }
 
 class DartboardPainter extends CustomPainter {
-  final int? hoveredSegment;
-  final ScoreMultiplier? hoveredMultiplier;
-  
-  DartboardPainter({
-    this.hoveredSegment,
-    this.hoveredMultiplier,
-  });
-
-  static const List<int> dartboardNumbers = [
+  static const List<int> numbers = [
     20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5
   ];
 
@@ -140,112 +112,81 @@ class DartboardPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     
-    // Define ring boundaries
-    final bullRadius = radius * 0.08;
-    final innerBullRadius = radius * 0.15;
-    final innerTripleRadius = radius * 0.52;
-    final outerTripleRadius = radius * 0.60;
-    final innerDoubleRadius = radius * 0.88;
-    final outerDoubleRadius = radius * 0.98;
+    // Distance ratios (matching hitbox detection)
+    final bullseyeRadius = radius * 0.055;      // Double bull (red center)
+    final bullRadius = radius * 0.11;           // Single bull (green ring)
+    final innerSingleEnd = radius * 0.54;       // Inner single area
+    final tripleStart = radius * 0.54;          // Triple ring starts (wider)
+    final tripleEnd = radius * 0.66;            // Triple ring ends (wider)
+    final outerSingleStart = radius * 0.66;     // Outer single starts
+    final outerSingleEnd = radius * 0.85;       // Outer single ends
+    final doubleStart = radius * 0.85;          // Double ring starts
+    final doubleEnd = radius * 0.95;            // Double ring ends
     
-    // Background
-    final bgPaint = Paint()
-      ..color = AppTheme.background
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, outerDoubleRadius, bgPaint);
+    // Colors
+    const black = Color(0xFF000000);
+    const cream = Color(0xFFF4E4C1);
+    final red = AppTheme.error;
+    final green = AppTheme.success;
     
-    // Draw segments
+    // Draw outer circle with app surface color (board edge)
+    final edgePaint = Paint()..color = AppTheme.surface;
+    canvas.drawCircle(center, doubleEnd + 2, edgePaint);
+    
+    // Draw 20 segments
     for (int i = 0; i < 20; i++) {
-      final startAngle = (i * math.pi / 10) - (math.pi / 20);
+      final isBlack = i % 2 == 0;
+      final singleColor = isBlack ? black : cream;
+      final scoreColor = isBlack ? red : green;
+      
+      // Start angle for this segment (0 at top, clockwise)
+      // Offset by -π/20 so segment edges align properly
+      final startAngle = -math.pi / 2 + (i * math.pi / 10) - (math.pi / 20);
       final sweepAngle = math.pi / 10;
-      final number = dartboardNumbers[i];
-      final isBlackSegment = i % 2 == 0;
       
-      // Outer single (between triple and double)
-      _drawSegment(
-        canvas,
-        center,
-        outerTripleRadius,
-        innerDoubleRadius,
-        startAngle,
-        sweepAngle,
-        isBlackSegment ? const Color(0xFF1A1A1A) : const Color(0xFFE8E8E8),
-        number,
-        ScoreMultiplier.single,
-      );
+      // Draw double ring (outermost)
+      _drawSegment(canvas, center, doubleStart, doubleEnd, 
+                   startAngle, sweepAngle, scoreColor);
       
-      // Inner single (between bull and triple)
-      _drawSegment(
-        canvas,
-        center,
-        innerBullRadius,
-        innerTripleRadius,
-        startAngle,
-        sweepAngle,
-        isBlackSegment ? const Color(0xFF1A1A1A) : const Color(0xFFE8E8E8),
-        number,
-        ScoreMultiplier.single,
-      );
+      // Draw outer single (between double and triple)
+      _drawSegment(canvas, center, outerSingleStart, outerSingleEnd, 
+                   startAngle, sweepAngle, singleColor);
       
-      // Triple ring
-      _drawSegment(
-        canvas,
-        center,
-        innerTripleRadius,
-        outerTripleRadius,
-        startAngle,
-        sweepAngle,
-        isBlackSegment ? const Color(0xFF1A1A1A) : const Color(0xFFFF3333),
-        number,
-        ScoreMultiplier.triple,
-      );
+      // Draw triple ring
+      _drawSegment(canvas, center, tripleStart, tripleEnd, 
+                   startAngle, sweepAngle, scoreColor);
       
-      // Double ring
-      _drawSegment(
-        canvas,
-        center,
-        innerDoubleRadius,
-        outerDoubleRadius,
-        startAngle,
-        sweepAngle,
-        isBlackSegment ? const Color(0xFF1A1A1A) : const Color(0xFF00AA00),
-        number,
-        ScoreMultiplier.double,
-      );
+      // Draw inner single (between triple and bull)
+      _drawSegment(canvas, center, bullRadius, innerSingleEnd, 
+                   startAngle, sweepAngle, singleColor);
     }
     
-    // Bullseye
-    final bullPaint = Paint()
-      ..color = (hoveredSegment == 25 && hoveredMultiplier == ScoreMultiplier.single)
-          ? const Color(0xFF00AA00).withValues(alpha: 0.7)
-          : const Color(0xFF00AA00)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, innerBullRadius, bullPaint);
+    // Draw single bull (outer bull - green)
+    final bullPaint = Paint()..color = green;
+    canvas.drawCircle(center, bullRadius, bullPaint);
     
-    final doubleBullPaint = Paint()
-      ..color = (hoveredSegment == 50 && hoveredMultiplier == ScoreMultiplier.double)
-          ? const Color(0xFFFF3333).withValues(alpha: 0.7)
-          : const Color(0xFFFF3333)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, bullRadius, doubleBullPaint);
+    // Draw double bull (bullseye - red)
+    final bullseyePaint = Paint()..color = red;
+    canvas.drawCircle(center, bullseyeRadius, bullseyePaint);
     
-    // Draw numbers around the board
+    // Draw numbers
     final textPainter = TextPainter(
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.center,
     );
     
     for (int i = 0; i < 20; i++) {
-      final angle = (i * math.pi / 10);
-      final numberRadius = outerDoubleRadius + 20;
-      final x = center.dx + numberRadius * math.cos(angle - math.pi / 2);
-      final y = center.dy + numberRadius * math.sin(angle - math.pi / 2);
+      // Position at center of segment
+      final angle = -math.pi / 2 + (i * math.pi / 10);
+      final numberRadius = doubleEnd + 15;
+      final x = center.dx + numberRadius * math.cos(angle);
+      final y = center.dy + numberRadius * math.sin(angle);
       
       textPainter.text = TextSpan(
-        text: '${dartboardNumbers[i]}',
+        text: '${numbers[i]}',
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 14,
+          fontSize: 16,
           fontWeight: FontWeight.bold,
         ),
       );
@@ -257,52 +198,59 @@ class DartboardPainter extends CustomPainter {
     }
   }
 
-  void _drawSegment(
-    Canvas canvas,
-    Offset center,
-    double innerRadius,
-    double outerRadius,
-    double startAngle,
-    double sweepAngle,
-    Color color,
-    int number,
-    ScoreMultiplier multiplier,
-  ) {
+  void _drawSegment(Canvas canvas, Offset center, double innerRadius, 
+                   double outerRadius, double startAngle, double sweepAngle, Color color) {
     final paint = Paint()
-      ..color = (hoveredSegment == number && hoveredMultiplier == multiplier)
-          ? color.withValues(alpha: 0.7)
-          : color
+      ..color = color
       ..style = PaintingStyle.fill;
     
     final path = Path();
+    
+    // Move to start point on inner radius
     path.moveTo(
       center.dx + innerRadius * math.cos(startAngle),
       center.dy + innerRadius * math.sin(startAngle),
     );
+    
+    // Line to start point on outer radius
+    path.lineTo(
+      center.dx + outerRadius * math.cos(startAngle),
+      center.dy + outerRadius * math.sin(startAngle),
+    );
+    
+    // Arc along outer radius
     path.arcTo(
-      Rect.fromCircle(center: center, radius: innerRadius),
+      Rect.fromCircle(center: center, radius: outerRadius),
       startAngle,
       sweepAngle,
       false,
     );
+    
+    // Line back to inner radius
     path.lineTo(
-      center.dx + outerRadius * math.cos(startAngle + sweepAngle),
-      center.dy + outerRadius * math.sin(startAngle + sweepAngle),
+      center.dx + innerRadius * math.cos(startAngle + sweepAngle),
+      center.dy + innerRadius * math.sin(startAngle + sweepAngle),
     );
+    
+    // Arc along inner radius (backwards)
     path.arcTo(
-      Rect.fromCircle(center: center, radius: outerRadius),
+      Rect.fromCircle(center: center, radius: innerRadius),
       startAngle + sweepAngle,
       -sweepAngle,
       false,
     );
-    path.close();
     
+    path.close();
     canvas.drawPath(path, paint);
+    
+    // Draw thin black border between segments
+    final borderPaint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+    canvas.drawPath(path, borderPaint);
   }
 
   @override
-  bool shouldRepaint(DartboardPainter oldDelegate) {
-    return oldDelegate.hoveredSegment != hoveredSegment ||
-           oldDelegate.hoveredMultiplier != hoveredMultiplier;
-  }
+  bool shouldRepaint(DartboardPainter oldDelegate) => false;
 }

@@ -193,6 +193,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
               builder: (context) => GameScreen(
                 matchId: matchmaking.matchId!,
                 opponentId: matchmaking.opponentId!,
+                opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
                 agoraAppId: matchmaking.agoraAppId,
                 agoraToken: matchmaking.agoraToken,
                 agoraChannelName: matchmaking.agoraChannelName,
@@ -219,6 +220,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
               builder: (context) => GameScreen(
                 matchId: matchmaking.matchId!,
                 opponentId: matchmaking.opponentId!,
+                opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
                 agoraAppId: matchmaking.agoraAppId,
                 agoraToken: matchmaking.agoraToken,
                 agoraChannelName: matchmaking.agoraChannelName,
