@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../widgets/rank_badge.dart';
 import '../../utils/app_theme.dart';
+import '../profile/player_stats_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -112,82 +113,96 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 final isCurrentUser = entry.user.id == currentUserId;
                 final isTopThree = index < 3;
 
-                return Container(
-                  decoration: BoxDecoration(
-                    color: isCurrentUser
-                        ? AppTheme.primary.withValues(alpha: 0.15)
-                        : AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isCurrentUser
-                          ? AppTheme.primary
-                          : Colors.transparent,
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      if (isTopThree)
-                        BoxShadow(
-                          color: _getRankColor(index).withValues(alpha: 0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PlayerStatsScreen(
+                          userId: entry.user.id,
+                          username: entry.user.username,
                         ),
-                    ],
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    leading: SizedBox(
-                      width: 40,
-                      child: Center(
-                        child: isTopThree
-                          ? Icon(
-                              Icons.emoji_events,
-                              color: _getRankColor(index),
-                              size: 32,
-                            )
-                          : Text(
-                              '${entry.rank}',
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
                       ),
-                    ),
-                    title: Row(
-                      children: [
-                        RankBadge(
-                          rank: entry.user.rank,
-                          size: 40,
-                          showLabel: false,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            entry.user.username,
-                            style: TextStyle(
-                              color: isCurrentUser ? AppTheme.primary : Colors.white,
-                              fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
-                              fontSize: 16,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isCurrentUser
+                          ? AppTheme.primary.withValues(alpha: 0.15)
+                          : AppTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isCurrentUser
+                            ? AppTheme.primary
+                            : Colors.transparent,
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        if (isTopThree)
+                          BoxShadow(
+                            color: _getRankColor(index).withValues(alpha: 0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
-                        ),
                       ],
                     ),
-                    subtitle: Text(
-                      '${entry.wins}W - ${entry.losses}L',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                    ),
-                    trailing: Text(
-                      '${entry.user.elo}',
-                      style: TextStyle(
-                        color: isTopThree ? _getRankColor(index) : AppTheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      leading: SizedBox(
+                        width: 40,
+                        child: Center(
+                          child: isTopThree
+                            ? Icon(
+                                Icons.emoji_events,
+                                color: _getRankColor(index),
+                                size: 32,
+                              )
+                            : Text(
+                                '${entry.rank}',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          RankBadge(
+                            rank: entry.user.rank,
+                            size: 40,
+                            showLabel: false,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              entry.user.username,
+                              style: TextStyle(
+                                color: isCurrentUser ? AppTheme.primary : Colors.white,
+                                fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
+                                fontSize: 16,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Text(
+                        '${entry.wins}W - ${entry.losses}L',
+                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                      ),
+                      trailing: Text(
+                        '${entry.user.elo}',
+                        style: TextStyle(
+                          color: isTopThree ? _getRankColor(index) : AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
                     ),
                   ),

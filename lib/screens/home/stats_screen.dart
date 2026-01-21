@@ -119,7 +119,7 @@ class _StatsScreenState extends State<StatsScreen> {
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
-              childAspectRatio: 1.3,
+              childAspectRatio: 1.35,
               children: [
                 _buildStatCard(
                   'Win Rate',

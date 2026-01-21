@@ -25,7 +25,9 @@ class UserStats {
     return UserStats(
       totalMatches: json['totalMatches'] as int? ?? 0,
       winRate: (json['winRate'] as num?)?.toDouble() ?? 0.0,
-      averageScore: (json['averageScore'] as num?)?.toDouble() ?? 0.0,
+      // Backend sends 'averageScorePerRound', map it to 'averageScore'
+      averageScore: (json['averageScorePerRound'] as num?)?.toDouble() ?? 
+                    (json['averageScore'] as num?)?.toDouble() ?? 0.0,
       highestScore: json['highestScore'] as int? ?? 0,
       currentStreak: json['currentStreak'] as int? ?? 0,
       wins: json['wins'] as int? ?? 0,

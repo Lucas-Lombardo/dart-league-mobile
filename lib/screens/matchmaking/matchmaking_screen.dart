@@ -185,6 +185,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
         
         try {
           debugPrint('DEBUG: Navigating to GameScreen with matchId=${matchmaking.matchId}');
+          // Dismiss the dialog first
+          Navigator.of(context).pop();
+          // Then navigate to game screen
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => GameScreen(
@@ -208,6 +211,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       if (attempts >= maxAttempts) {
         
         try {
+          // Dismiss the dialog first
+          Navigator.of(context).pop();
+          // Then navigate to game screen
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => GameScreen(
