@@ -209,6 +209,242 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     await AgoraService.switchCamera(_agoraEngine!);
   }
 
+  // Build video layout when it's user's turn - show only small opponent camera
+  Widget _buildMyTurnVideoLayout(GameProvider game) {
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Container(
+        width: 120,
+        height: 160,
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.surfaceLight,
+            width: 2,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Stack(
+            children: [
+              if (_agoraEngine != null && game.remoteUid != null)
+                AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: _agoraEngine!,
+                    canvas: VideoCanvas(uid: game.remoteUid!),
+                    connection: RtcConnection(channelId: ''),
+                  ),
+                )
+              else
+                Container(
+                  color: AppTheme.surface,
+                  child: const Center(
+                    child: Icon(
+                      Icons.videocam_off,
+                      size: 32,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              // Opponent label
+              Positioned(
+                bottom: 8,
+                left: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'OPPONENT',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${game.opponentScore}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build video layout when it's opponent's turn - show large opponent with small user overlay
+  Widget _buildOpponentTurnVideoLayout(GameProvider game) {
+    return Stack(
+      children: [
+        // Large opponent camera (background)
+        if (_agoraEngine != null && game.remoteUid != null)
+          Container(
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.error,
+                width: 3,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: AgoraVideoView(
+                controller: VideoViewController.remote(
+                  rtcEngine: _agoraEngine!,
+                  canvas: VideoCanvas(uid: game.remoteUid!),
+                  connection: RtcConnection(channelId: ''),
+                ),
+              ),
+            ),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.surfaceLight, width: 2),
+            ),
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary),
+                  SizedBox(height: 8),
+                  Text(
+                    'WAITING...',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // Opponent score overlay
+        Positioned(
+          top: 12,
+          left: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppTheme.error,
+                width: 2,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'OPPONENT',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '${game.opponentScore}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Small user camera overlay (top right)
+        if (_agoraEngine != null && _permissionsGranted)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Container(
+              width: 100,
+              height: 130,
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.primary,
+                  width: 2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Stack(
+                  children: [
+                    AgoraVideoView(
+                      controller: VideoViewController(
+                        rtcEngine: _agoraEngine!,
+                        canvas: const VideoCanvas(uid: 0),
+                      ),
+                    ),
+                    // User score overlay
+                    Positioned(
+                      bottom: 6,
+                      left: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'YOU',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '${game.myScore}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   void _leaveMatch() {
     // Emit leave_match event to trigger forfeit on backend
     try {
@@ -1083,194 +1319,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
         body: Column(
           children: [
-            // Video Area - Side by side cameras
+            // Video Area - Dynamic layout based on turn
             Container(
-              height: 220,
+              height: game.isMyTurn ? 180 : 280,
               padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  // Opponent's camera (left side)
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        if (_agoraEngine != null && game.remoteUid != null)
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: !game.isMyTurn ? AppTheme.error : AppTheme.surfaceLight,
-                                width: !game.isMyTurn ? 3 : 2,
-                              ),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: AgoraVideoView(
-                                controller: VideoViewController.remote(
-                                  rtcEngine: _agoraEngine!,
-                                  canvas: VideoCanvas(uid: game.remoteUid!),
-                                  connection: RtcConnection(channelId: ''),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppTheme.surfaceLight, width: 2),
-                            ),
-                            child: const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'WAITING...',
-                                    style: TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        // Opponent label and score
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: !game.isMyTurn ? AppTheme.error : AppTheme.surfaceLight,
-                                width: 2,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'OPPONENT',
-                                  style: TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  '${game.opponentScore}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Your camera (right side)
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        if (_agoraEngine != null && _permissionsGranted)
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: game.isMyTurn ? AppTheme.primary : AppTheme.surfaceLight,
-                                width: game.isMyTurn ? 3 : 2,
-                              ),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: AgoraVideoView(
-                                controller: VideoViewController(
-                                  rtcEngine: _agoraEngine!,
-                                  canvas: const VideoCanvas(uid: 0),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppTheme.surfaceLight, width: 2),
-                            ),
-                            child: const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'NO CAMERA',
-                                    style: TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        // Your label and score
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: game.isMyTurn ? AppTheme.primary : AppTheme.surfaceLight,
-                                width: 2,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'YOU',
-                                  style: TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  '${game.myScore}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              child: game.isMyTurn 
+                  ? _buildMyTurnVideoLayout(game)
+                  : _buildOpponentTurnVideoLayout(game),
             ),
             
             // Mic and Camera controls
