@@ -123,6 +123,38 @@ class AgoraService {
     }
   }
 
+  /// Set camera to back camera (rear facing)
+  static Future<void> setBackCamera(RtcEngine engine) async {
+    try {
+      // On mobile, switch to back camera
+      await engine.setCameraCapturerConfiguration(
+        const CameraCapturerConfiguration(
+          cameraDirection: CameraDirection.cameraRear,
+        ),
+      );
+    } catch (_) {
+      // Set camera error
+    }
+  }
+
+  /// Start camera preview without joining a channel
+  static Future<void> startPreview(RtcEngine engine) async {
+    try {
+      await engine.startPreview();
+    } catch (_) {
+      // Start preview error
+    }
+  }
+
+  /// Stop camera preview
+  static Future<void> stopPreview(RtcEngine engine) async {
+    try {
+      await engine.stopPreview();
+    } catch (_) {
+      // Stop preview error
+    }
+  }
+
   /// Release the Agora engine and cleanup resources
   static Future<void> dispose() async {
     

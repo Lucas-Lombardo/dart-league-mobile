@@ -9,7 +9,7 @@ import '../../models/match.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
-import '../matchmaking/matchmaking_screen.dart';
+import '../matchmaking/camera_setup_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -304,21 +304,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               onTap: () async {
                 HapticService.mediumImpact();
                 
-                final matchmaking = context.read<MatchmakingProvider>();
-                final game = context.read<GameProvider>();
-                final user = context.read<AuthProvider>().currentUser;
-                
-                if (user?.id != null) {
-                  matchmaking.setGameProvider(game);
-                  await matchmaking.joinQueue(user!.id);
-                  
-                  if (context.mounted) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const MatchmakingScreen(),
-                      ),
-                    );
-                  }
+                if (context.mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const CameraSetupScreen(),
+                    ),
+                  );
                 }
               },
               child: Container(

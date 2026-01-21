@@ -42,7 +42,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // Agora video
   RtcEngine? _agoraEngine;
   bool _isVideoEnabled = true;
-  bool _isAudioMuted = false;
+  bool _isAudioMuted = true;
   bool _permissionsGranted = false;
 
   @override
@@ -175,6 +175,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           channelName: widget.agoraChannelName!,
           uid: 0, // 0 means Agora will assign a uid
         );
+        
+        // Mute microphone by default
+        await AgoraService.toggleLocalAudio(_agoraEngine!, true);
       }
     } catch (_) {
       // Agora initialization error
@@ -1270,38 +1273,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               ),
             ),
             
-            // Camera/Mic controls
+            // Mic and Camera controls
             if (_agoraEngine != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Camera toggle
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _toggleVideo,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _isVideoEnabled ? AppTheme.primary : AppTheme.error,
-                              width: 2,
-                            ),
-                          ),
-                          child: Icon(
-                            _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
-                            color: _isVideoEnabled ? AppTheme.primary : AppTheme.error,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
                     // Mic toggle
                     Material(
                       color: Colors.transparent,
