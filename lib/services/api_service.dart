@@ -103,15 +103,26 @@ class ApiService {
 
   static Future<dynamic> delete(String endpoint, {bool includeAuth = true}) async {
     try {
+      final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
-      final response = await http.delete(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-      );
+      
+      debugPrint('🗑️ DELETE $endpoint');
+      
+      final response = await http.delete(url, headers: headers).timeout(_timeout);
+      
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
 
       return _handleResponse(response);
+    } on TimeoutException {
+      throw Exception('Connection timeout - Please check your internet');
     } catch (e) {
-      throw Exception('Network error: $e');
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('HandshakeException')) {
+        throw Exception('Unable to connect - Check your internet connection');
+      }
+      debugPrint('❌ DELETE error: $e');
+      rethrow;
     }
   }
 

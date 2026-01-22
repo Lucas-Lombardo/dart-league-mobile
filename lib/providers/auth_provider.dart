@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../utils/error_messages.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
@@ -22,7 +23,7 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = user;
     } catch (e) {
       _currentUser = null;
-      _errorMessage = e.toString();
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -49,7 +50,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
       _isLoading = false;
       notifyListeners();
       return false;
@@ -74,7 +75,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
       _isLoading = false;
       notifyListeners();
       return false;
@@ -90,10 +91,29 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = null;
       _errorMessage = null;
     } catch (e) {
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await AuthService.deleteAccount();
+      _currentUser = null;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
+      _isLoading = false;
+      notifyListeners();
+      return false;
     }
   }
 

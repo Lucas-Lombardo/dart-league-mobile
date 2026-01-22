@@ -103,6 +103,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton.icon(
+              onPressed: () => _showDeleteAccountDialog(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.error,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                side: const BorderSide(color: AppTheme.error, width: 2),
+              ),
+              icon: const Icon(Icons.delete_forever),
+              label: const Text(
+                'DELETE ACCOUNT',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -282,6 +306,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Logout'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog(BuildContext context) {
+    bool isDeleting = false;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Delete Account',
+            style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: isDeleting ? null : () async {
+                setState(() {
+                  isDeleting = true;
+                });
+                
+                final success = await context.read<AuthProvider>().deleteAccount();
+                
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  
+                  if (success) {
+                    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          context.read<AuthProvider>().errorMessage ?? 'Failed to delete account',
+                        ),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.error,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: isDeleting 
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text('Delete'),
+            ),
+          ],
+        ),
       ),
     );
   }

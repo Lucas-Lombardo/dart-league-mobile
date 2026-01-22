@@ -68,6 +68,19 @@ class AuthService {
     }
   }
 
+  static Future<void> deleteAccount() async {
+    try {
+      debugPrint('🗑️ Attempting to delete account...');
+      await ApiService.delete('/auth/account');
+      debugPrint('✅ Account deleted from backend');
+      await StorageService.deleteToken();
+      debugPrint('✅ Token cleared from storage');
+    } catch (e) {
+      debugPrint('❌ Error deleting account: $e');
+      rethrow;
+    }
+  }
+
   static Future<User?> getCurrentUser() async {
     try {
       debugPrint('🔍 Fetching current user profile...');
