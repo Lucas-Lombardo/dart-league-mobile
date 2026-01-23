@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/friends_provider.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
 import 'match_detail_screen.dart';
@@ -47,6 +48,29 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _addFriend(String friendId, String username) async {
+    try {
+      await context.read<FriendsProvider>().addFriend(friendId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added $username as a friend!'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     }
   }
 
@@ -224,13 +248,47 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     _buildScoreColumn('Opponent', '$opponentScore', Colors.white),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  dateFormat.format(match.createdAt),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      dateFormat.format(match.createdAt),
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Consumer<FriendsProvider>(
+                      builder: (context, friendsProvider, _) {
+                        final opponentId = match.getOpponentId(userId);
+                        final isFriend = friendsProvider.isFriend(opponentId);
+                        
+                        if (isFriend) {
+                          return Row(
+                            children: [
+                              Icon(Icons.check_circle, color: AppTheme.success, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Friends',
+                                style: TextStyle(color: AppTheme.success, fontSize: 12),
+                              ),
+                            ],
+                          );
+                        }
+                        
+                        return TextButton.icon(
+                          onPressed: () => _addFriend(opponentId, opponentUsername),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                          icon: const Icon(Icons.person_add, size: 16),
+                          label: const Text('Add Friend', style: TextStyle(fontSize: 12)),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

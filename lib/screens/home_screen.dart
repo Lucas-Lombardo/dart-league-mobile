@@ -7,6 +7,7 @@ import '../utils/app_theme.dart';
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
+import 'home/friends_screen.dart';
 import 'settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,11 +18,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 1; // Start at Play (middle)
+  int _currentIndex = 1; // Start at Play
 
   final List<Widget> _screens = const [
     StatsScreen(),
     PlayScreen(),
+    FriendsScreen(),
     LeaderboardScreen(),
   ];
 
@@ -188,7 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, 'Stats'),
                   _buildNavItem(1, Icons.play_circle_outline, Icons.play_circle_filled, 'Play'),
-                  _buildNavItem(2, Icons.leaderboard_outlined, Icons.leaderboard, 'Rankings'),
+                  _buildNavItem(2, Icons.people_outline, Icons.people, 'Friends'),
+                  _buildNavItem(3, Icons.leaderboard_outlined, Icons.leaderboard, 'Rankings'),
                 ],
               ),
             ),

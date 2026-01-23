@@ -132,6 +132,10 @@ class Match {
     return userId == player1Id ? player2Username : player1Username;
   }
 
+  String getOpponentId(String userId) {
+    return userId == player1Id ? player2Id : player1Id;
+  }
+
   int getMyScore(String userId) {
     return userId == player1Id ? player1Score : player2Score;
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
+import '../../services/friends_service.dart';
 import '../../widgets/rank_badge.dart';
 import '../../utils/app_theme.dart';
 import '../profile/player_stats_screen.dart';
@@ -17,6 +18,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool _isLoading = true;
   List<LeaderboardEntry> _entries = [];
   String? _errorMessage;
+  bool _showFriendsOnly = false;
 
   @override
   void initState() {
@@ -31,11 +33,29 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     });
 
     try {
-      final entries = await UserService.getLeaderboard();
-      setState(() {
-        _entries = entries;
-        _isLoading = false;
-      });
+      if (_showFriendsOnly) {
+        final friends = await FriendsService.getFriendsLeaderboard();
+        final entries = friends.asMap().entries.map((entry) {
+          final index = entry.key;
+          final user = entry.value;
+          return LeaderboardEntry(
+            user: user,
+            rank: index + 1,
+            wins: user.wins,
+            losses: user.losses,
+          );
+        }).toList();
+        setState(() {
+          _entries = entries;
+          _isLoading = false;
+        });
+      } else {
+        final entries = await UserService.getLeaderboard();
+        setState(() {
+          _entries = entries;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
@@ -83,8 +103,29 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
 
     if (_entries.isEmpty) {
-      return const Center(
-        child: Text('No leaderboard data available'),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _showFriendsOnly ? Icons.people_outline : Icons.leaderboard_outlined,
+              size: 64,
+              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _showFriendsOnly ? 'No friends yet' : 'No leaderboard data available',
+              style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
+            ),
+            if (_showFriendsOnly) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Add friends to see their rankings!',
+                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+              ),
+            ],
+          ],
+        ),
       );
     }
 
@@ -95,6 +136,66 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            child: Row(
+              children: [
+                Icon(
+                  _showFriendsOnly ? Icons.people : Icons.public,
+                  color: AppTheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _showFriendsOnly ? 'Friends Leaderboard' : 'Global Leaderboard',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildToggleButton('Global', !_showFriendsOnly, () {
+                        setState(() {
+                          _showFriendsOnly = false;
+                        });
+                        _loadLeaderboard();
+                      }),
+                      _buildToggleButton('Friends', _showFriendsOnly, () {
+                        setState(() {
+                          _showFriendsOnly = true;
+                        });
+                        _loadLeaderboard();
+                      }),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
               children: [
                 Expanded(child: _buildHeaderCell('Rank', TextAlign.center)),
@@ -234,5 +335,26 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       default:
         return AppTheme.textSecondary;
     }
+  }
+
+  Widget _buildToggleButton(String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppTheme.textSecondary,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
   }
 }

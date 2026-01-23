@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/matchmaking_provider.dart';
 import 'providers/game_provider.dart';
+import 'providers/friends_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -37,6 +38,7 @@ class DartLegendsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => MatchmakingProvider()),
         ChangeNotifierProvider.value(value: gameProvider), // Use pre-created instance
+        ChangeNotifierProvider(create: (_) => FriendsProvider()),
       ],
       child: MaterialApp(
         title: 'Dart Legends',
