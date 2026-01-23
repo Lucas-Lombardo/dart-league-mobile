@@ -14,7 +14,7 @@ class MatchmakingProvider with ChangeNotifier {
   String? _opponentUsername;
   int? _opponentElo;
   int? _playerElo;
-  int _eloRange = 100;
+  int _eloRange = 250;
   int _searchTime = 0;
   Timer? _searchTimer;
   
@@ -81,7 +81,7 @@ class MatchmakingProvider with ChangeNotifier {
       if (!_matchFound) {
         _isSearching = true;
         _searchTime = 0;
-        _eloRange = 100;
+        _eloRange = 250;
         _matchId = null;
         _opponentId = null;
         _opponentUsername = null;
@@ -200,7 +200,7 @@ class MatchmakingProvider with ChangeNotifier {
 
       _isSearching = false;
       _searchTime = 0;
-      _eloRange = 100;
+      _eloRange = 250;
       _matchFound = false;
       _matchId = null;
       _opponentId = null;
