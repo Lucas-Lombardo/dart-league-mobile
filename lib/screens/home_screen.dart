@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../widgets/rank_badge.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
+import '../providers/friends_provider.dart';
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
@@ -205,6 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isSelected = _currentIndex == index;
     final isPlayTab = index == 1; // Play is middle tab
     final showCircle = isSelected && isPlayTab;
+    final isFriendsTab = index == 2;
     
     return GestureDetector(
       onTap: () {
@@ -219,29 +221,68 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: showCircle
-                  ? BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primary.withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    )
-                  : null,
-              child: Center(
-                child: Icon(
-                  isSelected ? activeIcon : icon,
-                  color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
-                  size: 24,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: showCircle
+                      ? BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primary.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        )
+                      : null,
+                  child: Center(
+                    child: Icon(
+                      isSelected ? activeIcon : icon,
+                      color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+                      size: 24,
+                    ),
+                  ),
                 ),
-              ),
+                if (isFriendsTab)
+                  Consumer<FriendsProvider>(
+                    builder: (context, friendsProvider, _) {
+                      final count = friendsProvider.pendingRequestsCount;
+                      if (count == 0) return const SizedBox.shrink();
+                      
+                      return Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.error,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.background, width: 2),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
+                          child: Center(
+                            child: Text(
+                              count > 9 ? '9+' : count.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(

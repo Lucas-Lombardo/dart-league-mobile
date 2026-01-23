@@ -35,11 +35,56 @@ class FriendsService {
     }
   }
 
-  static Future<void> addFriend(String friendId) async {
+  static Future<void> sendFriendRequest(String friendId) async {
     try {
       await ApiService.post('/friends', {'friendId': friendId});
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static Future<void> acceptFriendRequest(String friendshipId) async {
+    try {
+      await ApiService.post('/friends/accept/$friendshipId', {});
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<void> rejectFriendRequest(String friendshipId) async {
+    try {
+      await ApiService.post('/friends/reject/$friendshipId', {});
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<List<FriendRequest>> getPendingRequests() async {
+    try {
+      final response = await ApiService.get('/friends/requests/pending');
+      final List<dynamic> data = response as List<dynamic>;
+      return data.map((json) => FriendRequest.fromJson(json)).toList();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<List<FriendRequest>> getSentRequests() async {
+    try {
+      final response = await ApiService.get('/friends/requests/sent');
+      final List<dynamic> data = response as List<dynamic>;
+      return data.map((json) => FriendRequest.fromJson(json)).toList();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<int> getPendingRequestsCount() async {
+    try {
+      final response = await ApiService.get('/friends/requests/count');
+      return response['count'] as int? ?? 0;
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -51,12 +96,32 @@ class FriendsService {
     }
   }
 
-  static Future<bool> checkFriendship(String friendId) async {
+  static Future<String> getFriendshipStatus(String friendId) async {
     try {
-      final response = await ApiService.get('/friends/check/$friendId');
-      return response['isFriend'] as bool? ?? false;
+      final response = await ApiService.get('/friends/status/$friendId');
+      return response['status'] as String? ?? 'none';
     } catch (e) {
-      return false;
+      return 'none';
     }
+  }
+}
+
+class FriendRequest {
+  final String id;
+  final User user;
+  final DateTime createdAt;
+
+  FriendRequest({
+    required this.id,
+    required this.user,
+    required this.createdAt,
+  });
+
+  factory FriendRequest.fromJson(Map<String, dynamic> json) {
+    return FriendRequest(
+      id: json['id'] as String,
+      user: User.fromJson(json['user'] as Map<String, dynamic>),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
   }
 }

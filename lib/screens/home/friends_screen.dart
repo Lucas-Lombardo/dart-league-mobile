@@ -15,23 +15,26 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen> {
+class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   List<User> _searchResults = [];
   bool _isSearching = false;
   bool _showSearch = false;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<FriendsProvider>().loadFriends();
+      context.read<FriendsProvider>().loadAll();
     });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -69,14 +72,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
-  Future<void> _addFriend(String friendId, String username) async {
+  Future<void> _sendFriendRequest(String friendId, String username) async {
     try {
       HapticService.mediumImpact();
-      await context.read<FriendsProvider>().addFriend(friendId);
+      await context.read<FriendsProvider>().sendFriendRequest(friendId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Added $username as a friend!'),
+            content: Text('Friend request sent to $username!'),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -85,6 +88,54 @@ class _FriendsScreenState extends State<FriendsScreen> {
           _searchResults = [];
           _showSearch = false;
         });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _acceptRequest(String friendshipId, String username) async {
+    try {
+      HapticService.mediumImpact();
+      await context.read<FriendsProvider>().acceptFriendRequest(friendshipId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('You are now friends with $username!'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectRequest(String friendshipId, String username) async {
+    try {
+      HapticService.mediumImpact();
+      await context.read<FriendsProvider>().rejectFriendRequest(friendshipId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Declined friend request from $username'),
+            backgroundColor: AppTheme.textSecondary,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -150,42 +201,87 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final friendsProvider = context.watch<FriendsProvider>();
-    final friends = friendsProvider.friends;
+
+    if (_showSearch) {
+      return Column(
+        children: [
+          _buildSearchSection(),
+          Expanded(child: _buildSearchResults()),
+        ],
+      );
+    }
 
     return Column(
       children: [
-        if (_showSearch) _buildSearchSection(),
-        if (!_showSearch)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'My Friends (${friends.length})',
-                    style: AppTheme.titleLarge,
-                  ),
+        Container(
+          color: AppTheme.surface,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Friends', style: AppTheme.titleLarge),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        HapticService.lightImpact();
+                        setState(() => _showSearch = true);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.person_add, size: 20),
+                      label: const Text('Add'),
+                    ),
+                  ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    HapticService.lightImpact();
-                    setState(() {
-                      _showSearch = true;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              TabBar(
+                controller: _tabController,
+                labelColor: AppTheme.primary,
+                unselectedLabelColor: AppTheme.textSecondary,
+                indicatorColor: AppTheme.primary,
+                tabs: [
+                  Tab(text: 'Friends (${friendsProvider.friends.length})'),
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Requests'),
+                        if (friendsProvider.pendingRequestsCount > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.error,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${friendsProvider.pendingRequestsCount}',
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                  icon: const Icon(Icons.person_add, size: 20),
-                  label: const Text('Add'),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
+        ),
         Expanded(
-          child: _showSearch ? _buildSearchResults() : _buildFriendsList(friends, friendsProvider),
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildFriendsList(friendsProvider.friends, friendsProvider),
+              _buildRequestsList(friendsProvider),
+            ],
+          ),
         ),
       ],
     );
@@ -311,7 +407,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final user = _searchResults[index];
-        final isFriend = friendsProvider.isFriend(user.id);
+        final status = friendsProvider.getFriendshipStatus(user.id);
         
         return Container(
           decoration: BoxDecoration(
@@ -333,12 +429,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               'ELO: ${user.elo} • ${user.wins}W - ${user.losses}L',
               style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
             ),
-            trailing: isFriend
-                ? const Icon(Icons.check_circle, color: AppTheme.success)
-                : IconButton(
-                    icon: const Icon(Icons.person_add, color: AppTheme.primary),
-                    onPressed: () => _addFriend(user.id, user.username),
-                  ),
+            trailing: _buildSearchResultAction(user.id, user.username, status),
             onTap: () {
               Navigator.push(
                 context,
@@ -353,6 +444,148 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSearchResultAction(String userId, String username, String status) {
+    switch (status) {
+      case 'friends':
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, color: AppTheme.success, size: 20),
+            SizedBox(width: 4),
+            Text('Friends', style: TextStyle(color: AppTheme.success, fontSize: 12)),
+          ],
+        );
+      case 'pending_sent':
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
+            SizedBox(width: 4),
+            Text('Pending', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+          ],
+        );
+      case 'pending_received':
+        return TextButton(
+          onPressed: () async {
+            final friendsProvider = context.read<FriendsProvider>();
+            final request = friendsProvider.pendingRequests.firstWhere((r) => r.user.id == userId);
+            await _acceptRequest(request.id, username);
+          },
+          child: const Text('Accept', style: TextStyle(fontSize: 12)),
+        );
+      default:
+        return IconButton(
+          icon: const Icon(Icons.person_add, color: AppTheme.primary),
+          onPressed: () => _sendFriendRequest(userId, username),
+        );
+    }
+  }
+
+  Widget _buildRequestsList(FriendsProvider provider) {
+    final pendingRequests = provider.pendingRequests;
+    final sentRequests = provider.sentRequests;
+
+    if (pendingRequests.isEmpty && sentRequests.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            const Text(
+              'No friend requests',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (pendingRequests.isNotEmpty) ...[
+          const Text(
+            'Incoming Requests',
+            style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          ...pendingRequests.map((request) => _buildRequestCard(request, true)),
+          const SizedBox(height: 24),
+        ],
+        if (sentRequests.isNotEmpty) ...[
+          const Text(
+            'Sent Requests',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          ...sentRequests.map((request) => _buildRequestCard(request, false)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRequestCard(FriendRequest request, bool isIncoming) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isIncoming ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surfaceLight.withValues(alpha: 0.5),
+        ),
+      ),
+      child: ListTile(
+        leading: RankBadge(
+          rank: request.user.rank,
+          size: 40,
+          showLabel: false,
+        ),
+        title: Text(
+          request.user.username,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          'ELO: ${request.user.elo} • ${request.user.wins}W - ${request.user.losses}L',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+        trailing: isIncoming
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.check, color: AppTheme.success),
+                    onPressed: () => _acceptRequest(request.id, request.user.username),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppTheme.error),
+                    onPressed: () => _rejectRequest(request.id, request.user.username),
+                  ),
+                ],
+              )
+            : const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
+                  SizedBox(width: 4),
+                  Text('Pending', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                ],
+              ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PlayerStatsScreen(
+                userId: request.user.id,
+                username: request.user.username,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

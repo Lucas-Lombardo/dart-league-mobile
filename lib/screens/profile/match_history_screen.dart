@@ -51,13 +51,13 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     }
   }
 
-  Future<void> _addFriend(String friendId, String username) async {
+  Future<void> _sendFriendRequest(String friendId, String username) async {
     try {
-      await context.read<FriendsProvider>().addFriend(friendId);
+      await context.read<FriendsProvider>().sendFriendRequest(friendId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Added $username as a friend!'),
+            content: Text('Friend request sent to $username!'),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -278,7 +278,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                         }
                         
                         return TextButton.icon(
-                          onPressed: () => _addFriend(opponentId, opponentUsername),
+                          onPressed: () => _sendFriendRequest(opponentId, opponentUsername),
                           style: TextButton.styleFrom(
                             foregroundColor: AppTheme.primary,
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
