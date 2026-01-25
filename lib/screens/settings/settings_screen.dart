@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/locale_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/rank_translation.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -40,23 +43,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l10n.settings),
         backgroundColor: AppTheme.surface,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
-          _buildSection('Account'),
+          _buildSection(l10n.profile.toUpperCase()),
           _buildAccountInfo(user?.username ?? 'User', user?.email ?? 'No email'),
-          _buildAccountInfo('ELO', '${user?.elo ?? 0}'),
-          _buildAccountInfo('Rank', user?.rank ?? 'Unranked'),
+          _buildAccountInfo(l10n.elo, '${user?.elo ?? 0}'),
+          _buildAccountInfo(l10n.rank, user?.rank != null ? RankTranslation.translate(l10n, user!.rank) : 'Unranked'),
           
           const SizedBox(height: 24),
-          _buildSection('Preferences'),
+          _buildSection(l10n.preferences.toUpperCase()),
+          _buildLanguageTile(l10n),
           _buildSwitchTile(
             'Haptic Feedback',
             'Vibrate on button presses',
@@ -74,9 +79,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           
           const SizedBox(height: 24),
-          _buildSection('About'),
-          _buildInfoTile('App Version', _appVersion, Icons.info_outline),
-          _buildInfoTile('Developer', 'Dart Legends Team', Icons.code),
+          _buildSection(l10n.about.toUpperCase()),
+          _buildInfoTile(l10n.appVersion, _appVersion, Icons.info_outline),
+          _buildInfoTile(l10n.developer, 'Dart Legends Team', Icons.code),
           
           const SizedBox(height: 32),
           Padding(
@@ -93,9 +98,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 elevation: 4,
               ),
               icon: const Icon(Icons.logout),
-              label: const Text(
-                'LOGOUT',
-                style: TextStyle(
+              label: Text(
+                l10n.logout.toUpperCase(),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1,
@@ -117,9 +122,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 side: const BorderSide(color: AppTheme.error, width: 2),
               ),
               icon: const Icon(Icons.delete_forever),
-              label: const Text(
-                'DELETE ACCOUNT',
-                style: TextStyle(
+              label: Text(
+                l10n.deleteAccount.toUpperCase(),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1,
@@ -171,6 +176,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageTile(AppLocalizations l10n) {
+    final localeProvider = context.watch<LocaleProvider>();
+    final currentLanguage = localeProvider.locale.languageCode;
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        onTap: () => _showLanguageDialog(context),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.language, color: AppTheme.primary),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.language,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    currentLanguage == 'fr' ? 'Français' : 'English',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+          ],
+        ),
       ),
     );
   }
@@ -270,23 +329,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showLogoutDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Logout',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          l10n.logout,
+          style: const TextStyle(color: Colors.white),
         ),
-        content: const Text(
-          'Are you sure you want to logout?',
-          style: TextStyle(color: AppTheme.textSecondary),
+        content: Text(
+          l10n.deleteAccountConfirm,
+          style: const TextStyle(color: AppTheme.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+            child: Text(l10n.cancel, style: const TextStyle(color: AppTheme.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -303,15 +364,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text('Logout'),
+            child: Text(l10n.logout),
           ),
         ],
       ),
     );
   }
 
+  void _showLanguageDialog(BuildContext context) {
+    final localeProvider = context.read<LocaleProvider>();
+    final currentLanguage = localeProvider.locale.languageCode;
+    final l10n = AppLocalizations.of(context);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          l10n.changeLanguage,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildLanguageOption('English', 'en', currentLanguage, () {
+              localeProvider.setLocale('en');
+              Navigator.pop(context);
+            }),
+            const SizedBox(height: 8),
+            _buildLanguageOption('Français', 'fr', currentLanguage, () {
+              localeProvider.setLocale('fr');
+              Navigator.pop(context);
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l10n.cancel, style: const TextStyle(color: AppTheme.textSecondary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageOption(String name, String code, String currentCode, VoidCallback onTap) {
+    final isSelected = code == currentCode;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primary : AppTheme.surfaceLight.withValues(alpha: 0.3),
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: isSelected ? AppTheme.primary : Colors.white,
+                  fontSize: 16,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check_circle, color: AppTheme.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showDeleteAccountDialog(BuildContext context) {
     bool isDeleting = false;
+    final l10n = AppLocalizations.of(context);
     
     showDialog(
       context: context,
@@ -320,18 +454,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context, setState) => AlertDialog(
           backgroundColor: AppTheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text(
-            'Delete Account',
-            style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold),
+          title: Text(
+            l10n.deleteAccount,
+            style: const TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold),
           ),
-          content: const Text(
-            'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
-            style: TextStyle(color: AppTheme.textSecondary),
+          content: Text(
+            l10n.deleteAccountWarning,
+            style: const TextStyle(color: AppTheme.textSecondary),
           ),
           actions: [
             TextButton(
               onPressed: isDeleting ? null : () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+              child: Text(l10n.cancel, style: const TextStyle(color: AppTheme.textSecondary)),
             ),
             ElevatedButton(
               onPressed: isDeleting ? null : () async {
@@ -350,7 +484,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          context.read<AuthProvider>().errorMessage ?? 'Failed to delete account',
+                          context.read<AuthProvider>().errorMessage ?? l10n.errorOccurred,
                         ),
                         backgroundColor: AppTheme.error,
                       ),
@@ -374,7 +508,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                : const Text('Delete'),
+                : Text(l10n.yes),
             ),
           ],
         ),

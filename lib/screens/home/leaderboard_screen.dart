@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../services/friends_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
 import '../../utils/app_theme.dart';
 import '../profile/player_stats_screen.dart';
@@ -67,6 +68,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUserId = context.watch<AuthProvider>().currentUser?.id;
+    final l10n = AppLocalizations.of(context);
 
     if (_isLoading) {
       return const Center(
@@ -160,7 +162,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _showFriendsOnly ? 'Friends Leaderboard' : 'Global Leaderboard',
+                    _showFriendsOnly ? l10n.friends : l10n.globalLeaderboard,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -175,13 +177,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                   child: Row(
                     children: [
-                      _buildToggleButton('Global', !_showFriendsOnly, () {
+                      _buildToggleButton(l10n.global, !_showFriendsOnly, () {
                         setState(() {
                           _showFriendsOnly = false;
                         });
                         _loadLeaderboard();
                       }),
-                      _buildToggleButton('Friends', _showFriendsOnly, () {
+                      _buildToggleButton(l10n.friends, _showFriendsOnly, () {
                         setState(() {
                           _showFriendsOnly = true;
                         });
@@ -198,9 +200,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
               children: [
-                Expanded(child: _buildHeaderCell('Rank', TextAlign.center)),
-                Expanded(flex: 3, child: _buildHeaderCell('Player', TextAlign.left)),
-                Expanded(child: _buildHeaderCell('ELO', TextAlign.right)),
+                Expanded(child: _buildHeaderCell(l10n.rank.toUpperCase(), TextAlign.center)),
+                Expanded(flex: 3, child: _buildHeaderCell(l10n.player.toUpperCase(), TextAlign.left)),
+                Expanded(child: _buildHeaderCell(l10n.elo, TextAlign.right)),
               ],
             ),
           ),

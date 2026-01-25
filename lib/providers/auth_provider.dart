@@ -2,16 +2,22 @@ import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../utils/error_messages.dart';
+import 'locale_provider.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
+  LocaleProvider? _localeProvider;
 
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
+
+  void setLocaleProvider(LocaleProvider localeProvider) {
+    _localeProvider = localeProvider;
+  }
 
   Future<void> checkAuthStatus() async {
     _isLoading = true;
@@ -21,6 +27,9 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = await AuthService.getCurrentUser();
       _currentUser = user;
+      if (user != null && _localeProvider != null) {
+        _localeProvider!.setLocaleFromUser(user.language);
+      }
     } catch (e) {
       _currentUser = null;
       _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
@@ -46,6 +55,9 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
       _currentUser = result['user'];
+      if (_currentUser != null && _localeProvider != null) {
+        _localeProvider!.setLocaleFromUser(_currentUser!.language);
+      }
       _isLoading = false;
       notifyListeners();
       return true;
@@ -71,6 +83,9 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
       _currentUser = result['user'];
+      if (_currentUser != null && _localeProvider != null) {
+        _localeProvider!.setLocaleFromUser(_currentUser!.language);
+      }
       _isLoading = false;
       notifyListeners();
       return true;

@@ -101,6 +101,31 @@ class ApiService {
     }
   }
 
+  static Future<dynamic> patch(
+    String endpoint,
+    Map<String, dynamic> body, {
+    bool includeAuth = true,
+  }) async {
+    try {
+      final headers = await _getHeaders(includeAuth: includeAuth);
+      final response = await http.patch(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+        body: jsonEncode(body),
+      ).timeout(_timeout);
+
+      return _handleResponse(response);
+    } on TimeoutException {
+      throw Exception('Connection timeout - Please check your internet');
+    } catch (e) {
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('HandshakeException')) {
+        throw Exception('Unable to connect - Check your internet connection');
+      }
+      rethrow;
+    }
+  }
+
   static Future<dynamic> delete(String endpoint, {bool includeAuth = true}) async {
     try {
       final url = Uri.parse('$baseUrl$endpoint');

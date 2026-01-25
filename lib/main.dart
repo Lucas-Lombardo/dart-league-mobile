@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/matchmaking_provider.dart';
 import 'providers/game_provider.dart';
 import 'providers/friends_provider.dart';
+import 'providers/locale_provider.dart';
+import 'l10n/app_localizations.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -35,21 +38,47 @@ class DartLegendsApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProxyProvider<LocaleProvider, AuthProvider>(
+          create: (context) {
+            final authProvider = AuthProvider();
+            authProvider.setLocaleProvider(
+              Provider.of<LocaleProvider>(context, listen: false),
+            );
+            return authProvider;
+          },
+          update: (context, localeProvider, authProvider) {
+            authProvider!.setLocaleProvider(localeProvider);
+            return authProvider;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => MatchmakingProvider()),
-        ChangeNotifierProvider.value(value: gameProvider), // Use pre-created instance
+        ChangeNotifierProvider.value(value: gameProvider),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
       ],
-      child: MaterialApp(
-        title: 'Dart Legends',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        initialRoute: '/',
-        routes: {
-          '/': (context) => const SplashScreen(),
-          '/login': (context) => const LoginScreen(),
-          '/register': (context) => const RegisterScreen(),
-          '/home': (context) => const HomeScreen(),
+      child: Consumer<LocaleProvider>(
+        builder: (context, localeProvider, child) {
+          return MaterialApp(
+            key: ValueKey(localeProvider.locale.languageCode),
+            title: 'Dart Legends',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.themeData,
+            locale: localeProvider.locale,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            initialRoute: '/',
+            routes: {
+              '/': (context) => const SplashScreen(),
+              '/login': (context) => const LoginScreen(),
+              '/register': (context) => const RegisterScreen(),
+              '/home': (context) => const HomeScreen(),
+            },
+          );
         },
       ),
     );

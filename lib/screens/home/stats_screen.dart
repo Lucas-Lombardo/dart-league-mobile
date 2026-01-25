@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../profile/match_history_screen.dart';
 import '../../utils/app_theme.dart';
 
@@ -63,6 +64,8 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -109,7 +112,7 @@ class _StatsScreenState extends State<StatsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Performance Overview',
+              l10n.performanceOverview,
               style: AppTheme.titleLarge,
             ),
             const SizedBox(height: 16),
@@ -122,25 +125,25 @@ class _StatsScreenState extends State<StatsScreen> {
               childAspectRatio: 1.35,
               children: [
                 _buildStatCard(
-                  'Win Rate',
+                  l10n.winRate,
                   '${_stats!.winRate.toStringAsFixed(1)}%',
                   Icons.trending_up,
                   AppTheme.success,
                 ),
                 _buildStatCard(
-                  'Total Matches',
+                  l10n.totalMatches,
                   _stats!.totalMatches.toString(),
                   Icons.sports_esports,
                   AppTheme.primary,
                 ),
                 _buildStatCard(
-                  'Avg Score',
+                  l10n.avgScore,
                   _stats!.averageScore.toStringAsFixed(1),
                   Icons.calculate,
                   AppTheme.accent,
                 ),
                 _buildStatCard(
-                  'Highest Score',
+                  l10n.highestScore,
                   _stats!.highestScore.toString(),
                   Icons.emoji_events,
                   const Color(0xFFFFD700),
@@ -162,7 +165,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          'WINS',
+                          l10n.wins.toUpperCase(),
                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 4),
@@ -187,7 +190,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          'LOSSES',
+                          l10n.losses.toUpperCase(),
                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 4),
@@ -212,7 +215,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          'STREAK',
+                          l10n.streak,
                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 4),
@@ -246,7 +249,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 20),
               ),
               icon: const Icon(Icons.history_rounded),
-              label: const Text('VIEW FULL MATCH HISTORY'),
+              label: Text(l10n.viewFullMatchHistory),
             ),
           ],
         ),

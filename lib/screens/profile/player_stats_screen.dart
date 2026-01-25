@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../services/user_service.dart';
-import '../../widgets/rank_badge.dart';
-import '../profile/match_history_screen.dart';
 import '../../utils/app_theme.dart';
 
 class PlayerStatsScreen extends StatefulWidget {

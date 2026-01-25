@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -39,6 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -77,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               keyboardType: TextInputType.emailAddress,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Email',
+                                label: l10n.email,
                                 prefixIcon: Icons.email_outlined,
                               ),
                               validator: (value) {
@@ -96,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               obscureText: _obscurePassword,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Password',
+                                label: l10n.password,
                                 prefixIcon: Icons.lock_outline,
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -166,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                             ),
                                           )
-                                        : const Text('LOGIN'),
+                                        : Text(l10n.loginButton.toUpperCase()),
                                   ),
                                 );
                               },
@@ -180,8 +183,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
-                        "Don't have an account? ",
+                      Text(
+                        "${l10n.dontHaveAccount} ",
                         style: AppTheme.bodyLarge,
                       ),
                       TextButton(
@@ -189,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           context.read<AuthProvider>().clearError();
                           Navigator.pushReplacementNamed(context, '/register');
                         },
-                        child: const Text('Register'),
+                        child: Text(l10n.register),
                       ),
                     ],
                   ),

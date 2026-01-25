@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/rank_badge.dart';
+import '../l10n/app_localizations.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
 import '../providers/friends_provider.dart';
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.currentUser;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -49,9 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'DART RIVALS',
-                style: TextStyle(
+              Text(
+                l10n.dartRivals,
+                style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1,
                   fontSize: 20,
@@ -189,10 +191,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, 'Stats'),
-                  _buildNavItem(1, Icons.play_circle_outline, Icons.play_circle_filled, 'Play'),
-                  _buildNavItem(2, Icons.people_outline, Icons.people, 'Friends'),
-                  _buildNavItem(3, Icons.leaderboard_outlined, Icons.leaderboard, 'Rankings'),
+                  _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, l10n.stats),
+                  _buildNavItem(1, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play),
+                  _buildNavItem(2, Icons.people_outline, Icons.people, l10n.friends),
+                  _buildNavItem(3, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings),
                 ],
               ),
             ),

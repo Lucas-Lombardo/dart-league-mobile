@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/matchmaking_provider.dart';
-import '../../providers/game_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
@@ -142,6 +141,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
+    final l10n = AppLocalizations.of(context);
 
     if (user == null) {
       return const Center(
@@ -354,9 +354,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                             ),
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'FIND MATCH',
-                            style: TextStyle(
+                          Text(
+                            l10n.findMatch.toUpperCase(),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.w900,
@@ -365,7 +365,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Ranked Competitive',
+                            l10n.rankedCompetitive,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 14,
@@ -385,7 +385,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Recent Matches',
+                l10n.recentMatches,
                 style: AppTheme.titleLarge,
               ),
               if (!_loadingMatches)
@@ -394,7 +394,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                     // Navigate to history tab via parent controller if possible, or just refresh
                     _loadRecentMatches();
                   },
-                  child: const Text('Refresh'),
+                  child: Text(l10n.refresh),
                 ),
             ],
           ),
@@ -424,7 +424,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   const Icon(Icons.history, size: 48, color: AppTheme.textSecondary),
                   const SizedBox(height: 16),
                   Text(
-                    'No matches yet',
+                    l10n.noMatchesYet,
                     style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
                   ),
                   const SizedBox(height: 8),

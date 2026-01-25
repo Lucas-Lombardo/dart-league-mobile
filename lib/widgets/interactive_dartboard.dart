@@ -49,11 +49,10 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     // Distance ratios for dartboard rings (adjusted to real dartboard proportions)
     final bullseyeRadius = radius * 0.055;      // Double bull (red center)
     final bullRadius = radius * 0.11;           // Single bull (green ring)
-    final innerSingleEnd = radius * 0.54;       // Inner single area
+    // Inner single area: radius * 0.54
     final tripleStart = radius * 0.54;          // Triple ring starts (wider)
     final tripleEnd = radius * 0.66;            // Triple ring ends (wider)
-    final outerSingleStart = radius * 0.66;     // Outer single starts
-    final outerSingleEnd = radius * 0.85;       // Outer single ends
+    // Outer single: radius * 0.66 to 0.85
     final doubleStart = radius * 0.85;          // Double ring starts
     final doubleEnd = radius * 0.95;            // Double ring ends
     

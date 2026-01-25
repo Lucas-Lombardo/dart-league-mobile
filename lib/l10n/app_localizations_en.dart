@@ -1,0 +1,289 @@
+import 'app_localizations.dart';
+
+class AppLocalizationsEn extends AppLocalizations {
+  @override
+  String get appName => 'Dart Legends';
+
+  @override
+  String get login => 'Login';
+
+  @override
+  String get register => 'Register';
+
+  @override
+  String get email => 'Email';
+
+  @override
+  String get password => 'Password';
+
+  @override
+  String get username => 'Username';
+
+  @override
+  String get loginButton => 'Sign In';
+
+  @override
+  String get registerButton => 'Create Account';
+
+  @override
+  String get dontHaveAccount => "Don't have an account?";
+
+  @override
+  String get alreadyHaveAccount => 'Already have an account?';
+
+  @override
+  String get logout => 'Logout';
+
+  @override
+  String get profile => 'Profile';
+
+  @override
+  String get home => 'Home';
+
+  @override
+  String get leaderboard => 'Leaderboard';
+
+  @override
+  String get friends => 'Friends';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get play => 'Play';
+
+  @override
+  String get findMatch => 'Find Match';
+
+  @override
+  String get searching => 'Searching...';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get matchFound => 'Match Found!';
+
+  @override
+  String get waiting => 'Waiting...';
+
+  @override
+  String get wins => 'Wins';
+
+  @override
+  String get losses => 'Losses';
+
+  @override
+  String get rank => 'Rank';
+
+  @override
+  String get elo => 'ELO';
+
+  @override
+  String get recentMatches => 'Recent Matches';
+
+  @override
+  String get noMatchesYet => 'No matches yet';
+
+  @override
+  String get victory => 'Victory';
+
+  @override
+  String get defeat => 'Defeat';
+
+  @override
+  String get draw => 'Draw';
+
+  @override
+  String get vs => 'vs';
+
+  @override
+  String get yourTurn => 'Your Turn';
+
+  @override
+  String get opponentTurn => "Opponent's Turn";
+
+  @override
+  String get gameOver => 'Game Over';
+
+  @override
+  String get youWon => 'You Won!';
+
+  @override
+  String get youLost => 'You Lost';
+
+  @override
+  String get playAgain => 'Play Again';
+
+  @override
+  String get backToHome => 'Back to Home';
+
+  @override
+  String get score => 'Score';
+
+  @override
+  String get deleteAccount => 'Delete Account';
+
+  @override
+  String get deleteAccountConfirm => 'Are you sure?';
+
+  @override
+  String get deleteAccountWarning => 'This action cannot be undone. All your data will be permanently deleted.';
+
+  @override
+  String get yes => 'Yes';
+
+  @override
+  String get no => 'No';
+
+  @override
+  String get accountDeleted => 'Account deleted successfully';
+
+  @override
+  String get errorOccurred => 'An error occurred';
+
+  @override
+  String get connectionError => 'Connection error';
+
+  @override
+  String get invalidCredentials => 'Invalid credentials';
+
+  @override
+  String get emailAlreadyExists => 'Email already exists';
+
+  @override
+  String get loading => 'Loading...';
+
+  @override
+  String get searchingForOpponent => 'Searching for opponent...';
+
+  @override
+  String get matchmaking => 'Matchmaking';
+
+  @override
+  String get acceptMatch => 'Accept';
+
+  @override
+  String get declineMatch => 'Decline';
+
+  @override
+  String get playerLeft => 'Player left the game';
+
+  @override
+  String get reconnecting => 'Reconnecting...';
+
+  @override
+  String get connected => 'Connected';
+
+  @override
+  String get disconnected => 'Disconnected';
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get changeLanguage => 'Change Language';
+
+  // Bottom Navigation
+  @override
+  String get stats => 'Stats';
+
+  @override
+  String get rankings => 'Rankings';
+
+  // Play Screen
+  @override
+  String get dartRivals => 'DART RIVALS';
+
+  @override
+  String get rankedCompetitive => 'Ranked Competitive';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get loss => 'LOSS';
+
+  @override
+  String get win => 'WIN';
+
+  // Rank Names
+  @override
+  String get bronze => 'Bronze';
+
+  @override
+  String get silver => 'Silver';
+
+  @override
+  String get gold => 'Gold';
+
+  @override
+  String get platinum => 'Platinum';
+
+  @override
+  String get diamond => 'Diamond';
+
+  @override
+  String get master => 'Master';
+
+  @override
+  String get grandmaster => 'Grandmaster';
+
+  @override
+  String get legend => 'Legend';
+
+  // Leaderboard
+  @override
+  String get globalLeaderboard => 'Global Leaderboard';
+
+  @override
+  String get global => 'Global';
+
+  @override
+  String get player => 'Player';
+
+  // About Section
+  @override
+  String get about => 'About';
+
+  @override
+  String get appVersion => 'App Version';
+
+  @override
+  String get developer => 'Developer';
+
+  @override
+  String get preferences => 'Preferences';
+
+  // Friends Screen
+  @override
+  String get add => 'Add';
+
+  @override
+  String get requests => 'Requests';
+
+  @override
+  String get friendsCount => 'Friends';
+
+  // Stats Screen
+  @override
+  String get performanceOverview => 'Performance Overview';
+
+  @override
+  String get winRate => 'Win Rate';
+
+  @override
+  String get totalMatches => 'Total Matches';
+
+  @override
+  String get avgScore => 'Avg Score';
+
+  @override
+  String get highestScore => 'Highest Score';
+
+  @override
+  String get streak => 'STREAK';
+
+  @override
+  String get viewFullMatchHistory => 'VIEW FULL MATCH HISTORY';
+}

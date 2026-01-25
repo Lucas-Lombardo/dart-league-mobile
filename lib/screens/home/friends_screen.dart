@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../models/user.dart';
 import '../../services/friends_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
@@ -201,6 +202,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final friendsProvider = context.watch<FriendsProvider>();
+    final l10n = AppLocalizations.of(context);
 
     if (_showSearch) {
       return Column(
@@ -221,8 +223,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Row(
                   children: [
-                    const Expanded(
-                      child: Text('Friends', style: AppTheme.titleLarge),
+                    Expanded(
+                      child: Text(l10n.friends, style: AppTheme.titleLarge),
                     ),
                     ElevatedButton.icon(
                       onPressed: () {
@@ -235,7 +237,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                       icon: const Icon(Icons.person_add, size: 20),
-                      label: const Text('Add'),
+                      label: Text(l10n.add),
                     ),
                   ],
                 ),
@@ -246,12 +248,12 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 unselectedLabelColor: AppTheme.textSecondary,
                 indicatorColor: AppTheme.primary,
                 tabs: [
-                  Tab(text: 'Friends (${friendsProvider.friends.length})'),
+                  Tab(text: '${l10n.friendsCount} (${friendsProvider.friends.length})'),
                   Tab(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('Requests'),
+                        Text(l10n.requests),
                         if (friendsProvider.pendingRequestsCount > 0) ...[
                           const SizedBox(width: 8),
                           Container(

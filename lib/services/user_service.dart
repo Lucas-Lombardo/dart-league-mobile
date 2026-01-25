@@ -116,6 +116,16 @@ class UserService {
     }
   }
 
+  static Future<void> updateLanguage(String languageCode) async {
+    try {
+      await ApiService.patch('/users/language', {
+        'language': languageCode,
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
 
   static UserStats calculateStatsFromMatches(List<Match> matches, String userId) {
     if (matches.isEmpty) {
