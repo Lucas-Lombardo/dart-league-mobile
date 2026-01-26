@@ -118,7 +118,7 @@ abstract class AppLocalizations {
   String get winRate;
   String get totalMatches;
   String get avgScore;
-  String get highestScore;
+  String get count180s;
   String get streak;
   String get viewFullMatchHistory;
 }

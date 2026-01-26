@@ -28,11 +28,18 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
       builder: (context, constraints) {
         final size = math.min(constraints.maxWidth, constraints.maxHeight);
         
-        return GestureDetector(
-          onTapUp: (details) => _handleTap(details, size),
-          child: CustomPaint(
-            size: Size(size, size),
-            painter: DartboardPainter(),
+        return Center(
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (details) => _handleTap(details, size),
+              child: CustomPaint(
+                size: Size(size, size),
+                painter: DartboardPainter(),
+              ),
+            ),
           ),
         );
       },

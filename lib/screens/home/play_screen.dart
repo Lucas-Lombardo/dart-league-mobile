@@ -200,7 +200,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '-${_getEloBelowPreviousRank(currentRank, user.elo)}',
+                                '-${_getEloBelowPreviousRank(currentRank, user.elo).abs()}',
                                 style: const TextStyle(
                                   color: Color(0xFFEF4444),
                                   fontSize: 13,

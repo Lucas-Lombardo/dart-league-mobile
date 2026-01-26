@@ -6,7 +6,7 @@ class UserStats {
   final int totalMatches;
   final double winRate;
   final double averageScore;
-  final int highestScore;
+  final int count180s;
   final int currentStreak;
   final int wins;
   final int losses;
@@ -15,7 +15,7 @@ class UserStats {
     required this.totalMatches,
     required this.winRate,
     required this.averageScore,
-    required this.highestScore,
+    required this.count180s,
     required this.currentStreak,
     required this.wins,
     required this.losses,
@@ -28,7 +28,7 @@ class UserStats {
       // Backend sends 'averageScorePerRound', map it to 'averageScore'
       averageScore: (json['averageScorePerRound'] as num?)?.toDouble() ?? 
                     (json['averageScore'] as num?)?.toDouble() ?? 0.0,
-      highestScore: json['highestScore'] as int? ?? 0,
+      count180s: json['count180s'] as int? ?? 0,
       currentStreak: json['currentStreak'] as int? ?? 0,
       wins: json['wins'] as int? ?? 0,
       losses: json['losses'] as int? ?? 0,
@@ -133,7 +133,7 @@ class UserService {
         totalMatches: 0,
         winRate: 0.0,
         averageScore: 0.0,
-        highestScore: 0,
+        count180s: 0,
         currentStreak: 0,
         wins: 0,
         losses: 0,
@@ -143,7 +143,6 @@ class UserService {
     int wins = 0;
     int losses = 0;
     int totalScore = 0;
-    int highestScore = 0;
     int currentStreak = 0;
     bool lastWasWin = false;
 
@@ -170,14 +169,8 @@ class UserService {
       }
 
       // In darts 501, lower score at end is better (closer to 0)
-      // But for "highest score in a round", we want the highest round score
-      // For now, use the starting score minus final score as "points scored"
       final pointsScored = 501 - myScore;
       totalScore += pointsScored;
-      
-      if (pointsScored > highestScore) {
-        highestScore = pointsScored;
-      }
     }
 
     final totalMatches = matches.length;
@@ -188,7 +181,7 @@ class UserService {
       totalMatches: totalMatches,
       winRate: winRate,
       averageScore: averageScore,
-      highestScore: highestScore,
+      count180s: 0, // Not calculated from match data, use backend value
       currentStreak: currentStreak,
       wins: wins,
       losses: losses,

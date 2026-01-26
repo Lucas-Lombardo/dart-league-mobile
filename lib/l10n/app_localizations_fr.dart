@@ -279,7 +279,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get avgScore => 'Score moyen';
 
   @override
-  String get highestScore => 'Meilleur score';
+  String get count180s => 'Nombre de 180';
 
   @override
   String get streak => 'SÉRIE';

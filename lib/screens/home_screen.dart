@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Container(
           alignment: Alignment.centerLeft,
           child: Row(
@@ -219,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -289,9 +290,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 2),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),
             ),

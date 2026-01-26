@@ -7,6 +7,6 @@ void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(DartLegendsApp(gameProvider: GameProvider()));
 
-    expect(find.text('🎯 Dart Legends'), findsOneWidget);
+    expect(find.text('🎯 Dart Rivals'), findsOneWidget);
   });
 }

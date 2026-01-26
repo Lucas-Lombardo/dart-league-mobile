@@ -135,8 +135,8 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                                   AppTheme.accent,
                                 ),
                                 _buildStatCard(
-                                  'Highest Score',
-                                  _stats!.highestScore.toString(),
+                                  '180s Count',
+                                  _stats!.count180s.toString(),
                                   Icons.emoji_events,
                                   const Color(0xFFFFD700),
                                 ),

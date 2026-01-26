@@ -215,13 +215,18 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
 
     return Column(
       children: [
-        Container(
-          color: AppTheme.surface,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Row(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Row(
                   children: [
                     Expanded(
                       child: Text(l10n.friends, style: AppTheme.titleLarge),
@@ -247,6 +252,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 labelColor: AppTheme.primary,
                 unselectedLabelColor: AppTheme.textSecondary,
                 indicatorColor: AppTheme.primary,
+                dividerHeight: 0,
                 tabs: [
                   Tab(text: '${l10n.friendsCount} (${friendsProvider.friends.length})'),
                   Tab(
@@ -273,9 +279,11 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                   ),
                 ],
               ),
-            ],
+              ],
+            ),
           ),
         ),
+        const SizedBox(height: 16),
         Expanded(
           child: TabBarView(
             controller: _tabController,

@@ -143,8 +143,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   AppTheme.accent,
                 ),
                 _buildStatCard(
-                  l10n.highestScore,
-                  _stats!.highestScore.toString(),
+                  l10n.count180s,
+                  _stats!.count180s.toString(),
                   Icons.emoji_events,
                   const Color(0xFFFFD700),
                 ),
