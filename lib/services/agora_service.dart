@@ -113,6 +113,15 @@ class AgoraService {
     }
   }
 
+  /// Mute all remote audio streams (opponent's audio)
+  static Future<void> muteAllRemoteAudio(RtcEngine engine, bool muted) async {
+    try {
+      await engine.muteAllRemoteAudioStreams(muted);
+    } catch (_) {
+      // Mute remote audio error
+    }
+  }
+
   /// Switch between front and back camera
   static Future<void> switchCamera(RtcEngine engine) async {
     

@@ -173,6 +173,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
       );
       
+      // Disable audio completely before joining
+      await _agoraEngine!.disableAudio();
+      
       // Join channel
       if (widget.agoraToken != null && widget.agoraChannelName != null) {
         await AgoraService.joinChannel(
@@ -181,9 +184,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           channelName: widget.agoraChannelName!,
           uid: 0, // 0 means Agora will assign a uid
         );
-        
-        // Mute microphone by default
-        await AgoraService.toggleLocalAudio(_agoraEngine!, true);
       }
     } catch (_) {
       // Agora initialization error
@@ -207,7 +207,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _isAudioMuted = !_isAudioMuted;
     });
     
-    await AgoraService.toggleLocalAudio(_agoraEngine!, _isAudioMuted);
+    if (_isAudioMuted) {
+      // Disable audio completely
+      await _agoraEngine!.disableAudio();
+    } else {
+      // Enable audio completely
+      await _agoraEngine!.enableAudio();
+    }
   }
   
   Future<void> _switchCamera() async {
