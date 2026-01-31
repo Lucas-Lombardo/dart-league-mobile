@@ -152,6 +152,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       // Initialize engine
       _agoraEngine = await AgoraService.initializeEngine(widget.agoraAppId!);
       
+      // Set back camera as default (same as camera setup)
+      await AgoraService.setBackCamera(_agoraEngine!);
+      
       // Set up event handlers
       _agoraEngine!.registerEventHandler(
         RtcEngineEventHandler(
