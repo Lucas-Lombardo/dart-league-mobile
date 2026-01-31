@@ -1271,10 +1271,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             Navigator.of(context).pop();
           }
         },
-        child: Scaffold(
-          backgroundColor: AppTheme.background,
-          appBar: AppBar(
-            backgroundColor: AppTheme.surface,
+        child: Container(
+          color: AppTheme.surface,
+          child: SafeArea(
+            top: false,
+            child: Scaffold(
+              backgroundColor: AppTheme.background,
+              appBar: AppBar(
+                backgroundColor: AppTheme.surface,
             title: Row(
             children: [
               Container(
@@ -1328,17 +1332,19 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
-        body: Stack(
-          children: [
-            Column(
-              children: [
-                // Video Area - Only show during opponent's turn
-                if (!game.isMyTurn)
-                  Container(
-                    height: 280,
-                    padding: const EdgeInsets.all(12),
-                    child: _buildOpponentTurnVideoLayout(game),
-                  ),
+        body: Container(
+          color: AppTheme.background,
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  // Video Area - Only show during opponent's turn
+                  if (!game.isMyTurn)
+                    Container(
+                      height: 280,
+                      padding: const EdgeInsets.all(12),
+                      child: _buildOpponentTurnVideoLayout(game),
+                    ),
             
             // Mic and Camera controls
             if (_agoraEngine != null && !game.isMyTurn)
@@ -1424,106 +1430,26 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               ],
             ),
             
-            // Small floating camera widget showing opponent (only during user's turn)
-            if (game.isMyTurn && _agoraEngine != null && game.remoteUid != null)
-              Positioned(
-                top: 16,
-                left: 16,
-                child: Container(
-                  width: 120,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppTheme.surfaceLight,
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Stack(
-                      children: [
-                        AgoraVideoView(
-                          controller: VideoViewController.remote(
-                            rtcEngine: _agoraEngine!,
-                            canvas: VideoCanvas(uid: game.remoteUid!),
-                            connection: RtcConnection(channelId: ''),
-                          ),
-                        ),
-                        // Opponent label
-                        Positioned(
-                          bottom: 8,
-                          left: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  widget.opponentUsername.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  '${game.opponentScore}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            
-            // MISS button in top-right corner (only during user's turn)
+            // Top bar with YOUR SCORE and Camera (only during user's turn)
             if (game.isMyTurn)
               Positioned(
                 top: 16,
+                left: 16,
                 right: 16,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      HapticService.mediumImpact();
-                      final game = context.read<GameProvider>();
-                      if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
-                        game.editDartThrow(_editingDartIndex!, 0, ScoreMultiplier.single);
-                        setState(() {
-                          _editingDartIndex = null;
-                        });
-                      } else {
-                        game.throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      width: 80,
-                      height: 80,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    final showCamera = screenWidth >= 400 && _agoraEngine != null && game.remoteUid != null;
+                    
+                    return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Left: YOUR SCORE with global score, dart indicators, and MISS button
+                    Container(
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+                        color: AppTheme.surfaceLight.withValues(alpha: 0.95),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: AppTheme.surfaceLight,
@@ -1538,26 +1464,280 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                         ],
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.close, color: Colors.white70, size: 28),
-                          SizedBox(height: 4),
-                          Text(
-                            'MISS',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // YOUR SCORE with global score
+                          Row(
+                            children: [
+                              const Text(
+                                'YOUR SCORE: ',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              Text(
+                                '${game.myScore}',
+                                style: TextStyle(
+                                  color: game.myScore <= 170 ? AppTheme.success : AppTheme.primary,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Dart indicators and MISS button
+                          Row(
+                            children: [
+                              ...List.generate(3, (index) {
+                                final throws = game.currentRoundThrows;
+                                final hasThrow = index < throws.length;
+                                final isNext = index == throws.length;
+                                
+                                return Container(
+                                  width: 40,
+                                  height: 40,
+                                  margin: const EdgeInsets.only(right: 8),
+                                  decoration: BoxDecoration(
+                                    color: hasThrow 
+                                        ? AppTheme.primary.withValues(alpha: 0.2)
+                                        : AppTheme.background,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: hasThrow 
+                                          ? AppTheme.primary 
+                                          : isNext 
+                                              ? Colors.white24 
+                                              : Colors.transparent,
+                                      width: hasThrow || isNext ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: hasThrow 
+                                        ? Text(
+                                            throws[index],
+                                            style: const TextStyle(
+                                              color: AppTheme.primary,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.adjust,
+                                            color: isNext ? Colors.white54 : Colors.white10,
+                                            size: 16,
+                                          ),
+                                  ),
+                                );
+                              }),
+                              // MISS button
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    HapticService.mediumImpact();
+                                    final game = context.read<GameProvider>();
+                                    if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
+                                      game.editDartThrow(_editingDartIndex!, 0, ScoreMultiplier.single);
+                                      setState(() {
+                                        _editingDartIndex = null;
+                                      });
+                                    } else {
+                                      game.throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    width: 50,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.background,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: AppTheme.surfaceLight,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.close, color: Colors.white70, size: 16),
+                                        Text(
+                                          'MISS',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 7,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                  ),
+                    
+                    // Right: Camera widget (if screen is large enough) or simple score card (if screen is small)
+                    if (showCamera)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxHeight: 220,
+                          maxWidth: 160,
+                        ),
+                        child: Container(
+                          width: 160,
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceLight.withValues(alpha: 0.95),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.surfaceLight,
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Opponent name
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              child: Text(
+                                widget.opponentUsername.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Camera video feed
+                            Container(
+                              width: double.infinity,
+                              height: 105,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.surface,
+                              ),
+                              child: AgoraVideoView(
+                                controller: VideoViewController.remote(
+                                  rtcEngine: _agoraEngine!,
+                                  canvas: VideoCanvas(uid: game.remoteUid!),
+                                  connection: RtcConnection(channelId: ''),
+                                ),
+                              ),
+                            ),
+                            // Score at bottom
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'SCORE',
+                                    style: TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${game.opponentScore}',
+                                    style: const TextStyle(
+                                      color: AppTheme.primary,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      )
+                    else
+                      // Show simple opponent score card on small screens
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.surfaceLight,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.opponentUsername.toUpperCase(),
+                              style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Text(
+                                  'SCORE: ',
+                                  style: TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${game.opponentScore}',
+                                  style: const TextStyle(
+                                    color: AppTheme.primary,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+                  },
                 ),
               ),
-          ],
+            ],
+          ),
+          ),
         ),
+          ),
         ),
       );
     } catch (e, stackTrace) {
@@ -1733,46 +1913,15 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         Expanded(
           child: Column(
             children: [
-              // Score display
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                color: AppTheme.surface,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'YOUR SCORE: ',
-                      style: AppTheme.bodyLarge.copyWith(
-                        color: AppTheme.textSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    Text(
-                      '${game.myScore}',
-                      style: TextStyle(
-                        color: game.myScore <= 170 ? AppTheme.success : AppTheme.primary,
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Current Round Darts Display
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                color: AppTheme.surface,
-                child: _buildCurrentRoundDisplay(game),
-              ),
+              // Add spacer to push dartboard down
+              const Spacer(flex: 1),
               
               // Interactive Dartboard
               Expanded(
+                flex: 3,
                 child: Container(
                   color: AppTheme.surface,
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                   child: InteractiveDartboard(
                     onDartThrow: (score, multiplier) {
                       if (_editingDartIndex != null && _editingDartIndex! < game.currentRoundThrows.length) {
