@@ -107,10 +107,10 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   Map<String, int> get _rankThresholds => {
     'bronze': 0,
     'silver': 1000,
-    'gold': 1600,
+    'gold': 1500,
     'platinum': 2000,
-    'diamond': 2400,
-    'master': 2800,
+    'diamond': 2500,
+    'master': 3000,
   };
 
   int _getEloNeededForNextRank(String currentRank, int currentElo) {

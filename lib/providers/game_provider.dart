@@ -68,6 +68,11 @@ class GameProvider with ChangeNotifier {
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
   
+  void setScore(int newScore) {
+    _myScore = newScore;
+    notifyListeners();
+  }
+  
   int get currentRoundScore {
     int score = 0;
     for (final dart in _currentRoundThrows) {

@@ -1503,40 +1503,53 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                                 final throws = game.currentRoundThrows;
                                 final hasThrow = index < throws.length;
                                 final isNext = index == throws.length;
+                                final isEditing = _editingDartIndex == index;
                                 
-                                return Container(
-                                  width: 40,
-                                  height: 40,
-                                  margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(
-                                    color: hasThrow 
-                                        ? AppTheme.primary.withValues(alpha: 0.2)
-                                        : AppTheme.background,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: hasThrow 
-                                          ? AppTheme.primary 
-                                          : isNext 
-                                              ? Colors.white24 
-                                              : Colors.transparent,
-                                      width: hasThrow || isNext ? 2 : 1,
+                                return GestureDetector(
+                                  onTap: hasThrow ? () {
+                                    HapticService.lightImpact();
+                                    setState(() {
+                                      _editingDartIndex = isEditing ? null : index;
+                                    });
+                                  } : null,
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      color: isEditing
+                                          ? AppTheme.error.withValues(alpha: 0.3)
+                                          : hasThrow 
+                                              ? AppTheme.primary.withValues(alpha: 0.2)
+                                              : AppTheme.background,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isEditing
+                                            ? AppTheme.error
+                                            : hasThrow 
+                                                ? AppTheme.primary 
+                                                : isNext 
+                                                    ? Colors.white24 
+                                                    : Colors.transparent,
+                                        width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1),
+                                      ),
                                     ),
-                                  ),
-                                  child: Center(
-                                    child: hasThrow 
-                                        ? Text(
-                                            throws[index],
-                                            style: const TextStyle(
-                                              color: AppTheme.primary,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
+                                    child: Center(
+                                      child: hasThrow 
+                                          ? Text(
+                                              throws[index],
+                                              style: TextStyle(
+                                                color: isEditing ? AppTheme.error : AppTheme.primary,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )
+                                          : Icon(
+                                              Icons.adjust,
+                                              color: isNext ? Colors.white54 : Colors.white10,
+                                              size: 16,
                                             ),
-                                          )
-                                        : Icon(
-                                            Icons.adjust,
-                                            color: isNext ? Colors.white54 : Colors.white10,
-                                            size: 16,
-                                          ),
+                                    ),
                                   ),
                                 );
                               }),
@@ -1739,6 +1752,63 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   },
                 ),
               ),
+            
+            // Edit mode indicator (render on top of everything)
+            if (_editingDartIndex != null && game.isMyTurn)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  elevation: 100,
+                  color: AppTheme.error,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.edit, color: Colors.white, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Editing Dart ${(_editingDartIndex ?? 0) + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _editingDartIndex = null;
+                              });
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              minimumSize: const Size(60, 32),
+                              backgroundColor: Colors.white.withValues(alpha: 0.2),
+                            ),
+                            child: const Text(
+                              'CANCEL',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
           ),
@@ -1836,7 +1906,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildScoreInput(GameProvider game) {
-
     // Waiting for Turn State
     if (!game.isMyTurn) {
       return Center(
@@ -1869,6 +1938,49 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 fontSize: 14,
               ),
             ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 40),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.error,
+                  width: 2,
+                ),
+              ),
+              child: const Column(
+                children: [
+                  Icon(
+                    Icons.warning_rounded,
+                    color: AppTheme.error,
+                    size: 32,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    "DO NOT PLAY!",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.error,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    "Playing during opponent's turn may result in match forfeiture",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -1877,43 +1989,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     // Active Input State
     return Column(
       children: [
-        // Edit mode indicator
-        if (_editingDartIndex != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: AppTheme.error.withValues(alpha: 0.2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.edit, color: AppTheme.error, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Editing Dart ${(_editingDartIndex ?? 0) + 1}',
-                      style: const TextStyle(
-                        color: AppTheme.error,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _editingDartIndex = null;
-                    });
-                  },
-                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(50, 30)),
-                  child: const Text(
-                    'CANCEL',
-                    style: TextStyle(color: AppTheme.error, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
         
         // Interactive Dartboard and confirm button
         Expanded(
