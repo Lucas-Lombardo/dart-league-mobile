@@ -53,14 +53,14 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     final distance = math.sqrt(dx * dx + dy * dy);
     final radius = center;
     
-    // Distance ratios for dartboard rings (adjusted to real dartboard proportions)
-    final bullseyeRadius = radius * 0.055;      // Double bull (red center)
-    final bullRadius = radius * 0.11;           // Single bull (green ring)
-    // Inner single area: radius * 0.54
-    final tripleStart = radius * 0.54;          // Triple ring starts (wider)
-    final tripleEnd = radius * 0.66;            // Triple ring ends (wider)
-    // Outer single: radius * 0.66 to 0.85
-    final doubleStart = radius * 0.85;          // Double ring starts
+    // Distance ratios for dartboard rings (with gap between bull and triples)
+    final bullseyeRadius = radius * 0.10;       // Double bull (red center) - bigger
+    final bullRadius = radius * 0.22;           // Single bull (green ring)
+    // Gap between bull and triple (miss area)
+    final tripleStart = radius * 0.28;          // Triple ring starts (smaller gap)
+    final tripleEnd = radius * 0.48;            // Triple ring ends (much bigger)
+    // Outer single: between triple and double
+    final doubleStart = radius * 0.78;          // Double ring starts
     final doubleEnd = radius * 0.95;            // Double ring ends
     
     // Check bulls
@@ -118,15 +118,15 @@ class DartboardPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     
-    // Distance ratios (matching hitbox detection)
-    final bullseyeRadius = radius * 0.055;      // Double bull (red center)
-    final bullRadius = radius * 0.11;           // Single bull (green ring)
-    final innerSingleEnd = radius * 0.54;       // Inner single area
-    final tripleStart = radius * 0.54;          // Triple ring starts (wider)
-    final tripleEnd = radius * 0.66;            // Triple ring ends (wider)
-    final outerSingleStart = radius * 0.66;     // Outer single starts
-    final outerSingleEnd = radius * 0.85;       // Outer single ends
-    final doubleStart = radius * 0.85;          // Double ring starts
+    // Distance ratios (matching hitbox detection - with gap between bull and triples)
+    final bullseyeRadius = radius * 0.10;       // Double bull (red center) - bigger
+    final bullRadius = radius * 0.22;           // Single bull (green ring)
+    // Gap between bull and triple: 0.22 to 0.28 (miss area - uses background)
+    final tripleStart = radius * 0.28;          // Triple ring starts (smaller gap)
+    final tripleEnd = radius * 0.48;            // Triple ring ends (much bigger)
+    final outerSingleStart = radius * 0.48;     // Outer single starts
+    final outerSingleEnd = radius * 0.78;       // Outer single ends
+    final doubleStart = radius * 0.78;          // Double ring starts
     final doubleEnd = radius * 0.95;            // Double ring ends
     
     // Colors
@@ -158,13 +158,9 @@ class DartboardPainter extends CustomPainter {
       _drawSegment(canvas, center, outerSingleStart, outerSingleEnd, 
                    startAngle, sweepAngle, singleColor);
       
-      // Draw triple ring
+      // Draw triple ring (connects directly to bull)
       _drawSegment(canvas, center, tripleStart, tripleEnd, 
                    startAngle, sweepAngle, scoreColor);
-      
-      // Draw inner single (between triple and bull)
-      _drawSegment(canvas, center, bullRadius, innerSingleEnd, 
-                   startAngle, sweepAngle, singleColor);
     }
     
     // Draw single bull (outer bull - green)
