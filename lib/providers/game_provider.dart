@@ -238,16 +238,20 @@ class GameProvider with ChangeNotifier {
   }
   
   void confirmRound() {
-    // Auto-fill remaining darts with 0s if less than 3
-    while (_currentRoundThrows.length < 3) {
-      throwDart(baseScore: 0, multiplier: ScoreMultiplier.single);
+    // If we have fewer than 3 darts, use end_round_early which atomically 
+    // fills remaining darts with S0 and confirms - prevents race conditions
+    if (_currentRoundThrows.length < 3) {
+      SocketService.emit('end_round_early', {
+        'matchId': _matchId,
+        'playerId': _myUserId,
+      });
+    } else {
+      // All 3 darts thrown, just confirm
+      SocketService.emit('confirm_round', {
+        'matchId': _matchId,
+        'playerId': _myUserId,
+      });
     }
-    
-    // Emit confirm event if pending, otherwise force it
-    SocketService.emit('confirm_round', {
-      'matchId': _matchId,
-      'playerId': _myUserId,
-    });
   }
   
   void cancelConfirmation() {
