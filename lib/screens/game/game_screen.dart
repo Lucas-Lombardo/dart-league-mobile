@@ -654,6 +654,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       case 'must_finish_double':
         reasonText = 'Must finish on a double';
         break;
+      case 'score_one_remaining':
+        reasonText = 'Cannot finish from 1';
+        break;
       default:
         reasonText = 'Invalid throw';
     }

@@ -517,15 +517,6 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void deleteDartThrow(int index) {
-    if (index < 0 || index >= _currentRoundThrows.length) {
-      return;
-    }
-    
-    _currentRoundThrows.removeAt(index);
-    notifyListeners();
-  }
-
   String _getScoreNotation(int baseScore, ScoreMultiplier multiplier) {
     final prefix = multiplier == ScoreMultiplier.single 
         ? 'S' 
