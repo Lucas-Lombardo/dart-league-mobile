@@ -164,6 +164,10 @@ class GameProvider with ChangeNotifier {
     SocketService.on('player_forfeited', (data) {
       _handlePlayerForfeited(data);
     });
+
+    SocketService.on('dart_undone', (data) {
+      _handleDartUndone(data);
+    });
   }
 
   void _handleGameStarted(dynamic data) {
@@ -410,6 +414,51 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleDartUndone(dynamic data) {
+    // Update scores
+    final player1Score = data['player1Score'] as int?;
+    final player2Score = data['player2Score'] as int?;
+    if (player1Score != null && player2Score != null) {
+      _updateScoresFromPlayerScores(player1Score, player2Score);
+    }
+    
+    _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
+    
+    // Sync currentRoundThrows from backend
+    final throws = data['currentRoundThrows'] as List<dynamic>?;
+    if (throws != null) {
+      _currentRoundThrows = throws.map((t) => t.toString()).toList();
+    }
+    
+    // Clear pending state since dart was undone
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
+    
+    notifyListeners();
+  }
+
+  void undoLastDart() {
+    SocketService.emit('undo_last_dart', {
+      'matchId': _matchId,
+      'playerId': _myUserId,
+    });
+    
+    // Optimistically remove last dart from local state
+    if (_currentRoundThrows.isNotEmpty) {
+      _currentRoundThrows.removeLast();
+    }
+    
+    // Clear pending state
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
+    
+    notifyListeners();
+  }
+
   Future<void> throwDart({
     required int baseScore,
     required ScoreMultiplier multiplier,
@@ -510,6 +559,7 @@ class GameProvider with ChangeNotifier {
     SocketService.off('pending_win');
     SocketService.off('pending_bust');
     SocketService.off('player_forfeited');
+    SocketService.off('dart_undone');
   }
 
   void setRemoteUser(int? uid) {

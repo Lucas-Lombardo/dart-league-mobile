@@ -623,7 +623,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // Player can now edit darts - pending state stays active
+              game.undoLastDart();
             },
             child: const Text('Edit Darts'),
           ),
@@ -702,7 +702,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // Player can now edit darts - pending state stays active
+              game.undoLastDart();
             },
             child: const Text('Edit Darts'),
           ),
