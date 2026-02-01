@@ -286,4 +286,86 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get viewFullMatchHistory => 'VIEW FULL MATCH HISTORY';
+
+  // Tournament Screen
+  @override
+  String get tournament => 'Tournament';
+
+  @override
+  String get tournaments => 'Tournaments';
+
+  @override
+  String get tournamentPlaying => 'Playing';
+
+  @override
+  String get tournamentRegister => 'Register';
+
+  @override
+  String get noActiveTournaments => 'No active tournaments';
+
+  @override
+  String get registerForTournamentHint => 'Register for an upcoming tournament to compete!';
+
+  @override
+  String get noUpcomingTournaments => 'No upcoming tournaments';
+
+  @override
+  String get matchInvites => 'Match Invites';
+
+  @override
+  String get activeTournaments => 'Active Tournaments';
+
+  @override
+  String get registeredTournaments => 'Registered Tournaments';
+
+  @override
+  String get registerNow => 'Register Now';
+
+  @override
+  String get unregister => 'Unregister';
+
+  @override
+  String get matchInvite => 'Match Invite';
+
+  @override
+  String get timeRemaining => 'Time remaining';
+
+  @override
+  String get waitingForOpponent => 'Waiting for opponent...';
+
+  @override
+  String get acceptAndJoin => 'Accept & Join';
+
+  @override
+  String get tournamentDetails => 'Tournament Details';
+
+  @override
+  String get tournamentNotFound => 'Tournament not found';
+
+  @override
+  String get bracket => 'Bracket';
+
+  @override
+  String get participants => 'Participants';
+
+  @override
+  String get scheduledDate => 'Scheduled';
+
+  @override
+  String get winnerReward => 'Winner Reward';
+
+  @override
+  String get currentRound => 'Current Round';
+
+  @override
+  String get winner => 'Winner';
+
+  @override
+  String get bracketNotGenerated => 'Bracket not generated yet';
+
+  @override
+  String get participantsRegistered => 'participants registered';
+
+  @override
+  String get noParticipantsYet => 'No participants yet';
 }

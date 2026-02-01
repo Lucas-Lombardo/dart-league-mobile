@@ -10,6 +10,7 @@ import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
 import 'home/friends_screen.dart';
+import 'home/tournament_screen.dart';
 import 'settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,10 +21,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 1; // Start at Play
+  int _currentIndex = 2; // Start at Play (now index 2)
 
   final List<Widget> _screens = const [
     StatsScreen(),
+    TournamentScreen(),
     PlayScreen(),
     FriendsScreen(),
     LeaderboardScreen(),
@@ -193,9 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, l10n.stats),
-                  _buildNavItem(1, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play),
-                  _buildNavItem(2, Icons.people_outline, Icons.people, l10n.friends),
-                  _buildNavItem(3, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings),
+                  _buildNavItem(1, Icons.emoji_events_outlined, Icons.emoji_events, l10n.tournament),
+                  _buildNavItem(2, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play),
+                  _buildNavItem(3, Icons.people_outline, Icons.people, l10n.friends),
+                  _buildNavItem(4, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings),
                 ],
               ),
             ),
@@ -207,9 +210,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
     final isSelected = _currentIndex == index;
-    final isPlayTab = index == 1; // Play is middle tab
+    final isPlayTab = index == 2; // Play is middle tab
     final showCircle = isSelected && isPlayTab;
-    final isFriendsTab = index == 2;
+    final isFriendsTab = index == 3;
     
     return GestureDetector(
       onTap: () {

@@ -286,4 +286,86 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get viewFullMatchHistory => 'VOIR L\'HISTORIQUE COMPLET';
+
+  // Tournament Screen
+  @override
+  String get tournament => 'Tournoi';
+
+  @override
+  String get tournaments => 'Tournois';
+
+  @override
+  String get tournamentPlaying => 'En cours';
+
+  @override
+  String get tournamentRegister => 'Inscription';
+
+  @override
+  String get noActiveTournaments => 'Aucun tournoi actif';
+
+  @override
+  String get registerForTournamentHint => 'Inscrivez-vous à un tournoi pour participer !';
+
+  @override
+  String get noUpcomingTournaments => 'Aucun tournoi à venir';
+
+  @override
+  String get matchInvites => 'Invitations de match';
+
+  @override
+  String get activeTournaments => 'Tournois actifs';
+
+  @override
+  String get registeredTournaments => 'Tournois inscrits';
+
+  @override
+  String get registerNow => 'S\'inscrire';
+
+  @override
+  String get unregister => 'Se désinscrire';
+
+  @override
+  String get matchInvite => 'Invitation de match';
+
+  @override
+  String get timeRemaining => 'Temps restant';
+
+  @override
+  String get waitingForOpponent => 'En attente de l\'adversaire...';
+
+  @override
+  String get acceptAndJoin => 'Accepter et rejoindre';
+
+  @override
+  String get tournamentDetails => 'Détails du tournoi';
+
+  @override
+  String get tournamentNotFound => 'Tournoi introuvable';
+
+  @override
+  String get bracket => 'Tableau';
+
+  @override
+  String get participants => 'Participants';
+
+  @override
+  String get scheduledDate => 'Date prévue';
+
+  @override
+  String get winnerReward => 'Récompense du gagnant';
+
+  @override
+  String get currentRound => 'Tour actuel';
+
+  @override
+  String get winner => 'Gagnant';
+
+  @override
+  String get bracketNotGenerated => 'Tableau non encore généré';
+
+  @override
+  String get participantsRegistered => 'participants inscrits';
+
+  @override
+  String get noParticipantsYet => 'Aucun participant pour le moment';
 }

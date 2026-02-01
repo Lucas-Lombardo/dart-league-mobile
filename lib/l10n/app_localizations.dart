@@ -121,6 +121,35 @@ abstract class AppLocalizations {
   String get count180s;
   String get streak;
   String get viewFullMatchHistory;
+
+  // Tournament Screen
+  String get tournament;
+  String get tournaments;
+  String get tournamentPlaying;
+  String get tournamentRegister;
+  String get noActiveTournaments;
+  String get registerForTournamentHint;
+  String get noUpcomingTournaments;
+  String get matchInvites;
+  String get activeTournaments;
+  String get registeredTournaments;
+  String get registerNow;
+  String get unregister;
+  String get matchInvite;
+  String get timeRemaining;
+  String get waitingForOpponent;
+  String get acceptAndJoin;
+  String get tournamentDetails;
+  String get tournamentNotFound;
+  String get bracket;
+  String get participants;
+  String get scheduledDate;
+  String get winnerReward;
+  String get currentRound;
+  String get winner;
+  String get bracketNotGenerated;
+  String get participantsRegistered;
+  String get noParticipantsYet;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
