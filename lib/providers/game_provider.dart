@@ -34,6 +34,7 @@ class GameProvider with ChangeNotifier {
   String? _agoraChannelName;
   int? _remoteUid;
   bool _localUserJoined = false;
+  bool _needsAgoraReconnect = false;
 
   GameProvider();
 
@@ -71,6 +72,7 @@ class GameProvider with ChangeNotifier {
   String? get agoraChannelName => _agoraChannelName;
   int? get remoteUid => _remoteUid;
   bool get localUserJoined => _localUserJoined;
+  bool get needsAgoraReconnect => _needsAgoraReconnect;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
   
@@ -465,6 +467,10 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void clearAgoraReconnectFlag() {
+    _needsAgoraReconnect = false;
+  }
+
   void _handleGameStateSync(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != _matchId && _matchId != null) return;
@@ -484,6 +490,19 @@ class GameProvider with ChangeNotifier {
     }
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
+    }
+
+    // Update Agora credentials if provided (reconnection scenario)
+    final newAgoraAppId = data['agoraAppId'] as String?;
+    final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraChannelName = data['agoraChannelName'] as String?;
+    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
+        newAgoraToken != null && newAgoraToken.isNotEmpty &&
+        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
+      _agoraAppId = newAgoraAppId;
+      _agoraToken = newAgoraToken;
+      _agoraChannelName = newAgoraChannelName;
+      _needsAgoraReconnect = true;
     }
 
     _gameStarted = true;
@@ -682,6 +701,7 @@ class GameProvider with ChangeNotifier {
     _agoraChannelName = null;
     _remoteUid = null;
     _localUserJoined = false;
+    _needsAgoraReconnect = false;
     notifyListeners();
   }
 

@@ -105,9 +105,15 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
 
       await _cameraController!.initialize();
 
-      _minZoom = await _cameraController!.getMinZoomLevel();
-      _maxZoom = await _cameraController!.getMaxZoomLevel();
-      _currentZoom = _minZoom;
+      try {
+        _minZoom = await _cameraController!.getMinZoomLevel();
+        _maxZoom = await _cameraController!.getMaxZoomLevel();
+        _currentZoom = _minZoom;
+      } catch (_) {
+        _minZoom = 1.0;
+        _maxZoom = 1.0;
+        _currentZoom = 1.0;
+      }
 
       if (mounted) {
         setState(() {

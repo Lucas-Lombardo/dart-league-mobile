@@ -119,6 +119,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         });
       }
       
+      // Handle Agora reconnection when game_state_sync provides fresh credentials
+      if (game.needsAgoraReconnect) {
+        game.clearAgoraReconnectFlag();
+        _reconnectAgora(game);
+      }
+      
       // Show forfeit dialog when opponent leaves
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -129,6 +135,69 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       }
     } catch (_) {
       // State change handling error
+    }
+  }
+
+  Future<void> _reconnectAgora(GameProvider game) async {
+    final appId = game.agoraAppId;
+    final token = game.agoraToken;
+    final channelName = game.agoraChannelName;
+    
+    if (appId == null || token == null || channelName == null) return;
+    
+    try {
+      // Fully dispose the old engine to get a clean slate
+      if (_agoraEngine != null) {
+        _agoraEngine = null;
+        await AgoraService.dispose();
+      }
+      
+      // Request permissions if not already granted
+      if (!_permissionsGranted) {
+        _permissionsGranted = await AgoraService.requestPermissions();
+        if (!_permissionsGranted) return;
+      }
+      
+      // Create a fresh engine
+      _agoraEngine = await AgoraService.initializeEngine(appId);
+      
+      // Set back camera as default
+      await AgoraService.setBackCamera(_agoraEngine!);
+      
+      // Re-register event handlers on the fresh engine
+      _agoraEngine!.registerEventHandler(
+        RtcEngineEventHandler(
+          onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+            if (!mounted) return;
+            final g = context.read<GameProvider>();
+            g.setLocalUserJoined(true);
+          },
+          onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+            if (!mounted) return;
+            final g = context.read<GameProvider>();
+            g.setRemoteUser(remoteUid);
+          },
+          onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+            if (!mounted) return;
+            final g = context.read<GameProvider>();
+            g.setRemoteUser(null);
+          },
+        ),
+      );
+      
+      // Join the channel with fresh token (channel = matchId, same for both players)
+      await AgoraService.joinChannel(
+        engine: _agoraEngine!,
+        token: token,
+        channelName: channelName,
+        uid: 0,
+      );
+      
+      // Mute local microphone after joining (must be after join, otherwise broadcaster defaults override it)
+      await _agoraEngine!.muteLocalAudioStream(true);
+      _isAudioMuted = true;
+    } catch (_) {
+      // Agora reconnection error
     }
   }
 
@@ -173,9 +242,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
       );
       
-      // Disable audio completely before joining
-      await _agoraEngine!.disableAudio();
-      
       // Join channel
       if (widget.agoraToken != null && widget.agoraChannelName != null) {
         await AgoraService.joinChannel(
@@ -185,6 +251,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           uid: 0, // 0 means Agora will assign a uid
         );
       }
+      
+      // Mute local microphone after joining (must be after join, otherwise broadcaster defaults override it)
+      await _agoraEngine!.muteLocalAudioStream(true);
     } catch (_) {
       // Agora initialization error
     }
@@ -207,13 +276,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _isAudioMuted = !_isAudioMuted;
     });
     
-    if (_isAudioMuted) {
-      // Disable audio completely
-      await _agoraEngine!.disableAudio();
-    } else {
-      // Enable audio completely
-      await _agoraEngine!.enableAudio();
-    }
+    await _agoraEngine!.muteLocalAudioStream(_isAudioMuted);
   }
   
   Future<void> _switchCamera() async {
@@ -1471,14 +1534,15 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final screenWidth = MediaQuery.of(context).size.width;
-                    final showCamera = screenWidth >= 400 && _agoraEngine != null && game.remoteUid != null;
+                    final showCamera = screenWidth >= 375 && _agoraEngine != null && game.remoteUid != null;
                     
                     return Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Left: YOUR SCORE with global score, dart indicators, and MISS button
-                    Container(
+                    Flexible(
+                    child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: AppTheme.surfaceLight.withValues(alpha: 0.95),
@@ -1629,16 +1693,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                         ],
                       ),
                     ),
+                    ),
                     
+                    const SizedBox(width: 8),
                     // Right: Camera widget (if screen is large enough) or simple score card (if screen is small)
                     if (showCamera)
                       ConstrainedBox(
                         constraints: const BoxConstraints(
-                          maxHeight: 220,
-                          maxWidth: 160,
+                          maxHeight: 200,
+                          maxWidth: 120,
                         ),
                         child: Container(
-                          width: 160,
+                          width: 120,
                           decoration: BoxDecoration(
                             color: AppTheme.surfaceLight.withValues(alpha: 0.95),
                             borderRadius: BorderRadius.circular(12),
@@ -1664,7 +1730,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                                 widget.opponentUsername.toUpperCase(),
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 13,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
                                 ),
@@ -1674,7 +1740,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                             // Camera video feed
                             Container(
                               width: double.infinity,
-                              height: 105,
+                              height: 80,
                               decoration: const BoxDecoration(
                                 color: AppTheme.surface,
                               ),
@@ -1688,7 +1754,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                             ),
                             // Score at bottom
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -1705,7 +1771,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                                     '${game.opponentScore}',
                                     style: const TextStyle(
                                       color: AppTheme.primary,
-                                      fontSize: 22,
+                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
