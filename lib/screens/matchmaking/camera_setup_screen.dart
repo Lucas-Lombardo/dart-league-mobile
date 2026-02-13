@@ -36,6 +36,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   bool _permissionsGranted = false;
   bool _cameraReady = false;
   String? _errorMessage;
+  double _currentZoom = 1.0;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
 
   @override
   void initState() {
@@ -101,6 +104,10 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       );
 
       await _cameraController!.initialize();
+
+      _minZoom = await _cameraController!.getMinZoomLevel();
+      _maxZoom = await _cameraController!.getMaxZoomLevel();
+      _currentZoom = _minZoom;
 
       if (mounted) {
         setState(() {
@@ -425,18 +432,31 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
               ),
             ),
             
-            // Dartboard frame guide (optional visual aid)
-            Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppTheme.primary.withValues(alpha: 0.3),
-                    width: 2,
+            // Zoom controls
+            Positioned(
+              right: 12,
+              top: 0,
+              bottom: 0,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildZoomButton(Icons.add, _zoomIn),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      '${_currentZoom.toStringAsFixed(1)}x',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(color: Colors.black, blurRadius: 4),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  _buildZoomButton(Icons.remove, _zoomOut),
+                ],
               ),
             ),
           ],
@@ -506,6 +526,34 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _zoomIn() async {
+    final newZoom = (_currentZoom + 0.1).clamp(_minZoom, _maxZoom);
+    await _cameraController?.setZoomLevel(newZoom);
+    setState(() => _currentZoom = newZoom);
+  }
+
+  Future<void> _zoomOut() async {
+    final newZoom = (_currentZoom - 0.1).clamp(_minZoom, _maxZoom);
+    await _cameraController?.setZoomLevel(newZoom);
+    setState(() => _currentZoom = newZoom);
+  }
+
+  Widget _buildZoomButton(IconData icon, VoidCallback onPressed) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }
