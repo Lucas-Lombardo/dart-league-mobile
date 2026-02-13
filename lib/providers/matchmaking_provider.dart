@@ -68,6 +68,7 @@ class MatchmakingProvider with ChangeNotifier {
       SocketService.setReconnectHandler(() {
         _setupSocketListeners();
         _gameProvider?.ensureListenersSetup();
+        _gameProvider?.reconnectToMatch();
       });
 
       _setupSocketListeners();

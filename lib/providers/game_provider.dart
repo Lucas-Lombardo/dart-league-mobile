@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/socket_service.dart';
@@ -23,6 +24,9 @@ class GameProvider with ChangeNotifier {
   String? _pendingType; // 'win' or 'bust'
   String? _pendingReason;
   Map<String, dynamic>? _pendingData;
+  bool _opponentDisconnected = false;
+  int _disconnectGraceSeconds = 0;
+  Timer? _disconnectCountdownTimer;
   
   // Agora video calling
   String? _agoraAppId;
@@ -58,6 +62,8 @@ class GameProvider with ChangeNotifier {
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
   Map<String, dynamic>? get pendingData => _pendingData;
+  bool get opponentDisconnected => _opponentDisconnected;
+  int get disconnectGraceSeconds => _disconnectGraceSeconds;
   
   // Agora getters
   String? get agoraAppId => _agoraAppId;
@@ -159,6 +165,18 @@ class GameProvider with ChangeNotifier {
 
     SocketService.on('pending_bust', (data) {
       _handlePendingBust(data);
+    });
+
+    SocketService.on('opponent_disconnected', (data) {
+      _handleOpponentDisconnected(data);
+    });
+
+    SocketService.on('opponent_reconnected', (data) {
+      _handleOpponentReconnected(data);
+    });
+
+    SocketService.on('game_state_sync', (data) {
+      _handleGameStateSync(data);
     });
 
     SocketService.on('player_forfeited', (data) {
@@ -414,6 +432,75 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleOpponentDisconnected(dynamic data) {
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != _matchId) return;
+
+    _opponentDisconnected = true;
+    
+    // Start countdown timer from grace period
+    final gracePeriodMs = data['gracePeriodMs'] as int? ?? 300000;
+    _disconnectGraceSeconds = (gracePeriodMs / 1000).round();
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _disconnectGraceSeconds--;
+      if (_disconnectGraceSeconds <= 0) {
+        timer.cancel();
+      }
+      notifyListeners();
+    });
+
+    notifyListeners();
+  }
+
+  void _handleOpponentReconnected(dynamic data) {
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != _matchId) return;
+
+    _opponentDisconnected = false;
+    _disconnectGraceSeconds = 0;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+
+    notifyListeners();
+  }
+
+  void _handleGameStateSync(dynamic data) {
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != _matchId && _matchId != null) return;
+
+    final player1Id = data['player1Id'] as String?;
+    final player1Score = data['player1Score'] as int?;
+    final player2Score = data['player2Score'] as int?;
+    final currentPlayerId = data['currentPlayerId'] as String?;
+    final dartsThrown = data['dartsThrown'] as int?;
+    final currentRoundThrows = data['currentRoundThrows'] as List<dynamic>?;
+
+    if (player1Id != null) _player1Id = player1Id;
+    if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
+    if (dartsThrown != null) _dartsThrown = dartsThrown;
+    if (currentRoundThrows != null) {
+      _currentRoundThrows = currentRoundThrows.map((t) => t.toString()).toList();
+    }
+    if (player1Score != null && player2Score != null) {
+      _updateScoresFromPlayerScores(player1Score, player2Score);
+    }
+
+    _gameStarted = true;
+    notifyListeners();
+  }
+
+  void reconnectToMatch() {
+    if (_matchId != null && _myUserId != null) {
+      try {
+        SocketService.emit('reconnect_to_match', {
+          'matchId': _matchId,
+          'userId': _myUserId,
+        });
+      } catch (_) {}
+    }
+  }
+
   void _handleDartUndone(dynamic data) {
     // Update scores
     final player1Score = data['player1Score'] as int?;
@@ -551,6 +638,9 @@ class GameProvider with ChangeNotifier {
     SocketService.off('pending_bust');
     SocketService.off('player_forfeited');
     SocketService.off('dart_undone');
+    SocketService.off('opponent_disconnected');
+    SocketService.off('opponent_reconnected');
+    SocketService.off('game_state_sync');
   }
 
   void setRemoteUser(int? uid) {
@@ -583,6 +673,10 @@ class GameProvider with ChangeNotifier {
     _pendingType = null;
     _pendingReason = null;
     _pendingData = null;
+    _opponentDisconnected = false;
+    _disconnectGraceSeconds = 0;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
     _agoraAppId = null;
     _agoraToken = null;
     _agoraChannelName = null;

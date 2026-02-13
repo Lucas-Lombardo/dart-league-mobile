@@ -32,6 +32,15 @@ class MatchService {
     }
   }
 
+  static Future<Map<String, dynamic>> getActiveMatch(String userId) async {
+    try {
+      final response = await ApiService.get('/matches/active/$userId');
+      return response as Map<String, dynamic>;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   static Future<Map<String, dynamic>> getMatchDetail(String matchId) async {
     try {
       final response = await ApiService.get('/matches/$matchId');

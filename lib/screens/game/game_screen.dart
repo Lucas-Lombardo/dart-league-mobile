@@ -462,6 +462,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
+  String _formatSeconds(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   void _leaveMatch() {
     // Emit leave_match event to trigger forfeit on backend
     try {
@@ -542,9 +548,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       } else {
       }
       
-      // Reset game state to prevent duplicate dialogs
-      game.reset();
-      
       // Show success message
       final message = result['message'] as String? ?? 'Match result accepted';
       messenger.showSnackBar(
@@ -555,12 +558,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
       );
       
-      // Navigate back to home and clear navigation stack
-      await Future.delayed(const Duration(milliseconds: 300));
-      
+      // Navigate FIRST, then reset game state to avoid showing 'INITIALIZING MATCH...'
       if (mounted) {
         navigator.pushNamedAndRemoveUntil('/home', (route) => false);
       }
+      game.reset();
     } catch (e) {
       if (!mounted) return;
       
@@ -803,13 +805,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               } else {
               }
               
-              // Reset game state
-              game.reset();
-              
-              // Navigate back to home
+              // Navigate FIRST, then reset to avoid 'INITIALIZING MATCH...' flash
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               }
+              game.reset();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
@@ -1347,6 +1347,29 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             children: [
               Column(
                 children: [
+                  // Opponent disconnected banner
+                  if (game.opponentDisconnected)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      color: AppTheme.accent.withValues(alpha: 0.15),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Opponent disconnected — ${_formatSeconds(game.disconnectGraceSeconds)} left to reconnect',
+                              style: const TextStyle(
+                                color: AppTheme.accent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   // Video Area - Only show during opponent's turn
                   if (!game.isMyTurn)
                     Container(

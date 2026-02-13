@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
+import '../../services/match_service.dart';
 import '../../models/match.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/haptic_service.dart';
@@ -22,6 +23,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   late Animation<double> _pulseAnimation;
   List<Match> _recentMatches = [];
   bool _loadingMatches = false;
+  Map<String, dynamic>? _activeMatch;
 
   @override
   void initState() {
@@ -39,6 +41,45 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
     
     _loadRecentMatches();
+    _checkActiveMatch();
+  }
+
+  Future<void> _checkActiveMatch() async {
+    try {
+      final auth = context.read<AuthProvider>();
+      if (auth.currentUser?.id != null) {
+        final result = await MatchService.getActiveMatch(auth.currentUser!.id);
+        if (mounted) {
+          setState(() {
+            _activeMatch = (result['active'] == true) ? result : null;
+          });
+        }
+      }
+    } catch (e) {
+      // Failed to check for active match
+    }
+  }
+
+  Future<void> _rejoinMatch() async {
+    if (_activeMatch == null) return;
+
+    HapticService.mediumImpact();
+
+    final matchId = _activeMatch!['matchId'] as String;
+    final opponentId = _activeMatch!['opponentId'] as String;
+    final opponentUsername = _activeMatch!['opponentUsername'] as String;
+
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => CameraSetupScreen(
+            rejoinMatchId: matchId,
+            rejoinOpponentId: opponentId,
+            rejoinOpponentUsername: opponentUsername,
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _loadRecentMatches() async {
@@ -298,88 +339,168 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          ScaleTransition(
-            scale: _pulseAnimation,
-            child: GestureDetector(
-              onTap: () async {
-                HapticService.mediumImpact();
-                
-                if (context.mounted) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const CameraSetupScreen(),
+          if (_activeMatch != null)
+            // Rejoin Match button
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: _rejoinMatch,
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF6B00), Color(0xFFFF9500)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  );
-                }
-              },
-              child: Container(
-                height: 180,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.refresh,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'PLAY',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Rejoin vs ${_activeMatch!['opponentUsername']}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      right: -20,
-                      top: -20,
-                      child: Icon(
-                        Icons.sports_esports,
-                        size: 150,
-                        color: Colors.white.withValues(alpha: 0.1),
+              ),
+            )
+          else
+            // Find Match button
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: () async {
+                  HapticService.mediumImpact();
+                  
+                  if (context.mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const CameraSetupScreen(),
                       ),
-                    ),
-                    Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            l10n.findMatch.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            l10n.rankedCompetitive,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                    );
+                  }
+                },
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primary.withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.sports_esports,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'PLAY',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              l10n.rankedCompetitive,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 32),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

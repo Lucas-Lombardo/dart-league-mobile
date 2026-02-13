@@ -5,12 +5,25 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import 'matchmaking_screen.dart';
+import '../game/game_screen.dart';
 
 class CameraSetupScreen extends StatefulWidget {
-  const CameraSetupScreen({super.key});
+  final String? rejoinMatchId;
+  final String? rejoinOpponentId;
+  final String? rejoinOpponentUsername;
+
+  const CameraSetupScreen({
+    super.key,
+    this.rejoinMatchId,
+    this.rejoinOpponentId,
+    this.rejoinOpponentUsername,
+  });
+
+  bool get isRejoin => rejoinMatchId != null;
 
   @override
   State<CameraSetupScreen> createState() => _CameraSetupScreenState();
@@ -131,6 +144,43 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _rejoinMatch() async {
+    if (!_cameraReady || !_permissionsGranted) return;
+
+    HapticService.mediumImpact();
+
+    await _cameraController?.dispose();
+    if (!mounted) return;
+
+    final game = context.read<GameProvider>();
+    final user = context.read<AuthProvider>().currentUser;
+    if (user?.id == null) return;
+
+    final matchId = widget.rejoinMatchId!;
+    final opponentId = widget.rejoinOpponentId!;
+    final opponentUsername = widget.rejoinOpponentUsername ?? 'Unknown';
+
+    // Connect socket and set up game listeners
+    await SocketService.ensureConnected();
+    game.ensureListenersSetup();
+    game.initGame(matchId, user!.id, opponentId);
+
+    // Explicitly tell server we're reconnecting to this match
+    game.reconnectToMatch();
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => GameScreen(
+            matchId: matchId,
+            opponentId: opponentId,
+            opponentUsername: opponentUsername,
+          ),
+        ),
+      );
     }
   }
 
@@ -427,7 +477,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _permissionsGranted && _cameraReady ? _joinQueue : null,
+              onPressed: _permissionsGranted && _cameraReady
+                  ? (widget.isRejoin ? _rejoinMatch : _joinQueue)
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _permissionsGranted && _cameraReady
                     ? AppTheme.primary
@@ -439,7 +491,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                 elevation: _permissionsGranted && _cameraReady ? 4 : 0,
               ),
               child: Text(
-                _permissionsGranted && _cameraReady ? 'JOIN QUEUE' : 'CAMERA REQUIRED',
+                _permissionsGranted && _cameraReady
+                    ? 'PLAY'
+                    : 'CAMERA REQUIRED',
                 style: TextStyle(
                   color: _permissionsGranted && _cameraReady
                       ? Colors.white
