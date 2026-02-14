@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../providers/game_provider.dart';
@@ -52,6 +53,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     
+    
+    WakelockPlus.enable();
     
     _scoreAnimationController = AnimationController(
       vsync: this,
@@ -550,6 +553,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   @override
   void dispose() {
     _scoreAnimationController.dispose();
+    
+    WakelockPlus.disable();
     
     // Emit leave_match before cleanup
     _leaveMatch();
