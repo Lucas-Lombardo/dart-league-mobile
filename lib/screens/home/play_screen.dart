@@ -10,6 +10,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
 import '../matchmaking/camera_setup_screen.dart';
+import '../placement/placement_hub_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -196,12 +197,48 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final nextRank = _getNextRank(user.rank);
     final progress = _getRankProgress(user.rank, user.elo);
 
+    final isUnranked = user.rank.toLowerCase() == 'unranked';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
+          if (isUnranked)
+            // Unranked: Placement prompt
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: AppTheme.surfaceGradient,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: AppTheme.accent.withValues(alpha: 0.5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.emoji_events, size: 48, color: AppTheme.accent),
+                  const SizedBox(height: 12),
+                  Text(l10n.placementMatches, style: AppTheme.displayMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.completePlacementToUnlock,
+                    textAlign: TextAlign.center,
+                    style: AppTheme.bodyLarge,
+                  ),
+                ],
+              ),
+            )
+          else
+            // Ranked: Normal rank progression
+            Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: AppTheme.surfaceGradient,
@@ -339,7 +376,96 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          if (_activeMatch != null)
+          if (isUnranked)
+            // Placement Matches button
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: () {
+                  HapticService.mediumImpact();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const PlacementHubScreen(),
+                    ),
+                  ).then((_) {
+                    // Reload matches and user data after returning
+                    _loadRecentMatches();
+                    context.read<AuthProvider>().checkAuthStatus();
+                  });
+                },
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFEAB308).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.emoji_events,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              l10n.placementMatches.toUpperCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              l10n.completePlacementToUnlock,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_activeMatch != null)
             // Rejoin Match button
             ScaleTransition(
               scale: _pulseAnimation,

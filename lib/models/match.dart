@@ -11,6 +11,8 @@ class Match {
   final int player2EloChange;
   final DateTime createdAt;
   final String status;
+  final String matchType;
+  final int? botDifficulty;
   final List<MatchRound>? rounds;
   final MatchStatistics? statistics;
 
@@ -27,9 +29,13 @@ class Match {
     required this.player2EloChange,
     required this.createdAt,
     required this.status,
+    this.matchType = 'ranked',
+    this.botDifficulty,
     this.rounds,
     this.statistics,
   });
+
+  bool get isPlacement => matchType == 'placement';
 
   factory Match.fromJson(Map<String, dynamic> json, [String? currentUserId]) {
     // New format: player1/player2 (absolute)
@@ -48,6 +54,8 @@ class Match {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       status: json['status'] as String? ?? 'completed',
+      matchType: json['matchType'] as String? ?? 'ranked',
+      botDifficulty: json['botDifficulty'] as int?,
       rounds: _parseRounds(json),
       statistics: json['statistics'] != null
           ? MatchStatistics.fromJson(json['statistics'] as Map<String, dynamic>)

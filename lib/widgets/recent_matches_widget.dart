@@ -41,7 +41,10 @@ class RecentMatchesWidget extends StatelessWidget {
   Widget _buildMatchItem(BuildContext context, Match match) {
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
-    final opponentUsername = match.getOpponentUsername(userId);
+    final isPlacement = match.isPlacement;
+    final opponentUsername = isPlacement
+        ? 'Bot (Avg: ${(match.botDifficulty ?? 1) * 10})'
+        : match.getOpponentUsername(userId);
     final myScore = match.getMyScore(userId);
     final opponentScore = match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d');
@@ -110,6 +113,24 @@ class RecentMatchesWidget extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (isPlacement) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'PLACEMENT',
+                                style: TextStyle(
+                                  color: AppTheme.accent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -148,21 +169,38 @@ class RecentMatchesWidget extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${eloChange >= 0 ? '+' : ''}$eloChange',
-                        style: TextStyle(
-                          color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                    if (isPlacement)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Placement',
+                          style: TextStyle(
+                            color: AppTheme.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${eloChange >= 0 ? '+' : ''}$eloChange',
+                          style: TextStyle(
+                            color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ],

@@ -368,4 +368,23 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get noParticipantsYet => 'Aucun participant pour le moment';
+
+  // Placement
+  @override
+  String get placementMatches => 'Matchs de placement';
+
+  @override
+  String get placementDescription => 'Jouez 4 matchs contre des bots de difficulté croissante pour obtenir votre premier rang !';
+
+  @override
+  String get completePlacementToUnlock => 'Terminez le placement pour débloquer le classement';
+
+  @override
+  String get matchesCompleted => 'matchs terminés';
+
+  @override
+  String get startMatch => 'Lancer le match';
+
+  @override
+  String get unranked => 'Non classé';
 }

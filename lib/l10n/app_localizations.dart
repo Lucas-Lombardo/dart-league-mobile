@@ -150,6 +150,14 @@ abstract class AppLocalizations {
   String get bracketNotGenerated;
   String get participantsRegistered;
   String get noParticipantsYet;
+
+  // Placement
+  String get placementMatches;
+  String get placementDescription;
+  String get completePlacementToUnlock;
+  String get matchesCompleted;
+  String get startMatch;
+  String get unranked;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

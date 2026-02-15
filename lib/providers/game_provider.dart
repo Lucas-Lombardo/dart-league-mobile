@@ -80,6 +80,12 @@ class GameProvider with ChangeNotifier {
     _myScore = newScore;
     notifyListeners();
   }
+
+  void updatePlacementScores(int myScore, int opponentScore) {
+    _myScore = myScore;
+    _opponentScore = opponentScore;
+    notifyListeners();
+  }
   
   int get currentRoundScore {
     int score = 0;
