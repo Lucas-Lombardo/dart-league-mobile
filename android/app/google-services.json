@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "912194077623",
+    "project_id": "dart-rivals",
+    "storage_bucket": "dart-rivals.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:912194077623:android:2d06122c7161034fef1e32",
+        "android_client_info": {
+          "package_name": "com.dartrivals.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAszDIrv6ADsOKtTaS9UBpv4w9M3V4COVQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

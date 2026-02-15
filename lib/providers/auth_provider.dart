@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
 import '../utils/error_messages.dart';
 import 'locale_provider.dart';
 
@@ -58,6 +59,9 @@ class AuthProvider extends ChangeNotifier {
       if (_currentUser != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(_currentUser!.language);
       }
+      // Register push notification token
+      await PushNotificationService.initialize();
+      await PushNotificationService.registerToken();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -86,6 +90,9 @@ class AuthProvider extends ChangeNotifier {
       if (_currentUser != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(_currentUser!.language);
       }
+      // Register push notification token
+      await PushNotificationService.initialize();
+      await PushNotificationService.registerToken();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -102,6 +109,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await PushNotificationService.unregisterToken();
       await AuthService.logout();
       _currentUser = null;
       _errorMessage = null;

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:firebase_core/firebase_core.dart';
 import 'providers/auth_provider.dart';
 import 'providers/matchmaking_provider.dart';
 import 'providers/game_provider.dart';
@@ -18,6 +20,15 @@ import 'utils/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase (skip on web — no FirebaseOptions configured)
+  if (!kIsWeb) {
+    try {
+      await Firebase.initializeApp();
+    } catch (e) {
+      debugPrint('⚠️ Firebase init failed (push notifications disabled): $e');
+    }
+  }
   
   // Lock orientation to portrait mode only
   await SystemChrome.setPreferredOrientations([
