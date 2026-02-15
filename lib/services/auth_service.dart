@@ -81,6 +81,26 @@ class AuthService {
     }
   }
 
+  static Future<void> forgotPassword({required String email}) async {
+    try {
+      await ApiService.post(
+        '/auth/forgot-password',
+        {'email': email},
+        includeAuth: false,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  static Future<void> resendVerification() async {
+    try {
+      await ApiService.post('/auth/resend-verification', {});
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   static Future<User?> getCurrentUser() async {
     try {
       debugPrint('🔍 Fetching current user profile...');

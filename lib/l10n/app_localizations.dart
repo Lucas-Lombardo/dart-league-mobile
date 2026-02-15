@@ -151,6 +151,19 @@ abstract class AppLocalizations {
   String get participantsRegistered;
   String get noParticipantsYet;
 
+  // Email & Password Reset
+  String get forgotPassword;
+  String get forgotPasswordTitle;
+  String get forgotPasswordDescription;
+  String get sendResetLink;
+  String get resetLinkSent;
+  String get resetLinkSentDescription;
+  String get backToLogin;
+  String get checkYourEmail;
+  String get checkYourEmailDescription;
+  String get resendVerificationEmail;
+  String get verificationEmailSent;
+
   // Placement
   String get placementMatches;
   String get placementDescription;

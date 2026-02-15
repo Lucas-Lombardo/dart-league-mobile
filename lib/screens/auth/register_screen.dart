@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -38,17 +39,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (success && mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
+            content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 8),
-                Text('Account created successfully!'),
+                const Icon(Icons.mark_email_read_outlined, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text(l10n.checkYourEmail)),
               ],
             ),
-            backgroundColor: AppTheme.success,
+            backgroundColor: AppTheme.primary,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),

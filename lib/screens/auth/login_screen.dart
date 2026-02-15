@@ -123,7 +123,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 24),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {
+                                  context.read<AuthProvider>().clearError();
+                                  Navigator.pushReplacementNamed(context, '/forgot-password');
+                                },
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(0, 32),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: Text(l10n.forgotPassword),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             Consumer<AuthProvider>(
                               builder: (context, authProvider, _) {
                                 if (authProvider.errorMessage != null) {

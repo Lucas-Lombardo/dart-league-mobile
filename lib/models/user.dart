@@ -11,6 +11,7 @@ class User {
   final DateTime? bannedUntil;
   final DateTime? createdAt;
   final String language;
+  final bool isEmailVerified;
 
   User({
     required this.id,
@@ -25,6 +26,7 @@ class User {
     this.bannedUntil,
     this.createdAt,
     this.language = 'en',
+    this.isEmailVerified = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,7 @@ class User {
       bannedUntil: json['bannedUntil'] != null ? DateTime.parse(json['bannedUntil'] as String) : null,
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String) : null,
       language: json['language'] as String? ?? 'en',
+      isEmailVerified: json['isEmailVerified'] as bool? ?? false,
     );
   }
 
@@ -56,6 +59,7 @@ class User {
       'role': role,
       'isBanned': isBanned,
       'language': language,
+      'isEmailVerified': isEmailVerified,
       if (bannedUntil != null) 'bannedUntil': bannedUntil!.toIso8601String(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
     };

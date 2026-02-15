@@ -369,6 +369,40 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get noParticipantsYet => 'Aucun participant pour le moment';
 
+  // Email & Password Reset
+  @override
+  String get forgotPassword => 'Mot de passe oublié ?';
+
+  @override
+  String get forgotPasswordTitle => 'Réinitialiser le mot de passe';
+
+  @override
+  String get forgotPasswordDescription => 'Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.';
+
+  @override
+  String get sendResetLink => 'Envoyer le lien';
+
+  @override
+  String get resetLinkSent => 'Lien envoyé';
+
+  @override
+  String get resetLinkSentDescription => 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation sous peu.';
+
+  @override
+  String get backToLogin => 'Retour à la connexion';
+
+  @override
+  String get checkYourEmail => 'Vérifiez votre email';
+
+  @override
+  String get checkYourEmailDescription => 'Nous avons envoyé un lien de vérification à votre adresse email. Veuillez vérifier votre boîte de réception.';
+
+  @override
+  String get resendVerificationEmail => 'Renvoyer l\'email de vérification';
+
+  @override
+  String get verificationEmailSent => 'Email de vérification envoyé !';
+
   // Placement
   @override
   String get placementMatches => 'Matchs de placement';
