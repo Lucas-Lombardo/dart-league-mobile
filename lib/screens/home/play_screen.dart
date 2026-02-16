@@ -4,7 +4,9 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
+import '../../services/tournament_service.dart';
 import '../../models/match.dart';
+import '../../models/tournament.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
@@ -25,6 +27,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   List<Match> _recentMatches = [];
   bool _loadingMatches = false;
   Map<String, dynamic>? _activeMatch;
+  TournamentMatch? _pendingTournamentMatch;
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     
     _loadRecentMatches();
     _checkActiveMatch();
+    _checkPendingTournamentMatch();
   }
 
   Future<void> _checkActiveMatch() async {
@@ -58,6 +62,19 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       }
     } catch (e) {
       // Failed to check for active match
+    }
+  }
+
+  Future<void> _checkPendingTournamentMatch() async {
+    try {
+      final matches = await TournamentService.getPendingMatches();
+      if (mounted) {
+        setState(() {
+          _pendingTournamentMatch = matches.isNotEmpty ? matches.first : null;
+        });
+      }
+    } catch (e) {
+      // Failed to check for pending tournament match
     }
   }
 
@@ -534,6 +551,94 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                               ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_pendingTournamentMatch != null)
+            // Join Tournament Match button
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: () {
+                  HapticService.mediumImpact();
+                  if (context.mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const CameraSetupScreen(),
+                      ),
+                    );
+                  }
+                },
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.emoji_events,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'JOIN MATCH',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${_pendingTournamentMatch!.roundNameDisplay}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
