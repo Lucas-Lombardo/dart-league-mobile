@@ -13,6 +13,8 @@ class Tournament {
   final String? winnerUsername;
   final int currentRound;
   final int totalRounds;
+  final int entryFee;
+  final String currency;
 
   Tournament({
     required this.id,
@@ -29,6 +31,8 @@ class Tournament {
     this.winnerUsername,
     this.currentRound = 0,
     this.totalRounds = 0,
+    this.entryFee = 0,
+    this.currency = 'eur',
   });
 
   factory Tournament.fromJson(Map<String, dynamic> json) {
@@ -51,7 +55,26 @@ class Tournament {
       winnerUsername: json['winnerUsername'] as String?,
       currentRound: json['currentRound'] as int? ?? 0,
       totalRounds: json['totalRounds'] as int? ?? 0,
+      entryFee: json['entryFee'] as int? ?? 0,
+      currency: json['currency'] as String? ?? 'eur',
     );
+  }
+
+  bool get isFree => entryFee == 0;
+
+  String get formattedPrice {
+    if (isFree) return 'Free';
+    final amount = entryFee / 100;
+    switch (currency.toLowerCase()) {
+      case 'eur':
+        return '€${amount.toStringAsFixed(2)}';
+      case 'usd':
+        return '\$${amount.toStringAsFixed(2)}';
+      case 'gbp':
+        return '£${amount.toStringAsFixed(2)}';
+      default:
+        return '${amount.toStringAsFixed(2)} ${currency.toUpperCase()}';
+    }
   }
 
   bool get isRegistrationOpen => status == 'registration_open';

@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'providers/auth_provider.dart';
 import 'providers/matchmaking_provider.dart';
 import 'providers/game_provider.dart';
@@ -30,6 +31,13 @@ void main() async {
     } catch (e) {
       debugPrint('⚠️ Firebase init failed (push notifications disabled): $e');
     }
+  }
+  
+  // Initialize Stripe (skip on web - not supported)
+  if (!kIsWeb) {
+    Stripe.publishableKey = 'pk_test_51T1nHARtbfZQ2kA2avIkK0pLCQMnzU7JESQRCt4SGB1wCfJqMjjv8GZC1iUz5DdJtYtxhCt75XZuy2KfdFjRhZ5q00e8zVgNFX';
+    Stripe.urlScheme = 'dartrivals';
+    await Stripe.instance.applySettings();
   }
   
   // Lock orientation to portrait mode only

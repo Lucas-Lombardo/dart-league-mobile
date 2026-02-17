@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import '../models/tournament.dart';
 import '../services/tournament_service.dart';
 import '../services/socket_service.dart';
+import '../services/payment_service.dart';
 
 class TournamentProvider extends ChangeNotifier {
   List<Tournament> _allTournaments = [];
@@ -122,12 +124,34 @@ class TournamentProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> registerForTournament(String tournamentId) async {
+  Future<bool> registerForTournament(String tournamentId, {Tournament? tournament}) async {
     try {
-      await TournamentService.registerForTournament(tournamentId);
+      String? paymentIntentId;
+
+      // If tournament is paid, process payment first
+      if (tournament != null && !tournament.isFree) {
+        final paymentData = await TournamentService.createPaymentIntent(tournamentId);
+        final clientSecret = paymentData['clientSecret'] as String;
+        paymentIntentId = paymentData['paymentIntentId'] as String;
+
+        await PaymentService.processPayment(
+          clientSecret: clientSecret,
+          merchantDisplayName: 'Dart Rivals',
+        );
+      }
+
+      await TournamentService.registerForTournament(tournamentId, paymentIntentId: paymentIntentId);
       await loadMyTournaments();
       await loadUpcomingTournaments();
       return true;
+    } on StripeException catch (e) {
+      if (e.error.code == FailureCode.Canceled) {
+        _error = 'Payment cancelled';
+      } else {
+        _error = e.error.localizedMessage ?? 'Payment failed';
+      }
+      notifyListeners();
+      return false;
     } catch (e) {
       _error = e.toString();
       notifyListeners();

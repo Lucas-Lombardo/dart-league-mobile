@@ -79,9 +79,23 @@ class TournamentService {
     }
   }
 
-  static Future<void> registerForTournament(String tournamentId) async {
+  static Future<Map<String, dynamic>> createPaymentIntent(String tournamentId) async {
     try {
-      await ApiService.post('/tournaments/$tournamentId/register', {});
+      final response = await ApiService.post('/tournaments/$tournamentId/create-payment-intent', {});
+      return response as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('Error creating payment intent: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> registerForTournament(String tournamentId, {String? paymentIntentId}) async {
+    try {
+      final body = <String, dynamic>{};
+      if (paymentIntentId != null) {
+        body['paymentIntentId'] = paymentIntentId;
+      }
+      await ApiService.post('/tournaments/$tournamentId/register', body);
     } catch (e) {
       debugPrint('Error registering for tournament: $e');
       rethrow;

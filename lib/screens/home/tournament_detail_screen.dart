@@ -281,6 +281,13 @@ class _TournamentHeader extends StatelessWidget {
             value: '+${tournament.winnerEloReward} ELO',
             valueColor: AppTheme.accent,
           ),
+          const SizedBox(height: 8),
+          _InfoRow(
+            icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
+            label: 'Entry Fee',
+            value: tournament.formattedPrice,
+            valueColor: tournament.isFree ? AppTheme.success : AppTheme.primary,
+          ),
           if (tournament.isInProgress) ...[
             const SizedBox(height: 8),
             _InfoRow(
@@ -317,7 +324,7 @@ class _TournamentHeader extends StatelessWidget {
           if ((tournament.isRegistrationOpen || tournament.isUpcoming) && isRegistered != null) ...[
             const SizedBox(height: 20),
             _RegistrationButton(
-              tournamentId: tournament.id,
+              tournament: tournament,
               isRegistered: isRegistered!,
               canRegister: tournament.isRegistrationOpen,
               onChanged: onRegistrationChanged,
@@ -388,13 +395,13 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _RegistrationButton extends StatefulWidget {
-  final String tournamentId;
+  final Tournament tournament;
   final bool isRegistered;
   final bool canRegister;
   final VoidCallback onChanged;
 
   const _RegistrationButton({
-    required this.tournamentId,
+    required this.tournament,
     required this.isRegistered,
     this.canRegister = true,
     required this.onChanged,
@@ -417,13 +424,22 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
     bool success;
 
     if (widget.isRegistered) {
-      success = await provider.unregisterFromTournament(widget.tournamentId);
+      success = await provider.unregisterFromTournament(widget.tournament.id);
     } else {
-      success = await provider.registerForTournament(widget.tournamentId);
+      success = await provider.registerForTournament(widget.tournament.id, tournament: widget.tournament);
     }
 
     if (success) {
       widget.onChanged();
+    } else {
+      // Show error if payment failed
+      final error = provider.error;
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
+        );
+        provider.clearError();
+      }
     }
 
     if (mounted) {

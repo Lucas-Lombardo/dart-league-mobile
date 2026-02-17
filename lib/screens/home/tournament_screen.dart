@@ -346,7 +346,7 @@ class _TournamentCardState extends State<_TournamentCard> {
     if (_isRegistered == true) {
       success = await provider.unregisterFromTournament(widget.tournament.id);
     } else {
-      success = await provider.registerForTournament(widget.tournament.id);
+      success = await provider.registerForTournament(widget.tournament.id, tournament: widget.tournament);
     }
 
     if (success && mounted) {
@@ -356,6 +356,14 @@ class _TournamentCardState extends State<_TournamentCard> {
       });
     } else if (mounted) {
       setState(() => _isLoading = false);
+      // Show error if payment failed
+      final error = provider.error;
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
+        );
+        provider.clearError();
+      }
     }
   }
 
@@ -496,6 +504,12 @@ class _TournamentCardState extends State<_TournamentCard> {
                         icon: Icons.star,
                         label: '+${tournament.winnerEloReward} ELO',
                         color: AppTheme.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      _InfoChip(
+                        icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
+                        label: tournament.formattedPrice,
+                        color: tournament.isFree ? AppTheme.success : AppTheme.primary,
                       ),
                       const Spacer(),
                       Icon(
@@ -674,7 +688,7 @@ class _RegisterButtonState extends State<_RegisterButton> {
     if (_isRegistered == true) {
       success = await provider.unregisterFromTournament(widget.tournament.id);
     } else {
-      success = await provider.registerForTournament(widget.tournament.id);
+      success = await provider.registerForTournament(widget.tournament.id, tournament: widget.tournament);
     }
 
     if (success && mounted) {
@@ -684,6 +698,14 @@ class _RegisterButtonState extends State<_RegisterButton> {
       });
     } else if (mounted) {
       setState(() => _isLoading = false);
+      // Show error if payment failed
+      final error = provider.error;
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
+        );
+        provider.clearError();
+      }
     }
   }
 
