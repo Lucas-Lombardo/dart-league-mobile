@@ -1017,9 +1017,9 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                     // Top bar with score + camera during my turn
                     if (game.isMyTurn)
                       Positioned(
-                        top: 50, // Below series scoreboard
-                        left: 16,
-                        right: 16,
+                        top: 8,
+                        left: 12,
+                        right: 12,
                         child: _buildMyTurnOverlay(game),
                       ),
 
@@ -1134,13 +1134,12 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
 
   Widget _buildMyTurnOverlay(TournamentGameProvider game) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // My score + dart indicators
-        Flexible(
+        Expanded(
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: AppTheme.surfaceLight.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(12),
@@ -1154,10 +1153,10 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                 Row(
                   children: [
                     const Text('YOUR SCORE: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text('${game.myScore}', style: TextStyle(color: game.myScore <= 170 ? AppTheme.success : AppTheme.primary, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text('${game.myScore}', style: TextStyle(color: game.myScore <= 170 ? AppTheme.success : AppTheme.primary, fontSize: 22, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     ...List.generate(3, (index) {
@@ -1172,8 +1171,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                           setState(() => _editingDartIndex = isEditing ? null : index);
                         } : null,
                         child: Container(
-                          width: 40, height: 40,
-                          margin: const EdgeInsets.only(right: 8),
+                          width: 36, height: 36,
+                          margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
                             color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.background,
                             borderRadius: BorderRadius.circular(8),
@@ -1184,8 +1183,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                           ),
                           child: Center(
                             child: hasThrow
-                                ? Text(throws[index], style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold))
-                                : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 16),
+                                ? Text(throws[index], style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold))
+                                : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 14),
                           ),
                         ),
                       );
@@ -1205,7 +1204,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          width: 50, height: 40,
+                          width: 44, height: 36,
                           decoration: BoxDecoration(
                             color: AppTheme.background,
                             borderRadius: BorderRadius.circular(8),
@@ -1214,7 +1213,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                           child: const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.close, color: Colors.white70, size: 16),
+                              Icon(Icons.close, color: Colors.white70, size: 14),
                               Text('MISS', style: TextStyle(color: Colors.white70, fontSize: 7, fontWeight: FontWeight.bold)),
                             ],
                           ),
@@ -1227,10 +1226,11 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         // Opponent score card
         Container(
-          padding: const EdgeInsets.all(12),
+          width: 90,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: AppTheme.surfaceLight.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(12),
@@ -1239,16 +1239,11 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(widget.opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Text('SCORE: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 8, fontWeight: FontWeight.bold)),
-                  Text('${game.opponentScore}', style: const TextStyle(color: AppTheme.primary, fontSize: 20, fontWeight: FontWeight.bold)),
-                ],
-              ),
+              Text(widget.opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 9, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1),
+              const SizedBox(height: 2),
+              Text('${game.opponentScore}', style: const TextStyle(color: AppTheme.primary, fontSize: 22, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
