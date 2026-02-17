@@ -13,6 +13,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../placement/placement_hub_screen.dart';
+import '../tournament/tournament_camera_setup_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -28,6 +29,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   bool _loadingMatches = false;
   Map<String, dynamic>? _activeMatch;
   TournamentMatch? _pendingTournamentMatch;
+  bool _inActiveTournament = false;
+  String? _activeTournamentName;
 
   @override
   void initState() {
@@ -47,6 +50,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _loadRecentMatches();
     _checkActiveMatch();
     _checkPendingTournamentMatch();
+    _checkActiveTournamentStatus();
   }
 
   Future<void> _checkActiveMatch() async {
@@ -75,6 +79,20 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       }
     } catch (e) {
       // Failed to check for pending tournament match
+    }
+  }
+
+  Future<void> _checkActiveTournamentStatus() async {
+    try {
+      final status = await TournamentService.getActiveTournamentStatus();
+      if (mounted) {
+        setState(() {
+          _inActiveTournament = status['inActiveTournament'] as bool? ?? false;
+          _activeTournamentName = status['tournamentName'] as String?;
+        });
+      }
+    } catch (e) {
+      // Failed to check tournament status
     }
   }
 
@@ -482,8 +500,114 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ),
               ),
             )
+          else if (_pendingTournamentMatch != null)
+            // Join Tournament Match button (highest priority after placement)
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: () {
+                  HapticService.mediumImpact();
+                  final match = _pendingTournamentMatch!;
+                  final auth = context.read<AuthProvider>();
+                  final currentUserId = auth.currentUser?.id;
+                  final isPlayer1 = currentUserId == match.player1Id;
+                  final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
+                  final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+
+                  if (context.mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => TournamentCameraSetupScreen(
+                          matchId: match.id,
+                          tournamentId: match.tournamentId,
+                          tournamentName: match.tournamentName ?? 'Tournament',
+                          roundName: match.roundName,
+                          opponentUsername: opponentUsername,
+                          opponentId: opponentId,
+                          player1Id: match.player1Id ?? '',
+                          player2Id: match.player2Id ?? '',
+                          bestOf: match.bestOf,
+                          inviteSentAt: match.inviteSentAt,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.emoji_events,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'JOIN MATCH',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${_pendingTournamentMatch!.roundNameDisplay}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           else if (_activeMatch != null)
-            // Rejoin Match button
+            // Rejoin active ranked match
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
@@ -560,92 +684,72 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ),
               ),
             )
-          else if (_pendingTournamentMatch != null)
-            // Join Tournament Match button
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: () {
-                  HapticService.mediumImpact();
-                  if (context.mounted) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const CameraSetupScreen(),
-                      ),
-                    );
-                  }
-                },
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.emoji_events,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'JOIN MATCH',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${_pendingTournamentMatch!.roundNameDisplay}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+          else if (_inActiveTournament)
+            // Blocked: In active tournament
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.surfaceLight.withValues(alpha: 0.8),
+                    AppTheme.surface,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppTheme.surfaceLight),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: -20,
+                    top: -20,
+                    child: Icon(
+                      Icons.block,
+                      size: 150,
+                      color: Colors.white.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.emoji_events,
+                            size: 40,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'RANKED LOCKED',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Active tournament: ${_activeTournamentName ?? 'In Progress'}',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             )
           else

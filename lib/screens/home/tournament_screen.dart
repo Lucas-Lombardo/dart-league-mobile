@@ -7,6 +7,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../l10n/app_localizations.dart';
 import 'tournament_detail_screen.dart';
+import '../tournament/tournament_camera_setup_screen.dart';
 
 class TournamentScreen extends StatefulWidget {
   const TournamentScreen({super.key});
@@ -865,7 +866,7 @@ class _MatchInviteCard extends StatelessWidget {
               ),
             )
           else
-            _AcceptMatchButton(matchId: match.id),
+            _AcceptMatchButton(matchId: match.id, matchData: match),
         ],
       ),
     );
@@ -892,7 +893,7 @@ class _CountdownTimerState extends State<_CountdownTimer> {
   }
 
   void _calculateRemaining() {
-    final deadline = widget.inviteSentAt.add(const Duration(minutes: 10));
+    final deadline = widget.inviteSentAt.add(const Duration(minutes: 15));
     _remaining = deadline.difference(DateTime.now());
     if (_remaining.isNegative) {
       _remaining = Duration.zero;
@@ -940,8 +941,9 @@ class _CountdownTimerState extends State<_CountdownTimer> {
 
 class _AcceptMatchButton extends StatefulWidget {
   final String matchId;
+  final TournamentMatch? matchData;
 
-  const _AcceptMatchButton({required this.matchId});
+  const _AcceptMatchButton({required this.matchId, this.matchData});
 
   @override
   State<_AcceptMatchButton> createState() => _AcceptMatchButtonState();
@@ -956,8 +958,37 @@ class _AcceptMatchButtonState extends State<_AcceptMatchButton> {
     setState(() => _isLoading = true);
     HapticService.mediumImpact();
 
-    final provider = context.read<TournamentProvider>();
-    await provider.setMatchReady(widget.matchId);
+    final match = widget.matchData;
+    if (match != null) {
+      final auth = context.read<AuthProvider>();
+      final currentUserId = auth.currentUser?.id;
+      final isPlayer1 = currentUserId == match.player1Id;
+      final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
+      final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TournamentCameraSetupScreen(
+              matchId: match.id,
+              tournamentId: match.tournamentId ?? '',
+              tournamentName: match.tournamentName ?? 'Tournament',
+              roundName: match.roundName ?? 'Round',
+              opponentUsername: opponentUsername,
+              opponentId: opponentId,
+              player1Id: match.player1Id ?? '',
+              player2Id: match.player2Id ?? '',
+              bestOf: match.bestOf,
+              inviteSentAt: match.inviteSentAt,
+            ),
+          ),
+        );
+      }
+    } else {
+      // Fallback: old behavior
+      final provider = context.read<TournamentProvider>();
+      await provider.setMatchReady(widget.matchId);
+    }
 
     if (mounted) {
       setState(() => _isLoading = false);

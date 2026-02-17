@@ -130,6 +130,16 @@ class TournamentService {
     }
   }
 
+  static Future<Map<String, dynamic>> getActiveTournamentStatus() async {
+    try {
+      final response = await ApiService.get('/tournaments/active-status');
+      return response as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('Error fetching active tournament status: $e');
+      return {'inActiveTournament': false};
+    }
+  }
+
   static Future<void> setMatchReady(String matchId) async {
     try {
       await ApiService.post('/tournaments/matches/$matchId/ready', {});
