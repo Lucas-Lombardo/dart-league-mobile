@@ -19,6 +19,8 @@ class GameProvider with ChangeNotifier {
   String? _winnerId;
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
+  List<String> _opponentRoundThrows = [];
+  int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
   bool _listenersSetUp = false;
   bool _pendingConfirmation = false;
   String? _pendingType; // 'win' or 'bust'
@@ -59,6 +61,7 @@ class GameProvider with ChangeNotifier {
   String? get winnerId => _winnerId;
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
+  List<String> get opponentRoundThrows => _opponentRoundThrows;
   bool get pendingConfirmation => _pendingConfirmation;
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
@@ -106,8 +109,12 @@ class GameProvider with ChangeNotifier {
     String? agoraToken,
     String? agoraChannelName,
   }) {
+    debugPrint('GAME DEBUG: initGame called - matchId=$matchId, myUserId=$myUserId, currentMatchId=$_matchId');
     
-    // Always set these - they're needed for the game to work
+    // If this is a NEW match (different matchId), always do a full reset
+    // Only preserve state if same matchId (reconnection scenario)
+    final isNewMatch = _matchId != matchId;
+    
     _matchId = matchId;
     _myUserId = myUserId;
     _opponentUserId = opponentUserId;
@@ -117,10 +124,8 @@ class GameProvider with ChangeNotifier {
     if (agoraToken != null) _agoraToken = agoraToken;
     if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
     
-    
-    // Only initialize scores if game hasn't started yet
-    // Once gameStarted is true, we keep the state from the game_started event
-    if (!_gameStarted) {
+    if (isNewMatch || !_gameStarted) {
+      debugPrint('GAME DEBUG: initGame - resetting scores (isNewMatch=$isNewMatch, gameStarted=$_gameStarted)');
       _myScore = 501;
       _opponentScore = 501;
       _dartsThrown = 0;
@@ -128,9 +133,18 @@ class GameProvider with ChangeNotifier {
       _winnerId = null;
       _lastThrow = null;
       _currentRoundThrows = [];
+      _opponentRoundThrows = [];
+      _dartsEmittedThisRound = 0;
+      _pendingConfirmation = false;
+      _pendingType = null;
+      _pendingReason = null;
+      _pendingData = null;
+      // Don't reset _gameStarted — game_started event may have already fired for this match
     } else {
+      debugPrint('GAME DEBUG: initGame - preserving state (same match reconnection)');
     }
     
+    debugPrint('GAME DEBUG: initGame state AFTER - gameStarted=$_gameStarted, gameEnded=$_gameEnded, winnerId=$_winnerId, myScore=$_myScore');
     notifyListeners();
   }
 
@@ -226,18 +240,20 @@ class GameProvider with ChangeNotifier {
     _lastThrow = data['notation'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
     
-    // If backend sends currentRoundThrows array (e.g., after edit_dart), sync it
-    // BUT only if it's MY turn - otherwise we'd get opponent's throws
+    // Server is the single source of truth for currentRoundThrows
     if (data['currentRoundThrows'] != null && isMyTurn) {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _currentRoundThrows = throws.map((t) => t.toString()).toList();
+        // Keep guard in sync with server
+        _dartsEmittedThisRound = _currentRoundThrows.length;
       }
     }
     
-    // DON'T update currentPlayerId here - it should only change in round_complete
-    // This prevents premature turn switching after each dart
-    
+    // Track opponent's throws during their turn
+    if (!isMyTurn && _lastThrow != null) {
+      _opponentRoundThrows.add(_lastThrow!);
+    }
     
     notifyListeners();
   }
@@ -252,6 +268,8 @@ class GameProvider with ChangeNotifier {
     
     _dartsThrown = 0;
     _currentRoundThrows = [];
+    _opponentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     _currentPlayerId = data['nextPlayerId'] as String?;
     _pendingConfirmation = false;
     
@@ -328,15 +346,18 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleGameWon(dynamic data) {
+    debugPrint('GAME DEBUG: game_won received - winnerId=${data['winnerId']}, currentMatchId=$_matchId');
     
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
+      debugPrint('GAME DEBUG: game_won IGNORED (already ended)');
       return;
     }
     
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;
     
+    debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId');
     notifyListeners();
   }
 
@@ -365,6 +386,7 @@ class GameProvider with ChangeNotifier {
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     
     
     notifyListeners();
@@ -382,6 +404,7 @@ class GameProvider with ChangeNotifier {
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     
     
     notifyListeners();
@@ -557,9 +580,9 @@ class GameProvider with ChangeNotifier {
       'playerId': _myUserId,
     });
     
-    // Optimistically remove last dart from local state
-    if (_currentRoundThrows.isNotEmpty) {
-      _currentRoundThrows.removeLast();
+    // Decrement local guard (server will sync actual state via dart_undone)
+    if (_dartsEmittedThisRound > 0) {
+      _dartsEmittedThisRound--;
     }
     
     // Clear pending state
@@ -575,15 +598,15 @@ class GameProvider with ChangeNotifier {
     required int baseScore,
     required ScoreMultiplier multiplier,
   }) async {
-    if (!isMyTurn || _currentRoundThrows.length >= 3 || _gameEnded) {
+    if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) {
       return;
     }
 
     try {
       final isDouble = multiplier == ScoreMultiplier.double;
       final isTriple = multiplier == ScoreMultiplier.triple;
-      final notation = _getScoreNotation(baseScore, multiplier);
       
+      _dartsEmittedThisRound++;
       
       SocketService.emit('throw_dart', {
         'matchId': _matchId,
@@ -592,15 +615,9 @@ class GameProvider with ChangeNotifier {
         'isDouble': isDouble,
         'isTriple': isTriple,
       });
-      
-      // Add to current round throws immediately for UI feedback
-      _currentRoundThrows.add(notation);
-      _lastThrow = notation;
-      
-      
-      notifyListeners();
     } catch (_) {
-      // Socket emit failed
+      // Socket emit failed — roll back guard
+      _dartsEmittedThisRound--;
     }
   }
 
@@ -679,6 +696,7 @@ class GameProvider with ChangeNotifier {
   }
 
   void reset() {
+    debugPrint('GAME DEBUG: reset() called - CLEARING all state. Was: gameStarted=$_gameStarted, gameEnded=$_gameEnded, winnerId=$_winnerId, matchId=$_matchId');
     _cleanupSocketListeners();
     _matchId = null;
     _myScore = 501;
@@ -708,6 +726,7 @@ class GameProvider with ChangeNotifier {
     _remoteUid = null;
     _localUserJoined = false;
     _needsAgoraReconnect = false;
+    debugPrint('GAME DEBUG: reset() done - gameStarted=$_gameStarted, gameEnded=$_gameEnded');
     notifyListeners();
   }
 

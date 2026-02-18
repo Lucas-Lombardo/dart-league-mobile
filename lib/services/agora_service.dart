@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class AgoraService {
@@ -75,6 +79,8 @@ class AgoraService {
         options: const ChannelMediaOptions(
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
           channelProfile: ChannelProfileType.channelProfileCommunication,
+          publishMicrophoneTrack: false,
+          autoSubscribeAudio: true,
         ),
       );
       
@@ -162,6 +168,60 @@ class AgoraService {
     } catch (_) {
       // Stop preview error
     }
+  }
+
+  /// Take a snapshot of the local video stream and return the file path.
+  /// Uses Agora's takeSnapshot API. Returns null on failure.
+  static Future<String?> takeLocalSnapshot(RtcEngine engine) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/agora_snap_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final completer = Completer<String?>();
+
+      // Register one-shot callback for snapshot result
+      engine.registerEventHandler(
+        RtcEngineEventHandler(
+          onSnapshotTaken: (RtcConnection connection, int uid,
+              String filePath, int width, int height, int errCode) {
+            if (!completer.isCompleted) {
+              if (errCode == 0) {
+                completer.complete(filePath);
+              } else {
+                completer.complete(null);
+              }
+            }
+          },
+        ),
+      );
+
+      // uid 0 = local user
+      await engine.takeSnapshot(uid: 0, filePath: path);
+
+      // Wait for callback with timeout
+      final result = await completer.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => null,
+      );
+
+      return result;
+    } catch (e) {
+      print('[AgoraService] takeLocalSnapshot error: $e');
+      return null;
+    }
+  }
+
+  /// Clean up old snapshot files from temp directory
+  static Future<void> cleanupSnapshots() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final files = dir.listSync();
+      for (final file in files) {
+        if (file is File && file.path.contains('agora_snap_')) {
+          await file.delete();
+        }
+      }
+    } catch (_) {}
   }
 
   /// Release the Agora engine and cleanup resources

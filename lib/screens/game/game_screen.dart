@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +9,13 @@ import '../../services/match_service.dart';
 import '../../services/agora_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/dart_sound_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/score_converter.dart';
+import '../../utils/storage_service.dart';
+import '../../services/auto_scoring_service.dart';
 import '../../widgets/interactive_dartboard.dart';
+import '../../widgets/auto_score_display.dart';
 
 class GameScreen extends StatefulWidget {
   final String matchId;
@@ -48,6 +54,19 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   bool _isVideoEnabled = true;
   bool _isAudioMuted = true;
   bool _permissionsGranted = false;
+
+  // Camera zoom
+  double _cameraZoom = 1.0;
+  double _cameraMinZoom = 1.0;
+  double _cameraMaxZoom = 1.0;
+
+  // Track if we already emitted leave_match (prevent double-fire in dispose)
+  bool _didForfeit = false;
+
+  // Auto-scoring
+  AutoScoringService? _autoScoringService;
+  bool _autoScoringEnabled = false;
+  bool _autoScoringLoading = false;
 
   @override
   void initState() {
@@ -89,6 +108,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             _initializeAgora();
           }
           
+          // Load auto-scoring preference
+          _loadAutoScoringPref();
+          
           // Listen for pending confirmation state changes
           game.addListener(_handlePendingStateChange);
         }
@@ -122,6 +144,16 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         });
       }
       
+      // Manage auto-scoring capture based on turn
+      if (_autoScoringService != null && _autoScoringEnabled) {
+        if (game.isMyTurn && !_autoScoringService!.isCapturing) {
+          _autoScoringService!.resetTurn();
+          _autoScoringService!.startCapture();
+        } else if (!game.isMyTurn && _autoScoringService!.isCapturing) {
+          _autoScoringService!.stopCapture();
+        }
+      }
+      
       // Handle Agora reconnection when game_state_sync provides fresh credentials
       if (game.needsAgoraReconnect) {
         game.clearAgoraReconnectFlag();
@@ -138,6 +170,58 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       }
     } catch (_) {
       // State change handling error
+    }
+  }
+
+  /// Confirm the auto-scored round. Darts were already emitted individually
+  /// via onDartDetected callback as the AI detected them.
+  void _submitAutoScoredDarts(GameProvider game) {
+    if (_autoScoringService == null) return;
+    _autoScoringService!.stopCapture();
+    // Confirm round (handles fewer than 3 darts via end_round_early)
+    game.confirmRound();
+  }
+
+  Future<void> _loadAutoScoringPref() async {
+    if (kIsWeb || !AutoScoringService.isSupported) {
+      _autoScoringEnabled = false;
+      return;
+    }
+    final enabled = await StorageService.getAutoScoring();
+    if (mounted) {
+      setState(() => _autoScoringEnabled = enabled);
+    }
+  }
+
+  Future<void> _initAutoScoring() async {
+    if (_agoraEngine == null) return;
+    // Ensure preference is loaded (fixes race with _loadAutoScoringPref)
+    if (kIsWeb || !AutoScoringService.isSupported) return;
+    final enabled = await StorageService.getAutoScoring();
+    if (!mounted) return;
+    setState(() => _autoScoringEnabled = enabled);
+    if (!_autoScoringEnabled) return;
+
+    setState(() => _autoScoringLoading = true);
+    final engine = _agoraEngine!;
+    _autoScoringService = AutoScoringService();
+    await _autoScoringService!.init(
+      captureFrame: () => AgoraService.takeLocalSnapshot(engine),
+      onDartDetected: (slotIndex, dartScore) {
+        if (!mounted) return;
+        final game = context.read<GameProvider>();
+        if (!game.isMyTurn) return;
+        final (baseScore, multiplier) = dartScoreToBackend(dartScore);
+        HapticService.mediumImpact();
+        DartSoundService.playDartHit(baseScore, multiplier);
+        game.throwDart(baseScore: baseScore, multiplier: multiplier);
+      },
+    );
+    if (mounted) {
+      setState(() => _autoScoringLoading = false);
+      if (_autoScoringService!.modelLoaded) {
+        _autoScoringService!.startCapture();
+      }
     }
   }
 
@@ -196,8 +280,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         uid: 0,
       );
       
-      // Mute local microphone after joining (must be after join, otherwise broadcaster defaults override it)
-      await _agoraEngine!.muteLocalAudioStream(true);
       _isAudioMuted = true;
     } catch (_) {
       // Agora reconnection error
@@ -242,6 +324,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             final game = context.read<GameProvider>();
             game.setRemoteUser(null);
           },
+          onLocalVideoStateChanged: (VideoSourceType source, LocalVideoStreamState state, LocalVideoStreamReason error) {
+            // Init zoom once camera hardware is actually capturing
+            if (state == LocalVideoStreamState.localVideoStreamStateCapturing ||
+                state == LocalVideoStreamState.localVideoStreamStateEncoding) {
+              _initCameraZoom();
+            }
+          },
         ),
       );
       
@@ -255,8 +344,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         );
       }
       
-      // Mute local microphone after joining (must be after join, otherwise broadcaster defaults override it)
-      await _agoraEngine!.muteLocalAudioStream(true);
+      // Initialize auto-scoring if enabled
+      await _initAutoScoring();
     } catch (_) {
       // Agora initialization error
     }
@@ -279,12 +368,70 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _isAudioMuted = !_isAudioMuted;
     });
     
+    await _agoraEngine!.updateChannelMediaOptions(
+      ChannelMediaOptions(publishMicrophoneTrack: !_isAudioMuted),
+    );
     await _agoraEngine!.muteLocalAudioStream(_isAudioMuted);
   }
   
   Future<void> _switchCamera() async {
     if (_agoraEngine == null) return;
     await AgoraService.switchCamera(_agoraEngine!);
+  }
+
+  bool _cameraZoomInitialized = false;
+
+  Future<void> _initCameraZoom({int attempt = 0}) async {
+    if (_agoraEngine == null || !mounted || _cameraZoomInitialized) return;
+    try {
+      final maxZoom = await _agoraEngine!.getCameraMaxZoomFactor();
+      if (mounted && maxZoom > 1.0) {
+        _cameraZoomInitialized = true;
+        setState(() {
+          _cameraMinZoom = 1.0;
+          _cameraMaxZoom = maxZoom.clamp(1.0, 10.0);
+          _cameraZoom = 1.0;
+        });
+        debugPrint('ZOOM DEBUG: zoom initialized max=$_cameraMaxZoom');
+      }
+    } catch (e) {
+      // Camera may not be ready yet — retry up to 5 times with increasing delay
+      if (attempt < 5 && mounted) {
+        final delay = Duration(milliseconds: 500 * (attempt + 1));
+        debugPrint('ZOOM DEBUG: _initCameraZoom failed (attempt $attempt), retrying in ${delay.inMilliseconds}ms: $e');
+        Future.delayed(delay, () => _initCameraZoom(attempt: attempt + 1));
+      } else {
+        debugPrint('ZOOM DEBUG: _initCameraZoom gave up after $attempt attempts: $e');
+      }
+    }
+  }
+
+  Future<void> _zoomIn() async {
+    debugPrint('ZOOM DEBUG: _zoomIn called, engine=${_agoraEngine != null}, current=$_cameraZoom, min=$_cameraMinZoom, max=$_cameraMaxZoom');
+    if (_agoraEngine == null) return;
+    final next = (_cameraZoom + 0.5).clamp(_cameraMinZoom, _cameraMaxZoom);
+    debugPrint('ZOOM DEBUG: _zoomIn next=$next');
+    try {
+      await _agoraEngine!.setCameraZoomFactor(next);
+      if (mounted) setState(() => _cameraZoom = next);
+      debugPrint('ZOOM DEBUG: _zoomIn success, now=$_cameraZoom');
+    } catch (e) {
+      debugPrint('ZOOM DEBUG: _zoomIn ERROR: $e');
+    }
+  }
+
+  Future<void> _zoomOut() async {
+    debugPrint('ZOOM DEBUG: _zoomOut called, engine=${_agoraEngine != null}, current=$_cameraZoom, min=$_cameraMinZoom, max=$_cameraMaxZoom');
+    if (_agoraEngine == null) return;
+    final next = (_cameraZoom - 0.5).clamp(_cameraMinZoom, _cameraMaxZoom);
+    debugPrint('ZOOM DEBUG: _zoomOut next=$next');
+    try {
+      await _agoraEngine!.setCameraZoomFactor(next);
+      if (mounted) setState(() => _cameraZoom = next);
+      debugPrint('ZOOM DEBUG: _zoomOut success, now=$_cameraZoom');
+    } catch (e) {
+      debugPrint('ZOOM DEBUG: _zoomOut ERROR: $e');
+    }
   }
 
   // Build video layout when it's user's turn - show only small opponent camera
@@ -556,8 +703,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     
     WakelockPlus.disable();
     
-    // Emit leave_match before cleanup
-    _leaveMatch();
+    // Emit leave_match before cleanup (skip if we already forfeited voluntarily)
+    if (!_didForfeit) {
+      _leaveMatch();
+    }
     
     // Remove listener to prevent unmounted widget errors
     try {
@@ -566,6 +715,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     } catch (_) {
       // Provider access error during dispose
     }
+    
+    // Dispose auto-scoring
+    _autoScoringService?.dispose();
+    _autoScoringService = null;
     
     // Leave Agora channel and cleanup
     if (_agoraEngine != null) {
@@ -626,11 +779,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
       );
       
-      // Navigate FIRST, then reset game state to avoid showing 'INITIALIZING MATCH...'
+      // Reset game state BEFORE navigating to home
+      debugPrint('RESET DEBUG: _acceptMatchResult - calling game.reset() BEFORE navigating home');
+      game.reset();
       if (mounted) {
         navigator.pushNamedAndRemoveUntil('/home', (route) => false);
       }
-      game.reset();
     } catch (e) {
       if (!mounted) return;
       
@@ -873,11 +1027,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               } else {
               }
               
-              // Navigate FIRST, then reset to avoid 'INITIALIZING MATCH...' flash
               if (context.mounted) {
+                debugPrint('RESET DEBUG: forfeit dialog - calling game.reset() BEFORE navigating home');
+                game.reset();
                 Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               }
-              game.reset();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
@@ -1117,9 +1271,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             onPressed: () {
-              // Emit leave_match before leaving
+              Navigator.pop(dialogContext); // close dialog
+              // Emit leave_match — stay on screen so player_forfeited event
+              // triggers the forfeit result dialog
+              _didForfeit = true;
               _leaveMatch();
-              Navigator.pop(dialogContext, true);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error,
@@ -1409,7 +1565,39 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
-        body: Container(
+        body: _autoScoringEnabled && _autoScoringLoading
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: AppTheme.primary),
+                  SizedBox(height: 16),
+                  Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                ],
+              ),
+            )
+          : _autoScoringEnabled && _autoScoringService != null && _autoScoringService!.modelLoaded && game.isMyTurn
+          ? AutoScoreGameView(
+              scoringService: _autoScoringService!,
+              onConfirm: () => _submitAutoScoredDarts(game),
+              pendingConfirmation: game.pendingConfirmation,
+              myScore: game.myScore,
+              opponentScore: game.opponentScore,
+              opponentName: widget.opponentUsername,
+              myName: auth.currentUser?.username ?? 'You',
+              dartsThrown: dartsThrown,
+              agoraEngine: _agoraEngine,
+              remoteUid: game.remoteUid,
+              isAudioMuted: _isAudioMuted,
+              onToggleAudio: _toggleAudio,
+              onSwitchCamera: _switchCamera,
+              onZoomIn: _zoomIn,
+              onZoomOut: _zoomOut,
+              currentZoom: _cameraZoom,
+              minZoom: _cameraMinZoom,
+              maxZoom: _cameraMaxZoom,
+            )
+          : Container(
           color: AppTheme.background,
           child: Stack(
             children: [
@@ -2005,85 +2193,117 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _buildScoreInput(GameProvider game) {
     // Waiting for Turn State
     if (!game.isMyTurn) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(
-                color: AppTheme.error,
-                strokeWidth: 3,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              "OPPONENT'S TURN",
-              style: TextStyle(
-                color: AppTheme.error.withValues(alpha: 0.8),
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Please wait...",
-              style: TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.symmetric(horizontal: 40),
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.error,
-                  width: 2,
+      final opponentThrows = game.opponentRoundThrows;
+
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Opponent's dart throws
+              const Text(
+                "OPPONENT'S DARTS",
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
                 ),
               ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.warning_rounded,
-                    color: AppTheme.error,
-                    size: 32,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    "DO NOT PLAY!",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppTheme.error,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (i) {
+                  final hasThrow = i < opponentThrows.length;
+                  final notation = hasThrow ? opponentThrows[i] : null;
+                  return Container(
+                    width: 76,
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: hasThrow ? AppTheme.surface : AppTheme.background,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: hasThrow
+                            ? AppTheme.primary.withValues(alpha: 0.4)
+                            : AppTheme.surfaceLight.withValues(alpha: 0.2),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    "Playing during opponent's turn may result in match forfeiture",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppTheme.error,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    child: Text(
+                      hasThrow ? notation! : '—',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: hasThrow ? Colors.white : Colors.white24,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                }),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  color: AppTheme.error,
+                  strokeWidth: 2.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "OPPONENT'S TURN",
+                style: TextStyle(
+                  color: AppTheme.error.withValues(alpha: 0.8),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "Please wait...",
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Compact warning
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.error.withValues(alpha: 0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.warning_rounded, color: AppTheme.error, size: 18),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "Do not play during opponent's turn",
+                        style: TextStyle(
+                          color: AppTheme.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    // Active Input State
+    // Manual interactive dartboard (web, disabled, or model not loaded)
     return Column(
       children: [
         

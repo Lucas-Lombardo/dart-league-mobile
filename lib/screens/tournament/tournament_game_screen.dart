@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +10,13 @@ import '../../services/agora_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/match_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/dart_sound_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/score_converter.dart';
+import '../../utils/storage_service.dart';
+import '../../services/auto_scoring_service.dart';
 import '../../widgets/interactive_dartboard.dart';
+import '../../widgets/auto_score_display.dart';
 import 'tournament_leg_result_screen.dart';
 import 'tournament_match_result_screen.dart';
 
@@ -56,6 +62,16 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   bool _isAudioMuted = true;
   bool _permissionsGranted = false;
 
+  // Camera zoom
+  double _cameraZoom = 1.0;
+  double _cameraMinZoom = 1.0;
+  double _cameraMaxZoom = 1.0;
+
+  // Auto-scoring
+  AutoScoringService? _autoScoringService;
+  bool _autoScoringEnabled = false;
+  bool _autoScoringLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +95,9 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           }
 
           game.addListener(_handleStateChange);
+
+          // Load auto-scoring preference
+          _loadAutoScoringPref();
 
           // Sync initial state — game_started may have already fired
           if (game.gameStarted != _gameStarted || game.gameEnded != _gameEnded) {
@@ -117,6 +136,16 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       if (game.tournamentState == TournamentGameState.playing && !game.gameEnded) {
         _resultAccepted = false;
         _navigatingToResult = false;
+      }
+
+      // Manage auto-scoring capture based on turn
+      if (_autoScoringService != null && _autoScoringEnabled) {
+        if (game.isMyTurn && !_autoScoringService!.isCapturing) {
+          _autoScoringService!.resetTurn();
+          _autoScoringService!.startCapture();
+        } else if (!game.isMyTurn && _autoScoringService!.isCapturing) {
+          _autoScoringService!.stopCapture();
+        }
       }
 
       // Handle Agora reconnection
@@ -200,6 +229,54 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     );
   }
 
+  Future<void> _loadAutoScoringPref() async {
+    if (kIsWeb || !AutoScoringService.isSupported) {
+      _autoScoringEnabled = false;
+      return;
+    }
+    final enabled = await StorageService.getAutoScoring();
+    if (mounted) {
+      setState(() => _autoScoringEnabled = enabled);
+    }
+  }
+
+  Future<void> _initAutoScoring() async {
+    if (_agoraEngine == null) return;
+    if (kIsWeb || !AutoScoringService.isSupported) return;
+    final enabled = await StorageService.getAutoScoring();
+    if (!mounted) return;
+    setState(() => _autoScoringEnabled = enabled);
+    if (!_autoScoringEnabled) return;
+
+    setState(() => _autoScoringLoading = true);
+    final engine = _agoraEngine!;
+    _autoScoringService = AutoScoringService();
+    await _autoScoringService!.init(
+      captureFrame: () => AgoraService.takeLocalSnapshot(engine),
+      onDartDetected: (slotIndex, dartScore) {
+        if (!mounted) return;
+        final game = context.read<TournamentGameProvider>();
+        if (!game.isMyTurn) return;
+        final (baseScore, multiplier) = dartScoreToBackend(dartScore);
+        HapticService.mediumImpact();
+        DartSoundService.playDartHit(baseScore, multiplier);
+        game.throwDart(baseScore: baseScore, multiplier: multiplier);
+      },
+    );
+    if (mounted) {
+      setState(() => _autoScoringLoading = false);
+      if (_autoScoringService!.modelLoaded) {
+        _autoScoringService!.startCapture();
+      }
+    }
+  }
+
+  void _submitAutoScoredDarts(TournamentGameProvider game) {
+    if (_autoScoringService == null) return;
+    _autoScoringService!.stopCapture();
+    game.confirmRound();
+  }
+
   Future<void> _initializeAgora() async {
     final game = context.read<TournamentGameProvider>();
     
@@ -241,6 +318,12 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(null);
           },
+          onLocalVideoStateChanged: (VideoSourceType source, LocalVideoStreamState state, LocalVideoStreamReason error) {
+            if (state == LocalVideoStreamState.localVideoStreamStateCapturing ||
+                state == LocalVideoStreamState.localVideoStreamStateEncoding) {
+              _initCameraZoom();
+            }
+          },
         ),
       );
 
@@ -252,8 +335,10 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         uid: 0,
       );
 
-      await _agoraEngine!.muteLocalAudioStream(true);
       debugPrint('TOURNAMENT AGORA: Initialization complete');
+
+      // Initialize auto-scoring if enabled
+      await _initAutoScoring();
     } catch (e) {
       debugPrint('TOURNAMENT AGORA: Error during initialization: $e');
     }
@@ -302,6 +387,12 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(null);
           },
+          onLocalVideoStateChanged: (VideoSourceType source, LocalVideoStreamState state, LocalVideoStreamReason error) {
+            if (state == LocalVideoStreamState.localVideoStreamStateCapturing ||
+                state == LocalVideoStreamState.localVideoStreamStateEncoding) {
+              _initCameraZoom();
+            }
+          },
         ),
       );
       await AgoraService.joinChannel(
@@ -310,7 +401,6 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         channelName: channelName,
         uid: 0,
       );
-      await _agoraEngine!.muteLocalAudioStream(true);
       _isAudioMuted = true;
       debugPrint('TOURNAMENT AGORA: Reconnection complete');
     } catch (e) {
@@ -321,12 +411,53 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   Future<void> _toggleAudio() async {
     if (_agoraEngine == null) return;
     setState(() => _isAudioMuted = !_isAudioMuted);
+    await _agoraEngine!.updateChannelMediaOptions(
+      ChannelMediaOptions(publishMicrophoneTrack: !_isAudioMuted),
+    );
     await _agoraEngine!.muteLocalAudioStream(_isAudioMuted);
   }
 
   Future<void> _switchCamera() async {
     if (_agoraEngine == null) return;
     await AgoraService.switchCamera(_agoraEngine!);
+  }
+
+  bool _cameraZoomInitialized = false;
+
+  Future<void> _initCameraZoom({int attempt = 0}) async {
+    if (_agoraEngine == null || !mounted || _cameraZoomInitialized) return;
+    try {
+      final maxZoom = await _agoraEngine!.getCameraMaxZoomFactor();
+      if (mounted && maxZoom > 1.0) {
+        _cameraZoomInitialized = true;
+        setState(() {
+          _cameraMinZoom = 1.0;
+          _cameraMaxZoom = maxZoom.clamp(1.0, 10.0);
+          _cameraZoom = 1.0;
+        });
+        debugPrint('ZOOM DEBUG: tournament zoom initialized max=$_cameraMaxZoom');
+      }
+    } catch (e) {
+      if (attempt < 5 && mounted) {
+        final delay = Duration(milliseconds: 500 * (attempt + 1));
+        debugPrint('ZOOM DEBUG: tournament _initCameraZoom failed (attempt $attempt), retrying in ${delay.inMilliseconds}ms: $e');
+        Future.delayed(delay, () => _initCameraZoom(attempt: attempt + 1));
+      }
+    }
+  }
+
+  Future<void> _zoomIn() async {
+    if (_agoraEngine == null) return;
+    final next = (_cameraZoom + 0.5).clamp(_cameraMinZoom, _cameraMaxZoom);
+    await _agoraEngine!.setCameraZoomFactor(next);
+    if (mounted) setState(() => _cameraZoom = next);
+  }
+
+  Future<void> _zoomOut() async {
+    if (_agoraEngine == null) return;
+    final next = (_cameraZoom - 0.5).clamp(_cameraMinZoom, _cameraMaxZoom);
+    await _agoraEngine!.setCameraZoomFactor(next);
+    if (mounted) setState(() => _cameraZoom = next);
   }
 
   void _leaveMatch() {
@@ -769,6 +900,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       final game = context.read<TournamentGameProvider>();
       game.removeListener(_handleStateChange);
     } catch (_) {}
+    _autoScoringService?.dispose();
+    _autoScoringService = null;
     if (_agoraEngine != null) {
       AgoraService.leaveChannel(_agoraEngine!);
       AgoraService.dispose();
@@ -990,7 +1123,39 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                   ),
                 ],
               ),
-              body: Container(
+              body: _autoScoringEnabled && _autoScoringLoading
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: AppTheme.primary),
+                        SizedBox(height: 16),
+                        Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                      ],
+                    ),
+                  )
+                : _autoScoringEnabled && _autoScoringService != null && _autoScoringService!.modelLoaded && game.isMyTurn
+                ? AutoScoreGameView(
+                    scoringService: _autoScoringService!,
+                    onConfirm: () => _submitAutoScoredDarts(game),
+                    pendingConfirmation: game.pendingConfirmation,
+                    myScore: game.myScore,
+                    opponentScore: game.opponentScore,
+                    opponentName: widget.opponentUsername,
+                    myName: auth.currentUser?.username ?? 'You',
+                    dartsThrown: game.dartsThrown,
+                    agoraEngine: _agoraEngine,
+                    remoteUid: game.remoteUid,
+                    isAudioMuted: _isAudioMuted,
+                    onToggleAudio: _toggleAudio,
+                    onSwitchCamera: _switchCamera,
+                    onZoomIn: _zoomIn,
+                    onZoomOut: _zoomOut,
+                    currentZoom: _cameraZoom,
+                    minZoom: _cameraMinZoom,
+                    maxZoom: _cameraMaxZoom,
+                  )
+                : Container(
                 color: AppTheme.background,
                 child: Stack(
                   children: [
@@ -1391,39 +1556,65 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
 
   Widget _buildScoreInput(TournamentGameProvider game) {
     if (!game.isMyTurn) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 3)),
-            const SizedBox(height: 24),
-            Text("OPPONENT'S TURN", style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
-            const SizedBox(height: 8),
-            const Text("Please wait...", style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.symmetric(horizontal: 40),
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.error, width: 2),
+      final opponentThrows = game.opponentRoundThrows;
+
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("OPPONENT'S DARTS", style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (i) {
+                  final hasThrow = i < opponentThrows.length;
+                  final notation = hasThrow ? opponentThrows[i] : null;
+                  return Container(
+                    width: 76,
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: hasThrow ? AppTheme.surface : AppTheme.background,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: hasThrow ? AppTheme.primary.withValues(alpha: 0.4) : AppTheme.surfaceLight.withValues(alpha: 0.2)),
+                    ),
+                    child: Text(hasThrow ? notation! : '—', textAlign: TextAlign.center, style: TextStyle(color: hasThrow ? Colors.white : Colors.white24, fontSize: 18, fontWeight: FontWeight.bold)),
+                  );
+                }),
               ),
-              child: const Column(
-                children: [
-                  Icon(Icons.warning_rounded, color: AppTheme.error, size: 32),
-                  SizedBox(height: 8),
-                  Text("DO NOT PLAY!", textAlign: TextAlign.center, style: TextStyle(color: AppTheme.error, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                  SizedBox(height: 8),
-                  Text("Playing during opponent's turn may result in match forfeiture", textAlign: TextAlign.center, style: TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
+              const SizedBox(height: 16),
+              const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2.5)),
+              const SizedBox(height: 12),
+              Text("OPPONENT'S TURN", style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              const SizedBox(height: 4),
+              const Text("Please wait...", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.error.withValues(alpha: 0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.warning_rounded, color: AppTheme.error, size: 18),
+                    SizedBox(width: 8),
+                    Flexible(child: Text("Do not play during opponent's turn", style: TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.w600))),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
+    // Manual interactive dartboard
     return Column(
       children: [
         Expanded(

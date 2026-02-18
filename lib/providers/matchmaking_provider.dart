@@ -46,6 +46,9 @@ class MatchmakingProvider with ChangeNotifier {
 
   Future<void> joinQueue(String userId) async {
     try {
+      debugPrint('QUEUE DEBUG: joinQueue called - userId=$userId');
+      debugPrint('QUEUE DEBUG: gameProvider state - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}, winnerId=${_gameProvider?.winnerId}, matchId=${_gameProvider?.matchId}');
+      
       // Reset ALL state from previous match before starting new search
       _matchFound = false;
       _matchId = null;
@@ -57,6 +60,13 @@ class MatchmakingProvider with ChangeNotifier {
       _agoraChannelName = null;
       _errorMessage = null;
       _currentUserId = userId;
+      
+      // Reset game provider if it still has stale state from previous match
+      if (_gameProvider != null && (_gameProvider!.gameStarted || _gameProvider!.gameEnded)) {
+        debugPrint('QUEUE DEBUG: Resetting stale game provider state before queuing');
+        _gameProvider!.reset();
+      }
+      
       notifyListeners();
 
       await SocketService.ensureConnected();
@@ -129,6 +139,8 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _handleMatchFound(dynamic data) {
+    debugPrint('QUEUE DEBUG: match_found received - matchId=${data['matchId']}, opponentId=${data['opponentId']}');
+    debugPrint('QUEUE DEBUG: gameProvider state at match_found - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}');
     
     HapticService.heavyImpact();
     

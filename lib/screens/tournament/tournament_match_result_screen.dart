@@ -185,11 +185,9 @@ class TournamentMatchResultScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         HapticService.mediumImpact();
-                        // Reset tournament game provider
-                        try {
-                          context.read<TournamentGameProvider>().reset();
-                        } catch (_) {}
-                        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+                        final provider = context.read<TournamentGameProvider>();
+                        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false)
+                            .then((_) { try { provider.reset(); } catch (_) {} });
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: didWin ? AppTheme.success : AppTheme.primary,

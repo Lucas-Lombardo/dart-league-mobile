@@ -33,6 +33,8 @@ class TournamentGameProvider with ChangeNotifier {
   String? _winnerId;
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
+  List<String> _opponentRoundThrows = [];
+  int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
   bool _pendingConfirmation = false;
   String? _pendingType;
   String? _pendingReason;
@@ -82,6 +84,7 @@ class TournamentGameProvider with ChangeNotifier {
   String? get winnerId => _winnerId;
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
+  List<String> get opponentRoundThrows => _opponentRoundThrows;
   bool get pendingConfirmation => _pendingConfirmation;
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
@@ -176,6 +179,7 @@ class TournamentGameProvider with ChangeNotifier {
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     _pendingConfirmation = false;
     _pendingType = null;
     _pendingReason = null;
@@ -229,11 +233,18 @@ class TournamentGameProvider with ChangeNotifier {
     }
     _lastThrow = data['notation'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
+    // Server is the single source of truth for currentRoundThrows
     if (data['currentRoundThrows'] != null && isMyTurn) {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _currentRoundThrows = throws.map((t) => t.toString()).toList();
+        // Keep guard in sync with server
+        _dartsEmittedThisRound = _currentRoundThrows.length;
       }
+    }
+    // Track opponent's throws during their turn
+    if (!isMyTurn && _lastThrow != null) {
+      _opponentRoundThrows.add(_lastThrow!);
     }
     notifyListeners();
   }
@@ -246,6 +257,8 @@ class TournamentGameProvider with ChangeNotifier {
   void _handleRoundComplete(dynamic data) {
     _dartsThrown = 0;
     _currentRoundThrows = [];
+    _opponentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     _currentPlayerId = data['nextPlayerId'] as String?;
     _pendingConfirmation = false;
     final player1Score = data['player1Score'] as int?;
@@ -280,6 +293,7 @@ class TournamentGameProvider with ChangeNotifier {
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     notifyListeners();
   }
 
@@ -292,6 +306,7 @@ class TournamentGameProvider with ChangeNotifier {
     _currentPlayerId = data['currentPlayerId'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? 0;
     _currentRoundThrows = [];
+    _dartsEmittedThisRound = 0;
     notifyListeners();
   }
 
@@ -402,6 +417,7 @@ class TournamentGameProvider with ChangeNotifier {
     final throws = data['currentRoundThrows'] as List<dynamic>?;
     if (throws != null) {
       _currentRoundThrows = throws.map((t) => t.toString()).toList();
+      _dartsEmittedThisRound = _currentRoundThrows.length;
     }
     _pendingConfirmation = false;
     _pendingType = null;
@@ -515,12 +531,13 @@ class TournamentGameProvider with ChangeNotifier {
     required int baseScore,
     required ScoreMultiplier multiplier,
   }) async {
-    if (!isMyTurn || _currentRoundThrows.length >= 3 || _gameEnded) return;
+    if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) return;
 
     try {
       final isDouble = multiplier == ScoreMultiplier.double;
       final isTriple = multiplier == ScoreMultiplier.triple;
-      final notation = _getScoreNotation(baseScore, multiplier);
+
+      _dartsEmittedThisRound++;
 
       SocketService.emit('throw_dart', {
         'matchId': _currentGameMatchId,
@@ -529,11 +546,10 @@ class TournamentGameProvider with ChangeNotifier {
         'isDouble': isDouble,
         'isTriple': isTriple,
       });
-
-      _currentRoundThrows.add(notation);
-      _lastThrow = notation;
-      notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+      // Socket emit failed — roll back guard
+      _dartsEmittedThisRound--;
+    }
   }
 
   void editDartThrow(int index, int baseScore, ScoreMultiplier multiplier) {
@@ -558,8 +574,9 @@ class TournamentGameProvider with ChangeNotifier {
       'matchId': _currentGameMatchId,
       'playerId': _myUserId,
     });
-    if (_currentRoundThrows.isNotEmpty) {
-      _currentRoundThrows.removeLast();
+    // Decrement local guard (server will sync actual state via dart_undone)
+    if (_dartsEmittedThisRound > 0) {
+      _dartsEmittedThisRound--;
     }
     _pendingConfirmation = false;
     _pendingType = null;

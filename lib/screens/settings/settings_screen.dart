@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_translation.dart';
+import '../../utils/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,13 +19,22 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _hapticEnabled = true;
+  bool _autoScoringEnabled = true;
   String _appVersion = 'Loading...';
 
   @override
   void initState() {
     super.initState();
     _hapticEnabled = HapticService.isEnabled;
+    _loadAutoScoringPref();
     _loadAppVersion();
+  }
+
+  Future<void> _loadAutoScoringPref() async {
+    final enabled = await StorageService.getAutoScoring();
+    if (mounted) {
+      setState(() => _autoScoringEnabled = enabled);
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -77,6 +88,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
           ),
+          if (!kIsWeb)
+            _buildSwitchTile(
+              'AI Auto-Scoring',
+              'Detect dart scores using camera AI',
+              Icons.auto_awesome,
+              _autoScoringEnabled,
+              (value) {
+                setState(() => _autoScoringEnabled = value);
+                StorageService.saveAutoScoring(value);
+              },
+            ),
           
           const SizedBox(height: 24),
           _buildSection(l10n.about.toUpperCase()),
