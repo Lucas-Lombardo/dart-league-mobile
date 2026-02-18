@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
+import '../utils/dart_sound_service.dart';
 import '../providers/game_provider.dart';
 
 class InteractiveDartboard extends StatefulWidget {
@@ -66,12 +67,14 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     // Check bulls
     if (distance <= bullseyeRadius) {
       HapticService.mediumImpact();
+      DartSoundService.playDartHit(25, ScoreMultiplier.double);
       widget.onDartThrow(25, ScoreMultiplier.double); // Double bull = 50
       return;
     }
     
     if (distance <= bullRadius) {
       HapticService.mediumImpact();
+      DartSoundService.playDartHit(25, ScoreMultiplier.single);
       widget.onDartThrow(25, ScoreMultiplier.single); // Single bull = 25
       return;
     }
@@ -79,6 +82,7 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     // Outside dartboard
     if (distance > doubleEnd) {
       HapticService.mediumImpact();
+      DartSoundService.playDartHit(0, ScoreMultiplier.single);
       widget.onDartThrow(0, ScoreMultiplier.single); // Miss
       return;
     }
@@ -104,6 +108,7 @@ class _InteractiveDartboardState extends State<InteractiveDartboard> {
     }
     
     HapticService.mediumImpact();
+    DartSoundService.playDartHit(number, multiplier);
     widget.onDartThrow(number, multiplier);
   }
 }

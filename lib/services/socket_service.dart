@@ -22,12 +22,15 @@ class SocketService {
         throw Exception('No authentication token found');
       }
 
-      final socketUrl = baseUrl.replaceAll('/api', '');
+      // baseUrl is already the full URL (https://api.dart-rivals.com)
+      // No need to modify it - socket.io connects to the same host
+      final socketUrl = baseUrl;
+      print('🔌 SocketService: Connecting to $socketUrl');
 
       _socket = io.io(
         socketUrl,
         io.OptionBuilder()
-            .setTransports(['websocket'])
+            .setTransports(['websocket', 'polling'])
             .enableAutoConnect()
             .enableReconnection()
             .setReconnectionAttempts(5)
@@ -37,20 +40,25 @@ class SocketService {
       );
 
       _socket!.onConnect((_) {
+        print('✅ SocketService: Connected! socketId=${_socket?.id}');
       });
 
-      _socket!.onDisconnect((_) {
+      _socket!.onDisconnect((reason) {
+        print('❌ SocketService: Disconnected - reason: $reason');
       });
 
       _socket!.on('reconnect', (_) {
+        print('🔄 SocketService: Reconnected');
         // Trigger reconnection handler if registered
         _onReconnectHandler?.call();
       });
 
       _socket!.onConnectError((error) {
+        print('❌ SocketService: Connect error - $error');
       });
 
       _socket!.onError((error) {
+        print('❌ SocketService: Error - $error');
       });
 
       _socket!.connect();

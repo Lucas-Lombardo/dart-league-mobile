@@ -10,8 +10,8 @@ class TournamentLegResultScreen extends StatelessWidget {
   final String roundName;
   final String opponentUsername;
   final String? legWinnerId;
-  final int player1LegsWon;
-  final int player2LegsWon;
+  final int myLegsWon;
+  final int opponentLegsWon;
   final int legsNeeded;
   final int bestOf;
   final int currentLeg;
@@ -23,8 +23,8 @@ class TournamentLegResultScreen extends StatelessWidget {
     required this.roundName,
     required this.opponentUsername,
     required this.legWinnerId,
-    required this.player1LegsWon,
-    required this.player2LegsWon,
+    required this.myLegsWon,
+    required this.opponentLegsWon,
     required this.legsNeeded,
     required this.bestOf,
     required this.currentLeg,
@@ -115,7 +115,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _buildPlayerScore(myUsername, player1LegsWon, true),
+                        _buildPlayerScore(myUsername, myLegsWon, true),
                         const Text(
                           '-',
                           style: TextStyle(
@@ -124,7 +124,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                             fontWeight: FontWeight.w300,
                           ),
                         ),
-                        _buildPlayerScore(opponentUsername, player2LegsWon, false),
+                        _buildPlayerScore(opponentUsername, opponentLegsWon, false),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -133,9 +133,9 @@ class TournamentLegResultScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(bestOf, (index) {
                         Color color;
-                        if (index < player1LegsWon) {
+                        if (index < myLegsWon) {
                           color = AppTheme.success;
-                        } else if (index < player1LegsWon + player2LegsWon) {
+                        } else if (index < myLegsWon + opponentLegsWon) {
                           color = AppTheme.error;
                         } else {
                           color = AppTheme.surfaceLight;

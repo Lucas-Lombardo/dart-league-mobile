@@ -12,8 +12,8 @@ class TournamentMatchResultScreen extends StatelessWidget {
   final String roundName;
   final String opponentUsername;
   final String? seriesWinnerId;
-  final int player1LegsWon;
-  final int player2LegsWon;
+  final int myLegsWon;
+  final int opponentLegsWon;
   final int bestOf;
 
   const TournamentMatchResultScreen({
@@ -24,8 +24,8 @@ class TournamentMatchResultScreen extends StatelessWidget {
     required this.roundName,
     required this.opponentUsername,
     required this.seriesWinnerId,
-    required this.player1LegsWon,
-    required this.player2LegsWon,
+    required this.myLegsWon,
+    required this.opponentLegsWon,
     required this.bestOf,
   });
 
@@ -138,7 +138,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildPlayerColumn(myUsername, player1LegsWon, true, didWin),
+                            _buildPlayerColumn(myUsername, myLegsWon, true, didWin),
                             Column(
                               children: [
                                 const Text(
@@ -152,7 +152,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '$player1LegsWon - $player2LegsWon',
+                                  '$myLegsWon - $opponentLegsWon',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 32,
@@ -169,7 +169,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            _buildPlayerColumn(opponentUsername, player2LegsWon, false, !didWin),
+                            _buildPlayerColumn(opponentUsername, opponentLegsWon, false, !didWin),
                           ],
                         ),
                       ],

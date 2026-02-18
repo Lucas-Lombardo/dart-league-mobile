@@ -74,7 +74,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         if (auth.currentUser != null) {
           _storedPlayerId = auth.currentUser!.id;
 
-          if (game.agoraAppId != null) {
+          if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
             _initializeAgora();
           }
 
@@ -162,8 +162,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           roundName: widget.roundName,
           opponentUsername: widget.opponentUsername,
           legWinnerId: game.legWinnerId,
-          player1LegsWon: game.player1LegsWon,
-          player2LegsWon: game.player2LegsWon,
+          myLegsWon: game.myLegsWon,
+          opponentLegsWon: game.opponentLegsWon,
           legsNeeded: game.legsNeeded,
           bestOf: widget.bestOf,
           currentLeg: game.currentLeg,
@@ -192,8 +192,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           roundName: widget.roundName,
           opponentUsername: widget.opponentUsername,
           seriesWinnerId: game.seriesWinnerId,
-          player1LegsWon: game.player1LegsWon,
-          player2LegsWon: game.player2LegsWon,
+          myLegsWon: game.myLegsWon,
+          opponentLegsWon: game.opponentLegsWon,
           bestOf: widget.bestOf,
         ),
       ),
@@ -202,8 +202,23 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
 
   Future<void> _initializeAgora() async {
     final game = context.read<TournamentGameProvider>();
+    
+    debugPrint('TOURNAMENT AGORA: Initializing...');
+    debugPrint('TOURNAMENT AGORA: appId=${game.agoraAppId}, token=${game.agoraToken != null ? "present" : "null"}, channel=${game.agoraChannelName}');
+    
+    // Validate credentials before proceeding
+    if (game.agoraAppId == null || game.agoraAppId!.isEmpty ||
+        game.agoraToken == null || game.agoraToken!.isEmpty ||
+        game.agoraChannelName == null || game.agoraChannelName!.isEmpty) {
+      debugPrint('TOURNAMENT AGORA: Missing credentials, skipping initialization');
+      return;
+    }
+    
     _permissionsGranted = await AgoraService.requestPermissions();
-    if (!_permissionsGranted) return;
+    if (!_permissionsGranted) {
+      debugPrint('TOURNAMENT AGORA: Permissions not granted');
+      return;
+    }
 
     try {
       _agoraEngine = await AgoraService.initializeEngine(game.agoraAppId!);
@@ -212,38 +227,52 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       _agoraEngine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+            debugPrint('TOURNAMENT AGORA: Joined channel successfully');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setLocalUserJoined(true);
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+            debugPrint('TOURNAMENT AGORA: Remote user joined: $remoteUid');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(remoteUid);
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+            debugPrint('TOURNAMENT AGORA: Remote user offline: $remoteUid');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(null);
           },
         ),
       );
 
-      if (game.agoraToken != null && game.agoraChannelName != null) {
-        await AgoraService.joinChannel(
-          engine: _agoraEngine!,
-          token: game.agoraToken!,
-          channelName: game.agoraChannelName!,
-          uid: 0,
-        );
-      }
+      debugPrint('TOURNAMENT AGORA: Joining channel ${game.agoraChannelName}');
+      await AgoraService.joinChannel(
+        engine: _agoraEngine!,
+        token: game.agoraToken!,
+        channelName: game.agoraChannelName!,
+        uid: 0,
+      );
 
       await _agoraEngine!.muteLocalAudioStream(true);
-    } catch (_) {}
+      debugPrint('TOURNAMENT AGORA: Initialization complete');
+    } catch (e) {
+      debugPrint('TOURNAMENT AGORA: Error during initialization: $e');
+    }
   }
 
   Future<void> _reconnectAgora(TournamentGameProvider game) async {
     final appId = game.agoraAppId;
     final token = game.agoraToken;
     final channelName = game.agoraChannelName;
-    if (appId == null || token == null || channelName == null) return;
+    
+    debugPrint('TOURNAMENT AGORA: Reconnecting...');
+    debugPrint('TOURNAMENT AGORA: appId=$appId, token=${token != null ? "present" : "null"}, channel=$channelName');
+    
+    if (appId == null || appId.isEmpty || 
+        token == null || token.isEmpty || 
+        channelName == null || channelName.isEmpty) {
+      debugPrint('TOURNAMENT AGORA: Missing credentials for reconnect');
+      return;
+    }
 
     try {
       if (_agoraEngine != null) {
@@ -259,14 +288,17 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       _agoraEngine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+            debugPrint('TOURNAMENT AGORA: Reconnected to channel successfully');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setLocalUserJoined(true);
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+            debugPrint('TOURNAMENT AGORA: Remote user joined after reconnect: $remoteUid');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(remoteUid);
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+            debugPrint('TOURNAMENT AGORA: Remote user offline after reconnect: $remoteUid');
             if (!mounted) return;
             context.read<TournamentGameProvider>().setRemoteUser(null);
           },
@@ -280,7 +312,10 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       );
       await _agoraEngine!.muteLocalAudioStream(true);
       _isAudioMuted = true;
-    } catch (_) {}
+      debugPrint('TOURNAMENT AGORA: Reconnection complete');
+    } catch (e) {
+      debugPrint('TOURNAMENT AGORA: Reconnection error: $e');
+    }
   }
 
   Future<void> _toggleAudio() async {
@@ -1267,7 +1302,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
                 controller: VideoViewController.remote(
                   rtcEngine: _agoraEngine!,
                   canvas: VideoCanvas(uid: game.remoteUid!),
-                  connection: const RtcConnection(channelId: ''),
+                  connection: RtcConnection(channelId: game.agoraChannelName ?? ''),
                 ),
               ),
             ),
