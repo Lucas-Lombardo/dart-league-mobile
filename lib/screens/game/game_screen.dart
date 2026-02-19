@@ -281,6 +281,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       );
       
       _isAudioMuted = true;
+
+      // Re-initialize auto-scoring with the fresh engine
+      if (_autoScoringService != null) {
+        _autoScoringService!.stopCapture();
+        _autoScoringService!.dispose();
+        _autoScoringService = null;
+      }
+      await _initAutoScoring();
     } catch (_) {
       // Agora reconnection error
     }

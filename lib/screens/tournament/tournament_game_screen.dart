@@ -403,6 +403,14 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       );
       _isAudioMuted = true;
       debugPrint('TOURNAMENT AGORA: Reconnection complete');
+
+      // Re-initialize auto-scoring with the fresh engine
+      if (_autoScoringService != null) {
+        _autoScoringService!.stopCapture();
+        _autoScoringService!.dispose();
+        _autoScoringService = null;
+      }
+      await _initAutoScoring();
     } catch (e) {
       debugPrint('TOURNAMENT AGORA: Reconnection error: $e');
     }
