@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -67,15 +68,31 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   double _cameraMinZoom = 1.0;
   double _cameraMaxZoom = 1.0;
 
+  // Initial loading screen
+  bool _isLoading = true;
+  Timer? _loadingTimer;
+
   // Auto-scoring
   AutoScoringService? _autoScoringService;
   bool _autoScoringEnabled = false;
   bool _autoScoringLoading = false;
 
+  // Track current player to distinguish new-turn vs same-turn capture restart
+  String? _lastKnownCurrentPlayer;
+
+  // Dialog dedup flags
+  bool _winDialogShowing = false;
+  bool _bustDialogShowing = false;
+  bool _forfeitDialogShowing = false;
+
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
+
+    _loadingTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
 
     _scoreAnimationController = AnimationController(
       vsync: this,
@@ -119,18 +136,27 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
       _gameStarted = game.gameStarted;
       _gameEnded = game.gameEnded;
 
-      // Handle pending win/bust dialogs
-      if (game.pendingConfirmation && game.pendingType != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && context.mounted) {
-            if (game.pendingType == 'win') {
-              _showPendingWinDialog();
-            } else if (game.pendingType == 'bust') {
-              _showPendingBustDialog();
-            }
+      // ── Auto-scoring capture management ──
+      if (_autoScoringService != null && _autoScoringEnabled) {
+        final justBecameMyTurn =
+            game.isMyTurn && game.currentPlayerId != _lastKnownCurrentPlayer;
+
+        if (game.isMyTurn && game.pendingConfirmation && _autoScoringService!.isCapturing) {
+          // Pending dialog just appeared — stop to prevent spurious throw_dart events
+          _autoScoringService!.stopCapture();
+        } else if (game.isMyTurn && !game.pendingConfirmation && !_autoScoringService!.isCapturing) {
+          if (justBecameMyTurn) {
+            _autoScoringService!.resetTurn();
+          } else {
+            // Restarting within same turn (after undo) — sync slot state
+            _autoScoringService!.syncEmittedCount(game.currentRoundThrows.length);
           }
-        });
+          _autoScoringService!.startCapture();
+        } else if (!game.isMyTurn && _autoScoringService!.isCapturing) {
+          _autoScoringService!.stopCapture();
+        }
       }
+      _lastKnownCurrentPlayer = game.currentPlayerId;
 
       // Reset flags when a new leg starts
       if (game.tournamentState == TournamentGameState.playing && !game.gameEnded) {
@@ -138,32 +164,34 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         _navigatingToResult = false;
       }
 
-      // Manage auto-scoring capture based on turn
-      if (_autoScoringService != null && _autoScoringEnabled) {
-        if (game.isMyTurn && !_autoScoringService!.isCapturing) {
-          _autoScoringService!.resetTurn();
-          _autoScoringService!.startCapture();
-        } else if (!game.isMyTurn && _autoScoringService!.isCapturing) {
-          _autoScoringService!.stopCapture();
-        }
+      // ── Pending win/bust dialogs (dedup guard) ──
+      if (game.pendingConfirmation && game.pendingType != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !context.mounted) return;
+          if (game.pendingType == 'win' && !_winDialogShowing) {
+            _showPendingWinDialog();
+          } else if (game.pendingType == 'bust' && !_bustDialogShowing) {
+            _showPendingBustDialog();
+          }
+        });
       }
 
-      // Handle Agora reconnection
+      // ── Agora reconnection ──
       if (game.needsAgoraReconnect) {
         game.clearAgoraReconnectFlag();
         _reconnectAgora(game);
       }
 
-      // Handle forfeit
+      // ── Forfeit dialog (dedup guard) ──
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && context.mounted) {
+          if (mounted && context.mounted && !_forfeitDialogShowing) {
             _showForfeitDialog();
           }
         });
       }
 
-      // Handle tournament state transitions — only after user accepts result
+      // ── Tournament state transitions ──
       if (_resultAccepted) {
         if (game.tournamentState == TournamentGameState.legEnded && !_navigatingToResult) {
           _navigatingToResult = true;
@@ -536,7 +564,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     final pendingData = game.pendingData;
     final finalDart = pendingData?['finalDart'];
     final notation = finalDart?['notation'] ?? 'Unknown';
-
+    _winDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -577,6 +605,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         actions: [
           TextButton(
             onPressed: () {
+              _winDialogShowing = false;
               Navigator.pop(context);
               game.undoLastDart();
             },
@@ -584,6 +613,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           ),
           ElevatedButton(
             onPressed: () {
+              _winDialogShowing = false;
               Navigator.pop(context);
               game.confirmWin();
             },
@@ -592,12 +622,13 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           ),
         ],
       ),
-    );
+    ).then((_) => _winDialogShowing = false);
   }
 
   void _showPendingBustDialog() {
     final game = context.read<TournamentGameProvider>();
     final reason = game.pendingReason ?? 'unknown';
+    _bustDialogShowing = true;
     String reasonText;
     switch (reason) {
       case 'score_below_zero':
@@ -645,17 +676,25 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () { Navigator.pop(context); game.undoLastDart(); },
+            onPressed: () {
+              _bustDialogShowing = false;
+              Navigator.pop(context);
+              game.undoLastDart();
+            },
             child: const Text('Edit Darts'),
           ),
           ElevatedButton(
-            onPressed: () { Navigator.pop(context); game.confirmBust(); },
+            onPressed: () {
+              _bustDialogShowing = false;
+              Navigator.pop(context);
+              game.confirmBust();
+            },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
             child: const Text('Confirm Bust'),
           ),
         ],
       ),
-    );
+    ).then((_) => _bustDialogShowing = false);
   }
 
   void _acceptTournamentResult() async {
@@ -838,6 +877,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   }
 
   void _showForfeitDialog() {
+    _forfeitDialogShowing = true;
     final game = context.read<TournamentGameProvider>();
     final auth = context.read<AuthProvider>();
     final winnerId = game.pendingData?['winnerId'] as String?;
@@ -879,6 +919,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         actions: [
           ElevatedButton(
             onPressed: () {
+              _forfeitDialogShowing = false;
               Navigator.pop(context);
               game.reset();
               Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
@@ -890,7 +931,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           ),
         ],
       ),
-    );
+    ).then((_) => _forfeitDialogShowing = false);
   }
 
   String _formatSeconds(int totalSeconds) {
@@ -901,6 +942,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
 
   @override
   void dispose() {
+    _loadingTimer?.cancel();
     _scoreAnimationController.dispose();
     WakelockPlus.disable();
     _leaveMatch();
@@ -917,8 +959,50 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     super.dispose();
   }
 
+  Widget _buildLoadingScreen() {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset('assets/logo/logo.png', width: 90, height: 90),
+                const SizedBox(height: 32),
+                const CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
+                const SizedBox(height: 24),
+                Text(
+                  'PREPARING MATCH',
+                  style: AppTheme.titleLarge.copyWith(
+                    color: AppTheme.textSecondary,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Setting up camera & AI scoring...',
+                  style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return _buildLoadingScreen();
+
     try {
       final game = context.watch<TournamentGameProvider>();
       final auth = context.watch<AuthProvider>();

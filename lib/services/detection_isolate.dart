@@ -49,6 +49,8 @@ class DetectionIsolate {
 
   /// Analyze an image in the background isolate.
   /// Returns the scoring result without blocking the UI thread.
+  /// Times out after 8 seconds to prevent the capture loop from hanging
+  /// if the isolate crashes or stalls mid-inference.
   Future<ScoringResult> analyze(String imagePath) async {
     if (!_ready || _sendPort == null) {
       return ScoringResult(
@@ -64,7 +66,19 @@ class DetectionIsolate {
     final completer = Completer<ScoringResult>();
     _pendingRequests[id] = completer;
     _sendPort!.send(_AnalyzeRequest(id, imagePath));
-    return completer.future;
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        _pendingRequests.remove(id);
+        return ScoringResult(
+          calibrationPoints: [],
+          dartTips: [],
+          scores: [],
+          totalScore: 0,
+          error: 'Inference timeout',
+        );
+      },
+    );
   }
 
   void dispose() {

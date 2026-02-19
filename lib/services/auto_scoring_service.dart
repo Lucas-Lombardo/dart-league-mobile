@@ -10,6 +10,7 @@ import 'detection_isolate_stub.dart'
     if (dart.library.io) 'detection_isolate.dart';
 
 const double _dartMatchDist = 0.03;
+const Duration _minCycleInterval = Duration(milliseconds: 800);
 
 /// Callback type for capturing a frame. Returns the file path of the
 /// captured image, or null on failure. The caller is responsible for
@@ -61,6 +62,9 @@ class AutoScoringService extends ChangeNotifier {
   // Sticky dart memory
   List<ConfirmedDart?> _confirmedDarts = [null, null, null];
   int _prevDartCount = 0;
+
+  // Which slots have already fired _onDartDetected (prevents duplicate socket events)
+  List<bool> _emittedSlots = [false, false, false];
 
   // Zoom hint
   String? _zoomHint;
@@ -132,10 +136,23 @@ class AutoScoringService extends ChangeNotifier {
     _dartSlots = [null, null, null];
     _turnTotal = 0;
     _confirmedDarts = [null, null, null];
+    _emittedSlots = [false, false, false];
     _prevDartCount = 0;
     _dartsRemoved = false;
     _zoomHint = null;
     _lastInferenceMs = null;
+    notifyListeners();
+  }
+
+  /// Sync emitted slot state with the backend's dart count (e.g. after undo).
+  /// Rolls back any slots beyond [confirmedCount] so the AI can re-detect them.
+  void syncEmittedCount(int confirmedCount) {
+    for (int i = confirmedCount; i < 3; i++) {
+      _dartSlots[i] = null;
+      _confirmedDarts[i] = null;
+      _emittedSlots[i] = false;
+    }
+    _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
 
@@ -159,6 +176,7 @@ class AutoScoringService extends ChangeNotifier {
     if (index < 0 || index > 2) return;
     _dartSlots[index] = null;
     _confirmedDarts[index] = null;
+    _emittedSlots[index] = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
@@ -169,6 +187,11 @@ class AutoScoringService extends ChangeNotifier {
       await _fireCapture();
       cycleSw.stop();
       print('[AutoScoring] Full cycle: ${cycleSw.elapsedMilliseconds} ms');
+      // Enforce minimum interval to avoid hammering the camera API
+      final remaining = _minCycleInterval.inMilliseconds - cycleSw.elapsedMilliseconds;
+      if (remaining > 0 && _capturing) {
+        await Future.delayed(Duration(milliseconds: remaining));
+      }
     }
   }
 
@@ -184,7 +207,10 @@ class AutoScoringService extends ChangeNotifier {
       captureSw.stop();
       print('[AutoScoring] Snapshot capture: ${captureSw.elapsedMilliseconds} ms');
 
-      if (imagePath == null || seq != _captureSeq || !_capturing) return;
+      if (imagePath == null || seq != _captureSeq || !_capturing) {
+        await _maybeCleanup(imagePath);
+        return;
+      }
 
       final stopwatch = Stopwatch()..start();
       final result = await _isolate.analyze(imagePath);
@@ -192,7 +218,10 @@ class AutoScoringService extends ChangeNotifier {
       print('[AutoScoring] Isolate analyze: ${stopwatch.elapsedMilliseconds} ms');
 
       // Discard if a newer capture has been fired
-      if (seq != _captureSeq || !_capturing) return;
+      if (seq != _captureSeq || !_capturing) {
+        await _maybeCleanup(imagePath);
+        return;
+      }
 
       _lastInferenceMs = stopwatch.elapsedMilliseconds;
 
@@ -205,6 +234,7 @@ class AutoScoringService extends ChangeNotifier {
       if (_prevDartCount > 0 && dartCount == 0) {
         _prevDartCount = 0;
         _dartsRemoved = true;
+        await _maybeCleanup(imagePath);
         notifyListeners();
         return;
       }
@@ -214,16 +244,20 @@ class AutoScoringService extends ChangeNotifier {
       _updateConfirmedDarts(result);
 
       // Clean up snapshot file to avoid filling temp dir
-      if (_cleanupFile != null) {
-        try {
-          await _cleanupFile!(imagePath);
-        } catch (_) {}
-      }
+      await _maybeCleanup(imagePath);
 
       notifyListeners();
     } catch (e) {
+      await _maybeCleanup(imagePath);
       print('[AutoScoring] Capture error: $e');
     }
+  }
+
+  Future<void> _maybeCleanup(String? path) async {
+    if (path == null || _cleanupFile == null) return;
+    try {
+      await _cleanupFile!(path);
+    } catch (_) {}
   }
 
   void _updateConfirmedDarts(ScoringResult result) {
@@ -275,8 +309,12 @@ class AutoScoringService extends ChangeNotifier {
         if (_confirmedDarts[s] == null) {
           _confirmedDarts[s] = detected[d];
           print('[AutoScoring] New dart in slot $s: ${detected[d].score.formatted} conf=${detected[d].confidence.toStringAsFixed(2)}');
-          // Notify caller so they can emit throw_dart immediately
-          _onDartDetected?.call(s, detected[d].score);
+          // Only emit once per slot per turn — prevents duplicate socket events
+          // on brief occlusion (dart disappears then reappears in same slot)
+          if (!_emittedSlots[s]) {
+            _emittedSlots[s] = true;
+            _onDartDetected?.call(s, detected[d].score);
+          }
           break;
         }
       }

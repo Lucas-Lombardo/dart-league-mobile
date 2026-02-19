@@ -250,11 +250,15 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleRoundReadyConfirm(dynamic data) {
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null && eventMatchId != _currentGameMatchId) return;
     _pendingConfirmation = true;
     notifyListeners();
   }
 
   void _handleRoundComplete(dynamic data) {
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null && eventMatchId != _currentGameMatchId) return;
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
@@ -481,16 +485,20 @@ class TournamentGameProvider with ChangeNotifier {
   // --- Actions ---
 
   void confirmRound() {
-    if (_currentRoundThrows.length < 3) {
-      SocketService.emit('end_round_early', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
-      });
-    } else {
-      SocketService.emit('confirm_round', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
-      });
+    try {
+      if (_currentRoundThrows.length < 3) {
+        SocketService.emit('end_round_early', {
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+        });
+      } else {
+        SocketService.emit('confirm_round', {
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+        });
+      }
+    } catch (e) {
+      debugPrint('TournamentGameProvider: confirmRound failed: $e');
     }
   }
 
@@ -503,19 +511,27 @@ class TournamentGameProvider with ChangeNotifier {
 
   void confirmWin() {
     if (_pendingType != 'win') return;
-    SocketService.emit('confirm_win', {
-      'matchId': _currentGameMatchId,
-      'playerId': _myUserId,
-    });
+    try {
+      SocketService.emit('confirm_win', {
+        'matchId': _currentGameMatchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('TournamentGameProvider: confirmWin failed: $e');
+    }
     _clearPendingState();
   }
 
   void confirmBust() {
     if (_pendingType != 'bust') return;
-    SocketService.emit('confirm_bust', {
-      'matchId': _currentGameMatchId,
-      'playerId': _myUserId,
-    });
+    try {
+      SocketService.emit('confirm_bust', {
+        'matchId': _currentGameMatchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('TournamentGameProvider: confirmBust failed: $e');
+    }
     _clearPendingState();
   }
 
@@ -570,10 +586,14 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void undoLastDart() {
-    SocketService.emit('undo_last_dart', {
-      'matchId': _currentGameMatchId,
-      'playerId': _myUserId,
-    });
+    try {
+      SocketService.emit('undo_last_dart', {
+        'matchId': _currentGameMatchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('TournamentGameProvider: undoLastDart failed: $e');
+    }
     // Decrement local guard (server will sync actual state via dart_undone)
     if (_dartsEmittedThisRound > 0) {
       _dartsEmittedThisRound--;

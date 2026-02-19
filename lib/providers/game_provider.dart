@@ -259,20 +259,21 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleRoundReadyConfirm(dynamic data) {
-    
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null && eventMatchId != _matchId) return;
     _pendingConfirmation = true;
     notifyListeners();
   }
 
   void _handleRoundComplete(dynamic data) {
-    
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null && eventMatchId != _matchId) return;
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
     _dartsEmittedThisRound = 0;
     _currentPlayerId = data['nextPlayerId'] as String?;
     _pendingConfirmation = false;
-    
     
     // Backend sends player1Score and player2Score directly
     final player1Score = data['player1Score'] as int?;
@@ -286,19 +287,20 @@ class GameProvider with ChangeNotifier {
   }
   
   void confirmRound() {
-    // If we have fewer than 3 darts, use end_round_early which atomically 
-    // fills remaining darts with S0 and confirms - prevents race conditions
-    if (_currentRoundThrows.length < 3) {
-      SocketService.emit('end_round_early', {
-        'matchId': _matchId,
-        'playerId': _myUserId,
-      });
-    } else {
-      // All 3 darts thrown, just confirm
-      SocketService.emit('confirm_round', {
-        'matchId': _matchId,
-        'playerId': _myUserId,
-      });
+    try {
+      if (_currentRoundThrows.length < 3) {
+        SocketService.emit('end_round_early', {
+          'matchId': _matchId,
+          'playerId': _myUserId,
+        });
+      } else {
+        SocketService.emit('confirm_round', {
+          'matchId': _matchId,
+          'playerId': _myUserId,
+        });
+      }
+    } catch (e) {
+      debugPrint('GameProvider: confirmRound failed: $e');
     }
   }
   
@@ -310,29 +312,29 @@ class GameProvider with ChangeNotifier {
   }
 
   void confirmWin() {
-    if (_pendingType != 'win') {
-      return;
+    if (_pendingType != 'win') return;
+    try {
+      SocketService.emit('confirm_win', {
+        'matchId': _matchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('GameProvider: confirmWin failed: $e');
     }
-    
-    SocketService.emit('confirm_win', {
-      'matchId': _matchId,
-      'playerId': _myUserId,
-    });
-    
     // Clear pending state - backend will emit game_won
     _clearPendingState();
   }
 
   void confirmBust() {
-    if (_pendingType != 'bust') {
-      return;
+    if (_pendingType != 'bust') return;
+    try {
+      SocketService.emit('confirm_bust', {
+        'matchId': _matchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('GameProvider: confirmBust failed: $e');
     }
-    
-    SocketService.emit('confirm_bust', {
-      'matchId': _matchId,
-      'playerId': _myUserId,
-    });
-    
     // Clear pending state - backend will emit round_complete
     _clearPendingState();
   }
@@ -575,22 +577,23 @@ class GameProvider with ChangeNotifier {
   }
 
   void undoLastDart() {
-    SocketService.emit('undo_last_dart', {
-      'matchId': _matchId,
-      'playerId': _myUserId,
-    });
-    
+    try {
+      SocketService.emit('undo_last_dart', {
+        'matchId': _matchId,
+        'playerId': _myUserId,
+      });
+    } catch (e) {
+      debugPrint('GameProvider: undoLastDart failed: $e');
+    }
     // Decrement local guard (server will sync actual state via dart_undone)
     if (_dartsEmittedThisRound > 0) {
       _dartsEmittedThisRound--;
     }
-    
     // Clear pending state
     _pendingConfirmation = false;
     _pendingType = null;
     _pendingReason = null;
     _pendingData = null;
-    
     notifyListeners();
   }
 

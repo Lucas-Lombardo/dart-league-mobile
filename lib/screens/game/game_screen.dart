@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -63,17 +64,32 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // Track if we already emitted leave_match (prevent double-fire in dispose)
   bool _didForfeit = false;
 
+  // Initial loading screen
+  bool _isLoading = true;
+  Timer? _loadingTimer;
+
   // Auto-scoring
   AutoScoringService? _autoScoringService;
   bool _autoScoringEnabled = false;
   bool _autoScoringLoading = false;
 
+  // Track current player to distinguish new-turn vs same-turn capture restart
+  String? _lastKnownCurrentPlayer;
+
+  // Dialog dedup flags — prevent stacking identical dialogs on rapid notifyListeners
+  bool _winDialogShowing = false;
+  bool _bustDialogShowing = false;
+  bool _forfeitDialogShowing = false;
+
   @override
   void initState() {
     super.initState();
-    
-    
+
     WakelockPlus.enable();
+
+    _loadingTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
     
     _scoreAnimationController = AnimationController(
       vsync: this,
@@ -121,56 +137,64 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
   
   void _handlePendingStateChange() {
-    // Early exit if widget is not mounted
     if (!mounted) return;
     
     try {
       final game = context.read<GameProvider>();
       
-      // Track game state
       _gameStarted = game.gameStarted;
       _gameEnded = game.gameEnded;
-      
-      // Show dialog when entering pending state
-      if (game.pendingConfirmation && game.pendingType != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && context.mounted) {
-            if (game.pendingType == 'win') {
-              _showPendingWinDialog();
-            } else if (game.pendingType == 'bust') {
-              _showPendingBustDialog();
-            }
-          }
-        });
-      }
-      
-      // Manage auto-scoring capture based on turn
+
+      // ── Auto-scoring capture management ──
       if (_autoScoringService != null && _autoScoringEnabled) {
-        if (game.isMyTurn && !_autoScoringService!.isCapturing) {
-          _autoScoringService!.resetTurn();
+        final justBecameMyTurn =
+            game.isMyTurn && game.currentPlayerId != _lastKnownCurrentPlayer;
+
+        if (game.isMyTurn && game.pendingConfirmation && _autoScoringService!.isCapturing) {
+          // Pending dialog just appeared — stop to prevent spurious throw_dart events
+          _autoScoringService!.stopCapture();
+        } else if (game.isMyTurn && !game.pendingConfirmation && !_autoScoringService!.isCapturing) {
+          if (justBecameMyTurn) {
+            // Genuine new turn — full reset
+            _autoScoringService!.resetTurn();
+          } else {
+            // Restarting within the same turn (e.g. after undo) — sync slot state
+            _autoScoringService!.syncEmittedCount(game.currentRoundThrows.length);
+          }
           _autoScoringService!.startCapture();
         } else if (!game.isMyTurn && _autoScoringService!.isCapturing) {
           _autoScoringService!.stopCapture();
         }
       }
-      
-      // Handle Agora reconnection when game_state_sync provides fresh credentials
+      _lastKnownCurrentPlayer = game.currentPlayerId;
+
+      // ── Pending win/bust dialogs (dedup guard) ──
+      if (game.pendingConfirmation && game.pendingType != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !context.mounted) return;
+          if (game.pendingType == 'win' && !_winDialogShowing) {
+            _showPendingWinDialog();
+          } else if (game.pendingType == 'bust' && !_bustDialogShowing) {
+            _showPendingBustDialog();
+          }
+        });
+      }
+
+      // ── Agora reconnection ──
       if (game.needsAgoraReconnect) {
         game.clearAgoraReconnectFlag();
         _reconnectAgora(game);
       }
-      
-      // Show forfeit dialog when opponent leaves
+
+      // ── Forfeit dialog (dedup guard) ──
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && context.mounted) {
+          if (mounted && context.mounted && !_forfeitDialogShowing) {
             _showForfeitDialog();
           }
         });
       }
-    } catch (_) {
-      // State change handling error
-    }
+    } catch (_) {}
   }
 
   /// Confirm the auto-scored round. Darts were already emitted individually
@@ -705,8 +729,49 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     }
   }
 
+  Widget _buildLoadingScreen() {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset('assets/logo/logo.png', width: 90, height: 90),
+                const SizedBox(height: 32),
+                const CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
+                const SizedBox(height: 24),
+                Text(
+                  'PREPARING MATCH',
+                  style: AppTheme.titleLarge.copyWith(
+                    color: AppTheme.textSecondary,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Setting up camera & AI scoring...',
+                  style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _loadingTimer?.cancel();
     _scoreAnimationController.dispose();
     
     WakelockPlus.disable();
@@ -811,7 +876,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     final pendingData = game.pendingData;
     final finalDart = pendingData?['finalDart'];
     final notation = finalDart?['notation'] ?? 'Unknown';
-    
+    _winDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -854,6 +919,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         actions: [
           TextButton(
             onPressed: () {
+              _winDialogShowing = false;
               Navigator.pop(context);
               game.undoLastDart();
             },
@@ -861,6 +927,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             onPressed: () {
+              _winDialogShowing = false;
               Navigator.pop(context);
               game.confirmWin();
             },
@@ -871,13 +938,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-    );
+    ).then((_) => _winDialogShowing = false);
   }
 
   void _showPendingBustDialog() {
     final game = context.read<GameProvider>();
     final reason = game.pendingReason ?? 'unknown';
-    
+    _bustDialogShowing = true;
     String reasonText = '';
     switch (reason) {
       case 'score_below_zero':
@@ -936,6 +1003,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         actions: [
           TextButton(
             onPressed: () {
+              _bustDialogShowing = false;
               Navigator.pop(context);
               game.undoLastDart();
             },
@@ -943,6 +1011,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             onPressed: () {
+              _bustDialogShowing = false;
               Navigator.pop(context);
               game.confirmBust();
             },
@@ -953,17 +1022,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-    );
+    ).then((_) => _bustDialogShowing = false);
   }
 
   void _showForfeitDialog() {
+    _forfeitDialogShowing = true;
     final game = context.read<GameProvider>();
     final auth = context.read<AuthProvider>();
     final forfeitData = game.pendingData;
     final winnerId = forfeitData?['winnerId'] as String?;
     final eloChange = forfeitData?['winnerEloChange'] as int? ?? 0;
     final isWinner = winnerId == auth.currentUser?.id;
-    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1026,15 +1095,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         actions: [
           ElevatedButton(
             onPressed: () async {
+              _forfeitDialogShowing = false;
               Navigator.pop(context);
-              
-              // Fetch updated user profile to get new ELO
               await auth.checkAuthStatus();
-              
-              if (auth.currentUser != null) {
-              } else {
-              }
-              
               if (context.mounted) {
                 debugPrint('RESET DEBUG: forfeit dialog - calling game.reset() BEFORE navigating home');
                 game.reset();
@@ -1299,6 +1362,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return _buildLoadingScreen();
+
     try {
       final game = context.watch<GameProvider>();
       final auth = context.watch<AuthProvider>();
