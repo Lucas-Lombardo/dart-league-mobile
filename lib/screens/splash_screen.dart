@@ -39,7 +39,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
 
     _animationController.forward();
-    _checkAuthAndNavigate();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAuthAndNavigate());
   }
 
   @override
