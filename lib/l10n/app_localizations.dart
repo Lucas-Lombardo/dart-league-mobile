@@ -171,6 +171,101 @@ abstract class AppLocalizations {
   String get matchesCompleted;
   String get startMatch;
   String get unranked;
+
+  // Matchmaking Screen
+  String get findingMatch;
+  String get matchFoundExclamation;
+  String get opponent;
+  String get startingGame;
+  String get searchingForOpponentUpper;
+  String get yourElo;
+  String get eloRange;
+  String get cancelSearch;
+
+  // Camera Check / Camera Setup
+  String get cameraCheck;
+  String get cameraSetup;
+  String get checkingPermissions;
+  String get initializingCamera;
+  String get cameraRequired;
+  String get cannotJoinWithoutCamera;
+  String get enablePermissionsInSettings;
+  String get tryAgain;
+  String get permissionsGranted;
+  String get readyToJoinQueue;
+  String get cameraOnDuringMatch;
+  String get micOffByDefault;
+  String get makeSureDartboardVisible;
+  String get joinQueue;
+  String get permissionsRequired;
+  String get positionDartboard;
+
+  // Placement Game Screen
+  String get botTurn;
+  String get placementMatch;
+  String get yourScore;
+  String get bustConfirm;
+  String get confirmWin;
+  String get confirmAndEndTurn;
+  String get endTurnEarly;
+  String get botIsThrowing;
+  String get bust;
+  String get checkout;
+  String get you;
+  String get bot;
+  String get savingResult;
+  String get leaveMatch;
+  String get leaveMatchWarning;
+  String get stay;
+  String get leave;
+  String get retry;
+  String get next;
+  String get avgPerRound;
+
+  // Placement Result Screen
+  String get placementComplete;
+  String get youWonOutOf;
+  String get yourRank;
+  String get startingElo;
+  String get startPlayingRanked;
+
+  // Placement hub
+  String get winSingular;
+  String get winsPlural;
+
+  // Tournament Ready Screen
+  String get bestOf;
+  String get startingMatch;
+  String get ready;
+  String get waiting2;
+  String get cancelButton;
+
+  // Tournament Leg Result Screen
+  String get legWon;
+  String get legLost;
+  String get legComplete;
+  String get firstToLegsWins;
+  String get nextLeg;
+
+  // Tournament Match Result Screen
+  String get youAdvance;
+  String get eliminated;
+  String get congratsWonSeries;
+  String get betterLuckNextTime;
+  String get finalScore;
+  String get continueButton;
+  String get returnHome;
+
+  // Match Detail Screen
+  String get matchDetails;
+  String get eloChange;
+  String get matchStatistics;
+  String get totalRounds;
+  String get avgScoreRound;
+  String get highestRound;
+  String get perfect180s;
+  String get roundHistory;
+  String get matchNotFound;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

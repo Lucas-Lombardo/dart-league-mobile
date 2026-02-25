@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../models/match.dart';
 import '../../utils/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 class MatchDetailScreen extends StatefulWidget {
   final String matchId;
@@ -58,7 +59,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Match Details'),
+        title: Text(AppLocalizations.of(context).matchDetails),
         backgroundColor: AppTheme.surface,
       ),
       body: _isLoading
@@ -74,13 +75,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadMatchDetail,
-                        child: const Text('Retry'),
+                        child: Text(AppLocalizations.of(context).retry),
                       ),
                     ],
                   ),
                 )
               : _match == null
-                  ? const Center(child: Text('Match not found'))
+                  ? Center(child: Text(AppLocalizations.of(context).matchNotFound))
                   : SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -144,9 +145,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                'ELO Change',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+              Text(
+                AppLocalizations.of(context).eloChange,
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
               ),
               const SizedBox(width: 12),
               Container(
@@ -202,13 +203,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           Expanded(
-            child: _buildPlayerInfo('YOU', myScore, true),
+            child: _buildPlayerInfo(AppLocalizations.of(context).you.toUpperCase(), myScore, true),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: const Text(
-              'VS',
-              style: TextStyle(
+            child: Text(
+              AppLocalizations.of(context).vs,
+              style: const TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
@@ -268,22 +269,22 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Match Statistics',
+          Text(
+            AppLocalizations.of(context).matchStatistics,
             style: AppTheme.titleLarge,
           ),
           const SizedBox(height: 20),
-          _buildStatRow('Total Rounds', '${myStats.rounds}', '${opponentStats.rounds}'),
+          _buildStatRow(AppLocalizations.of(context).totalRounds, '${myStats.rounds}', '${opponentStats.rounds}'),
           const Divider(height: 24, color: AppTheme.surfaceLight),
           _buildStatRow(
-            'Avg Score/Round',
+            AppLocalizations.of(context).avgScoreRound,
             myStats.average.toStringAsFixed(1),
             opponentStats.average.toStringAsFixed(1),
           ),
           const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow('Highest Round', '${myStats.highest}', '${opponentStats.highest}'),
+          _buildStatRow(AppLocalizations.of(context).highestRound, '${myStats.highest}', '${opponentStats.highest}'),
           const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow('Perfect 180s', '${myStats.total180s}', '${opponentStats.total180s}'),
+          _buildStatRow(AppLocalizations.of(context).perfect180s, '${myStats.total180s}', '${opponentStats.total180s}'),
         ],
       ),
     );
@@ -340,8 +341,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Round History',
+          Text(
+            AppLocalizations.of(context).roundHistory,
             style: AppTheme.titleLarge,
           ),
           const SizedBox(height: 16),

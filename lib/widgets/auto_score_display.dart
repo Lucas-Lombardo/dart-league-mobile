@@ -29,6 +29,9 @@ class AutoScoreGameView extends StatelessWidget {
   final double currentZoom;
   final double minZoom;
   final double maxZoom;
+  final void Function(int index, DartScore score)? onEditDart;
+  final VoidCallback? onToggleAi;
+  final bool aiEnabled;
 
   const AutoScoreGameView({
     super.key,
@@ -52,6 +55,9 @@ class AutoScoreGameView extends StatelessWidget {
     this.currentZoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
+    this.onEditDart,
+    this.onToggleAi,
+    this.aiEnabled = true,
   });
 
   @override
@@ -169,6 +175,15 @@ class AutoScoreGameView extends StatelessWidget {
                       right: 12,
                       child: Row(
                         children: [
+                          if (onToggleAi != null) ...[
+                            _CameraControlButton(
+                              icon: aiEnabled ? Icons.smart_toy : Icons.smart_toy_outlined,
+                              isActive: aiEnabled,
+                              onTap: onToggleAi,
+                              inactiveColor: AppTheme.textSecondary,
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           _CameraControlButton(
                             icon: isAudioMuted ? Icons.mic_off : Icons.mic,
                             isActive: !isAudioMuted,
@@ -370,6 +385,7 @@ class AutoScoreGameView extends StatelessWidget {
     );
     if (result != null) {
       scoringService.overrideDart(index, result);
+      onEditDart?.call(index, result);
     }
   }
 }
@@ -492,15 +508,18 @@ class _CameraControlButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final VoidCallback? onTap;
+  final Color? inactiveColor;
 
   const _CameraControlButton({
     required this.icon,
     required this.isActive,
     this.onTap,
+    this.inactiveColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final offColor = inactiveColor ?? AppTheme.error;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -511,12 +530,12 @@ class _CameraControlButton extends StatelessWidget {
           border: Border.all(
             color: isActive
                 ? Colors.white.withValues(alpha: 0.3)
-                : AppTheme.error.withValues(alpha: 0.5),
+                : offColor.withValues(alpha: 0.5),
           ),
         ),
         child: Icon(
           icon,
-          color: isActive ? Colors.white : AppTheme.error,
+          color: isActive ? Colors.white : offColor,
           size: 18,
         ),
       ),

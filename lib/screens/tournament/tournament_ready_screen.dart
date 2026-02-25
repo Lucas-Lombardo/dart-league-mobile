@@ -6,6 +6,7 @@ import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
 import '../../providers/tournament_game_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 import 'tournament_game_screen.dart';
 
 class TournamentReadyScreen extends StatefulWidget {
@@ -177,7 +178,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${widget.roundName.replaceAll('_', ' ').toUpperCase()} • Best of ${widget.bestOf}',
+                    '${widget.roundName.replaceAll('_', ' ').toUpperCase()} • ${AppLocalizations.of(context).bestOf} ${widget.bestOf}',
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 13,
@@ -236,8 +237,8 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
                   const SizedBox(height: 16),
                   Text(
                     _opponentReady
-                        ? 'Starting match...'
-                        : 'Waiting for opponent...',
+                        ? AppLocalizations.of(context).startingMatch
+                        : AppLocalizations.of(context).waitingForOpponent,
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 16,
@@ -257,9 +258,9 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
                   HapticService.lightImpact();
                   Navigator.of(context).pop();
                 },
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(
+                child: Text(
+                  AppLocalizations.of(context).cancelButton,
+                  style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 16,
                   ),
@@ -302,7 +303,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            isMe ? 'You' : username,
+            isMe ? AppLocalizations.of(context).you : username,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -313,7 +314,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            isReady ? 'READY' : 'WAITING',
+            isReady ? AppLocalizations.of(context).ready : AppLocalizations.of(context).waiting2,
             style: TextStyle(
               color: isReady ? AppTheme.success : AppTheme.textSecondary,
               fontSize: 11,

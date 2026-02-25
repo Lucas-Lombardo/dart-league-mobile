@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class TournamentLegResultScreen extends StatelessWidget {
   final String tournamentMatchId;
@@ -66,7 +67,7 @@ class TournamentLegResultScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               Text(
-                didWinLeg ? 'LEG WON!' : 'LEG LOST',
+                didWinLeg ? AppLocalizations.of(context).legWon : AppLocalizations.of(context).legLost,
                 style: TextStyle(
                   color: didWinLeg ? AppTheme.success : AppTheme.error,
                   fontSize: 32,
@@ -76,7 +77,7 @@ class TournamentLegResultScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Leg $currentLeg Complete',
+                'Leg $currentLeg ${AppLocalizations.of(context).legComplete}',
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 16,
@@ -105,7 +106,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${roundName.replaceAll('_', ' ').toUpperCase()} • Best of $bestOf',
+                      '${roundName.replaceAll('_', ' ').toUpperCase()} • ${AppLocalizations.of(context).bestOf} $bestOf',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 12,
@@ -115,7 +116,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _buildPlayerScore(myUsername, myLegsWon, true),
+                        _buildPlayerScore(myUsername, myLegsWon, true, context: context),
                         const Text(
                           '-',
                           style: TextStyle(
@@ -124,7 +125,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                             fontWeight: FontWeight.w300,
                           ),
                         ),
-                        _buildPlayerScore(opponentUsername, opponentLegsWon, false),
+                        _buildPlayerScore(opponentUsername, opponentLegsWon, false, context: context),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -153,7 +154,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'First to $legsNeeded legs wins',
+                      '${AppLocalizations.of(context).firstToLegsWins} $legsNeeded legs',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 12,
@@ -181,9 +182,9 @@ class TournamentLegResultScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'NEXT LEG',
-                    style: TextStyle(
+                  child: Text(
+                    AppLocalizations.of(context).nextLeg,
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
@@ -198,11 +199,11 @@ class TournamentLegResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayerScore(String username, int legsWon, bool isMe) {
+  Widget _buildPlayerScore(String username, int legsWon, bool isMe, {required BuildContext context}) {
     return Column(
       children: [
         Text(
-          isMe ? 'You' : username,
+          isMe ? AppLocalizations.of(context).you : username,
           style: const TextStyle(
             color: AppTheme.textSecondary,
             fontSize: 12,

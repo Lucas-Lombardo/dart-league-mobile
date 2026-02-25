@@ -421,4 +421,244 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get unranked => 'Unranked';
+
+  // Matchmaking Screen
+  @override
+  String get findingMatch => 'Finding Match';
+
+  @override
+  String get matchFoundExclamation => 'MATCH FOUND!';
+
+  @override
+  String get opponent => 'OPPONENT';
+
+  @override
+  String get startingGame => 'Starting game...';
+
+  @override
+  String get searchingForOpponentUpper => 'SEARCHING FOR OPPONENT';
+
+  @override
+  String get yourElo => 'YOUR ELO';
+
+  @override
+  String get eloRange => 'RANGE';
+
+  @override
+  String get cancelSearch => 'CANCEL SEARCH';
+
+  // Camera Check / Camera Setup
+  @override
+  String get cameraCheck => 'CAMERA CHECK';
+
+  @override
+  String get cameraSetup => 'CAMERA SETUP';
+
+  @override
+  String get checkingPermissions => 'Checking permissions...';
+
+  @override
+  String get initializingCamera => 'Initializing camera...';
+
+  @override
+  String get cameraRequired => 'Camera Required';
+
+  @override
+  String get cannotJoinWithoutCamera => 'You cannot join the queue without camera access';
+
+  @override
+  String get enablePermissionsInSettings => 'Please enable camera and microphone permissions in your device settings to continue.';
+
+  @override
+  String get tryAgain => 'TRY AGAIN';
+
+  @override
+  String get permissionsGranted => 'PERMISSIONS GRANTED';
+
+  @override
+  String get readyToJoinQueue => 'Ready to join queue';
+
+  @override
+  String get cameraOnDuringMatch => 'Camera will be ON during the match';
+
+  @override
+  String get micOffByDefault => 'Microphone will be OFF by default';
+
+  @override
+  String get makeSureDartboardVisible => 'Make sure the dartboard is visible';
+
+  @override
+  String get joinQueue => 'JOIN QUEUE';
+
+  @override
+  String get permissionsRequired => 'PERMISSIONS REQUIRED';
+
+  @override
+  String get positionDartboard => 'Position your device so the dartboard is clearly visible in the frame';
+
+  // Placement Game Screen
+  @override
+  String get botTurn => 'BOT TURN';
+
+  @override
+  String get placementMatch => 'PLACEMENT MATCH';
+
+  @override
+  String get yourScore => 'YOUR SCORE:';
+
+  @override
+  String get bustConfirm => 'BUST — CONFIRM';
+
+  @override
+  String get confirmWin => 'CONFIRM WIN';
+
+  @override
+  String get confirmAndEndTurn => 'CONFIRM & END TURN';
+
+  @override
+  String get endTurnEarly => 'END TURN EARLY';
+
+  @override
+  String get botIsThrowing => 'Bot is throwing...';
+
+  @override
+  String get bust => 'BUST!';
+
+  @override
+  String get checkout => 'CHECKOUT!';
+
+  @override
+  String get you => 'YOU';
+
+  @override
+  String get bot => 'BOT';
+
+  @override
+  String get savingResult => 'Saving result...';
+
+  @override
+  String get leaveMatch => 'Leave Match?';
+
+  @override
+  String get leaveMatchWarning => 'If you leave, this placement match will count as a loss.';
+
+  @override
+  String get stay => 'Stay';
+
+  @override
+  String get leave => 'Leave';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get next => 'NEXT';
+
+  @override
+  String get avgPerRound => 'per round';
+
+  // Placement Result Screen
+  @override
+  String get placementComplete => 'PLACEMENT COMPLETE!';
+
+  @override
+  String get youWonOutOf => 'You won';
+
+  @override
+  String get yourRank => 'YOUR RANK';
+
+  @override
+  String get startingElo => 'Starting ELO';
+
+  @override
+  String get startPlayingRanked => 'START PLAYING RANKED';
+
+  // Placement hub
+  @override
+  String get winSingular => 'win';
+
+  @override
+  String get winsPlural => 'wins';
+
+  // Tournament Ready Screen
+  @override
+  String get bestOf => 'Best of';
+
+  @override
+  String get startingMatch => 'Starting match...';
+
+  @override
+  String get ready => 'READY';
+
+  @override
+  String get waiting2 => 'WAITING';
+
+  @override
+  String get cancelButton => 'Cancel';
+
+  // Tournament Leg Result Screen
+  @override
+  String get legWon => 'LEG WON!';
+
+  @override
+  String get legLost => 'LEG LOST';
+
+  @override
+  String get legComplete => 'Complete';
+
+  @override
+  String get firstToLegsWins => 'First to';
+
+  @override
+  String get nextLeg => 'NEXT LEG';
+
+  // Tournament Match Result Screen
+  @override
+  String get youAdvance => 'YOU ADVANCE!';
+
+  @override
+  String get eliminated => 'ELIMINATED';
+
+  @override
+  String get congratsWonSeries => 'Congratulations! You won the series.';
+
+  @override
+  String get betterLuckNextTime => 'Better luck next time.';
+
+  @override
+  String get finalScore => 'FINAL';
+
+  @override
+  String get continueButton => 'CONTINUE';
+
+  @override
+  String get returnHome => 'RETURN HOME';
+
+  // Match Detail Screen
+  @override
+  String get matchDetails => 'Match Details';
+
+  @override
+  String get eloChange => 'ELO Change';
+
+  @override
+  String get matchStatistics => 'Match Statistics';
+
+  @override
+  String get totalRounds => 'Total Rounds';
+
+  @override
+  String get avgScoreRound => 'Avg Score/Round';
+
+  @override
+  String get highestRound => 'Highest Round';
+
+  @override
+  String get perfect180s => 'Perfect 180s';
+
+  @override
+  String get roundHistory => 'Round History';
+
+  @override
+  String get matchNotFound => 'Match not found';
 }

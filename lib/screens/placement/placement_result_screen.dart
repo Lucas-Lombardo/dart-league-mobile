@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
+import '../../l10n/app_localizations.dart';
 
 class PlacementResultScreen extends StatefulWidget {
   final String assignedRank;
@@ -128,9 +129,9 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                   opacity: _fadeAnimation,
                   child: Column(
                     children: [
-                      const Text(
-                        'PLACEMENT COMPLETE!',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context).placementComplete,
+                        style: const TextStyle(
                           color: AppTheme.textPrimary,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
@@ -139,7 +140,7 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'You won ${widget.wins} out of ${widget.totalMatches} matches',
+                        '${AppLocalizations.of(context).youWonOutOf} ${widget.wins} / ${widget.totalMatches}',
                         style: const TextStyle(
                           color: AppTheme.textSecondary,
                           fontSize: 16,
@@ -160,9 +161,9 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                         ),
                         child: Column(
                           children: [
-                            const Text(
-                              'YOUR RANK',
-                              style: TextStyle(
+                            Text(
+                              AppLocalizations.of(context).yourRank,
+                              style: const TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -188,7 +189,7 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                'Starting ELO: ${widget.assignedElo}',
+                                '${AppLocalizations.of(context).startingElo}: ${widget.assignedElo}',
                                 style: const TextStyle(
                                   color: AppTheme.primary,
                                   fontSize: 18,
@@ -220,9 +221,9 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: const Text(
-                            'START PLAYING RANKED',
-                            style: TextStyle(
+                          child: Text(
+                            AppLocalizations.of(context).startPlayingRanked,
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,

@@ -90,7 +90,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => provider.loadStatus(),
-                    child: const Text('Retry'),
+                    child: Text(l10n.retry),
                   ),
                 ],
               ),
@@ -149,7 +149,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                       if (status.wins > 0) ...[
                         const SizedBox(height: 4),
                         Text(
-                          '${status.wins} ${status.wins == 1 ? 'win' : 'wins'}',
+                          '${status.wins} ${status.wins == 1 ? l10n.winSingular : l10n.winsPlural}',
                           style: const TextStyle(
                             color: AppTheme.success,
                             fontWeight: FontWeight.bold,
@@ -180,6 +180,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                       isNext: isNext,
                       isLocked: isLocked,
                       isCompleted: isCompleted,
+                      l10n: l10n,
                     ),
                   );
                 }),
@@ -232,6 +233,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     required bool isNext,
     required bool isLocked,
     required bool isCompleted,
+    required AppLocalizations l10n,
   }) {
     final color = config['color'] as Color;
     final botName = config['name'] as String;
@@ -283,7 +285,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Avg: $avg per round',
+                  'Avg: $avg ${l10n.avgPerRound}',
                   style: TextStyle(
                     fontSize: 13,
                     color: isLocked ? AppTheme.textSecondary.withValues(alpha: 0.5) : AppTheme.textSecondary,
@@ -303,7 +305,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                result.won ? 'WIN' : 'LOSS',
+                result.won ? l10n.win.toUpperCase() : l10n.loss.toUpperCase(),
                 style: TextStyle(
                   color: result.won ? AppTheme.success : AppTheme.error,
                   fontWeight: FontWeight.bold,
@@ -318,9 +320,9 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                 color: AppTheme.primary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'NEXT',
-                style: TextStyle(
+              child: Text(
+                l10n.next,
+                style: const TextStyle(
                   color: AppTheme.primary,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,

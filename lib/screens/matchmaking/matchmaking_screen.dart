@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
 import '../game/game_screen.dart';
 import '../../utils/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 class MatchmakingScreen extends StatefulWidget {
   const MatchmakingScreen({super.key});
@@ -92,8 +93,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                 size: 80,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'MATCH FOUND!',
+              Text(
+                AppLocalizations.of(context).matchFoundExclamation,
                 style: TextStyle(
                   color: AppTheme.primary,
                   fontSize: 28,
@@ -113,7 +114,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   child: Column(
                     children: [
                       Text(
-                        'OPPONENT',
+                        AppLocalizations.of(context).opponent,
                         style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: 8),
@@ -140,8 +141,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   ),
                 ),
               const SizedBox(height: 24),
-              const Text(
-                'Starting game...',
+              Text(
+                AppLocalizations.of(context).startingGame,
                 style: TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 14,
@@ -270,7 +271,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Finding Match'),
+          title: Text(AppLocalizations.of(context).findingMatch),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
@@ -319,8 +320,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                         const SizedBox(width: 8),
                         Text(
                           SocketService.isConnected 
-                              ? 'Connected'
-                              : 'Not connected',
+                              ? AppLocalizations.of(context).connected
+                              : AppLocalizations.of(context).disconnected,
                           style: TextStyle(
                             color: SocketService.isConnected 
                                 ? AppTheme.success 
@@ -415,8 +416,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     ),
                   ),
                   const SizedBox(height: 48),
-                  const Text(
-                    'SEARCHING FOR OPPONENT',
+                  Text(
+                    AppLocalizations.of(context).searchingForOpponentUpper,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -462,7 +463,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                             child: Column(
                               children: [
                                 Text(
-                                  'YOUR ELO',
+                                  AppLocalizations.of(context).yourElo,
                                   style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                                 ),
                                 const SizedBox(height: 8),
@@ -482,7 +483,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                             child: Column(
                               children: [
                                 Text(
-                                  'RANGE',
+                                  AppLocalizations.of(context).eloRange,
                                   style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                                 ),
                                 const SizedBox(height: 8),
@@ -522,8 +523,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                         ),
                         elevation: 4,
                       ),
-                      child: const Text(
-                        'CANCEL SEARCH',
+                      child: Text(
+                        AppLocalizations.of(context).cancelSearch,
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

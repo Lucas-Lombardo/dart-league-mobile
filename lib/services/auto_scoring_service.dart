@@ -66,6 +66,9 @@ class AutoScoringService extends ChangeNotifier {
   // Which slots have already fired _onDartDetected (prevents duplicate socket events)
   List<bool> _emittedSlots = [false, false, false];
 
+  // Which slots have been manually overridden (AI must not overwrite them)
+  List<bool> _manualOverrideSlots = [false, false, false];
+
   // Zoom hint
   String? _zoomHint;
 
@@ -137,6 +140,7 @@ class AutoScoringService extends ChangeNotifier {
     _turnTotal = 0;
     _confirmedDarts = [null, null, null];
     _emittedSlots = [false, false, false];
+    _manualOverrideSlots = [false, false, false];
     _prevDartCount = 0;
     _dartsRemoved = false;
     _zoomHint = null;
@@ -151,6 +155,7 @@ class AutoScoringService extends ChangeNotifier {
       _dartSlots[i] = null;
       _confirmedDarts[i] = null;
       _emittedSlots[i] = false;
+      _manualOverrideSlots[i] = false;
     }
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -160,6 +165,7 @@ class AutoScoringService extends ChangeNotifier {
   void overrideDart(int index, DartScore score) {
     if (index < 0 || index > 2) return;
     _dartSlots[index] = score;
+    _manualOverrideSlots[index] = true;
     // Also update confirmed dart memory so it doesn't get overwritten
     _confirmedDarts[index] = ConfirmedDart(
       x: 0,
@@ -177,6 +183,7 @@ class AutoScoringService extends ChangeNotifier {
     _dartSlots[index] = null;
     _confirmedDarts[index] = null;
     _emittedSlots[index] = false;
+    _manualOverrideSlots[index] = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
@@ -270,6 +277,8 @@ class AutoScoringService extends ChangeNotifier {
     // Pass 1: match detected darts to existing confirmed slots by proximity
     for (int s = 0; s < 3; s++) {
       if (_confirmedDarts[s] == null) continue;
+      // Skip AI updates for manually overridden slots
+      if (_manualOverrideSlots[s]) continue;
 
       int bestIdx = -1;
       double bestDist = _dartMatchDist;
@@ -299,7 +308,7 @@ class AutoScoringService extends ChangeNotifier {
     for (int d = 0; d < detected.length; d++) {
       if (matchedDetected.contains(d)) continue;
       for (int s = 0; s < 3; s++) {
-        if (_confirmedDarts[s] == null) {
+        if (_confirmedDarts[s] == null && !_manualOverrideSlots[s]) {
           _confirmedDarts[s] = detected[d];
           print('[AutoScoring] New dart in slot $s: ${detected[d].score.formatted} conf=${detected[d].confidence.toStringAsFixed(2)}');
           // Only emit once per slot per turn — prevents duplicate socket events
@@ -313,9 +322,11 @@ class AutoScoringService extends ChangeNotifier {
       }
     }
 
-    // Sync display slots
+    // Sync display slots (skip manually overridden slots)
     for (int i = 0; i < 3; i++) {
-      _dartSlots[i] = _confirmedDarts[i]?.score;
+      if (!_manualOverrideSlots[i]) {
+        _dartSlots[i] = _confirmedDarts[i]?.score;
+      }
     }
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
   }

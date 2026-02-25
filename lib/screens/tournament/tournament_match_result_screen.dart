@@ -4,6 +4,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class TournamentMatchResultScreen extends StatelessWidget {
   final String tournamentMatchId;
@@ -75,7 +76,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                   const SizedBox(height: 32),
 
                   Text(
-                    didWin ? 'YOU ADVANCE!' : 'ELIMINATED',
+                    didWin ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
                     style: TextStyle(
                       color: didWin ? AppTheme.success : AppTheme.error,
                       fontSize: 36,
@@ -86,8 +87,8 @@ class TournamentMatchResultScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     didWin
-                        ? 'Congratulations! You won the series.'
-                        : 'Better luck next time.',
+                        ? AppLocalizations.of(context).congratsWonSeries
+                        : AppLocalizations.of(context).betterLuckNextTime,
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 16,
@@ -138,12 +139,12 @@ class TournamentMatchResultScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildPlayerColumn(myUsername, myLegsWon, true, didWin),
+                            _buildPlayerColumn(context, myUsername, myLegsWon, true, didWin),
                             Column(
                               children: [
-                                const Text(
-                                  'FINAL',
-                                  style: TextStyle(
+                                Text(
+                                  AppLocalizations.of(context).finalScore,
+                                  style: const TextStyle(
                                     color: AppTheme.textSecondary,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -161,7 +162,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Best of $bestOf',
+                                  '${AppLocalizations.of(context).bestOf} $bestOf',
                                   style: const TextStyle(
                                     color: AppTheme.textSecondary,
                                     fontSize: 12,
@@ -169,7 +170,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            _buildPlayerColumn(opponentUsername, opponentLegsWon, false, !didWin),
+                            _buildPlayerColumn(context, opponentUsername, opponentLegsWon, false, !didWin),
                           ],
                         ),
                       ],
@@ -197,7 +198,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        didWin ? 'CONTINUE' : 'RETURN HOME',
+                        didWin ? AppLocalizations.of(context).continueButton : AppLocalizations.of(context).returnHome,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -215,7 +216,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayerColumn(String username, int legsWon, bool isMe, bool isWinner) {
+  Widget _buildPlayerColumn(BuildContext context, String username, int legsWon, bool isMe, bool isWinner) {
     return Column(
       children: [
         if (isWinner)
@@ -224,7 +225,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
           const SizedBox(height: 20),
         const SizedBox(height: 4),
         Text(
-          isMe ? 'You' : username,
+          isMe ? AppLocalizations.of(context).you : username,
           style: const TextStyle(
             color: AppTheme.textSecondary,
             fontSize: 11,

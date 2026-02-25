@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
@@ -6,9 +10,12 @@ import '../../providers/matchmaking_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
+import '../../services/detection_isolate_stub.dart'
+    if (dart.library.io) '../../services/detection_isolate.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/storage_service.dart';
+import '../../l10n/app_localizations.dart';
 import 'matchmaking_screen.dart';
 import '../game/game_screen.dart';
 
@@ -41,10 +48,105 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
 
+  // AI dartboard detection
+  DetectionIsolate? _detectionIsolate;
+  bool _aiModelLoaded = false;
+  String? _aiHint;
+  bool _boardDetected = false;
+  Timer? _aiCaptureTimer;
+  bool _aiCapturing = false;
+  bool _aiAnalyzing = false;
+
   @override
   void initState() {
     super.initState();
     _initializeCamera();
+    if (!kIsWeb) _initAiDetection();
+  }
+
+  Future<void> _initAiDetection() async {
+    try {
+      _detectionIsolate = DetectionIsolate();
+      await _detectionIsolate!.start();
+      if (mounted) {
+        setState(() => _aiModelLoaded = true);
+        _startAiCapture();
+      }
+    } catch (_) {
+      // AI not available — queue is still unlocked
+    }
+  }
+
+  void _startAiCapture() {
+    if (_aiCapturing || !_aiModelLoaded) return;
+    _aiCapturing = true;
+    _aiCaptureTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
+      if (mounted && _cameraReady && _cameraController != null) {
+        _runAiCapture();
+      }
+    });
+  }
+
+  Future<void> _runAiCapture() async {
+    if (_aiAnalyzing) return;
+    if (_detectionIsolate == null || !_aiModelLoaded) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    _aiAnalyzing = true;
+    try {
+      final xFile = await _cameraController!.takePicture();
+      if (!mounted) { try { await File(xFile.path).delete(); } catch (_) {} return; }
+      final result = await _detectionIsolate!.analyze(xFile.path);
+      try { await File(xFile.path).delete(); } catch (_) {}
+      if (!mounted) return;
+      final calibs = result.calibrationPoints;
+      String? hint;
+      bool detected = false;
+      if (calibs.length < 4) {
+        hint = calibs.isEmpty ? 'Dartboard not detected' : 'Board not fully visible';
+        detected = false;
+      } else {
+        double minX = 1, maxX = 0, minY = 1, maxY = 0;
+        for (final c in calibs) {
+          if (c.x < minX) minX = c.x;
+          if (c.x > maxX) maxX = c.x;
+          if (c.y < minY) minY = c.y;
+          if (c.y > maxY) maxY = c.y;
+        }
+        final spread = (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
+        if (spread < 0.50) {
+          hint = 'Zoom in — board too far';
+          detected = false;
+        } else if (spread > 0.85) {
+          hint = 'Zoom out — board too close';
+          detected = false;
+        } else {
+          hint = null;
+          detected = true;
+        }
+      }
+      setState(() {
+        _aiHint = hint;
+        _boardDetected = detected;
+      });
+    } catch (_) {
+      // ignore capture errors
+    } finally {
+      _aiAnalyzing = false;
+    }
+  }
+
+  bool get _canPlay {
+    if (!_permissionsGranted || !_cameraReady) return false;
+    if (_aiModelLoaded && !_boardDetected) return false;
+    return true;
+  }
+
+  String get _playButtonLabel {
+    if (!_permissionsGranted || !_cameraReady) return 'CAMERA REQUIRED';
+    if (_aiModelLoaded && !_boardDetected) {
+      return _aiHint != null ? _aiHint!.toUpperCase() : 'SCANNING...';
+    }
+    return 'PLAY';
   }
 
   Future<void> _initializeCamera() async {
@@ -121,6 +223,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           _cameraReady = true;
           _isLoading = false;
         });
+        if (_aiModelLoaded) _startAiCapture();
       }
     } catch (e) {
       setState(() {
@@ -202,6 +305,11 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
 
   @override
   void dispose() {
+    _aiCaptureTimer?.cancel();
+    _aiCaptureTimer = null;
+    _aiCapturing = false;
+    _detectionIsolate?.dispose();
+    _detectionIsolate = null;
     _cameraController?.dispose();
     super.dispose();
   }
@@ -220,8 +328,8 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
             Navigator.of(context).pop();
           },
         ),
-        title: const Text(
-          'CAMERA SETUP',
+        title: Text(
+          AppLocalizations.of(context).cameraSetup,
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -259,7 +367,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Initializing camera...',
+            AppLocalizations.of(context).initializingCamera,
             style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
           ),
         ],
@@ -289,7 +397,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
             ),
             const SizedBox(height: 32),
             Text(
-              'Camera Required',
+              AppLocalizations.of(context).cameraRequired,
               style: AppTheme.displayMedium.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -318,7 +426,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'You cannot join the queue without camera access',
+                          AppLocalizations.of(context).cannotJoinWithoutCamera,
                           style: AppTheme.bodyLarge.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -329,7 +437,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Please enable camera and microphone permissions in your device settings to continue.',
+                    AppLocalizations.of(context).enablePermissionsInSettings,
                     style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary, fontSize: 14),
                   ),
                 ],
@@ -347,9 +455,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  'TRY AGAIN',
-                  style: TextStyle(
+                child: Text(
+                  AppLocalizations.of(context).tryAgain,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -390,7 +498,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
               left: 16,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
@@ -403,15 +511,15 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                         Container(
                           width: 12,
                           height: 12,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: AppTheme.success,
                             shape: BoxShape.circle,
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Camera Ready',
-                          style: TextStyle(
+                        Text(
+                          AppLocalizations.of(context).connected,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -419,23 +527,81 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    const Row(
+                    const SizedBox(height: 10),
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline, color: AppTheme.primary, size: 20),
-                        SizedBox(width: 8),
+                        const Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Position your device so the dartboard is clearly visible in the frame',
-                            style: TextStyle(
+                            AppLocalizations.of(context).positionDartboard,
+                            style: const TextStyle(
                               color: AppTheme.textSecondary,
-                              fontSize: 14,
+                              fontSize: 13,
                             ),
                           ),
                         ),
                       ],
                     ),
+                    // AI detection status
+                    if (_aiModelLoaded) ...[
+                      const SizedBox(height: 10),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: (_aiHint == null && _boardDetected)
+                              ? AppTheme.success.withValues(alpha: 0.2)
+                              : (_aiHint != null)
+                                  ? AppTheme.error.withValues(alpha: 0.2)
+                                  : AppTheme.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: (_aiHint == null && _boardDetected)
+                                ? AppTheme.success
+                                : (_aiHint != null)
+                                    ? AppTheme.error
+                                    : AppTheme.accent,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              (_aiHint == null && _boardDetected)
+                                  ? Icons.check_circle
+                                  : (_aiHint != null)
+                                      ? Icons.warning_rounded
+                                      : Icons.smart_toy_outlined,
+                              color: (_aiHint == null && _boardDetected)
+                                  ? AppTheme.success
+                                  : (_aiHint != null)
+                                      ? AppTheme.error
+                                      : AppTheme.accent,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                (_aiHint == null && _boardDetected)
+                                    ? 'Dartboard detected — good position'
+                                    : _aiHint ?? 'Scanning for dartboard...',
+                                style: TextStyle(
+                                  color: (_aiHint == null && _boardDetected)
+                                      ? AppTheme.success
+                                      : (_aiHint != null)
+                                          ? AppTheme.error
+                                          : AppTheme.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -494,11 +660,11 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
             ),
             child: Column(
               children: [
-                _buildInfoRow(Icons.videocam, 'Camera will be ON during the match'),
+                _buildInfoRow(Icons.videocam, AppLocalizations.of(context).cameraOnDuringMatch),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.mic_off, 'Microphone will be OFF by default'),
+                _buildInfoRow(Icons.mic_off, AppLocalizations.of(context).micOffByDefault),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.my_location, 'Make sure the dartboard is visible'),
+                _buildInfoRow(Icons.my_location, AppLocalizations.of(context).makeSureDartboardVisible),
               ],
             ),
           ),
@@ -506,27 +672,19 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _permissionsGranted && _cameraReady
-                  ? (widget.isRejoin ? _rejoinMatch : _joinQueue)
-                  : null,
+              onPressed: _canPlay ? (widget.isRejoin ? _rejoinMatch : _joinQueue) : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _permissionsGranted && _cameraReady
-                    ? AppTheme.primary
-                    : AppTheme.surfaceLight,
+                backgroundColor: _canPlay ? AppTheme.primary : AppTheme.surfaceLight,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                elevation: _permissionsGranted && _cameraReady ? 4 : 0,
+                elevation: _canPlay ? 4 : 0,
               ),
               child: Text(
-                _permissionsGranted && _cameraReady
-                    ? 'PLAY'
-                    : 'CAMERA REQUIRED',
+                _playButtonLabel,
                 style: TextStyle(
-                  color: _permissionsGranted && _cameraReady
-                      ? Colors.white
-                      : AppTheme.textSecondary,
+                  color: _canPlay ? Colors.white : AppTheme.textSecondary,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.5,

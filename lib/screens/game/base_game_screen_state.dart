@@ -13,6 +13,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../services/auto_scoring_service.dart';
+import '../../services/dart_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/interactive_dartboard.dart';
 
@@ -51,6 +52,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   AutoScoringService? autoScoringService;
   bool autoScoringEnabled = false;
   bool autoScoringLoading = false;
+  bool aiManuallyDisabled = false;
   String? lastKnownCurrentPlayer;
   bool winDialogShowing = false;
   bool bustDialogShowing = false;
@@ -94,7 +96,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final game = readGame();
       gameStarted = game.gameStarted;
       gameEnded = game.gameEnded;
-      if (autoScoringService != null && autoScoringEnabled) {
+      if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
         if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing) {
           if (justBecameMyTurn) { autoScoringService!.resetTurn(); }
@@ -127,6 +129,28 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     if (kIsWeb || !AutoScoringService.isSupported) { autoScoringEnabled = false; return; }
     final enabled = await StorageService.getAutoScoring();
     if (mounted) setState(() => autoScoringEnabled = enabled);
+  }
+
+  ScoreMultiplier dartScoreToMultiplier(DartScore dartScore) {
+    switch (dartScore.ring) {
+      case 'triple': return ScoreMultiplier.triple;
+      case 'double':
+      case 'double_bull': return ScoreMultiplier.double;
+      default: return ScoreMultiplier.single;
+    }
+  }
+
+  void toggleAiScoring() {
+    if (!mounted) return;
+    setState(() {
+      aiManuallyDisabled = !aiManuallyDisabled;
+      if (aiManuallyDisabled) {
+        autoScoringService?.stopCapture();
+      } else if (autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded) {
+        final game = readGame();
+        if (game.isMyTurn) autoScoringService!.startCapture();
+      }
+    });
   }
 
   Future<void> initAutoScoring() async {
@@ -401,6 +425,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       buildControlButton(icon: isAudioMuted ? Icons.mic_off : Icons.mic, color: isAudioMuted ? AppTheme.error : AppTheme.primary, onTap: toggleAudio),
       const SizedBox(width: 16),
       buildControlButton(icon: Icons.cameraswitch, color: AppTheme.primary, onTap: switchCamera),
+      if (autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded) ...[
+        const SizedBox(width: 16),
+        buildControlButton(
+          icon: aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+          color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+          onTap: toggleAiScoring,
+        ),
+      ],
     ]),
   );
 
@@ -586,7 +618,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           ),
           child: autoScoringEnabled && autoScoringLoading
             ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
-            : autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
+            : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
               ? AutoScoreGameView(
                   scoringService: autoScoringService!,
                   onConfirm: () => submitAutoScoredDarts(game),
@@ -597,12 +629,43 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   dartsThrown: game.dartsThrown, agoraEngine: agoraEngine, remoteUid: game.remoteUid,
                   isAudioMuted: isAudioMuted, onToggleAudio: toggleAudio, onSwitchCamera: switchCamera,
                   onZoomIn: zoomIn, onZoomOut: zoomOut, currentZoom: cameraZoom, minZoom: cameraMinZoom, maxZoom: cameraMaxZoom,
+                  onEditDart: (index, dartScore) => readGame().editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+                  onToggleAi: toggleAiScoring, aiEnabled: !aiManuallyDisabled,
                 )
               : buildScoreInputPanel(game),
         )),
       ]),
       if (game.isMyTurn)
         Positioned(top: 8, left: 12, right: 12, child: buildMyTurnOverlay(game)),
+      if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
+        Positioned(
+          bottom: 80,
+          right: 12,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: toggleAiScoring,
+              borderRadius: BorderRadius.circular(28),
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: aiManuallyDisabled ? AppTheme.surface : AppTheme.success.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+                  color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+        ),
       if (editingDartIndex != null && game.isMyTurn)
         Positioned(top: 0, left: 0, right: 0, child: Material(
           elevation: 100, color: AppTheme.error,

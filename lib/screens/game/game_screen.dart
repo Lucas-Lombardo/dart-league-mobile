@@ -380,7 +380,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 ],
               ),
             )
-          : autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
+          : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
           ? AutoScoreGameView(
               scoringService: autoScoringService!,
               onConfirm: () => submitAutoScoredDarts(game),
@@ -401,6 +401,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               currentZoom: cameraZoom,
               minZoom: cameraMinZoom,
               maxZoom: cameraMaxZoom,
+              onEditDart: (index, dartScore) => game.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+              onToggleAi: toggleAiScoring,
+              aiEnabled: !aiManuallyDisabled,
             )
           : Container(
           color: AppTheme.background,
@@ -441,63 +444,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             
             // Mic and Camera controls
             if (agoraEngine != null && !game.isMyTurn)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Mic toggle
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: toggleAudio,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isAudioMuted ? AppTheme.error : AppTheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                          child: Icon(
-                            isAudioMuted ? Icons.mic_off : Icons.mic,
-                            color: isAudioMuted ? AppTheme.error : AppTheme.primary,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Camera switch
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: switchCamera,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.cameraswitch,
-                            color: AppTheme.primary,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              buildMediaControls(),
 
             // Controls Area
             Expanded(
@@ -843,6 +790,37 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 ),
               ),
             
+            // AI toggle button (floating, during my turn)
+            if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
+              Positioned(
+                bottom: 80,
+                right: 12,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: toggleAiScoring,
+                    borderRadius: BorderRadius.circular(28),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: aiManuallyDisabled ? AppTheme.surface : AppTheme.success.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+                        color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
             // Edit mode indicator (render on top of everything)
             if (editingDartIndex != null && game.isMyTurn)
               Positioned(

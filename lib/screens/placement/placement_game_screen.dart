@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/interactive_dartboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
@@ -238,7 +239,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _botTurnInProgress ? 'BOT TURN' : 'PLACEMENT MATCH',
+                    _botTurnInProgress ? AppLocalizations.of(context).botTurn : AppLocalizations.of(context).placementMatch,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -348,9 +349,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Text(
-                                        'YOUR SCORE: ',
-                                        style: TextStyle(
+                                      Text(
+                                        AppLocalizations.of(context).yourScore,
+                                        style: const TextStyle(
                                           color: AppTheme.textSecondary,
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
@@ -552,15 +553,15 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
           ),
           const SizedBox(height: 12),
           if (placement.botIsBust)
-            const Text('BUST!', style: TextStyle(color: AppTheme.error, fontSize: 16, fontWeight: FontWeight.bold))
+            Text(AppLocalizations.of(context).bust, style: const TextStyle(color: AppTheme.error, fontSize: 16, fontWeight: FontWeight.bold))
           else if (placement.botIsCheckout)
-            const Text('CHECKOUT!', style: TextStyle(color: AppTheme.success, fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(AppLocalizations.of(context).checkout, style: const TextStyle(color: AppTheme.success, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _scoreColumn('YOU', _myScore),
-              _scoreColumn('BOT', placement.player2Score),
+              _scoreColumn(AppLocalizations.of(context).you, _myScore),
+              _scoreColumn(AppLocalizations.of(context).bot, placement.player2Score),
             ],
           ),
         ],
@@ -578,13 +579,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   }
 
   Widget _buildWaitingForBot() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(color: AppTheme.accent),
-          SizedBox(height: 16),
-          Text('Bot is throwing...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16, fontWeight: FontWeight.bold)),
+          const CircularProgressIndicator(color: AppTheme.accent),
+          const SizedBox(height: 16),
+          Text(AppLocalizations.of(context).botIsThrowing, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -639,12 +640,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                 children: [
                   Text(
                     _isBust
-                        ? 'BUST — CONFIRM'
+                        ? AppLocalizations.of(context).bustConfirm
                         : _isWin
-                            ? 'CONFIRM WIN'
+                            ? AppLocalizations.of(context).confirmWin
                             : _dartsThrown >= 3
-                                ? 'CONFIRM & END TURN'
-                                : 'END TURN EARLY',
+                                ? AppLocalizations.of(context).confirmAndEndTurn
+                                : AppLocalizations.of(context).endTurnEarly,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -691,7 +692,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  didWin ? 'VICTORY!' : 'DEFEAT',
+                  didWin ? '${AppLocalizations.of(context).victory.toUpperCase()}!' : AppLocalizations.of(context).defeat.toUpperCase(),
                   style: AppTheme.displayLarge.copyWith(
                     color: didWin ? AppTheme.success : AppTheme.error,
                     fontSize: 48,
@@ -700,17 +701,17 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                 const SizedBox(height: 16),
                 Text(
                   didWin
-                      ? 'You beat the bot!'
-                      : 'The bot was too strong this time.',
+                      ? '${AppLocalizations.of(context).youWon.replaceAll('!', '')} — bot'
+                      : '${AppLocalizations.of(context).youLost} — bot',
                   style: AppTheme.bodyLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 48),
                 const CircularProgressIndicator(color: AppTheme.primary),
                 const SizedBox(height: 16),
-                const Text(
-                  'Saving result...',
-                  style: TextStyle(color: AppTheme.textSecondary),
+                Text(
+                  AppLocalizations.of(context).savingResult,
+                  style: const TextStyle(color: AppTheme.textSecondary),
                 ),
               ],
             ),
@@ -735,7 +736,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
             const Icon(Icons.warning, color: AppTheme.error, size: 32),
             const SizedBox(width: 12),
             Text(
-              'Leave Match?',
+              AppLocalizations.of(context).leaveMatch,
               style: AppTheme.titleLarge.copyWith(
                 color: AppTheme.error,
                 fontWeight: FontWeight.bold,
@@ -743,21 +744,21 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
             ),
           ],
         ),
-        content: const Text(
-          'If you leave, this placement match will count as a loss.',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+        content: Text(
+          AppLocalizations.of(context).leaveMatchWarning,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Stay'),
+            child: Text(AppLocalizations.of(context).stay),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext, true);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: const Text('Leave'),
+            child: Text(AppLocalizations.of(context).leave),
           ),
         ],
       ),

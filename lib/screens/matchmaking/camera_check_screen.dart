@@ -6,6 +6,7 @@ import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../l10n/app_localizations.dart';
 import 'matchmaking_screen.dart';
 
 class CameraCheckScreen extends StatefulWidget {
@@ -109,8 +110,8 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
             Navigator.of(context).pop();
           },
         ),
-        title: const Text(
-          'CAMERA CHECK',
+        title: Text(
+          AppLocalizations.of(context).cameraCheck,
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -149,7 +150,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'Checking permissions...',
+          AppLocalizations.of(context).checkingPermissions,
           style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
         ),
       ],
@@ -177,7 +178,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
           ),
           const SizedBox(height: 32),
           Text(
-            'Camera Required',
+            AppLocalizations.of(context).cameraRequired,
             style: AppTheme.displayMedium.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -206,7 +207,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'You cannot join the queue without camera access',
+                        AppLocalizations.of(context).cannotJoinWithoutCamera,
                         style: AppTheme.bodyLarge.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
@@ -217,7 +218,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Please enable camera and microphone permissions in your device settings to continue.',
+                  AppLocalizations.of(context).enablePermissionsInSettings,
                   style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary, fontSize: 14),
                 ),
               ],
@@ -235,8 +236,8 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                'TRY AGAIN',
+              child: Text(
+                AppLocalizations.of(context).tryAgain,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -284,8 +285,8 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          const Text(
-            'PERMISSIONS GRANTED',
+          Text(
+            AppLocalizations.of(context).permissionsGranted,
             style: TextStyle(
               color: Colors.white,
               fontSize: 24,
@@ -314,8 +315,8 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text(
-                  'Ready to join queue',
+                Text(
+                  AppLocalizations.of(context).readyToJoinQueue,
                   style: TextStyle(
                     color: AppTheme.success,
                     fontSize: 14,
@@ -350,9 +351,9 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
             ),
             child: Column(
               children: [
-                _buildInfoRow(Icons.videocam, 'Camera will be ON during the match'),
+                _buildInfoRow(Icons.videocam, AppLocalizations.of(context).cameraOnDuringMatch),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.mic_off, 'Microphone will be OFF by default'),
+                _buildInfoRow(Icons.mic_off, AppLocalizations.of(context).micOffByDefault),
               ],
             ),
           ),
@@ -372,7 +373,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
                 elevation: _permissionsGranted ? 4 : 0,
               ),
               child: Text(
-                _permissionsGranted ? 'JOIN QUEUE' : 'PERMISSIONS REQUIRED',
+                _permissionsGranted ? AppLocalizations.of(context).joinQueue : AppLocalizations.of(context).permissionsRequired,
                 style: TextStyle(
                   color: _permissionsGranted
                       ? Colors.white
