@@ -14,8 +14,8 @@ const int _modelInputSize = 640;
 const double _defaultConfThreshold = 0.25;
 const double _calibMergeDist = 0.03;
 const int _maxDarts = 3;
-const double _dartMinConf = 0.25;
-const double _dartNmsIouThreshold = 0.45;
+const double _dartMinConf = 0.30;
+const double _dartNmsIouThreshold = 0.70;
 const double _dartNmsMinDist = 0.008;
 
 class DartDetectionService {
@@ -358,34 +358,56 @@ class DartDetectionService {
     return unionArea > 0 ? interArea / unionArea : 0.0;
   }
 
-  /// Filter dart detections: drop low confidence, NMS by IoU, cap at max
-  List<Detection> _filterDarts(List<Detection> darts) {
-    if (darts.isEmpty) return darts;
+  /// Filter dart detections: drop low confidence, NMS by IoU, cap at max.
+  /// Returns (kept, logLines) — log lines are deferred so caller can decide whether to print.
+  (List<Detection>, List<String>) _filterDarts(List<Detection> darts) {
+    if (darts.isEmpty) return (darts, []);
+
+    final logs = <String>[];
 
     // Sort by confidence descending, drop below threshold
     final sorted = List<Detection>.from(darts)
       ..sort((a, b) => b.confidence.compareTo(a.confidence));
     sorted.removeWhere((d) => d.confidence < _dartMinConf);
 
+    logs.add('[Filter] Raw darts before NMS: ${sorted.length}');
+    for (int i = 0; i < sorted.length; i++) {
+      final d = sorted[i];
+      logs.add('[Filter]   [$i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)}');
+    }
+
     final kept = <Detection>[];
     for (final d in sorted) {
       bool suppressed = false;
+      String? reason;
       for (final k in kept) {
         final iou = _iou(d, k);
         final dist = sqrt(pow(d.x - k.x, 2) + pow(d.y - k.y, 2));
-        if (iou > _dartNmsIouThreshold || dist < _dartNmsMinDist) {
+        if (iou > _dartNmsIouThreshold) {
           suppressed = true;
+          reason = 'IoU=${iou.toStringAsFixed(3)} > $_dartNmsIouThreshold with kept (${k.x.toStringAsFixed(3)},${k.y.toStringAsFixed(3)})';
+          break;
+        }
+        if (dist < _dartNmsMinDist) {
+          suppressed = true;
+          reason = 'dist=${dist.toStringAsFixed(4)} < $_dartNmsMinDist with kept (${k.x.toStringAsFixed(3)},${k.y.toStringAsFixed(3)})';
           break;
         }
       }
-      if (!suppressed) kept.add(d);
+      if (!suppressed) {
+        kept.add(d);
+      } else {
+        logs.add('[Filter]   DROPPED x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} — $reason');
+      }
       if (kept.length >= _maxDarts) break;
     }
-    return kept;
+    return (kept, logs);
   }
 
-  /// Main entry point: take a picture file, detect darts, compute scores
-  Future<ScoringResult> analyzeImage(String imagePath) async {
+  /// Fast entry point: takes pre-decoded RGBA bytes + dimensions.
+  /// Skips file read and image decode — caller is responsible for decoding
+  /// (e.g. on the main thread with native dart:ui).
+  Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {
     if (!_isLoaded) {
       return ScoringResult(
         calibrationPoints: [],
@@ -396,22 +418,11 @@ class DartDetectionService {
       );
     }
 
-    // Load image bytes
     final sw = Stopwatch()..start();
-    final bytes = await File(imagePath).readAsBytes();
-    print('[Timing] readAsBytes: ${sw.elapsedMilliseconds} ms');
-
-    // Decode image
-    sw.reset();
-    final (Uint8List rgba, int imgW, int imgH) = useNativeDecode
-        ? await _decodeImageNative(bytes)
-        : _decodeImagePure(bytes);
-    print('[Timing] decodeImage: ${sw.elapsedMilliseconds} ms');
 
     // Preprocess: single-pass letterbox directly into pre-allocated Float32List
-    sw.reset();
     final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
-    print('[Timing] preprocessDirect: ${sw.elapsedMilliseconds} ms');
+    final preprocessMs = sw.elapsedMilliseconds;
 
     final inputTensor = _inputBuffer!.reshape([1, _modelInputSize, _modelInputSize, 3]);
 
@@ -426,9 +437,9 @@ class DartDetectionService {
     // Run inference
     sw.reset();
     _interpreter!.run(inputTensor, output);
-    print('[Timing] model inference: ${sw.elapsedMilliseconds} ms');
+    final inferenceMs = sw.elapsedMilliseconds;
 
-    // Parse detections (remap from letterboxed model space to original image)
+    // Parse detections
     sw.reset();
     var detections = _parseOutput(
       output,
@@ -438,36 +449,24 @@ class DartDetectionService {
       origW: origW,
       origH: origH,
     );
-    print('[Timing] parseOutput: ${sw.elapsedMilliseconds} ms');
+    final parseMs = sw.elapsedMilliseconds;
 
     // Separate calibration points and darts
-    var calibPoints =
-        detections.where((d) => d.classId == 1).toList();
-    var dartTips =
-        detections.where((d) => d.classId == 0).toList();
+    var calibPoints = detections.where((d) => d.classId == 1).toList();
+    var dartTips = detections.where((d) => d.classId == 0).toList();
 
     // Filter calibration points (merge close duplicates, cap at 4)
+    sw.reset();
     calibPoints = _filterCalibPoints(calibPoints);
-
-    // Sort calibration points: D20 (top), D6 (right), D3 (bottom), D11 (left)
     calibPoints = _sortCalibPoints(calibPoints);
+    final (filteredDarts, filterLogs) = _filterDarts(dartTips);
+    dartTips = filteredDarts;
+    final filterMs = sw.elapsedMilliseconds;
 
-    // Filter darts (merge close ones, max 3)
-    dartTips = _filterDarts(dartTips);
+    final totalMs = preprocessMs + inferenceMs + parseMs + filterMs;
 
-    // Only log when darts are detected
-    if (dartTips.isNotEmpty) {
-      print('[DartDetection] Calib: ${calibPoints.length}, Darts: ${dartTips.length}');
-      for (final c in calibPoints) {
-        print('[DartDetection]   calib: x=${c.x.toStringAsFixed(3)} y=${c.y.toStringAsFixed(3)} conf=${c.confidence.toStringAsFixed(2)}');
-      }
-      for (final d in dartTips) {
-        print('[DartDetection]   dart: x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)}');
-      }
-    }
-
-    // Score darts
     if (calibPoints.length < 4) {
+      sw.stop();
       return ScoringResult(
         calibrationPoints: calibPoints,
         dartTips: dartTips,
@@ -480,6 +479,152 @@ class DartDetectionService {
     }
 
     if (dartTips.isEmpty) {
+      sw.stop();
+      return ScoringResult(
+        calibrationPoints: calibPoints,
+        dartTips: dartTips,
+        scores: [],
+        totalScore: 0,
+        imageWidth: imgW,
+        imageHeight: imgH,
+        error: 'No darts detected',
+      );
+    }
+
+    try {
+      final calibXY = calibPoints.map((c) => [c.x, c.y]).toList();
+      final scorer = DartScoringService(calibXY);
+      final scores = dartTips.map((d) => scorer.score(d.x, d.y)).toList();
+      sw.stop();
+      final scoreMs = sw.elapsedMilliseconds;
+      for (final line in filterLogs) {
+        print(line);
+      }
+      print('---------------------');
+      print('[Image] ${totalMs + scoreMs} ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
+      print('[Image] ${scores.length} dart(s)');
+      for (int i = 0; i < scores.length; i++) {
+        final d = dartTips[i];
+        final s = scores[i];
+        print('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+      }
+      print('---------------------');
+      final total = scores.fold<int>(0, (sum, s) => sum + s.score);
+      return ScoringResult(
+        calibrationPoints: calibPoints,
+        dartTips: dartTips,
+        scores: scores,
+        totalScore: total,
+        imageWidth: imgW,
+        imageHeight: imgH,
+      );
+    } catch (e) {
+      return ScoringResult(
+        calibrationPoints: calibPoints,
+        dartTips: dartTips,
+        scores: [],
+        totalScore: 0,
+        imageWidth: imgW,
+        imageHeight: imgH,
+        error: 'Scoring error: $e',
+      );
+    }
+  }
+
+  /// Main entry point: take a picture file, detect darts, compute scores
+  Future<ScoringResult> analyzeImage(String imagePath) async {
+    if (!_isLoaded) {
+      return ScoringResult(
+        calibrationPoints: [],
+        dartTips: [],
+        scores: [],
+        totalScore: 0,
+        error: 'Model not loaded',
+      );
+    }
+
+    final sw = Stopwatch()..start();
+
+    // Load image bytes
+    final bytes = await File(imagePath).readAsBytes();
+    final readMs = sw.elapsedMilliseconds;
+
+    // Decode image
+    sw.reset();
+    final (Uint8List rgba, int imgW, int imgH) = useNativeDecode
+        ? await _decodeImageNative(bytes)
+        : _decodeImagePure(bytes);
+    final decodeMs = sw.elapsedMilliseconds;
+
+    // Preprocess: single-pass letterbox directly into pre-allocated Float32List
+    sw.reset();
+    final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
+    final preprocessMs = sw.elapsedMilliseconds;
+
+    final inputTensor = _inputBuffer!.reshape([1, _modelInputSize, _modelInputSize, 3]);
+
+    // Zero the output buffer
+    final output = _outputBuffer!;
+    for (final row in output) {
+      for (final col in row) {
+        col.fillRange(0, col.length, 0.0);
+      }
+    }
+
+    // Run inference
+    sw.reset();
+    _interpreter!.run(inputTensor, output);
+    final inferenceMs = sw.elapsedMilliseconds;
+
+    // Parse detections (remap from letterboxed model space to original image)
+    sw.reset();
+    var detections = _parseOutput(
+      output,
+      scale: scale,
+      padX: padX,
+      padY: padY,
+      origW: origW,
+      origH: origH,
+    );
+    final parseMs = sw.elapsedMilliseconds;
+
+    // Separate calibration points and darts
+    var calibPoints =
+        detections.where((d) => d.classId == 1).toList();
+    var dartTips =
+        detections.where((d) => d.classId == 0).toList();
+
+    // Filter calibration points (merge close duplicates, cap at 4)
+    sw.reset();
+    calibPoints = _filterCalibPoints(calibPoints);
+
+    // Sort calibration points: D20 (top), D6 (right), D3 (bottom), D11 (left)
+    calibPoints = _sortCalibPoints(calibPoints);
+
+    // Filter darts (merge close ones, max 3)
+    final (filteredDarts, filterLogs) = _filterDarts(dartTips);
+    dartTips = filteredDarts;
+    final filterMs = sw.elapsedMilliseconds;
+
+    final totalMs = readMs + decodeMs + preprocessMs + inferenceMs + parseMs + filterMs;
+
+
+    // Score darts
+    if (calibPoints.length < 4) {
+      sw.stop();
+      return ScoringResult(
+        calibrationPoints: calibPoints,
+        dartTips: dartTips,
+        scores: [],
+        totalScore: 0,
+        imageWidth: imgW,
+        imageHeight: imgH,
+        error: 'Need 4 calibration points, found ${calibPoints.length}',
+      );
+    }
+
+    if (dartTips.isEmpty) {
+      sw.stop();
       return ScoringResult(
         calibrationPoints: calibPoints,
         dartTips: dartTips,
@@ -497,10 +642,20 @@ class DartDetectionService {
       final scorer = DartScoringService(calibXY);
       final scores =
           dartTips.map((d) => scorer.score(d.x, d.y)).toList();
-      for (int i = 0; i < scores.length; i++) {
-        final s = scores[i];
-        print('[DartDetection] Dart $i: ${s.formatted} r=${s.radius.toStringAsFixed(4)} angle=${s.angle.toStringAsFixed(1)} ring=${s.ring} seg=${s.segment}');
+      sw.stop();
+      final scoreMs = sw.elapsedMilliseconds;
+      for (final line in filterLogs) {
+        print(line);
       }
+      print('---------------------');
+      print('[Image] ${totalMs + scoreMs} ms | read=$readMs decode=$decodeMs preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
+      print('[Image] ${scores.length} dart(s)');
+      for (int i = 0; i < scores.length; i++) {
+        final d = dartTips[i];
+        final s = scores[i];
+        print('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+      }
+      print('---------------------');
       final total = scores.fold<int>(0, (sum, s) => sum + s.score);
 
       return ScoringResult(

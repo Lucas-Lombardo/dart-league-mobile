@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/socket_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/storage_service.dart';
 import 'matchmaking_screen.dart';
 import '../game/game_screen.dart';
 
@@ -136,6 +137,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
     }
 
     HapticService.mediumImpact();
+    await StorageService.saveCameraZoom(_currentZoom);
     
     // Dispose camera controller
     await _cameraController?.dispose();
@@ -164,6 +166,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
     if (!_cameraReady || !_permissionsGranted) return;
 
     HapticService.mediumImpact();
+    await StorageService.saveCameraZoom(_currentZoom);
 
     await _cameraController?.dispose();
     if (!mounted) return;

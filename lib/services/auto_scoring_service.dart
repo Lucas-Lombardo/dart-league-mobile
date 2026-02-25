@@ -185,8 +185,7 @@ class AutoScoringService extends ChangeNotifier {
     while (_capturing) {
       final cycleSw = Stopwatch()..start();
       await _fireCapture();
-      cycleSw.stop();
-      print('[AutoScoring] Full cycle: ${cycleSw.elapsedMilliseconds} ms');
+
       // Enforce minimum interval to avoid hammering the camera API
       final remaining = _minCycleInterval.inMilliseconds - cycleSw.elapsedMilliseconds;
       if (remaining > 0 && _capturing) {
@@ -202,20 +201,14 @@ class AutoScoringService extends ChangeNotifier {
     String? imagePath;
 
     try {
-      final captureSw = Stopwatch()..start();
       imagePath = await _captureFrame!();
-      captureSw.stop();
-      print('[AutoScoring] Snapshot capture: ${captureSw.elapsedMilliseconds} ms');
 
       if (imagePath == null || seq != _captureSeq || !_capturing) {
         await _maybeCleanup(imagePath);
         return;
       }
 
-      final stopwatch = Stopwatch()..start();
       final result = await _isolate.analyze(imagePath);
-      stopwatch.stop();
-      print('[AutoScoring] Isolate analyze: ${stopwatch.elapsedMilliseconds} ms');
 
       // Discard if a newer capture has been fired
       if (seq != _captureSeq || !_capturing) {
@@ -223,7 +216,7 @@ class AutoScoringService extends ChangeNotifier {
         return;
       }
 
-      _lastInferenceMs = stopwatch.elapsedMilliseconds;
+      _lastInferenceMs = 0;
 
       final dartCount = result.dartTips.length;
 

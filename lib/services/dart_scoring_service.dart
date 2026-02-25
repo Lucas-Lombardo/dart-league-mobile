@@ -13,7 +13,7 @@ const List<(double, double, String)> rings = [
   (0.100, 0.570, "inner_single"),
   (0.570, 0.625, "triple"),
   (0.625, 0.930, "outer_single"),
-  (0.930, 1.070, "double"),
+  (0.930, 1.050, "double"),
 ];
 
 /// Canonical dartboard space: center at (500, 500), calibration radius = 400
@@ -278,7 +278,6 @@ class DartScoringService {
     final segment = _segment(angle);
     final ring = _ring(r);
     final pts = _points(ring, segment);
-    print('[Scoring] Dart (${x.toStringAsFixed(3)}, ${y.toStringAsFixed(3)}) -> board (${board[0].toStringAsFixed(1)}, ${board[1].toStringAsFixed(1)}) r=${r.toStringAsFixed(4)} angle=${angle.toStringAsFixed(1)} => $ring $segment');
     return DartScore(
       score: pts,
       segment: segment,

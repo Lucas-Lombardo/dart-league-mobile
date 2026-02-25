@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/storage_service.dart';
 import 'tournament_ready_screen.dart';
 
 class TournamentCameraSetupScreen extends StatefulWidget {
@@ -137,6 +138,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
 
     setState(() => _readyingSent = true);
     HapticService.mediumImpact();
+    await StorageService.saveCameraZoom(_currentZoom);
 
     await _cameraController?.dispose();
     _cameraController = null;

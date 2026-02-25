@@ -11,6 +11,7 @@ import 'dartboard_edit_modal.dart';
 class AutoScoreGameView extends StatelessWidget {
   final AutoScoringService scoringService;
   final VoidCallback onConfirm;
+  final VoidCallback? onEndRoundEarly;
   final bool pendingConfirmation;
   final int myScore;
   final int opponentScore;
@@ -33,6 +34,7 @@ class AutoScoreGameView extends StatelessWidget {
     super.key,
     required this.scoringService,
     required this.onConfirm,
+    this.onEndRoundEarly,
     required this.myScore,
     required this.opponentScore,
     required this.opponentName,
@@ -60,6 +62,7 @@ class AutoScoreGameView extends StatelessWidget {
         final slots = scoringService.dartSlots;
         final turnTotal = scoringService.turnTotal;
         final hint = scoringService.zoomHint;
+        final noDartsDetected = slots.every((s) => s == null);
 
         return Column(
           children: [
@@ -276,44 +279,77 @@ class AutoScoreGameView extends StatelessWidget {
                       ),
                     ),
 
-                    // Confirm button
+                    // Confirm / End Round Early button
                     Container(
                       padding: const EdgeInsets.all(12),
                       color: AppTheme.surface,
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            HapticService.heavyImpact();
-                            onConfirm();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: pendingConfirmation
-                                ? AppTheme.primary
-                                : AppTheme.primary.withValues(alpha: 0.5),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
+                      child: noDartsDetected && onEndRoundEarly != null
+                          ? SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  HapticService.heavyImpact();
+                                  onEndRoundEarly!();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.surfaceLight,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.skip_next, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'END ROUND EARLY',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.check_circle_outline, size: 20),
-                            ],
-                          ),
-                        ),
-                      ),
+                            )
+                          : SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  HapticService.heavyImpact();
+                                  onConfirm();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pendingConfirmation
+                                      ? AppTheme.primary
+                                      : AppTheme.primary.withValues(alpha: 0.5),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.check_circle_outline, size: 20),
+                                  ],
+                                ),
+                              ),
+                            ),
                     ),
                   ],
                 ),

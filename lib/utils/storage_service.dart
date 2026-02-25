@@ -40,4 +40,16 @@ class StorageService {
     if (value == null) return true;
     return value == 'true';
   }
+
+  static const String _cameraZoomKey = 'camera_zoom';
+
+  static Future<void> saveCameraZoom(double zoom) async {
+    await _storage.write(key: _cameraZoomKey, value: zoom.toString());
+  }
+
+  static Future<double> getCameraZoom() async {
+    final value = await _storage.read(key: _cameraZoomKey);
+    if (value == null) return 1.0;
+    return double.tryParse(value) ?? 1.0;
+  }
 }
