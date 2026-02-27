@@ -433,20 +433,22 @@ class _DartIndicator extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        '${score!.score}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
+                        _shortLabel(score!),
+                        style: TextStyle(
+                          color: _scoreLabelColor(score!),
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                           height: 1,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        _shortLabel(score!),
-                        style: TextStyle(
-                          color: _scoreLabelColor(score!),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                        '${score!.score}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1,
                         ),
                       ),
                     ],

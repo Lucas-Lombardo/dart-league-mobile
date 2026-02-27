@@ -166,10 +166,14 @@ class AutoScoringService extends ChangeNotifier {
     if (index < 0 || index > 2) return;
     _dartSlots[index] = score;
     _manualOverrideSlots[index] = true;
-    // Also update confirmed dart memory so it doesn't get overwritten
+    // Preserve the original physical position if the AI already detected this
+    // dart, so Pass 1 continues to consume/match that tip on subsequent frames
+    // and it doesn't bleed into the next empty slot in Pass 2.
+    final existingX = _confirmedDarts[index]?.x ?? 0.0;
+    final existingY = _confirmedDarts[index]?.y ?? 0.0;
     _confirmedDarts[index] = ConfirmedDart(
-      x: 0,
-      y: 0,
+      x: existingX,
+      y: existingY,
       confidence: 1.0, // Manual override = max confidence
       score: score,
     );
@@ -277,8 +281,6 @@ class AutoScoringService extends ChangeNotifier {
     // Pass 1: match detected darts to existing confirmed slots by proximity
     for (int s = 0; s < 3; s++) {
       if (_confirmedDarts[s] == null) continue;
-      // Skip AI updates for manually overridden slots
-      if (_manualOverrideSlots[s]) continue;
 
       int bestIdx = -1;
       double bestDist = _dartMatchDist;
@@ -296,6 +298,10 @@ class AutoScoringService extends ChangeNotifier {
 
       if (bestIdx >= 0) {
         matchedDetected.add(bestIdx);
+        // For manually overridden slots: consume the physical dart tip so it
+        // doesn't leak into the next empty slot in Pass 2, but keep the
+        // user's score intact.
+        if (_manualOverrideSlots[s]) continue;
         // Update position + score if confidence is equal or higher
         if (detected[bestIdx].confidence >= _confirmedDarts[s]!.confidence) {
           _confirmedDarts[s] = detected[bestIdx];

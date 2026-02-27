@@ -993,9 +993,9 @@ class _AcceptMatchButtonState extends State<_AcceptMatchButton> {
           MaterialPageRoute(
             builder: (context) => TournamentCameraSetupScreen(
               matchId: match.id,
-              tournamentId: match.tournamentId ?? '',
+              tournamentId: match.tournamentId,
               tournamentName: match.tournamentName ?? 'Tournament',
-              roundName: match.roundName ?? 'Round',
+              roundName: match.roundName,
               opponentUsername: opponentUsername,
               opponentId: opponentId,
               player1Id: match.player1Id ?? '',

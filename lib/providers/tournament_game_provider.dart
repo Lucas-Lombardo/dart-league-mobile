@@ -243,8 +243,14 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
     // Track opponent's throws during their turn
-    if (!isMyTurn && _lastThrow != null) {
-      _opponentRoundThrows.add(_lastThrow!);
+    // Use currentRoundThrows as source of truth so edits are reflected (not just appends)
+    if (!isMyTurn) {
+      final throws = data['currentRoundThrows'] as List<dynamic>?;
+      if (throws != null) {
+        _opponentRoundThrows = throws.map((t) => t.toString()).toList();
+      } else if (_lastThrow != null) {
+        _opponentRoundThrows.add(_lastThrow!);
+      }
     }
     notifyListeners();
   }
@@ -569,19 +575,35 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void editDartThrow(int index, int baseScore, ScoreMultiplier multiplier) {
-    if (index < 0 || index >= _currentRoundThrows.length) return;
+    if (index < 0 || index > 2) return;
     final notation = _getScoreNotation(baseScore, multiplier);
+    // Grow list if server hasn't echoed back yet (race between AI detection and score_updated)
+    while (_currentRoundThrows.length <= index) {
+      _currentRoundThrows.add('');
+    }
     _currentRoundThrows[index] = notation;
     final isDouble = multiplier == ScoreMultiplier.double;
     final isTriple = multiplier == ScoreMultiplier.triple;
-    SocketService.emit('edit_dart', {
-      'matchId': _currentGameMatchId,
-      'playerId': _myUserId,
-      'dartIndex': index,
-      'baseScore': baseScore,
-      'isDouble': isDouble,
-      'isTriple': isTriple,
-    });
+    // If this slot was never thrown to the backend, emit throw_dart instead of edit_dart
+    if (index >= _dartsEmittedThisRound) {
+      _dartsEmittedThisRound = index + 1;
+      SocketService.emit('throw_dart', {
+        'matchId': _currentGameMatchId,
+        'playerId': _myUserId,
+        'baseScore': baseScore,
+        'isDouble': isDouble,
+        'isTriple': isTriple,
+      });
+    } else {
+      SocketService.emit('edit_dart', {
+        'matchId': _currentGameMatchId,
+        'playerId': _myUserId,
+        'dartIndex': index,
+        'baseScore': baseScore,
+        'isDouble': isDouble,
+        'isTriple': isTriple,
+      });
+    }
     notifyListeners();
   }
 

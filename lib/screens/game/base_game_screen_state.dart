@@ -392,34 +392,98 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
-    return Stack(children: [
-      if (agoraEngine != null && game.remoteUid != null)
-        Container(
-          decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppTheme.error, width: 3)),
-          child: ClipRRect(borderRadius: BorderRadius.circular(14), child: AgoraVideoView(
-            controller: VideoViewController.remote(rtcEngine: agoraEngine!, canvas: VideoCanvas(uid: game.remoteUid!), connection: RtcConnection(channelId: channelId)),
-          )),
-        )
-      else
-        Container(
-          decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppTheme.surfaceLight, width: 2)),
-          child: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), SizedBox(height: 8),
-            Text('WAITING...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-          ])),
+    final opponentThrows = game.opponentRoundThrows as List<String>;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        fit: StackFit.expand,
+          children: [
+            // ── Camera feed ──
+            if (agoraEngine != null && game.remoteUid != null)
+              AgoraVideoView(
+                controller: VideoViewController.remote(
+                  rtcEngine: agoraEngine!,
+                  canvas: VideoCanvas(uid: game.remoteUid!),
+                  connection: RtcConnection(channelId: channelId),
+                ),
+              )
+            else
+              Container(
+                color: AppTheme.surface,
+                child: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), SizedBox(height: 8),
+                  Text('WAITING...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                ])),
+              ),
+            // ── Red border ──
+            Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.error, width: 3), borderRadius: BorderRadius.circular(16))),
+            // ── Opponent score — top left ──
+            Positioned(top: 12, left: 12, child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.error, width: 2)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text('${game.opponentScore}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+              ]),
+            )),
+            // ── Your score — top right ──
+            Positioned(top: 12, right: 12, child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.success, width: 2),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const Text('YOUR SCORE', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                Text('${game.myScore}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              ]),
+            )),
+            // ── Controls + dart scores — bottom overlay ──
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black.withValues(alpha: 0.75), Colors.transparent],
+                  ),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  buildControlButton(icon: isAudioMuted ? Icons.mic_off : Icons.mic, color: isAudioMuted ? AppTheme.error : AppTheme.primary, onTap: toggleAudio),
+                  const SizedBox(width: 10),
+                  buildControlButton(icon: Icons.cameraswitch, color: AppTheme.primary, onTap: switchCamera),
+                  const SizedBox(width: 20),
+                  ...List.generate(3, (i) {
+                    final hasThrow = i < opponentThrows.length;
+                    return Container(
+                      width: 52,
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: hasThrow ? AppTheme.primary.withValues(alpha: 0.7) : Colors.white24),
+                      ),
+                      child: Text(
+                        hasThrow ? opponentThrows[i] : '—',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: hasThrow ? Colors.white : Colors.white38, fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  }),
+                ]),
+              ),
+            ),
+          ],
         ),
-      Positioned(top: 12, left: 12, child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.error, width: 2)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-          Text('${game.opponentScore}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
-        ]),
-      )),
-    ]);
+      );
   }
 
-  Widget buildMediaControls() => Padding(
+  Widget buildMediaControls({List<String>? opponentThrows}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
       buildControlButton(icon: isAudioMuted ? Icons.mic_off : Icons.mic, color: isAudioMuted ? AppTheme.error : AppTheme.primary, onTap: toggleAudio),
@@ -432,6 +496,27 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
           onTap: toggleAiScoring,
         ),
+      ],
+      if (opponentThrows != null) ...[
+        const SizedBox(width: 20),
+        ...List.generate(3, (i) {
+          final hasThrow = i < opponentThrows.length;
+          return Container(
+            width: 50,
+            margin: const EdgeInsets.only(left: 6),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: hasThrow ? AppTheme.surface : AppTheme.background,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: hasThrow ? AppTheme.primary.withValues(alpha: 0.4) : AppTheme.surfaceLight.withValues(alpha: 0.2)),
+            ),
+            child: Text(
+              hasThrow ? opponentThrows[i] : '—',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: hasThrow ? Colors.white : Colors.white24, fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+          );
+        }),
       ],
     ]),
   );
@@ -520,22 +605,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Widget buildOpponentWaitingPanel(dynamic game) {
-    final opponentThrows = game.opponentRoundThrows;
     return SingleChildScrollView(child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Text("OPPONENT'S DARTS", style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-      const SizedBox(height: 10),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) {
-        final hasThrow = i < opponentThrows.length;
-        return Container(
-          width: 76, margin: const EdgeInsets.symmetric(horizontal: 5), padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: hasThrow ? AppTheme.surface : AppTheme.background, borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: hasThrow ? AppTheme.primary.withValues(alpha: 0.4) : AppTheme.surfaceLight.withValues(alpha: 0.2)),
-          ),
-          child: Text(hasThrow ? opponentThrows[i] : '—', textAlign: TextAlign.center, style: TextStyle(color: hasThrow ? Colors.white : Colors.white24, fontSize: 18, fontWeight: FontWeight.bold)),
-        );
-      })),
-      const SizedBox(height: 16),
       const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2.5)),
       const SizedBox(height: 12),
       Text("OPPONENT'S TURN", style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),

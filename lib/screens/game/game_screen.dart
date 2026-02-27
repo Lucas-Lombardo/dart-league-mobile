@@ -410,6 +410,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
           child: Stack(
             children: [
               Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Opponent disconnected banner
                   if (game.opponentDisconnected)
@@ -436,15 +437,20 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                     ),
                   // Video Area - Only show during opponent's turn
                   if (!game.isMyTurn)
-                    Container(
-                      height: 280,
-                      padding: const EdgeInsets.all(12),
-                      child: buildOpponentTurnVideoLayout(game),
-                    ),
-            
-            // Mic and Camera controls
-            if (agoraEngine != null && !game.isMyTurn)
-              buildMediaControls(),
+                    const SizedBox(height: 12),
+                  if (!game.isMyTurn)
+                    LayoutBuilder(builder: (context, constraints) {
+                      final w = constraints.maxWidth;
+                      final h = w * (3 / 4);
+                      return SizedBox(
+                        width: w,
+                        height: h,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                          child: buildOpponentTurnVideoLayout(game, channelId: widget.agoraChannelName ?? ''),
+                        ),
+                      );
+                    }),
 
             // Controls Area
             Expanded(
@@ -692,8 +698,8 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                               child: AgoraVideoView(
                                 controller: VideoViewController.remote(
                                   rtcEngine: agoraEngine!,
-                                  canvas: VideoCanvas(uid: game.remoteUid!),
-                                  connection: RtcConnection(channelId: ''),
+                                  canvas: VideoCanvas(uid: game.remoteUid!, renderMode: RenderModeType.renderModeHidden),
+                                  connection: RtcConnection(channelId: widget.agoraChannelName ?? ''),
                                 ),
                               ),
                             ),
