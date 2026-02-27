@@ -28,6 +28,9 @@ class AgoraService {
       // Enable video module
       await _engine!.enableVideo();
       await _engine!.enableAudio();
+
+      // Disable flash/torch for captures
+      try { await _engine!.setCameraTorchOn(false); } catch (_) {}
       
       // Set video configuration
       await _engine!.setVideoEncoderConfiguration(

@@ -7,7 +7,7 @@ export 'dart_detection_types.dart';
 class DartDetectionService {
   bool get isLoaded => false;
 
-  Future<void> loadModel() async {
+  Future<void> loadModel({bool cpuOnly = false}) async {
     // No-op on web
   }
 

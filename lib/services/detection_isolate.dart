@@ -15,6 +15,8 @@ class DetectionIsolate {
   SendPort? _sendPort;
   Isolate? _isolate;
   bool _ready = false;
+  bool _usingFallback = false;
+  DartDetectionService? _fallbackService;
   final _pendingRequests = <int, Completer<ScoringResult>>{};
   int _nextId = 0;
   StreamSubscription? _subscription;
@@ -23,30 +25,67 @@ class DetectionIsolate {
 
   /// Spawn the isolate and wait for model to load.
   Future<void> start() async {
-    final receivePort = ReceivePort();
+    _usingFallback = false;
 
-    // Load model bytes on the main thread (has access to asset bundle),
-    // then pass them to the isolate so it can use Interpreter.fromBuffer.
-    final modelData = await rootBundle.load('assets/models/best_float16.tflite');
-    final modelBytes = modelData.buffer.asUint8List();
+    try {
+      final receivePort = ReceivePort();
 
-    _isolate = await Isolate.spawn(
-      _isolateEntry,
-      _InitMessage(receivePort.sendPort, modelBytes),
-    );
+      // Load model bytes on the main thread (has access to asset bundle),
+      // then pass them to the isolate so it can use Interpreter.fromBuffer.
+      final modelData = await rootBundle.load('assets/models/best_float16.tflite');
+      final modelBytes = modelData.buffer.asUint8List();
 
-    final completer = Completer<SendPort>();
-    _subscription = receivePort.listen((message) {
-      if (message is SendPort) {
-        completer.complete(message);
-      } else if (message is _AnalyzeResponse) {
-        final pending = _pendingRequests.remove(message.id);
-        pending?.complete(message.result);
-      }
-    });
+      _isolate = await Isolate.spawn(
+        _isolateEntry,
+        _InitMessage(receivePort.sendPort, modelBytes),
+      );
 
-    _sendPort = await completer.future;
-    _ready = true;
+      final portCompleter = Completer<SendPort>();
+      final initCompleter = Completer<void>();
+
+      _subscription = receivePort.listen((message) {
+        if (message is SendPort) {
+          if (!portCompleter.isCompleted) {
+            portCompleter.complete(message);
+          }
+        } else if (message is _InitStatus) {
+          if (!initCompleter.isCompleted) {
+            if (message.ok) {
+              initCompleter.complete();
+            } else {
+              initCompleter.completeError(
+                Exception(message.error ?? 'Unknown isolate init error'),
+              );
+            }
+          }
+        } else if (message is _AnalyzeResponse) {
+          final pending = _pendingRequests.remove(message.id);
+          pending?.complete(message.result);
+        }
+      });
+
+      _sendPort = await portCompleter.future.timeout(
+        const Duration(seconds: 5),
+      );
+      await initCompleter.future.timeout(const Duration(seconds: 12));
+      _ready = true;
+    } catch (e) {
+      // Fallback path for release/TestFlight environments where isolate model
+      // initialization can fail unexpectedly.
+      // Uses fromAsset (works in release) with CPU-only (Metal GPU delegate
+      // produces incorrect output for float16 models).
+      _subscription?.cancel();
+      _subscription = null;
+      _isolate?.kill(priority: Isolate.immediate);
+      _isolate = null;
+      _sendPort = null;
+
+      _fallbackService = DartDetectionService();
+      await _fallbackService!.loadModel(cpuOnly: true);
+      _usingFallback = true;
+      _ready = true;
+      print('[DetectionIsolate] Fallback to main-thread CPU model: $e');
+    }
   }
 
   /// Decode image on main thread using fast native dart:ui, then send
@@ -71,6 +110,10 @@ class DetectionIsolate {
   /// Times out after 8 seconds to prevent the capture loop from hanging
   /// if the isolate crashes or stalls mid-inference.
   Future<ScoringResult> analyze(String imagePath) async {
+    if (_usingFallback && _fallbackService != null) {
+      return _fallbackService!.analyzeImage(imagePath);
+    }
+
     if (!_ready || _sendPort == null) {
       return ScoringResult(
         calibrationPoints: [],
@@ -109,9 +152,12 @@ class DetectionIsolate {
   void dispose() {
     _subscription?.cancel();
     _isolate?.kill(priority: Isolate.immediate);
+    _fallbackService?.dispose();
+    _fallbackService = null;
     _isolate = null;
     _sendPort = null;
     _ready = false;
+    _usingFallback = false;
     // Complete any pending requests with error
     for (final c in _pendingRequests.values) {
       c.complete(ScoringResult(
@@ -126,14 +172,22 @@ class DetectionIsolate {
   }
 
   /// Entry point for the background isolate.
+  @pragma('vm:entry-point')
   static void _isolateEntry(_InitMessage init) async {
     final port = ReceivePort();
     init.mainPort.send(port.sendPort);
 
-    // Load model from pre-loaded bytes (no asset bundle needed in isolate)
-    final service = DartDetectionService(useNativeDecode: false);
-    service.loadModelFromBuffer(init.modelBytes);
-    print('[DetectionIsolate] Model loaded in background isolate');
+    late final DartDetectionService service;
+    try {
+      // Load model from pre-loaded bytes (no asset bundle needed in isolate)
+      service = DartDetectionService(useNativeDecode: false);
+      service.loadModelFromBuffer(init.modelBytes);
+      init.mainPort.send(const _InitStatus(ok: true));
+      print('[DetectionIsolate] Model loaded in background isolate');
+    } catch (e) {
+      init.mainPort.send(_InitStatus(ok: false, error: e.toString()));
+      return;
+    }
 
     await for (final message in port) {
       if (message is _AnalyzeRgbaRequest) {
@@ -177,4 +231,10 @@ class _AnalyzeResponse {
   final int id;
   final ScoringResult result;
   _AnalyzeResponse(this.id, this.result);
+}
+
+class _InitStatus {
+  final bool ok;
+  final String? error;
+  const _InitStatus({required this.ok, this.error});
 }

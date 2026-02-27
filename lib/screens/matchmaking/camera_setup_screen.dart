@@ -57,6 +57,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
 
+
   @override
   void initState() {
     super.initState();
@@ -129,7 +130,6 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
         _boardDetected = detected;
       });
     } catch (_) {
-      // ignore capture errors
     } finally {
       _aiAnalyzing = false;
     }
@@ -207,6 +207,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       );
 
       await _cameraController!.initialize();
+      await _cameraController!.setFlashMode(FlashMode.off);
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();

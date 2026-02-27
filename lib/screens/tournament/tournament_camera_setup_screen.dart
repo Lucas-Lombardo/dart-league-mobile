@@ -107,6 +107,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       );
 
       await _cameraController!.initialize();
+      await _cameraController!.setFlashMode(FlashMode.off);
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();

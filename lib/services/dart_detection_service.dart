@@ -31,11 +31,11 @@ class DartDetectionService {
 
   bool get isLoaded => _isLoaded;
 
-  Future<void> loadModel() async {
+  Future<void> loadModel({bool cpuOnly = false}) async {
     if (_isLoaded) return;
 
     // Use Metal GPU on iOS, GPU on Android, fallback to CPU with threads
-    if (Platform.isIOS) {
+    if (!cpuOnly && Platform.isIOS) {
       try {
         final gpuOptions = InterpreterOptions()
           ..addDelegate(GpuDelegate());
@@ -48,7 +48,7 @@ class DartDetectionService {
         print('[DartDetection] Metal GPU failed ($e), falling back to CPU');
         _interpreter = null;
       }
-    } else if (Platform.isAndroid) {
+    } else if (!cpuOnly && Platform.isAndroid) {
       try {
         final gpuOptions = InterpreterOptions()
           ..addDelegate(GpuDelegateV2());
