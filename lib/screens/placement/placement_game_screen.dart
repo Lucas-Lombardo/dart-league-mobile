@@ -1,12 +1,22 @@
+import 'dart:io';
+
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
+import '../../services/auto_scoring_service.dart';
+import '../../services/dart_scoring_service.dart';
+import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/score_converter.dart';
+import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/auto_score_display.dart';
 import '../../widgets/interactive_dartboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
@@ -29,15 +39,34 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   int _scoreBeforeRound = 501;
   bool _isBust = false;
   bool _isWin = false;
+  bool _winDialogShowing = false;
+
+  // Auto-scoring (local camera)
+  CameraController? _cameraController;
+  AutoScoringService? _autoScoringService;
+  bool _autoScoringEnabled = false;
+  bool _autoScoringLoading = false;
+  bool _aiManuallyDisabled = false;
+  double _cameraZoom = 1.0;
+  double _cameraMinZoom = 1.0;
+  double _cameraMaxZoom = 1.0;
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _initCameraAndAI();
+    });
   }
 
   @override
   void dispose() {
+    _stopAiCapture();
+    _autoScoringService?.dispose();
+    _autoScoringService = null;
+    _cameraController?.dispose();
+    _cameraController = null;
     WakelockPlus.disable();
     super.dispose();
   }
@@ -52,6 +81,113 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
         return baseScore * 3;
     }
   }
+
+  // ─── Auto-scoring ──────────────────────────────────────────────────────────
+
+  Future<void> _initCameraAndAI() async {
+    if (kIsWeb || !AutoScoringService.isSupported) return;
+
+    // Permission already granted on the camera setup screen
+    final enabled = await StorageService.getAutoScoring();
+    if (!mounted) return;
+    setState(() => _autoScoringEnabled = enabled);
+    if (!enabled) return;
+
+    setState(() => _autoScoringLoading = true);
+
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty || !mounted) { setState(() => _autoScoringLoading = false); return; }
+      final back = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+      _cameraController = CameraController(back, ResolutionPreset.high, enableAudio: false);
+      await _cameraController!.initialize();
+      if (!mounted) { _cameraController?.dispose(); _cameraController = null; setState(() => _autoScoringLoading = false); return; }
+
+      try {
+        final minZoom = await _cameraController!.getMinZoomLevel();
+        final maxZoom = await _cameraController!.getMaxZoomLevel();
+        final savedZoom = await StorageService.getCameraZoom();
+        final clampedZoom = savedZoom.clamp(minZoom, maxZoom);
+        await _cameraController!.setZoomLevel(clampedZoom);
+        if (mounted) setState(() { _cameraMinZoom = minZoom; _cameraMaxZoom = maxZoom; _cameraZoom = clampedZoom; });
+      } catch (_) {}
+
+      _autoScoringService = AutoScoringService();
+      await _autoScoringService!.loadModel();
+      if (!mounted) { setState(() => _autoScoringLoading = false); return; }
+      setState(() => _autoScoringLoading = false);
+      if (_autoScoringService!.modelLoaded) _startAiCapture();
+    } catch (e) {
+      if (mounted) setState(() => _autoScoringLoading = false);
+    }
+  }
+
+  Future<String?> _captureFrame() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return null;
+    try {
+      final xFile = await _cameraController!.takePicture();
+      return xFile.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _cleanupFile(String path) async {
+    try { await File(path).delete(); } catch (_) {}
+  }
+
+  void _onDartDetected(int slotIndex, DartScore dartScore) {
+    if (!mounted || _botTurnInProgress || _gameEnded) return;
+    final (base, mul) = dartScoreToBackend(dartScore);
+    HapticService.mediumImpact();
+    DartSoundService.playDartHit(base, mul);
+    _throwDart(base, mul);
+    if (_isWin) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
+    }
+  }
+
+  void _startAiCapture() {
+    if (_autoScoringService == null || _aiManuallyDisabled) return;
+    _autoScoringService!.startCapture(
+      captureFrame: _captureFrame,
+      cleanupFile: _cleanupFile,
+      onDartDetected: _onDartDetected,
+    );
+  }
+
+  void _stopAiCapture() {
+    _autoScoringService?.stopCapture();
+  }
+
+  void _toggleAi() {
+    if (!mounted) return;
+    setState(() {
+      _aiManuallyDisabled = !_aiManuallyDisabled;
+      if (_aiManuallyDisabled) {
+        _stopAiCapture();
+      } else if (_autoScoringService != null && _autoScoringService!.modelLoaded) {
+        _startAiCapture();
+      }
+    });
+  }
+
+  Future<void> _zoomIn() async {
+    if (_cameraController == null) return;
+    final next = (_cameraZoom + 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
+    try { await _cameraController!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
+  }
+
+  Future<void> _zoomOut() async {
+    if (_cameraController == null) return;
+    final next = (_cameraZoom - 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
+    try { await _cameraController!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
 
   void _throwDart(int baseScore, ScoreMultiplier multiplier) {
     if (_dartsThrown >= 3 || _botTurnInProgress || _gameEnded || _isBust || _isWin) return;
@@ -120,11 +256,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   }
 
   void _confirmRound() {
-    if (_isWin) {
-      final auth = context.read<AuthProvider>();
-      _handleGameEnd(auth.currentUser?.id);
-      return;
-    }
+    _stopAiCapture();
 
     if (_isBust) {
       // Bust: revert score
@@ -171,7 +303,121 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
 
     if (mounted) {
       setState(() => _botTurnInProgress = false);
+      _autoScoringService?.resetTurn();
+      _startAiCapture();
     }
+  }
+
+  bool _bustDialogShowing = false;
+
+  void _showBustDialog() {
+    if (_bustDialogShowing || !mounted) return;
+    _bustDialogShowing = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.error, width: 2),
+        ),
+        title: Row(children: [
+          const Icon(Icons.warning, color: AppTheme.error, size: 32),
+          const SizedBox(width: 12),
+          Text('BUST!', style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
+        ]),
+        content: const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Score busted!', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16), textAlign: TextAlign.center),
+          SizedBox(height: 8),
+          Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _bustDialogShowing = false;
+              Navigator.pop(ctx);
+              setState(() {
+                if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
+                _isBust = false;
+                _recalculateScore();
+              });
+              if (_autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded) {
+                _autoScoringService!.resetTurn();
+                _startAiCapture();
+              }
+            },
+            child: const Text('Edit Darts'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _bustDialogShowing = false;
+              Navigator.pop(ctx);
+              _confirmRound();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('Confirm Bust'),
+          ),
+        ],
+      ),
+    ).then((_) => _bustDialogShowing = false);
+  }
+
+  void _showWinDialog() {
+    if (_winDialogShowing || !mounted) return;
+    final notation = _currentRoundThrows.isNotEmpty ? _currentRoundThrows.last.notation : '—';
+    _winDialogShowing = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppTheme.success, width: 2),
+        ),
+        title: Row(children: [
+          const Icon(Icons.emoji_events, color: AppTheme.success, size: 32),
+          const SizedBox(width: 12),
+          Text('CHECKOUT!', style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('You hit $notation to finish!', style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _winDialogShowing = false;
+              Navigator.pop(ctx);
+              // Undo last dart
+              setState(() {
+                if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
+                _isWin = false;
+                _recalculateScore();
+              });
+              // Restart AI if it was active
+              if (_autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded) {
+                _autoScoringService!.resetTurn();
+                _startAiCapture();
+              }
+            },
+            child: const Text('Edit Darts'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _winDialogShowing = false;
+              Navigator.pop(ctx);
+              final auth = context.read<AuthProvider>();
+              _handleGameEnd(auth.currentUser?.id);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
+            child: const Text('Confirm Win'),
+          ),
+        ],
+      ),
+    ).then((_) => _winDialogShowing = false);
   }
 
   void _handleGameEnd(String? winnerId) async {
@@ -260,6 +506,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                 },
               ),
               actions: [
+                if (_autoScoringEnabled && _autoScoringService != null && _autoScoringService!.modelLoaded && !_botTurnInProgress)
+                  IconButton(
+                    icon: Icon(
+                      _aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+                      color: _aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                    ),
+                    onPressed: _toggleAi,
+                  ),
                 if (!_botTurnInProgress)
                   Padding(
                     padding: const EdgeInsets.only(right: 16),
@@ -311,7 +565,58 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                           ),
                           child: _botTurnInProgress
                               ? _buildWaitingForBot()
-                              : _buildDartboard(),
+                              : _autoScoringEnabled && _autoScoringLoading
+                                  ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
+                                  : _autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized && !_isBust && !_isWin
+                                      ? AutoScoreGameView(
+                                          scoringService: _autoScoringService!,
+                                          onConfirm: () { HapticService.heavyImpact(); _confirmRound(); },
+                                          onEndRoundEarly: () { HapticService.heavyImpact(); _confirmRound(); },
+                                          pendingConfirmation: _isBust || _isWin,
+                                          myScore: _myScore,
+                                          opponentScore: placement.player2Score,
+                                          opponentName: 'Bot #${placement.currentBotDifficulty ?? 1}',
+                                          myName: auth.currentUser?.username ?? 'You',
+                                          dartsThrown: _dartsThrown,
+                                          localCameraPreview: SizedBox.expand(
+                                            child: FittedBox(
+                                              fit: BoxFit.cover,
+                                              child: SizedBox(
+                                                width: _cameraController!.value.previewSize!.height,
+                                                height: _cameraController!.value.previewSize!.width,
+                                                child: CameraPreview(_cameraController!),
+                                              ),
+                                            ),
+                                          ),
+                                          onZoomIn: _zoomIn,
+                                          onZoomOut: _zoomOut,
+                                          currentZoom: _cameraZoom,
+                                          minZoom: _cameraMinZoom,
+                                          maxZoom: _cameraMaxZoom,
+                                          onEditDart: (index, dartScore) {
+                                            final (base, mul) = dartScoreToBackend(dartScore);
+                                            if (index < _currentRoundThrows.length) {
+                                              _currentRoundThrows[index] = _DartThrow(base, mul);
+                                            } else {
+                                              // Slot wasn't filled via AI detection — pad gaps with misses then add
+                                              while (_currentRoundThrows.length < index) {
+                                                _currentRoundThrows.add(_DartThrow(0, ScoreMultiplier.single));
+                                              }
+                                              _currentRoundThrows.add(_DartThrow(base, mul));
+                                            }
+                                            _recalculateScore();
+                                            if (_isWin) {
+                                              _stopAiCapture();
+                                              WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
+                                            } else if (_isBust) {
+                                              _stopAiCapture();
+                                              WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
+                                            }
+                                          },
+                                          onToggleAi: _toggleAi,
+                                          aiEnabled: !_aiManuallyDisabled,
+                                        )
+                                      : _buildDartboard(),
                         ),
                       ),
                     ],
@@ -619,7 +924,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
               onPressed: _dartsThrown > 0
                   ? () {
                       HapticService.heavyImpact();
-                      _confirmRound();
+                      if (_isWin) { _showWinDialog(); } else if (_isBust) { _showBustDialog(); } else { _confirmRound(); }
                     }
                   : null,
               style: ElevatedButton.styleFrom(

@@ -373,11 +373,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
-              await context.read<AuthProvider>().logout();
-              if (context.mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-              }
+              final navigator = Navigator.of(context);
+              final authProvider = context.read<AuthProvider>();
+              navigator.pop();
+              await authProvider.logout();
+              navigator.pushNamedAndRemoveUntil('/login', (route) => false);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error,

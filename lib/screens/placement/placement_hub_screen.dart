@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
-import 'placement_game_screen.dart';
+import 'placement_camera_setup_screen.dart';
 import 'placement_result_screen.dart';
 
 class PlacementHubScreen extends StatefulWidget {
@@ -22,6 +22,28 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     });
   }
 
+  static String _rankForWins(int wins) {
+    switch (wins) {
+      case 0: return 'bronze';
+      case 1: return 'silver';
+      case 2: return 'silver';
+      case 3: return 'gold';
+      case 4: return 'platinum';
+      default: return 'bronze';
+    }
+  }
+
+  static int _eloForWins(int wins) {
+    switch (wins) {
+      case 0: return 500;
+      case 1: return 1250;
+      case 2: return 1250;
+      case 3: return 1750;
+      case 4: return 2250;
+      default: return 500;
+    }
+  }
+
   static const List<Map<String, dynamic>> _botConfigs = [
     {'name': 'Bot Bronze', 'avg': 20, 'color': Color(0xFFCD7F32), 'icon': Icons.shield_outlined},
     {'name': 'Bot Silver', 'avg': 30, 'color': Color(0xFFC0C0C0), 'icon': Icons.shield},
@@ -35,25 +57,26 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     if (success && mounted) {
       final result = await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(
-          builder: (context) => const PlacementGameScreen(),
+          builder: (context) => const PlacementCameraSetupScreen(),
         ),
       );
       // Reload status after returning from game
       if (mounted) {
         await provider.loadStatus();
-        // If placement just completed, show result screen
-        if (result != null && result['placementComplete'] == true && mounted) {
+        // If placement just completed, show result screen.
+        // Use provider.status.isComplete as authoritative check (covers win AND loss on last game).
+        final isComplete = provider.status?.isComplete == true;
+        if (isComplete && mounted) {
+          final assignedRank = (result?['assignedRank'] as String?) ?? _rankForWins(provider.status?.wins ?? 0);
+          final assignedElo = result?['assignedElo'] as int? ?? _eloForWins(provider.status?.wins ?? 0);
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (context) {
-                final placementStatus = result['placementStatus'] as Map<String, dynamic>?;
-                return PlacementResultScreen(
-                  assignedRank: result['assignedRank'] as String? ?? 'bronze',
-                  assignedElo: result['assignedElo'] as int? ?? 500,
-                  wins: placementStatus?['wins'] as int? ?? 0,
-                  totalMatches: 4,
-                );
-              },
+              builder: (context) => PlacementResultScreen(
+                assignedRank: assignedRank,
+                assignedElo: assignedElo,
+                wins: provider.status?.wins ?? 0,
+                totalMatches: 4,
+              ),
             ),
           );
         }
@@ -102,9 +125,12 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
             return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
+          return Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Header
@@ -186,10 +212,19 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                 }),
 
                 const SizedBox(height: 20),
-
-                // Start button
-                if (!status.isComplete && status.nextMatchNumber != null)
-                  SizedBox(
+              ],
+            ),
+                ),
+              ),
+              // Sticky start button
+              if (!status.isComplete && status.nextMatchNumber != null)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  decoration: BoxDecoration(
+                    color: AppTheme.background,
+                    border: Border(top: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.3))),
+                  ),
+                  child: SizedBox(
                     height: 56,
                     child: ElevatedButton(
                       onPressed: provider.isLoading ? null : _startNextMatch,
@@ -203,23 +238,16 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                           ? const SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                             )
                           : Text(
                               '${l10n.startMatch} vs ${status.nextBotName}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           );
         },
       ),

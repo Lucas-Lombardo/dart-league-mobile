@@ -53,6 +53,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool autoScoringEnabled = false;
   bool autoScoringLoading = false;
   bool aiManuallyDisabled = false;
+  CaptureFrameCallback? _captureFrameCallback;
+  OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
   bool winDialogShowing = false;
   bool bustDialogShowing = false;
@@ -96,12 +98,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final game = readGame();
       gameStarted = game.gameStarted;
       gameEnded = game.gameEnded;
-      if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled) {
+      if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
         if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing) {
           if (justBecameMyTurn) { autoScoringService!.resetTurn(); }
           else { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
-          autoScoringService!.startCapture();
+          autoScoringService!.startCapture(
+            captureFrame: _captureFrameCallback!,
+            onDartDetected: _onDartDetectedCallback,
+          );
         } else if (!game.isMyTurn && autoScoringService!.isCapturing) {
           autoScoringService!.stopCapture();
         }
@@ -146,9 +151,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       aiManuallyDisabled = !aiManuallyDisabled;
       if (aiManuallyDisabled) {
         autoScoringService?.stopCapture();
-      } else if (autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded) {
+      } else if (autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded && _captureFrameCallback != null) {
         final game = readGame();
-        if (game.isMyTurn) autoScoringService!.startCapture();
+        if (game.isMyTurn) autoScoringService!.startCapture(
+          captureFrame: _captureFrameCallback!,
+          onDartDetected: _onDartDetectedCallback,
+        );
       }
     });
   }
@@ -161,22 +169,29 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     if (!autoScoringEnabled) return;
     setState(() => autoScoringLoading = true);
     final engine = agoraEngine!;
+    _captureFrameCallback = () => AgoraService.takeLocalSnapshot(engine);
+    _onDartDetectedCallback = (_, dartScore) {
+      if (!mounted) return;
+      final g = readGame();
+      if (!g.isMyTurn) return;
+      final (base, mul) = dartScoreToBackend(dartScore);
+      HapticService.mediumImpact();
+      DartSoundService.playDartHit(base, mul);
+      g.throwDart(baseScore: base, multiplier: mul);
+    };
     autoScoringService = AutoScoringService();
-    await autoScoringService!.init(
-      captureFrame: () => AgoraService.takeLocalSnapshot(engine),
-      onDartDetected: (_, dartScore) {
-        if (!mounted) return;
-        final g = readGame();
-        if (!g.isMyTurn) return;
-        final (base, mul) = dartScoreToBackend(dartScore);
-        HapticService.mediumImpact();
-        DartSoundService.playDartHit(base, mul);
-        g.throwDart(baseScore: base, multiplier: mul);
-      },
-    );
+    await autoScoringService!.loadModel();
     if (mounted) {
       setState(() => autoScoringLoading = false);
-      if (autoScoringService!.modelLoaded) autoScoringService!.startCapture();
+      if (autoScoringService!.modelLoaded) {
+        final game = readGame();
+        if (game.isMyTurn) {
+          autoScoringService!.startCapture(
+            captureFrame: _captureFrameCallback!,
+            onDartDetected: _onDartDetectedCallback,
+          );
+        }
+      }
     }
   }
 

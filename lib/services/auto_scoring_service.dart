@@ -44,11 +44,6 @@ class ConfirmedDart {
 class AutoScoringService extends ChangeNotifier {
   final DetectionIsolate _isolate = DetectionIsolate();
 
-  // Capture callback — injected by caller
-  CaptureFrameCallback? _captureFrame;
-  CleanupFileCallback? _cleanupFile;
-  OnDartDetectedCallback? _onDartDetected;
-
   // Capture state
   bool _capturing = false;
   int _captureSeq = 0;
@@ -92,21 +87,8 @@ class AutoScoringService extends ChangeNotifier {
   /// Returns true if auto-scoring is supported on this platform
   static bool get isSupported => !kIsWeb;
 
-  /// Initialize with a capture callback and optional file cleanup callback.
-  /// [captureFrame] should return a file path to a captured image.
-  /// [cleanupFile] optionally deletes the temp file after processing.
-  Future<void> init({
-    required CaptureFrameCallback captureFrame,
-    CleanupFileCallback? cleanupFile,
-    OnDartDetectedCallback? onDartDetected,
-  }) async {
-    _captureFrame = captureFrame;
-    _cleanupFile = cleanupFile;
-    _onDartDetected = onDartDetected;
-    await _loadModel();
-  }
-
-  Future<void> _loadModel() async {
+  /// Load the AI model. Call this once before startCapture().
+  Future<void> loadModel() async {
     if (!isSupported) return;
     try {
       await _isolate.start();
@@ -119,13 +101,20 @@ class AutoScoringService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Start the auto-capture loop
-  void startCapture() {
+  /// Start the auto-capture loop.
+  /// [captureFrame] returns a file path to the captured image.
+  /// [cleanupFile] optionally deletes the temp file after processing.
+  /// [onDartDetected] called when a new dart is confirmed in a slot.
+  void startCapture({
+    required CaptureFrameCallback captureFrame,
+    CleanupFileCallback? cleanupFile,
+    OnDartDetectedCallback? onDartDetected,
+  }) {
     if (!_modelLoaded || _capturing) return;
     _capturing = true;
     _dartsRemoved = false;
     notifyListeners();
-    _captureLoop();
+    _captureLoop(captureFrame, cleanupFile, onDartDetected);
   }
 
   /// Stop the auto-capture loop
@@ -192,10 +181,14 @@ class AutoScoringService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _captureLoop() async {
+  Future<void> _captureLoop(
+    CaptureFrameCallback captureFrame,
+    CleanupFileCallback? cleanupFile,
+    OnDartDetectedCallback? onDartDetected,
+  ) async {
     while (_capturing) {
       final cycleSw = Stopwatch()..start();
-      await _fireCapture();
+      await _fireCapture(captureFrame, cleanupFile, onDartDetected);
 
       // Enforce minimum interval to avoid hammering the camera API
       final remaining = _minCycleInterval.inMilliseconds - cycleSw.elapsedMilliseconds;
@@ -205,17 +198,19 @@ class AutoScoringService extends ChangeNotifier {
     }
   }
 
-  Future<void> _fireCapture() async {
-    if (_captureFrame == null) return;
-
+  Future<void> _fireCapture(
+    CaptureFrameCallback captureFrame,
+    CleanupFileCallback? cleanupFile,
+    OnDartDetectedCallback? onDartDetected,
+  ) async {
     final seq = ++_captureSeq;
     String? imagePath;
 
     try {
-      imagePath = await _captureFrame!();
+      imagePath = await captureFrame();
 
       if (imagePath == null || seq != _captureSeq || !_capturing) {
-        await _maybeCleanup(imagePath);
+        await _maybeCleanup(imagePath, cleanupFile);
         return;
       }
 
@@ -223,7 +218,7 @@ class AutoScoringService extends ChangeNotifier {
 
       // Discard if a newer capture has been fired
       if (seq != _captureSeq || !_capturing) {
-        await _maybeCleanup(imagePath);
+        await _maybeCleanup(imagePath, cleanupFile);
         return;
       }
 
@@ -238,33 +233,33 @@ class AutoScoringService extends ChangeNotifier {
       if (_prevDartCount > 0 && dartCount == 0) {
         _prevDartCount = 0;
         _dartsRemoved = true;
-        await _maybeCleanup(imagePath);
+        await _maybeCleanup(imagePath, cleanupFile);
         notifyListeners();
         return;
       }
       _prevDartCount = dartCount;
 
       // Update confirmed darts with sticky memory
-      _updateConfirmedDarts(result);
+      _updateConfirmedDarts(result, onDartDetected);
 
       // Clean up snapshot file to avoid filling temp dir
-      await _maybeCleanup(imagePath);
+      await _maybeCleanup(imagePath, cleanupFile);
 
       notifyListeners();
     } catch (e) {
-      await _maybeCleanup(imagePath);
+      await _maybeCleanup(imagePath, cleanupFile);
       print('[AutoScoring] Capture error: $e');
     }
   }
 
-  Future<void> _maybeCleanup(String? path) async {
-    if (path == null || _cleanupFile == null) return;
+  Future<void> _maybeCleanup(String? path, CleanupFileCallback? cleanupFile) async {
+    if (path == null || cleanupFile == null) return;
     try {
-      await _cleanupFile!(path);
+      await cleanupFile(path);
     } catch (_) {}
   }
 
-  void _updateConfirmedDarts(ScoringResult result) {
+  void _updateConfirmedDarts(ScoringResult result, OnDartDetectedCallback? onDartDetected) {
     // Build detected darts list (only those with scores)
     final detected = <ConfirmedDart>[];
     for (int i = 0; i < result.dartTips.length && i < result.scores.length; i++) {
@@ -321,7 +316,7 @@ class AutoScoringService extends ChangeNotifier {
           // on brief occlusion (dart disappears then reappears in same slot)
           if (!_emittedSlots[s]) {
             _emittedSlots[s] = true;
-            _onDartDetected?.call(s, detected[d].score);
+            onDartDetected?.call(s, detected[d].score);
           }
           break;
         }

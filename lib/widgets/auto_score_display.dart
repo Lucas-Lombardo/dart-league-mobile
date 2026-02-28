@@ -21,6 +21,7 @@ class AutoScoreGameView extends StatelessWidget {
   final RtcEngine? agoraEngine;
   final int? remoteUid;
   final String? agoraChannelName;
+  final Widget? localCameraPreview;
   final bool isAudioMuted;
   final VoidCallback? onToggleAudio;
   final VoidCallback? onSwitchCamera;
@@ -47,6 +48,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.agoraEngine,
     this.remoteUid,
     this.agoraChannelName,
+    this.localCameraPreview,
     this.isAudioMuted = true,
     this.onToggleAudio,
     this.onSwitchCamera,
@@ -77,7 +79,7 @@ class AutoScoreGameView extends StatelessWidget {
               flex: 62,
               child: Stack(
                 children: [
-                  // Camera preview (local Agora video)
+                  // Camera preview — Agora (ranked/tournament) → local (placement) → off
                   Container(
                     width: double.infinity,
                     color: Colors.black,
@@ -88,13 +90,15 @@ class AutoScoreGameView extends StatelessWidget {
                               canvas: const VideoCanvas(uid: 0),
                             ),
                           )
-                        : const Center(
-                            child: Icon(
-                              Icons.videocam_off,
-                              color: Colors.white24,
-                              size: 48,
-                            ),
-                          ),
+                        : localCameraPreview != null
+                            ? localCameraPreview!
+                            : const Center(
+                                child: Icon(
+                                  Icons.videocam_off,
+                                  color: Colors.white24,
+                                  size: 48,
+                                ),
+                              ),
                   ),
 
                   // Zoom hint overlay (top)
@@ -133,7 +137,7 @@ class AutoScoreGameView extends StatelessWidget {
                     ),
 
                   // Zoom controls overlay (bottom-left)
-                  if (agoraEngine != null && onZoomIn != null && onZoomOut != null)
+                  if ((agoraEngine != null || localCameraPreview != null) && onZoomIn != null && onZoomOut != null)
                     Positioned(
                       bottom: 12,
                       left: 12,
@@ -169,7 +173,7 @@ class AutoScoreGameView extends StatelessWidget {
                     ),
 
                   // Camera controls overlay (bottom-right)
-                  if (agoraEngine != null)
+                  if (agoraEngine != null || localCameraPreview != null)
                     Positioned(
                       bottom: 12,
                       right: 12,
@@ -184,17 +188,19 @@ class AutoScoreGameView extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          _CameraControlButton(
-                            icon: isAudioMuted ? Icons.mic_off : Icons.mic,
-                            isActive: !isAudioMuted,
-                            onTap: onToggleAudio,
-                          ),
-                          const SizedBox(width: 8),
-                          _CameraControlButton(
-                            icon: Icons.cameraswitch,
-                            isActive: true,
-                            onTap: onSwitchCamera,
-                          ),
+                          if (agoraEngine != null) ...[
+                            _CameraControlButton(
+                              icon: isAudioMuted ? Icons.mic_off : Icons.mic,
+                              isActive: !isAudioMuted,
+                              onTap: onToggleAudio,
+                            ),
+                            const SizedBox(width: 8),
+                            _CameraControlButton(
+                              icon: Icons.cameraswitch,
+                              isActive: true,
+                              onTap: onSwitchCamera,
+                            ),
+                          ],
                         ],
                       ),
                     ),
