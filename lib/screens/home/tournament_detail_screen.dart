@@ -281,6 +281,15 @@ class _TournamentHeader extends StatelessWidget {
             value: '+${tournament.winnerEloReward} ELO',
             valueColor: AppTheme.accent,
           ),
+          if (tournament.hasPrize) ...[
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.emoji_events,
+              label: 'Prize',
+              value: tournament.formattedPrize,
+              valueColor: Colors.amber,
+            ),
+          ],
           const SizedBox(height: 8),
           _InfoRow(
             icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
@@ -317,6 +326,16 @@ class _TournamentHeader extends StatelessWidget {
                       color: AppTheme.accent,
                     ),
                   ),
+                  if (tournament.isCompleted && tournament.hasPrize) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Prize: ${tournament.formattedPrize}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -417,6 +436,12 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
   Future<void> _toggleRegistration() async {
     if (_isLoading || !widget.canRegister) return;
 
+    final authProvider = context.read<AuthProvider>();
+    if (!widget.isRegistered && authProvider.currentUser?.isEmailVerified == false) {
+      _showEmailVerificationDialog(context, authProvider);
+      return;
+    }
+
     setState(() => _isLoading = true);
     HapticService.lightImpact();
 
@@ -445,6 +470,37 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Email Not Verified'),
+        content: const Text(
+          'You must verify your email before joining a tournament. Check your inbox or resend the verification email.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await authProvider.resendVerification();
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Verification email sent!'),
+                  backgroundColor: AppTheme.success,
+                ),
+              );
+            },
+            child: const Text('Resend Email'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

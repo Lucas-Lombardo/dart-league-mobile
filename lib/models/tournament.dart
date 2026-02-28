@@ -15,6 +15,10 @@ class Tournament {
   final int totalRounds;
   final int entryFee;
   final String currency;
+  final String prizeType;
+  final int prizeAmount;
+  final String prizeCurrency;
+  final String? prizeDescription;
 
   Tournament({
     required this.id,
@@ -33,6 +37,10 @@ class Tournament {
     this.totalRounds = 0,
     this.entryFee = 0,
     this.currency = 'eur',
+    this.prizeType = 'none',
+    this.prizeAmount = 0,
+    this.prizeCurrency = 'eur',
+    this.prizeDescription,
   });
 
   factory Tournament.fromJson(Map<String, dynamic> json) {
@@ -57,10 +65,27 @@ class Tournament {
       totalRounds: json['totalRounds'] as int? ?? 0,
       entryFee: json['entryFee'] as int? ?? 0,
       currency: json['currency'] as String? ?? 'eur',
+      prizeType: json['prizeType'] as String? ?? 'none',
+      prizeAmount: json['prizeAmount'] as int? ?? 0,
+      prizeCurrency: json['prizeCurrency'] as String? ?? 'eur',
+      prizeDescription: json['prizeDescription'] as String?,
     );
   }
 
   bool get isFree => entryFee == 0;
+
+  bool get hasPrize => prizeType != 'none';
+  bool get hasCashPrize => prizeType == 'cash';
+  bool get hasTrophyPrize => prizeType == 'trophy';
+
+  String get formattedPrize {
+    if (!hasPrize) return '';
+    if (hasCashPrize) {
+      final amount = prizeAmount / 100;
+      return '€${amount.toStringAsFixed(2)}';
+    }
+    return prizeDescription ?? 'Trophy';
+  }
 
   String get formattedPrice {
     if (isFree) return 'Free';
