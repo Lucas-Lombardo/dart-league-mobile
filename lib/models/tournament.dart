@@ -290,3 +290,93 @@ class TournamentRegistration {
     }
   }
 }
+
+class TournamentHistory {
+  final String id;
+  final String name;
+  final String? description;
+  final DateTime scheduledDate;
+  final String status;
+  final int maxParticipants;
+  final int totalParticipants;
+  final int winnerEloReward;
+  final String? winnerId;
+  final String? winnerUsername;
+  final int? placement;
+  final String registrationStatus;
+  final int roundReached;
+  final int entryFee;
+  final String currency;
+  final String prizeType;
+  final int prizeAmount;
+  final String prizeCurrency;
+  final String? prizeDescription;
+
+  TournamentHistory({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.scheduledDate,
+    required this.status,
+    required this.maxParticipants,
+    required this.totalParticipants,
+    required this.winnerEloReward,
+    this.winnerId,
+    this.winnerUsername,
+    this.placement,
+    required this.registrationStatus,
+    required this.roundReached,
+    this.entryFee = 0,
+    this.currency = 'eur',
+    this.prizeType = 'none',
+    this.prizeAmount = 0,
+    this.prizeCurrency = 'eur',
+    this.prizeDescription,
+  });
+
+  factory TournamentHistory.fromJson(Map<String, dynamic> json) {
+    return TournamentHistory(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      scheduledDate: DateTime.parse(json['scheduledDate'] as String),
+      status: json['status'] as String,
+      maxParticipants: json['maxParticipants'] as int? ?? 32,
+      totalParticipants: json['totalParticipants'] as int? ?? 0,
+      winnerEloReward: json['winnerEloReward'] as int? ?? 500,
+      winnerId: json['winnerId'] as String?,
+      winnerUsername: json['winnerUsername'] as String?,
+      placement: json['placement'] as int?,
+      registrationStatus: json['registrationStatus'] as String,
+      roundReached: json['roundReached'] as int? ?? 0,
+      entryFee: json['entryFee'] as int? ?? 0,
+      currency: json['currency'] as String? ?? 'eur',
+      prizeType: json['prizeType'] as String? ?? 'none',
+      prizeAmount: json['prizeAmount'] as int? ?? 0,
+      prizeCurrency: json['prizeCurrency'] as String? ?? 'eur',
+      prizeDescription: json['prizeDescription'] as String?,
+    );
+  }
+
+  bool get isWinner => placement == 1;
+  
+  String get placementDisplay {
+    if (placement == null) return 'N/A';
+    if (placement == 1) return '🏆 1st';
+    if (placement == 2) return '🥈 2nd';
+    if (placement == 3) return '🥉 3rd';
+    return '${placement}th';
+  }
+
+  bool get hasPrize => prizeType != 'none';
+  bool get hasCashPrize => prizeType == 'cash';
+
+  String get formattedPrize {
+    if (!hasPrize) return '';
+    if (hasCashPrize) {
+      final amount = prizeAmount / 100;
+      return '€${amount.toStringAsFixed(2)}';
+    }
+    return prizeDescription ?? 'Trophy';
+  }
+}

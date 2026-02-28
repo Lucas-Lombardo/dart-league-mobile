@@ -7,6 +7,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../l10n/app_localizations.dart';
 import 'tournament_detail_screen.dart';
+import 'tournament_history_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 
 class TournamentScreen extends StatefulWidget {
@@ -60,6 +61,58 @@ class _TournamentScreenState extends State<TournamentScreen> with SingleTickerPr
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Material(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () {
+                    HapticService.lightImpact();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const TournamentHistoryScreen(),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.history,
+                          size: 18,
+                          color: AppTheme.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'History',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(

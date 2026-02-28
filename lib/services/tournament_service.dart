@@ -162,4 +162,16 @@ class TournamentService {
       rethrow;
     }
   }
+
+  static Future<List<TournamentHistory>> getTournamentHistory() async {
+    try {
+      final response = await ApiService.get('/tournaments/history');
+      return (response['tournaments'] as List)
+          .map((t) => TournamentHistory.fromJson(t as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching tournament history: $e');
+      rethrow;
+    }
+  }
 }

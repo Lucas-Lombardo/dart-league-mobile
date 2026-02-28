@@ -11,6 +11,7 @@ class TournamentProvider extends ChangeNotifier {
   List<Tournament> _registeredTournaments = [];
   List<Tournament> _activeTournaments = [];
   List<TournamentMatch> _pendingMatches = [];
+  List<TournamentHistory> _tournamentHistory = [];
   TournamentMatch? _activeMatch;
   Tournament? _currentTournament;
   List<TournamentMatch> _currentBracket = [];
@@ -22,6 +23,7 @@ class TournamentProvider extends ChangeNotifier {
   List<Tournament> get registeredTournaments => _registeredTournaments;
   List<Tournament> get activeTournaments => _activeTournaments;
   List<TournamentMatch> get pendingMatches => _pendingMatches;
+  List<TournamentHistory> get tournamentHistory => _tournamentHistory;
   TournamentMatch? get activeMatch => _activeMatch;
   Tournament? get currentTournament => _currentTournament;
   List<TournamentMatch> get currentBracket => _currentBracket;
@@ -121,6 +123,22 @@ class TournamentProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading active match: $e');
+    }
+  }
+
+  Future<void> loadTournamentHistory() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _tournamentHistory = await TournamentService.getTournamentHistory();
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('Error loading tournament history: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
