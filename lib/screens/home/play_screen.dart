@@ -223,8 +223,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final l10n = AppLocalizations.of(context);
 
     if (user == null) {
-      return const Center(
-        child: Text('User not found'),
+      return Center(
+        child: Text(l10n.userNotFound),
       );
     }
 
@@ -581,9 +581,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'JOIN MATCH',
-                              style: TextStyle(
+                            Text(
+                              l10n.joinMatch,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,
@@ -660,9 +660,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'PLAY',
-                              style: TextStyle(
+                            Text(
+                              l10n.play,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,
@@ -671,7 +671,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Rejoin vs ${_activeMatch!['opponentUsername']}',
+                              '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,
@@ -730,9 +730,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const Text(
-                          'RANKED LOCKED',
-                          style: TextStyle(
+                        Text(
+                          l10n.rankedLocked,
+                          style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
@@ -741,7 +741,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Active tournament: ${_activeTournamentName ?? 'In Progress'}',
+                          '${l10n.activeTournament}: ${_activeTournamentName ?? l10n.tournament}',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 13,
@@ -812,9 +812,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'PLAY',
-                              style: TextStyle(
+                            Text(
+                              l10n.play,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,

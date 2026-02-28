@@ -76,7 +76,17 @@ abstract class AppLocalizations {
   String get language;
   String get changeLanguage;
 
-  // Bottom Navigation
+  // Register Screen
+  String get confirmPassword;
+  String get usernameRequired;
+  String get usernameTooShort;
+  String get usernameInvalid;
+  String get emailRequired;
+  String get emailInvalid;
+  String get passwordRequired;
+  String get passwordTooShort;
+  String get confirmPasswordRequired;
+  String get passwordMismatch;
   String get stats;
   String get rankings;
 
@@ -183,10 +193,34 @@ abstract class AppLocalizations {
   String get cancelSearch;
 
   // Camera Check / Camera Setup
+  String get cameraSetupTitle;
+  String get placementBadge;
+  String get positionPhoneInstruction;
+  String get initializingCamera;
+  String get cameraRequiredError;
+  String get cameraPermissionRequired;
+  String get cameraAndMicPermissionRequired;
+  String get micPermissionRequired;
+  String get noCamerasFound;
+  String get failedToInitializeCamera;
+  String get unknownError;
+  String get tryAgainButton;
+  String get cameraReady;
+  String get positionDeviceInstruction;
+  String get dartboardNotDetected;
+  String get boardNotFullyVisible;
+  String get zoomInBoardTooFar;
+  String get zoomOutBoardTooClose;
+  String get dartboardDetectedGoodPosition;
+  String get scanningForDartboard;
+  String get cameraRequiredButton;
+  String get scanningButton;
+  String get cameraOnDuringMatchInfo;
+  String get aiWillScoreDartsInfo;
+  String get makeSureDartboardVisibleInfo;
   String get cameraCheck;
   String get cameraSetup;
   String get checkingPermissions;
-  String get initializingCamera;
   String get cameraRequired;
   String get cannotJoinWithoutCamera;
   String get enablePermissionsInSettings;
@@ -266,6 +300,130 @@ abstract class AppLocalizations {
   String get perfect180s;
   String get roundHistory;
   String get matchNotFound;
+  String get accountInfoDefaultUsername;
+  String get accountInfoDefaultEmail;
+
+  // Haptic & Auto-scoring settings
+  String get hapticFeedbackTitle;
+  String get hapticFeedbackSubtitle;
+  String get autoScoringTitle;
+  String get autoScoringSubtitle;
+
+  // Login
+  String get welcomeBackLegend;
+
+  // Home
+  String get eloLabel;
+  String get settingsTooltip;
+
+  // Play screen
+  String get userNotFound;
+  String get joinMatch;
+  // Note: 'play' already defined at line 53
+  String get rankedLocked;
+  String get activeTournament;
+  String get rejoinVs;
+
+  // Friends screen
+  String get searchByUsernameHint;
+  String get searchForUsersByUsername;
+  String get noUsersFound;
+  String get friendsStatus;
+  String get pendingStatus;
+  String get acceptButton;
+  String get removeFriendTitle;
+  String get removeFriendMessage;
+  String get removeButton;
+  String get incomingRequests;
+  String get sentRequests;
+  String get noFriendRequests;
+  String get noFriendsYet;
+  String get addFriendsHint;
+  String get addFriendsButton;
+  String get friendRequestSent;
+  String get friendRequestAccepted;
+  String get friendRequestDeclined;
+  String get friendRemoved;
+
+  // Leaderboard
+  String get noFriendsYetHint;
+  String get addFriendsToSeeRankings;
+  String get noLeaderboardData;
+
+  // Stats
+  String get noStatisticsAvailable;
+
+  // Splash screen
+  String get competeRankWin;
+
+  // Match Detail
+  String get errorWithMessage;
+  String get victoryEmoji;
+  String get defeatEmoji;
+  String get roundLabel;
+
+  // Match History
+  String get matchHistoryTitle;
+  String get playGameToSeeHistory;
+  String get youLabel;
+  String get opponentLabel;
+  String get addFriendButton;
+  String get searchFailed;
+
+  // Tournament
+  String get entryFee;
+  String get registrationOpensSoon;
+  String get tbd;
+  String get youIndicator;
+  String get unknown;
+  String get eloReward;
+
+  // Tournament Game
+  String get forfeitTournamentWarning;
+  String get tournamentAppBarTitle;
+  String get unableToAcceptResult;
+  // Note: 'youAdvance' and 'eliminated' already defined
+  String get opponentLeftForfeitAdvance;
+  String get youLeftEliminated;
+  String get returnToHome;
+  String get wellPlayedConfirmResult;
+  String get betterLuckNextLeg;
+  String get pleaseConfirmMatchResult;
+  String get acceptResult;
+  String get reportPlayer;
+  String get initializingMatch;
+  String get initializingMatchError;
+  String get legWonShort;
+  String get legLostShort;
+
+  // Tournament Ready
+  String get vsUppercase;
+
+  // Matchmaking
+  String get unknownPlayer;
+  String get eloValue;
+
+  // Game Screen
+  String get forfeitMatchWarning;
+  String get liveMatch;
+  String get acceptingMatchResult;
+  String get matchResultAccepted;
+  String get error;
+  // Note: 'victory', 'gameOver', 'eloChange', 'defeat' already defined
+  String get opponentLeftForfeit;
+  String get youLeftForfeited;
+  String get continuePlaying;
+  String get provenLegend;
+  String get trainingPath;
+  String get matchResult;
+  String get pleaseConfirmResult;
+  String get loadingAutoScoring;
+  String get opponentDisconnected;
+  String get timeLeftToReconnect;
+  String get yourScoreLabel;
+  String get missButton;
+  String get scoreLabel;
+  String get dartCounter;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

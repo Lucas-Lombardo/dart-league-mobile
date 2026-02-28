@@ -184,6 +184,37 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get changeLanguage => 'Change Language';
 
+  // Register Screen
+  @override
+  String get confirmPassword => 'Confirm Password';
+
+  @override
+  String get usernameRequired => 'Please enter a username';
+
+  @override
+  String get usernameTooShort => 'Username must be at least 3 characters';
+
+  @override
+  String get usernameInvalid => 'Username can only contain letters, numbers, and underscores';
+
+  @override
+  String get emailRequired => 'Please enter your email';
+
+  @override
+  String get emailInvalid => 'Please enter a valid email';
+
+  @override
+  String get passwordRequired => 'Please enter a password';
+
+  @override
+  String get passwordTooShort => 'Password must be at least 6 characters';
+
+  @override
+  String get confirmPasswordRequired => 'Please confirm your password';
+
+  @override
+  String get passwordMismatch => 'Passwords do not match';
+
   // Bottom Navigation
   @override
   String get stats => 'Stats';
@@ -496,6 +527,79 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get positionDartboard => 'Position your device so the dartboard is clearly visible in the frame';
 
+  // Camera Setup - Additional keys
+  @override
+  String get placementBadge => 'PLACEMENT';
+
+  @override
+  String get positionPhoneInstruction => 'Position your phone so the dartboard is fully visible';
+
+  @override
+  String get cameraAndMicPermissionRequired => 'Camera and microphone permissions are required to join a match';
+
+  @override
+  String get micPermissionRequired => 'Microphone permission is required to join a match';
+
+  @override
+  String get noCamerasFound => 'No cameras found on this device';
+
+  @override
+  String get failedToInitializeCamera => 'Failed to initialize camera';
+
+  @override
+  String get unknownError => 'Unknown error';
+
+  @override
+  String get cameraReady => 'Camera Ready';
+
+  @override
+  String get dartboardNotDetected => 'Dartboard not detected';
+
+  @override
+  String get boardNotFullyVisible => 'Board not fully visible';
+
+  @override
+  String get zoomInBoardTooFar => 'Zoom in — board too far';
+
+  @override
+  String get zoomOutBoardTooClose => 'Zoom out — board too close';
+
+  @override
+  String get dartboardDetectedGoodPosition => 'Dartboard detected — good position';
+
+  @override
+  String get scanningForDartboard => 'Scanning for dartboard...';
+
+  @override
+  String get cameraRequiredButton => 'CAMERA REQUIRED';
+
+  @override
+  String get scanningButton => 'SCANNING...';
+
+  @override
+  String get cameraOnDuringMatchInfo => 'Camera will be used for AI dart detection';
+
+  @override
+  String get aiWillScoreDartsInfo => 'AI will automatically score your darts';
+
+  @override
+  String get makeSureDartboardVisibleInfo => 'Make sure the dartboard is fully visible';
+
+  @override
+  String get cameraSetupTitle => 'CAMERA SETUP';
+
+  @override
+  String get cameraRequiredError => 'Camera Required';
+
+  @override
+  String get cameraPermissionRequired => 'Camera permission is required to join a match';
+
+  @override
+  String get positionDeviceInstruction => 'Position your device so the dartboard is clearly visible in the frame';
+
+  @override
+  String get tryAgainButton => 'TRY AGAIN';
+
   // Placement Game Screen
   @override
   String get botTurn => 'BOT TURN';
@@ -661,4 +765,300 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get matchNotFound => 'Match not found';
+
+  @override
+  String get accountInfoDefaultUsername => 'User';
+
+  @override
+  String get accountInfoDefaultEmail => 'No email';
+
+  // Haptic & Auto-scoring settings
+  @override
+  String get hapticFeedbackTitle => 'Haptic Feedback';
+
+  @override
+  String get hapticFeedbackSubtitle => 'Vibrate on button presses';
+
+  @override
+  String get autoScoringTitle => 'AI Auto-Scoring';
+
+  @override
+  String get autoScoringSubtitle => 'Detect dart scores using camera AI';
+
+  // Login
+  @override
+  String get welcomeBackLegend => 'Welcome back, Legend';
+
+  // Home
+  @override
+  String get eloLabel => 'ELO';
+
+  @override
+  String get settingsTooltip => 'Settings';
+
+  // Play screen
+  @override
+  String get userNotFound => 'User not found';
+
+  @override
+  String get joinMatch => 'JOIN MATCH';
+
+  // Note: 'play' already defined at line 53
+
+  @override
+  String get rankedLocked => 'RANKED LOCKED';
+
+  @override
+  String get activeTournament => 'Active tournament';
+
+  @override
+  String get rejoinVs => 'Rejoin vs';
+
+  // Friends screen
+  @override
+  String get searchByUsernameHint => 'Search by username...';
+
+  @override
+  String get searchForUsersByUsername => 'Search for users by username';
+
+  @override
+  String get noUsersFound => 'No users found';
+
+  @override
+  String get friendsStatus => 'Friends';
+
+  @override
+  String get pendingStatus => 'Pending';
+
+  @override
+  String get acceptButton => 'Accept';
+
+  @override
+  String get removeFriendTitle => 'Remove Friend';
+
+  @override
+  String get removeFriendMessage => 'Are you sure you want to remove {username} from your friends?';
+
+  @override
+  String get removeButton => 'Remove';
+
+  @override
+  String get incomingRequests => 'Incoming Requests';
+
+  @override
+  String get sentRequests => 'Sent Requests';
+
+  @override
+  String get noFriendRequests => 'No friend requests';
+
+  @override
+  String get noFriendsYet => 'No friends yet';
+
+  @override
+  String get addFriendsHint => 'Add friends to see them here!';
+
+  @override
+  String get addFriendsButton => 'Add Friends';
+
+  @override
+  String get friendRequestSent => 'Friend request sent to {username}!';
+
+  @override
+  String get friendRequestAccepted => 'You are now friends with {username}!';
+
+  @override
+  String get friendRequestDeclined => 'Declined friend request from {username}';
+
+  @override
+  String get friendRemoved => 'Removed {username} from friends';
+
+  // Leaderboard
+  @override
+  String get noFriendsYetHint => 'No friends yet';
+
+  @override
+  String get addFriendsToSeeRankings => 'Add friends to see their rankings!';
+
+  @override
+  String get noLeaderboardData => 'No leaderboard data available';
+
+  // Stats
+  @override
+  String get noStatisticsAvailable => 'No statistics available';
+
+  // Splash screen
+  @override
+  String get competeRankWin => 'COMPETE • RANK • WIN';
+
+  // Match Detail
+  @override
+  String get errorWithMessage => 'Error: {message}';
+
+  @override
+  String get victoryEmoji => '🏆 VICTORY';
+
+  @override
+  String get defeatEmoji => '💔 DEFEAT';
+
+  @override
+  String get roundLabel => 'ROUND {number}';
+
+  // Match History
+  @override
+  String get matchHistoryTitle => 'Match History';
+
+  @override
+  String get playGameToSeeHistory => 'Play a game to see your match history!';
+
+  @override
+  String get youLabel => 'You';
+
+  @override
+  String get opponentLabel => 'Opponent';
+
+  @override
+  String get addFriendButton => 'Add Friend';
+
+  @override
+  String get searchFailed => 'Search failed: {message}';
+
+  // Tournament
+  @override
+  String get entryFee => 'Entry Fee';
+
+  @override
+  String get registrationOpensSoon => 'Registration opens soon';
+
+  @override
+  String get tbd => 'TBD';
+
+  @override
+  String get youIndicator => 'You';
+
+  @override
+  String get unknown => 'Unknown';
+
+  @override
+  String get eloReward => '+{value} ELO';
+
+  // Tournament Game
+  @override
+  String get forfeitTournamentWarning => 'If you leave now, you will forfeit the tournament match and be eliminated.';
+
+  @override
+  String get tournamentAppBarTitle => 'TOURNAMENT';
+
+  @override
+  String get unableToAcceptResult => 'Unable to accept result: Missing data';
+
+  // Note: 'youAdvance' and 'eliminated' already defined at lines 632 and 651
+
+  @override
+  String get opponentLeftForfeitAdvance => 'Your opponent has left. You win by forfeit and advance!';
+
+  @override
+  String get youLeftEliminated => 'You have left the game. You are eliminated from the tournament.';
+
+  @override
+  String get returnToHome => 'Return to Home';
+
+  @override
+  String get wellPlayedConfirmResult => 'Well played! Confirm the result to continue.';
+
+  @override
+  String get betterLuckNextLeg => 'Better luck next leg. Confirm the result to continue.';
+
+  @override
+  String get pleaseConfirmMatchResult => 'Please confirm the match result';
+
+  @override
+  String get acceptResult => 'ACCEPT RESULT';
+
+  @override
+  String get reportPlayer => 'REPORT PLAYER';
+
+  @override
+  String get initializingMatch => 'INITIALIZING MATCH...';
+
+  @override
+  String get initializingMatchError => 'Error';
+
+  @override
+  String get legWonShort => 'LEG WON!';
+
+  @override
+  String get legLostShort => 'LEG LOST';
+
+  // Tournament Ready
+  @override
+  String get vsUppercase => 'VS';
+
+  // Matchmaking
+  @override
+  String get unknownPlayer => 'Unknown Player';
+
+  @override
+  String get eloValue => 'ELO: {value}';
+
+  // Game Screen
+  @override
+  String get forfeitMatchWarning => 'If you leave now, you will forfeit the match and lose ELO points.';
+
+  @override
+  String get liveMatch => 'LIVE MATCH';
+
+  @override
+  String get acceptingMatchResult => 'Accepting match result...';
+
+  @override
+  String get matchResultAccepted => 'Match result accepted';
+
+  @override
+  String get error => 'Error';
+
+  // Note: 'victory', 'gameOver', 'defeat' already defined at lines 89, 107, 92
+
+  @override
+  String get opponentLeftForfeit => 'Your opponent has left the game.\\nYou win by forfeit!';
+
+  @override
+  String get youLeftForfeited => 'You have left the game.\\nMatch forfeited.';
+
+  @override
+  String get continuePlaying => 'Continue Playing';
+
+  // Note: 'defeat' already defined at line 92
+
+  @override
+  String get provenLegend => 'You have proven yourself a legend.';
+
+  @override
+  String get trainingPath => 'Training is the path to greatness.';
+
+  @override
+  String get matchResult => 'Match Result';
+
+  @override
+  String get pleaseConfirmResult => 'Please confirm the match result';
+
+  @override
+  String get loadingAutoScoring => 'Loading auto-scoring...';
+
+  @override
+  String get opponentDisconnected => 'Opponent disconnected';
+
+  @override
+  String get timeLeftToReconnect => '{time} left to reconnect';
+
+  @override
+  String get yourScoreLabel => 'YOUR SCORE:';
+
+  @override
+  String get missButton => 'MISS';
+
+  @override
+  String get scoreLabel => 'SCORE';
+
+  @override
+  String get dartCounter => 'Dart {current}/3';
 }

@@ -1,10 +1,12 @@
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
+
+import 'dart_detection_service_io.dart' if (dart.library.html) 'dart_detection_service_web.dart';
 
 import 'dart_scoring_service.dart';
 import 'dart_detection_types.dart';
@@ -34,45 +36,20 @@ class DartDetectionService {
   Future<void> loadModel({bool cpuOnly = false}) async {
     if (_isLoaded) return;
 
-    // Use Metal GPU on iOS, GPU on Android, fallback to CPU with threads
-    if (!cpuOnly && Platform.isIOS) {
-      try {
-        final gpuOptions = InterpreterOptions()
-          ..addDelegate(GpuDelegate());
-        _interpreter = await Interpreter.fromAsset(
-          'assets/models/best_float16.tflite',
-          options: gpuOptions,
-        );
-        print('[DartDetection] Model loaded with Metal GPU delegate');
-      } catch (e) {
-        print('[DartDetection] Metal GPU failed ($e), falling back to CPU');
-        _interpreter = null;
-      }
-    } else if (!cpuOnly && Platform.isAndroid) {
-      try {
-        final gpuOptions = InterpreterOptions()
-          ..addDelegate(GpuDelegateV2());
-        _interpreter = await Interpreter.fromAsset(
-          'assets/models/best_float16.tflite',
-          options: gpuOptions,
-        );
-        print('[DartDetection] Model loaded with GPU delegate');
-      } catch (e) {
-        print('[DartDetection] GPU delegate failed ($e), falling back to CPU');
-        _interpreter = null;
-      }
-    }
-
-    // Fallback: CPU with multi-threading
-    if (_interpreter == null) {
+    // Web doesn't support GPU delegates or Platform checks
+    if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
         'assets/models/best_float16.tflite',
         options: cpuOptions,
       );
-      print('[DartDetection] Model loaded on CPU with 4 threads');
+      print('[DartDetection] Model loaded on web with CPU (4 threads)');
+      _isLoaded = true;
+    } else {
+      // Use Metal GPU on iOS, GPU on Android, fallback to CPU with threads
+      _interpreter = await loadModelNative(cpuOnly: cpuOnly);
+      _isLoaded = true;
     }
-    _isLoaded = true;
 
     // Pre-allocate input buffer
     _inputBuffer = Float32List(1 * _modelInputSize * _modelInputSize * 3);
@@ -546,7 +523,7 @@ class DartDetectionService {
     final sw = Stopwatch()..start();
 
     // Load image bytes
-    final bytes = await File(imagePath).readAsBytes();
+    final bytes = await readImageBytes(imagePath);
     final readMs = sw.elapsedMilliseconds;
 
     // Decode image

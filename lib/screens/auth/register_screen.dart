@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/locale_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 
@@ -32,10 +33,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (_formKey.currentState!.validate()) {
       final authProvider = context.read<AuthProvider>();
+      final localeProvider = context.read<LocaleProvider>();
       final success = await authProvider.register(
         username: _usernameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        language: localeProvider.languageCode,
       );
 
       if (success && mounted) {
@@ -67,6 +70,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -86,8 +90,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Start your journey to becoming a legend',
+                  Text(
+                    l10n.dartRivals,
                     style: AppTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
@@ -104,18 +108,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _usernameController,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Username',
+                                label: l10n.username,
                                 prefixIcon: Icons.person_outline,
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter a username';
+                                  return l10n.usernameRequired;
                                 }
                                 if (value.length < 3) {
-                                  return 'Username must be at least 3 characters';
+                                  return l10n.usernameTooShort;
                                 }
                                 if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-                                  return 'Username can only contain letters, numbers, and underscores';
+                                  return l10n.usernameInvalid;
                                 }
                                 return null;
                               },
@@ -126,15 +130,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               keyboardType: TextInputType.emailAddress,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Email',
+                                label: l10n.email,
                                 prefixIcon: Icons.email_outlined,
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter your email';
+                                  return l10n.emailRequired;
                                 }
                                 if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                  return 'Please enter a valid email';
+                                  return l10n.emailInvalid;
                                 }
                                 return null;
                               },
@@ -145,7 +149,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               obscureText: _obscurePassword,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Password',
+                                label: l10n.password,
                                 prefixIcon: Icons.lock_outline,
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -161,10 +165,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter a password';
+                                  return l10n.passwordRequired;
                                 }
                                 if (value.length < 6) {
-                                  return 'Password must be at least 6 characters';
+                                  return l10n.passwordTooShort;
                                 }
                                 return null;
                               },
@@ -175,7 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               obscureText: _obscureConfirmPassword,
                               style: const TextStyle(color: Colors.white),
                               decoration: AppTheme.inputDecoration(
-                                label: 'Confirm Password',
+                                label: l10n.confirmPassword,
                                 prefixIcon: Icons.lock_outline,
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -191,10 +195,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please confirm your password';
+                                  return l10n.confirmPasswordRequired;
                                 }
                                 if (value != _passwordController.text) {
-                                  return 'Passwords do not match';
+                                  return l10n.passwordMismatch;
                                 }
                                 return null;
                               },
@@ -245,7 +249,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                             ),
                                           )
-                                        : const Text('CREATE ACCOUNT'),
+                                        : Text(l10n.registerButton.toUpperCase()),
                                   ),
                                 );
                               },
@@ -259,8 +263,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
-                        'Already have an account? ',
+                      Text(
+                        '${l10n.alreadyHaveAccount} ',
                         style: AppTheme.bodyLarge,
                       ),
                       TextButton(
@@ -268,7 +272,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           context.read<AuthProvider>().clearError();
                           Navigator.pushReplacementNamed(context, '/login');
                         },
-                        child: const Text('Login'),
+                        child: Text(l10n.login),
                       ),
                     ],
                   ),

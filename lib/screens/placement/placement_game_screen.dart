@@ -85,7 +85,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   // ─── Auto-scoring ──────────────────────────────────────────────────────────
 
   Future<void> _initCameraAndAI() async {
-    if (kIsWeb || !AutoScoringService.isSupported) return;
+    if (kIsWeb) return;
+    if (!AutoScoringService.isSupported) return;
 
     // Permission already granted on the camera setup screen
     final enabled = await StorageService.getAutoScoring();

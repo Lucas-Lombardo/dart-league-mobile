@@ -40,6 +40,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Future<void> _performSearch(String query) async {
+    final l10n = AppLocalizations.of(context);
     if (query.trim().isEmpty) {
       setState(() {
         _searchResults = [];
@@ -65,7 +66,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Search failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            content: Text(l10n.searchFailed.replaceAll('{message}', e.toString().replaceAll('Exception: ', ''))),
             backgroundColor: AppTheme.error,
           ),
         );
@@ -74,13 +75,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Future<void> _sendFriendRequest(String friendId, String username) async {
+    final l10n = AppLocalizations.of(context);
     try {
       HapticService.mediumImpact();
       await context.read<FriendsProvider>().sendFriendRequest(friendId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Friend request sent to $username!'),
+            content: Text(l10n.friendRequestSent.replaceAll('{username}', username)),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -103,13 +105,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Future<void> _acceptRequest(String friendshipId, String username) async {
+    final l10n = AppLocalizations.of(context);
     try {
       HapticService.mediumImpact();
       await context.read<FriendsProvider>().acceptFriendRequest(friendshipId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('You are now friends with $username!'),
+            content: Text(l10n.friendRequestAccepted.replaceAll('{username}', username)),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -127,13 +130,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Future<void> _rejectRequest(String friendshipId, String username) async {
+    final l10n = AppLocalizations.of(context);
     try {
       HapticService.mediumImpact();
       await context.read<FriendsProvider>().rejectFriendRequest(friendshipId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Declined friend request from $username'),
+            content: Text(l10n.friendRequestDeclined.replaceAll('{username}', username)),
             backgroundColor: AppTheme.textSecondary,
           ),
         );
@@ -151,24 +155,25 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Future<void> _removeFriend(String friendId, String username) async {
+    final l10n = AppLocalizations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
-        title: const Text('Remove Friend', style: TextStyle(color: Colors.white)),
+        title: Text(l10n.removeFriendTitle, style: const TextStyle(color: Colors.white)),
         content: Text(
-          'Are you sure you want to remove $username from your friends?',
+          l10n.removeFriendMessage.replaceAll('{username}', username),
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-            child: const Text('Remove'),
+            child: Text(l10n.removeButton),
           ),
         ],
       ),
@@ -181,7 +186,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Removed $username from friends'),
+              content: Text(l10n.friendRemoved.replaceAll('{username}', username)),
               backgroundColor: AppTheme.success,
             ),
           );
@@ -298,6 +303,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildSearchSection() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -331,7 +337,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                   autofocus: true,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: 'Search by username...',
+                    hintText: l10n.searchByUsernameHint,
                     hintStyle: TextStyle(color: AppTheme.textSecondary),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -371,6 +377,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildSearchResults() {
+    final l10n = AppLocalizations.of(context);
     if (_isSearching) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.primary),
@@ -385,7 +392,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             Icon(Icons.search, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
-              'Search for users by username',
+              l10n.searchForUsersByUsername,
               style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
             ),
           ],
@@ -401,7 +408,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             Icon(Icons.person_off, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
-              'No users found',
+              l10n.noUsersFound,
               style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
             ),
           ],
@@ -458,23 +465,24 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildSearchResultAction(String userId, String username, String status) {
+    final l10n = AppLocalizations.of(context);
     switch (status) {
       case 'friends':
-        return const Row(
+        return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.check_circle, color: AppTheme.success, size: 20),
             SizedBox(width: 4),
-            Text('Friends', style: TextStyle(color: AppTheme.success, fontSize: 12)),
+            Text(l10n.friendsStatus, style: TextStyle(color: AppTheme.success, fontSize: 12)),
           ],
         );
       case 'pending_sent':
-        return const Row(
+        return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
             SizedBox(width: 4),
-            Text('Pending', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            Text(l10n.pendingStatus, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
           ],
         );
       case 'pending_received':
@@ -484,7 +492,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             final request = friendsProvider.pendingRequests.firstWhere((r) => r.user.id == userId);
             await _acceptRequest(request.id, username);
           },
-          child: const Text('Accept', style: TextStyle(fontSize: 12)),
+          child: Text(l10n.acceptButton, style: const TextStyle(fontSize: 12)),
         );
       default:
         return IconButton(
@@ -495,6 +503,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildRequestsList(FriendsProvider provider) {
+    final l10n = AppLocalizations.of(context);
     final pendingRequests = provider.pendingRequests;
     final sentRequests = provider.sentRequests;
 
@@ -505,8 +514,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           children: [
             Icon(Icons.people_outline, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
-            const Text(
-              'No friend requests',
+            Text(
+              l10n.noFriendRequests,
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
             ),
           ],
@@ -518,8 +527,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       padding: const EdgeInsets.all(16),
       children: [
         if (pendingRequests.isNotEmpty) ...[
-          const Text(
-            'Incoming Requests',
+          Text(
+            l10n.incomingRequests,
             style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
@@ -527,8 +536,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           const SizedBox(height: 24),
         ],
         if (sentRequests.isNotEmpty) ...[
-          const Text(
-            'Sent Requests',
+          Text(
+            l10n.sentRequests,
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
@@ -539,6 +548,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildRequestCard(FriendRequest request, bool isIncoming) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -576,12 +586,12 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                   ),
                 ],
               )
-            : const Row(
+            : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
                   SizedBox(width: 4),
-                  Text('Pending', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  Text(l10n.pendingStatus, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
                 ],
               ),
         onTap: () {
@@ -600,6 +610,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   Widget _buildFriendsList(List<User> friends, FriendsProvider provider) {
+    final l10n = AppLocalizations.of(context);
     if (provider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.primary),
@@ -621,7 +632,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => provider.loadFriends(),
-              child: const Text('Retry'),
+              child: Text(l10n.retry),
             ),
           ],
         ),
@@ -636,12 +647,12 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             Icon(Icons.people_outline, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
-              'No friends yet',
+              l10n.noFriendsYet,
               style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 8),
             Text(
-              'Add friends to see them here!',
+              l10n.addFriendsHint,
               style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 24),
@@ -657,7 +668,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               ),
               icon: const Icon(Icons.person_add),
-              label: const Text('Add Friends'),
+              label: Text(l10n.addFriendsButton),
             ),
           ],
         ),

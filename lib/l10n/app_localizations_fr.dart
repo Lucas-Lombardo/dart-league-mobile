@@ -184,6 +184,37 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get changeLanguage => 'Changer de langue';
 
+  // Register Screen
+  @override
+  String get confirmPassword => 'Confirmer le mot de passe';
+
+  @override
+  String get usernameRequired => 'Veuillez entrer un nom d\'utilisateur';
+
+  @override
+  String get usernameTooShort => 'Le nom d\'utilisateur doit contenir au moins 3 caractères';
+
+  @override
+  String get usernameInvalid => 'Le nom d\'utilisateur ne peut contenir que des lettres, chiffres et underscores';
+
+  @override
+  String get emailRequired => 'Veuillez entrer votre email';
+
+  @override
+  String get emailInvalid => 'Veuillez entrer un email valide';
+
+  @override
+  String get passwordRequired => 'Veuillez entrer un mot de passe';
+
+  @override
+  String get passwordTooShort => 'Le mot de passe doit contenir au moins 6 caractères';
+
+  @override
+  String get confirmPasswordRequired => 'Veuillez confirmer votre mot de passe';
+
+  @override
+  String get passwordMismatch => 'Les mots de passe ne correspondent pas';
+
   // Bottom Navigation
   @override
   String get stats => 'Statistiques';
@@ -496,6 +527,79 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get positionDartboard => 'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
 
+  // Camera Setup - Additional keys
+  @override
+  String get placementBadge => 'PLACEMENT';
+
+  @override
+  String get positionPhoneInstruction => 'Positionnez votre téléphone pour que la cible soit entièrement visible';
+
+  @override
+  String get cameraAndMicPermissionRequired => 'Les permissions caméra et microphone sont nécessaires pour rejoindre un match';
+
+  @override
+  String get micPermissionRequired => 'La permission microphone est nécessaire pour rejoindre un match';
+
+  @override
+  String get noCamerasFound => 'Aucune caméra trouvée sur cet appareil';
+
+  @override
+  String get failedToInitializeCamera => 'Échec de l\'initialisation de la caméra';
+
+  @override
+  String get unknownError => 'Erreur inconnue';
+
+  @override
+  String get cameraReady => 'Caméra prête';
+
+  @override
+  String get dartboardNotDetected => 'Cible non détectée';
+
+  @override
+  String get boardNotFullyVisible => 'Cible pas entièrement visible';
+
+  @override
+  String get zoomInBoardTooFar => 'Zoomer — cible trop loin';
+
+  @override
+  String get zoomOutBoardTooClose => 'Dézoomer — cible trop proche';
+
+  @override
+  String get dartboardDetectedGoodPosition => 'Cible détectée — bonne position';
+
+  @override
+  String get scanningForDartboard => 'Recherche de la cible...';
+
+  @override
+  String get cameraRequiredButton => 'CAMÉRA REQUISE';
+
+  @override
+  String get scanningButton => 'RECHERCHE...';
+
+  @override
+  String get cameraOnDuringMatchInfo => 'La caméra sera utilisée pour la détection IA des fléchettes';
+
+  @override
+  String get aiWillScoreDartsInfo => 'L\'IA comptabilisera automatiquement vos fléchettes';
+
+  @override
+  String get makeSureDartboardVisibleInfo => 'Assurez-vous que la cible est entièrement visible';
+
+  @override
+  String get cameraSetupTitle => 'CONFIGURATION CAMÉRA';
+
+  @override
+  String get cameraRequiredError => 'Caméra Requise';
+
+  @override
+  String get cameraPermissionRequired => 'La permission caméra est nécessaire pour rejoindre un match';
+
+  @override
+  String get positionDeviceInstruction => 'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
+
+  @override
+  String get tryAgainButton => 'RÉESSAYER';
+
   // Placement Game Screen
   @override
   String get botTurn => 'TOUR DU BOT';
@@ -661,4 +765,300 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get matchNotFound => 'Match introuvable';
+
+  @override
+  String get accountInfoDefaultUsername => 'Utilisateur';
+
+  @override
+  String get accountInfoDefaultEmail => 'Pas d\'email';
+
+  // Haptic & Auto-scoring settings
+  @override
+  String get hapticFeedbackTitle => 'Retour haptique';
+
+  @override
+  String get hapticFeedbackSubtitle => 'Vibrer lors des pressions sur les boutons';
+
+  @override
+  String get autoScoringTitle => 'Score auto IA';
+
+  @override
+  String get autoScoringSubtitle => 'Détecter les scores de fléchettes avec l\'IA caméra';
+
+  // Login
+  @override
+  String get welcomeBackLegend => 'Bon retour, Légende';
+
+  // Home
+  @override
+  String get eloLabel => 'ELO';
+
+  @override
+  String get settingsTooltip => 'Paramètres';
+
+  // Play screen
+  @override
+  String get userNotFound => 'Utilisateur introuvable';
+
+  @override
+  String get joinMatch => 'REJOINDRE LE MATCH';
+
+  // Note: 'play' already defined at line 53
+
+  @override
+  String get rankedLocked => 'CLASSÉ BLOQUÉ';
+
+  @override
+  String get activeTournament => 'Tournoi actif';
+
+  @override
+  String get rejoinVs => 'Rejoindre vs';
+
+  // Friends screen
+  @override
+  String get searchByUsernameHint => 'Rechercher par nom d\'utilisateur...';
+
+  @override
+  String get searchForUsersByUsername => 'Rechercher des utilisateurs par nom d\'utilisateur';
+
+  @override
+  String get noUsersFound => 'Aucun utilisateur trouvé';
+
+  @override
+  String get friendsStatus => 'Amis';
+
+  @override
+  String get pendingStatus => 'En attente';
+
+  @override
+  String get acceptButton => 'Accepter';
+
+  @override
+  String get removeFriendTitle => 'Supprimer l\'ami';
+
+  @override
+  String get removeFriendMessage => 'Êtes-vous sûr de vouloir supprimer {username} de vos amis ?';
+
+  @override
+  String get removeButton => 'Supprimer';
+
+  @override
+  String get incomingRequests => 'Demandes reçues';
+
+  @override
+  String get sentRequests => 'Demandes envoyées';
+
+  @override
+  String get noFriendRequests => 'Aucune demande d\'ami';
+
+  @override
+  String get noFriendsYet => 'Pas encore d\'amis';
+
+  @override
+  String get addFriendsHint => 'Ajoutez des amis pour les voir ici !';
+
+  @override
+  String get addFriendsButton => 'Ajouter des amis';
+
+  @override
+  String get friendRequestSent => 'Demande d\'ami envoyée à {username} !';
+
+  @override
+  String get friendRequestAccepted => 'Vous êtes maintenant amis avec {username} !';
+
+  @override
+  String get friendRequestDeclined => 'Demande d\'ami de {username} refusée';
+
+  @override
+  String get friendRemoved => '{username} supprimé de vos amis';
+
+  // Leaderboard
+  @override
+  String get noFriendsYetHint => 'Pas encore d\'amis';
+
+  @override
+  String get addFriendsToSeeRankings => 'Ajoutez des amis pour voir leurs classements !';
+
+  @override
+  String get noLeaderboardData => 'Aucune donnée de classement disponible';
+
+  // Stats
+  @override
+  String get noStatisticsAvailable => 'Aucune statistique disponible';
+
+  // Splash screen
+  @override
+  String get competeRankWin => 'COMPÉTITION • CLASSEMENT • VICTOIRE';
+
+  // Match Detail
+  @override
+  String get errorWithMessage => 'Erreur : {message}';
+
+  @override
+  String get victoryEmoji => '🏆 VICTOIRE';
+
+  @override
+  String get defeatEmoji => '💔 DÉFAITE';
+
+  @override
+  String get roundLabel => 'TOUR {number}';
+
+  // Match History
+  @override
+  String get matchHistoryTitle => 'Historique des matchs';
+
+  @override
+  String get playGameToSeeHistory => 'Jouez une partie pour voir votre historique !';
+
+  @override
+  String get youLabel => 'Vous';
+
+  @override
+  String get opponentLabel => 'Adversaire';
+
+  @override
+  String get addFriendButton => 'Ajouter l\'ami';
+
+  @override
+  String get searchFailed => 'Échec de la recherche : {message}';
+
+  // Tournament
+  @override
+  String get entryFee => 'Frais d\'entrée';
+
+  @override
+  String get registrationOpensSoon => 'L\'inscription ouvre bientôt';
+
+  @override
+  String get tbd => 'À déterminer';
+
+  @override
+  String get youIndicator => 'Vous';
+
+  @override
+  String get unknown => 'Inconnu';
+
+  @override
+  String get eloReward => '+{value} ELO';
+
+  // Tournament Game
+  @override
+  String get forfeitTournamentWarning => 'Si vous quittez maintenant, vous allez abandonner le match de tournoi et être éliminé.';
+
+  @override
+  String get tournamentAppBarTitle => 'TOURNOI';
+
+  @override
+  String get unableToAcceptResult => 'Impossible d\'accepter le résultat : Données manquantes';
+
+  // Note: 'youAdvance' and 'eliminated' already defined at lines 632 and 651
+
+  @override
+  String get opponentLeftForfeitAdvance => 'Votre adversaire a quitté. Vous gagnez par forfait et avancez !';
+
+  @override
+  String get youLeftEliminated => 'Vous avez quitté la partie. Vous êtes éliminé du tournoi.';
+
+  @override
+  String get returnToHome => 'Retour à l\'accueil';
+
+  @override
+  String get wellPlayedConfirmResult => 'Bien joué ! Confirmez le résultat pour continuer.';
+
+  @override
+  String get betterLuckNextLeg => 'Bonne chance pour la prochaine manche. Confirmez le résultat pour continuer.';
+
+  @override
+  String get pleaseConfirmMatchResult => 'Veuillez confirmer le résultat du match';
+
+  @override
+  String get acceptResult => 'ACCEPTER LE RÉSULTAT';
+
+  @override
+  String get reportPlayer => 'SIGNALER LE JOUEUR';
+
+  @override
+  String get initializingMatch => 'INITIALISATION DU MATCH...';
+
+  @override
+  String get initializingMatchError => 'Erreur';
+
+  @override
+  String get legWonShort => 'MANCHE GAGNÉE !';
+
+  @override
+  String get legLostShort => 'MANCHE PERDUE';
+
+  // Tournament Ready
+  @override
+  String get vsUppercase => 'VS';
+
+  // Matchmaking
+  @override
+  String get unknownPlayer => 'Joueur inconnu';
+
+  @override
+  String get eloValue => 'ELO : {value}';
+
+  // Game Screen
+  @override
+  String get forfeitMatchWarning => 'Si vous quittez maintenant, vous allez abandonner le match et perdre des points ELO.';
+
+  @override
+  String get liveMatch => 'MATCH EN DIRECT';
+
+  @override
+  String get acceptingMatchResult => 'Acceptation du résultat du match...';
+
+  @override
+  String get matchResultAccepted => 'Résultat du match accepté';
+
+  @override
+  String get error => 'Erreur';
+
+  // Note: 'victory', 'gameOver', 'defeat' already defined at lines 89, 107, 92
+
+  @override
+  String get opponentLeftForfeit => 'Votre adversaire a quitté la partie.\\nVous gagnez par forfait !';
+
+  @override
+  String get youLeftForfeited => 'Vous avez quitté la partie.\\nMatch perdu par forfait.';
+
+  @override
+  String get continuePlaying => 'Continuer à jouer';
+
+  // Note: 'defeat' already defined at line 92
+
+  @override
+  String get provenLegend => 'Vous vous êtes prouvé comme une légende.';
+
+  @override
+  String get trainingPath => 'L\'entraînement est le chemin vers la grandeur.';
+
+  @override
+  String get matchResult => 'Résultat du match';
+
+  @override
+  String get pleaseConfirmResult => 'Veuillez confirmer le résultat du match';
+
+  @override
+  String get loadingAutoScoring => 'Chargement du score auto...';
+
+  @override
+  String get opponentDisconnected => 'Adversaire déconnecté';
+
+  @override
+  String get timeLeftToReconnect => '{time} restant pour se reconnecter';
+
+  @override
+  String get yourScoreLabel => 'VOTRE SCORE :';
+
+  @override
+  String get missButton => 'MANQUÉ';
+
+  @override
+  String get scoreLabel => 'SCORE';
+
+  @override
+  String get dartCounter => 'Fléchette {current}/3';
 }

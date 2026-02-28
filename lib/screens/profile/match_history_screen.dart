@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
+import '../../l10n/app_localizations.dart';
 import 'match_detail_screen.dart';
 import '../../utils/app_theme.dart';
 
@@ -52,12 +53,13 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   }
 
   Future<void> _sendFriendRequest(String friendId, String username) async {
+    final l10n = AppLocalizations.of(context);
     try {
       await context.read<FriendsProvider>().sendFriendRequest(friendId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Friend request sent to $username!'),
+            content: Text(l10n.friendRequestSent.replaceAll('{username}', username)),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -78,11 +80,12 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final userId = auth.currentUser?.id ?? '';
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Match History'),
+        title: Text(l10n.matchHistoryTitle),
         backgroundColor: AppTheme.surface,
       ),
       body: _isLoading
@@ -94,11 +97,12 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     children: [
                       const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
                       const SizedBox(height: 16),
-                      Text('Error: $_error', style: const TextStyle(color: AppTheme.error)),
+                      Text(
+                        'Error: $_error', style: const TextStyle(color: AppTheme.error)),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadMatches,
-                        child: const Text('Retry'),
+                        child: Text(l10n.retry),
                       ),
                     ],
                   ),
@@ -111,13 +115,13 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                           Icon(Icons.history, size: 64, color: AppTheme.textSecondary),
                           const SizedBox(height: 16),
                           Text(
-                            'No matches yet',
+                            l10n.noMatchesYet,
                             style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'Play a game to see your match history!',
-                            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                          Text(
+                            l10n.playGameToSeeHistory,
+                            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
                           ),
                         ],
                       ),
@@ -138,6 +142,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   }
 
   Widget _buildMatchCard(Match match, String userId) {
+    final l10n = AppLocalizations.of(context);
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
     final opponentUsername = match.getOpponentUsername(userId);
@@ -192,7 +197,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                         ),
                       ),
                       child: Text(
-                        isWin ? 'WIN' : 'LOSS',
+                        isWin ? l10n.win.toUpperCase() : l10n.loss.toUpperCase(),
                         style: TextStyle(
                           color: isWin ? AppTheme.success : AppTheme.error,
                           fontWeight: FontWeight.bold,
@@ -203,7 +208,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'vs $opponentUsername',
+                        '${l10n.vs} $opponentUsername',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -233,7 +238,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildScoreColumn('You', '$myScore', AppTheme.primary),
+                    _buildScoreColumn(l10n.youLabel, '$myScore', AppTheme.primary),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
@@ -245,7 +250,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                         ),
                       ),
                     ),
-                    _buildScoreColumn('Opponent', '$opponentScore', Colors.white),
+                    _buildScoreColumn(l10n.opponentLabel, '$opponentScore', Colors.white),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -270,7 +275,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                               Icon(Icons.check_circle, color: AppTheme.success, size: 16),
                               const SizedBox(width: 4),
                               Text(
-                                'Friends',
+                                l10n.friendsStatus,
                                 style: TextStyle(color: AppTheme.success, fontSize: 12),
                               ),
                             ],
@@ -284,7 +289,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           ),
                           icon: const Icon(Icons.person_add, size: 16),
-                          label: const Text('Add Friend', style: TextStyle(fontSize: 12)),
+                          label: Text(l10n.addFriendButton, style: const TextStyle(fontSize: 12)),
                         );
                       },
                     ),

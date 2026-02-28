@@ -89,6 +89,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   Future<void> _runAiCapture() async {
+    final l10n = AppLocalizations.of(context);
     if (_aiAnalyzing) return;
     if (_detectionIsolate == null || !_aiModelLoaded) return;
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
@@ -103,7 +104,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       String? hint;
       bool detected = false;
       if (calibs.length < 4) {
-        hint = calibs.isEmpty ? 'Dartboard not detected' : 'Board not fully visible';
+        hint = calibs.isEmpty ? l10n.dartboardNotDetected : l10n.boardNotFullyVisible;
         detected = false;
       } else {
         double minX = 1, maxX = 0, minY = 1, maxY = 0;
@@ -115,10 +116,10 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
         }
         final spread = (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
         if (spread < 0.50) {
-          hint = 'Zoom in — board too far';
+          hint = l10n.zoomInBoardTooFar;
           detected = false;
         } else if (spread > 0.85) {
-          hint = 'Zoom out — board too close';
+          hint = l10n.zoomOutBoardTooClose;
           detected = false;
         } else {
           hint = null;
@@ -142,11 +143,12 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   String get _playButtonLabel {
-    if (!_permissionsGranted || !_cameraReady) return 'CAMERA REQUIRED';
+    final l10n = AppLocalizations.of(context);
+    if (!_permissionsGranted || !_cameraReady) return l10n.cameraRequiredButton;
     if (_aiModelLoaded && !_boardDetected) {
-      return _aiHint != null ? _aiHint!.toUpperCase() : 'SCANNING...';
+      return _aiHint != null ? _aiHint!.toUpperCase() : l10n.scanningButton;
     }
-    return 'PLAY';
+    return l10n.play.toUpperCase();
   }
 
   Future<void> _initializeCamera() async {
@@ -154,6 +156,17 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    if (kIsWeb) {
+      setState(() {
+        _isLoading = false;
+        _permissionsGranted = true;
+        _cameraReady = true;
+      });
+      return;
+    }
+    
+    final l10n = AppLocalizations.of(context);
 
     try {
       // Request permissions
@@ -170,11 +183,11 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           _isLoading = false;
           _permissionsGranted = false;
           if (!cameraGranted && !micGranted) {
-            _errorMessage = 'Camera and microphone permissions are required to join a match';
+            _errorMessage = l10n.cameraAndMicPermissionRequired;
           } else if (!cameraGranted) {
-            _errorMessage = 'Camera permission is required to join a match';
+            _errorMessage = l10n.cameraPermissionRequired;
           } else {
-            _errorMessage = 'Microphone permission is required to join a match';
+            _errorMessage = l10n.micPermissionRequired;
           }
         });
         return;
@@ -188,7 +201,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       if (_cameras == null || _cameras!.isEmpty) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'No cameras found on this device';
+          _errorMessage = l10n.noCamerasFound;
         });
         return;
       }
@@ -207,7 +220,12 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       );
 
       await _cameraController!.initialize();
-      await _cameraController!.setFlashMode(FlashMode.off);
+      
+      try {
+        await _cameraController!.setFlashMode(FlashMode.off);
+      } catch (e) {
+        print('[Camera] Flash mode not supported: $e');
+      }
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();
@@ -230,7 +248,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
       setState(() {
         _isLoading = false;
         _cameraReady = false;
-        _errorMessage = 'Failed to initialize camera: ${e.toString()}';
+        _errorMessage = '${l10n.failedToInitializeCamera}: ${e.toString()}';
       });
     }
   }
@@ -377,6 +395,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   Widget _buildErrorView() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -407,7 +426,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              _errorMessage ?? 'Unknown error',
+              _errorMessage ?? l10n.unknownError,
               style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -474,6 +493,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   Widget _buildCameraPreview() {
+    final l10n = AppLocalizations.of(context);
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -586,8 +606,8 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                             Expanded(
                               child: Text(
                                 (_aiHint == null && _boardDetected)
-                                    ? 'Dartboard detected — good position'
-                                    : _aiHint ?? 'Scanning for dartboard...',
+                                    ? l10n.dartboardDetectedGoodPosition
+                                    : _aiHint ?? l10n.scanningForDartboard,
                                 style: TextStyle(
                                   color: (_aiHint == null && _boardDetected)
                                       ? AppTheme.success
@@ -642,6 +662,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   Widget _buildBottomSection() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(

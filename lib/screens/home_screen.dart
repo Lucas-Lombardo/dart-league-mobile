@@ -77,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
-            tooltip: 'Settings',
+            tooltip: l10n.settingsTooltip,
           ),
           const SizedBox(width: 8),
         ],
@@ -130,9 +130,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const Text(
-                          'ELO',
-                          style: TextStyle(
+                        Text(
+                          l10n.eloLabel,
+                          style: const TextStyle(
                             fontSize: 10,
                             color: AppTheme.textSecondary,
                             fontWeight: FontWeight.bold,

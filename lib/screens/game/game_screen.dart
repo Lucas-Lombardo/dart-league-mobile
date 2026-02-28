@@ -130,7 +130,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     final winnerId = forfeitData?['winnerId'] as String?;
     final eloChange = forfeitData?['winnerEloChange'] as int? ?? 0;
     final isWinner = winnerId == auth.currentUser?.id;
-    final parentNav = Navigator.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,

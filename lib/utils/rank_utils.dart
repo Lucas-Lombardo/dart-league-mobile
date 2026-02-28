@@ -5,8 +5,6 @@ class RankUtils {
     final rankLower = rank.toLowerCase();
     
     switch (rankLower) {
-      case 'unranked':
-        return 'assets/ranks/unranked.png';
       case 'bronze':
         return 'assets/ranks/bronze.png';
       case 'silver':
@@ -19,6 +17,7 @@ class RankUtils {
         return 'assets/ranks/diamond.png';
       case 'master':
         return 'assets/ranks/master.png';
+      case 'unranked':
       default:
         return 'assets/ranks/bronze.png';
     }

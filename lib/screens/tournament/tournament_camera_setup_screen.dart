@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/storage_service.dart';
@@ -60,6 +62,17 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       _errorMessage = null;
     });
 
+    if (kIsWeb) {
+      setState(() {
+        _isLoading = false;
+        _permissionsGranted = true;
+        _cameraReady = true;
+      });
+      return;
+    }
+    
+    final l10n = AppLocalizations.of(context);
+
     try {
       final statuses = await [
         Permission.camera,
@@ -74,11 +87,11 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
           _isLoading = false;
           _permissionsGranted = false;
           if (!cameraGranted && !micGranted) {
-            _errorMessage = 'Camera and microphone permissions are required';
+            _errorMessage = l10n.cameraAndMicPermissionRequired;
           } else if (!cameraGranted) {
-            _errorMessage = 'Camera permission is required';
+            _errorMessage = l10n.cameraPermissionRequired;
           } else {
-            _errorMessage = 'Microphone permission is required';
+            _errorMessage = l10n.micPermissionRequired;
           }
         });
         return;
@@ -90,7 +103,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       if (_cameras == null || _cameras!.isEmpty) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'No cameras found on this device';
+          _errorMessage = l10n.noCamerasFound;
         });
         return;
       }
@@ -107,7 +120,12 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       );
 
       await _cameraController!.initialize();
-      await _cameraController!.setFlashMode(FlashMode.off);
+      
+      try {
+        await _cameraController!.setFlashMode(FlashMode.off);
+      } catch (e) {
+        print('[Camera] Flash mode not supported: $e');
+      }
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();
@@ -129,7 +147,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       setState(() {
         _isLoading = false;
         _cameraReady = false;
-        _errorMessage = 'Failed to initialize camera: ${e.toString()}';
+        _errorMessage = '${l10n.failedToInitializeCamera}: ${e.toString()}';
       });
     }
   }
@@ -171,6 +189,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -183,9 +202,9 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
             Navigator.of(context).pop();
           },
         ),
-        title: const Text(
-          'CAMERA SETUP',
-          style: TextStyle(
+        title: Text(
+          l10n.cameraSetupTitle,
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -214,6 +233,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
   }
 
   Widget _buildMatchInfoBar() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -254,7 +274,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'vs ${widget.opponentUsername} • Best of ${widget.bestOf}',
+                  'vs ${widget.opponentUsername} • ${l10n.bestOf} ${widget.bestOf}',
                   style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 12,
@@ -269,6 +289,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
   }
 
   Widget _buildLoadingView() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -279,7 +300,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
           ),
           const SizedBox(height: 24),
           Text(
-            'Initializing camera...',
+            l10n.initializingCamera,
             style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
           ),
         ],
@@ -288,6 +309,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
   }
 
   Widget _buildErrorView() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -309,7 +331,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
             ),
             const SizedBox(height: 32),
             Text(
-              'Camera Required',
+              l10n.cameraRequiredError,
               style: AppTheme.displayMedium.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -318,7 +340,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
             ),
             const SizedBox(height: 16),
             Text(
-              _errorMessage ?? 'Unknown error',
+              _errorMessage ?? l10n.unknownError,
               style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -334,9 +356,9 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  'TRY AGAIN',
-                  style: TextStyle(
+                child: Text(
+                  l10n.tryAgainButton,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -352,6 +374,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
   }
 
   Widget _buildCameraPreview() {
+    final l10n = AppLocalizations.of(context);
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -393,9 +416,9 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Camera Ready',
-                          style: TextStyle(
+                        Text(
+                          l10n.cameraReady,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -404,15 +427,15 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Row(
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(Icons.info_outline, color: AppTheme.primary, size: 20),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Position your device so the dartboard is clearly visible in the frame',
-                            style: TextStyle(
+                            l10n.positionDeviceInstruction,
+                            style: const TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 14,
                             ),
@@ -457,6 +480,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
   }
 
   Widget _buildBottomSection() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -476,11 +500,11 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
             ),
             child: Column(
               children: [
-                _buildInfoRow(Icons.videocam, 'Camera will be ON during the match'),
+                _buildInfoRow(Icons.videocam, l10n.cameraOnDuringMatchInfo),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.mic_off, 'Microphone will be OFF by default'),
+                _buildInfoRow(Icons.mic_off, l10n.micOffByDefault),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.my_location, 'Make sure the dartboard is visible'),
+                _buildInfoRow(Icons.my_location, l10n.makeSureDartboardVisibleInfo),
               ],
             ),
           ),
@@ -503,10 +527,10 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
               ),
               child: Text(
                 _readyingSent
-                    ? 'JOINING...'
+                    ? l10n.ready
                     : _permissionsGranted && _cameraReady
-                        ? 'READY'
-                        : 'CAMERA REQUIRED',
+                        ? l10n.ready
+                        : l10n.cameraRequiredButton,
                 style: TextStyle(
                   color: _permissionsGranted && _cameraReady
                       ? Colors.white

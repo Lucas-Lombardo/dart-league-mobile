@@ -61,8 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Welcome back, Legend',
+                  Text(
+                    l10n.welcomeBackLegend,
                     style: AppTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
@@ -85,10 +85,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter your email';
+                                  return l10n.emailRequired;
                                 }
                                 if (!value.contains('@')) {
-                                  return 'Please enter a valid email';
+                                  return l10n.emailInvalid;
                                 }
                                 return null;
                               },
@@ -115,10 +115,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter your password';
+                                  return l10n.passwordRequired;
                                 }
                                 if (value.length < 6) {
-                                  return 'Password must be at least 6 characters';
+                                  return l10n.passwordTooShort;
                                 }
                                 return null;
                               },
@@ -202,14 +202,25 @@ class _LoginScreenState extends State<LoginScreen> {
                         "${l10n.dontHaveAccount} ",
                         style: AppTheme.bodyLarge,
                       ),
-                      TextButton(
-                        onPressed: () {
-                          context.read<AuthProvider>().clearError();
-                          Navigator.pushReplacementNamed(context, '/register');
-                        },
-                        child: Text(l10n.register),
-                      ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 56,
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        context.read<AuthProvider>().clearError();
+                        Navigator.pushReplacementNamed(context, '/register');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(l10n.register.toUpperCase()),
+                    ),
                   ),
                 ],
               ),

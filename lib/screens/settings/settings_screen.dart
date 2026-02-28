@@ -66,7 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
           _buildSection(l10n.profile.toUpperCase()),
-          _buildAccountInfo(user?.username ?? 'User', user?.email ?? 'No email'),
+          _buildAccountInfo(user?.username ?? l10n.accountInfoDefaultUsername, user?.email ?? l10n.accountInfoDefaultEmail),
           _buildAccountInfo(l10n.elo, '${user?.elo ?? 0}'),
           _buildAccountInfo(l10n.rank, user?.rank != null ? RankTranslation.translate(l10n, user!.rank) : 'Unranked'),
           
@@ -74,8 +74,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSection(l10n.preferences.toUpperCase()),
           _buildLanguageTile(l10n),
           _buildSwitchTile(
-            'Haptic Feedback',
-            'Vibrate on button presses',
+            l10n.hapticFeedbackTitle,
+            l10n.hapticFeedbackSubtitle,
             Icons.vibration,
             _hapticEnabled,
             (value) {
@@ -90,8 +90,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (!kIsWeb)
             _buildSwitchTile(
-              'AI Auto-Scoring',
-              'Detect dart scores using camera AI',
+              l10n.autoScoringTitle,
+              l10n.autoScoringSubtitle,
               Icons.auto_awesome,
               _autoScoringEnabled,
               (value) {

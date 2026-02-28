@@ -44,6 +44,7 @@ class AuthProvider extends ChangeNotifier {
     required String username,
     required String email,
     required String password,
+    required String language,
   }) async {
     _isLoading = true;
     _errorMessage = null;
@@ -54,6 +55,7 @@ class AuthProvider extends ChangeNotifier {
         username: username,
         email: email,
         password: password,
+        language: language,
       );
       _currentUser = result['user'];
       if (_currentUser != null && _localeProvider != null) {

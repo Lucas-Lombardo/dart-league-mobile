@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/detection_isolate_stub.dart'
     if (dart.library.io) '../../services/detection_isolate.dart';
 import '../../utils/app_theme.dart';
@@ -68,6 +69,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   }
 
   Future<void> _runAiCapture() async {
+    final l10n = AppLocalizations.of(context);
     if (_aiAnalyzing || _detectionIsolate == null || !_aiModelLoaded) return;
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     _aiAnalyzing = true;
@@ -81,7 +83,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
       String? hint;
       bool detected = false;
       if (calibs.length < 4) {
-        hint = calibs.isEmpty ? 'Dartboard not detected' : 'Board not fully visible';
+        hint = calibs.isEmpty ? l10n.dartboardNotDetected : l10n.boardNotFullyVisible;
       } else {
         double minX = 1, maxX = 0, minY = 1, maxY = 0;
         for (final c in calibs) {
@@ -92,9 +94,9 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
         }
         final spread = (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
         if (spread < 0.50) {
-          hint = 'Zoom in — board too far';
+          hint = l10n.zoomInBoardTooFar;
         } else if (spread > 0.85) {
-          hint = 'Zoom out — board too close';
+          hint = l10n.zoomOutBoardTooClose;
         } else {
           hint = null;
           detected = true;
@@ -114,22 +116,35 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   }
 
   String get _playButtonLabel {
-    if (!_permissionsGranted || !_cameraReady) return 'CAMERA REQUIRED';
+    final l10n = AppLocalizations.of(context);
+    if (!_permissionsGranted || !_cameraReady) return l10n.cameraRequiredButton;
     if (_aiModelLoaded && !_boardDetected) {
-      return _aiHint != null ? _aiHint!.toUpperCase() : 'SCANNING...';
+      return _aiHint != null ? _aiHint!.toUpperCase() : l10n.scanningButton;
     }
-    return 'PLAY';
+    return l10n.play.toUpperCase();
   }
 
   Future<void> _initializeCamera() async {
     setState(() { _isLoading = true; _errorMessage = null; });
+    
+    if (kIsWeb) {
+      setState(() {
+        _isLoading = false;
+        _permissionsGranted = true;
+        _cameraReady = true;
+      });
+      return;
+    }
+    
+    final l10n = AppLocalizations.of(context);
+    
     try {
       final status = await Permission.camera.request();
       if (!status.isGranted) {
         setState(() {
           _isLoading = false;
           _permissionsGranted = false;
-          _errorMessage = 'Camera permission is required for AI scoring';
+          _errorMessage = l10n.cameraPermissionRequired;
         });
         return;
       }
@@ -137,7 +152,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
 
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
-        setState(() { _isLoading = false; _errorMessage = 'No cameras found on this device'; });
+        setState(() { _isLoading = false; _errorMessage = l10n.noCamerasFound; });
         return;
       }
 
@@ -148,7 +163,12 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
 
       _cameraController = CameraController(backCamera, ResolutionPreset.high, enableAudio: false);
       await _cameraController!.initialize();
-      await _cameraController!.setFlashMode(FlashMode.off);
+      
+      try {
+        await _cameraController!.setFlashMode(FlashMode.off);
+      } catch (e) {
+        print('[Camera] Flash mode not supported: $e');
+      }
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();
@@ -165,7 +185,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
         if (_aiModelLoaded) _startAiCapture();
       }
     } catch (e) {
-      setState(() { _isLoading = false; _cameraReady = false; _errorMessage = 'Failed to initialize camera: $e'; });
+      setState(() { _isLoading = false; _cameraReady = false; _errorMessage = '${l10n.failedToInitializeCamera}: $e'; });
     }
   }
 
@@ -197,6 +217,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -206,9 +227,9 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () { HapticService.lightImpact(); Navigator.of(context).pop(); },
         ),
-        title: const Text(
-          'CAMERA SETUP',
-          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1),
+        title: Text(
+          l10n.cameraSetupTitle,
+          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1),
         ),
         centerTitle: true,
       ),
@@ -230,20 +251,20 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
                       color: AppTheme.accent.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.smart_toy, color: AppTheme.accent, size: 13),
-                        SizedBox(width: 4),
-                        Text('PLACEMENT', style: TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 4),
+                        Text(l10n.placementBadge, style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Position your phone so the dartboard is fully visible',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                      l10n.positionPhoneInstruction,
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -265,19 +286,21 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   }
 
   Widget _buildLoadingView() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 3),
           const SizedBox(height: 24),
-          Text('Initializing camera...', style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary)),
+          Text(l10n.initializingCamera, style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary)),
         ],
       ),
     );
   }
 
   Widget _buildErrorView() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -295,13 +318,13 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
             ),
             const SizedBox(height: 32),
             Text(
-              'Camera Required',
+              l10n.cameraRequiredError,
               style: AppTheme.displayMedium.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             Text(
-              _errorMessage ?? 'Unknown error',
+              _errorMessage ?? l10n.unknownError,
               style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -315,7 +338,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('TRY AGAIN', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                child: Text(l10n.tryAgainButton, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
               ),
             ),
           ],
@@ -325,6 +348,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   }
 
   Widget _buildCameraPreview() {
+    final l10n = AppLocalizations.of(context);
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -369,19 +393,19 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
                           decoration: const BoxDecoration(color: AppTheme.success, shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 8),
-                        const Text('Camera Ready', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                        Text(l10n.cameraReady, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    const Row(
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Position your device so the dartboard is clearly visible in the frame',
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                            l10n.positionDeviceInstruction,
+                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                           ),
                         ),
                       ],
@@ -415,8 +439,8 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
                             Expanded(
                               child: Text(
                                 (_aiHint == null && _boardDetected)
-                                    ? 'Dartboard detected — good position'
-                                    : _aiHint ?? 'Scanning for dartboard...',
+                                    ? l10n.dartboardDetectedGoodPosition
+                                    : _aiHint ?? l10n.scanningForDartboard,
                                 style: TextStyle(
                                   color: (_aiHint == null && _boardDetected) ? AppTheme.success : (_aiHint != null) ? AppTheme.error : AppTheme.accent,
                                   fontSize: 12,
@@ -461,6 +485,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   }
 
   Widget _buildBottomSection() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -478,11 +503,11 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
             ),
             child: Column(
               children: [
-                _buildInfoRow(Icons.videocam, 'Camera will be used for AI dart detection'),
+                _buildInfoRow(Icons.videocam, l10n.cameraOnDuringMatchInfo),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.smart_toy, 'AI will automatically score your darts'),
+                _buildInfoRow(Icons.smart_toy, l10n.aiWillScoreDartsInfo),
                 const SizedBox(height: 8),
-                _buildInfoRow(Icons.my_location, 'Make sure the dartboard is fully visible'),
+                _buildInfoRow(Icons.my_location, l10n.makeSureDartboardVisibleInfo),
               ],
             ),
           ),
