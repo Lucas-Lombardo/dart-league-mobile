@@ -40,7 +40,7 @@ class DartDetectionService {
         final gpuOptions = InterpreterOptions()
           ..addDelegate(GpuDelegate());
         _interpreter = await Interpreter.fromAsset(
-          'assets/models/best_int8.tflite',
+          'assets/models/best_float16.tflite',
           options: gpuOptions,
         );
         print('[DartDetection] Model loaded with Metal GPU delegate');
@@ -53,7 +53,7 @@ class DartDetectionService {
         final gpuOptions = InterpreterOptions()
           ..addDelegate(GpuDelegateV2());
         _interpreter = await Interpreter.fromAsset(
-          'assets/models/best_int8.tflite',
+          'assets/models/best_float16.tflite',
           options: gpuOptions,
         );
         print('[DartDetection] Model loaded with GPU delegate');
@@ -67,7 +67,7 @@ class DartDetectionService {
     if (_interpreter == null) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/best_int8.tflite',
+        'assets/models/best_float16.tflite',
         options: cpuOptions,
       );
       print('[DartDetection] Model loaded on CPU with 4 threads');

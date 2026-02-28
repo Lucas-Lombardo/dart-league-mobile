@@ -176,9 +176,12 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
     await _cameraController?.dispose();
     _cameraController = null;
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(builder: (context) => const PlacementGameScreen()),
     );
+    if (mounted) {
+      Navigator.of(context).pop(result);
+    }
   }
 
   @override

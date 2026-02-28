@@ -162,7 +162,7 @@ class PlacementProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> triggerBotTurn() async {
+  Future<bool> triggerBotTurn({int? playerRoundScore, List<String>? playerRoundThrows}) async {
     if (_currentMatchId == null) return false;
 
     _isLoading = true;
@@ -170,7 +170,11 @@ class PlacementProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await PlacementService.triggerBotTurn(_currentMatchId!);
+      final response = await PlacementService.triggerBotTurn(
+        _currentMatchId!,
+        playerRoundScore: playerRoundScore,
+        playerRoundThrows: playerRoundThrows,
+      );
 
       _lastBotThrows = (response['botThrows'] as List<dynamic>?)
               ?.map((t) => BotThrow.fromJson(t as Map<String, dynamic>))

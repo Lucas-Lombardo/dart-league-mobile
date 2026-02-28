@@ -276,7 +276,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get totalMatches => 'Total Matches';
 
   @override
-  String get avgScore => 'Avg Score';
+  String get avgScore => 'Avg/Round';
 
   @override
   String get count180s => '180s Count';

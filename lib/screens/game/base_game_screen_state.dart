@@ -703,7 +703,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           ),
           child: autoScoringEnabled && autoScoringLoading
             ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
-            : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
+            : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && (game.isMyTurn || game.pendingConfirmation)
               ? AutoScoreGameView(
                   scoringService: autoScoringService!,
                   onConfirm: () => submitAutoScoredDarts(game),

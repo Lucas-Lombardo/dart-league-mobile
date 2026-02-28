@@ -276,7 +276,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get totalMatches => 'Matchs totaux';
 
   @override
-  String get avgScore => 'Score moyen';
+  String get avgScore => 'Moy./tour';
 
   @override
   String get count180s => 'Nombre de 180';

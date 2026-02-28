@@ -35,20 +35,8 @@ class _StatsScreenState extends State<StatsScreen> {
       final userId = authProvider.currentUser?.id;
       
       if (userId != null) {
-        var stats = await UserService.getUserStats(userId);
-        
-        // If backend returns zeros, calculate from match history
-        if (stats.totalMatches == 0) {
-          try {
-            final matches = await UserService.getUserMatches(userId);
-            if (matches.isNotEmpty) {
-              stats = UserService.calculateStatsFromMatches(matches, userId);
-            }
-          } catch (e) {
-            // If match history fails, use backend stats (even if zeros)
-          }
-        }
-        
+        final stats = await UserService.getUserStats(userId);
+
         setState(() {
           _stats = stats;
           _isLoading = false;
@@ -122,7 +110,7 @@ class _StatsScreenState extends State<StatsScreen> {
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
-              childAspectRatio: 1.35,
+              childAspectRatio: 1.1,
               children: [
                 _buildStatCard(
                   l10n.winRate,

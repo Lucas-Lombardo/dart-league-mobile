@@ -1,0 +1,38 @@
+# Dart League Mobile — Windsurf Rules
+
+## Project Overview
+Flutter mobile app for a dart league platform. Dart/Flutter, state via Providers.
+
+## Architecture
+- `lib/models/` — match.dart, tournament.dart, user.dart
+- `lib/services/` — API, auth, socket, matchmaking, match, tournament, user, friends, payment, placement, push notification, dart detection/scoring/auto-scoring, agora
+- `lib/screens/` — auth, game, home, matchmaking, placement, profile, settings, tournament
+- `lib/providers/` — state management
+- `lib/widgets/` — reusable UI components
+- `lib/utils/` — utilities
+- `lib/l10n/` — localizations
+
+## Key Decisions
+- HTTP client: `http` package (not Dio)
+- State management: Provider (not Riverpod, not Bloc)
+- Auth: JWT tokens via `auth_service.dart`
+- Real-time: WebSocket via `socket_service.dart`
+- Video/voice: Agora via `agora_service.dart`
+- Dart detection: `dart_detection_service.dart` with isolate support (`detection_isolate.dart`), stub files for unsupported platforms
+- API base URL defined in `api_service.dart`
+- Assets: `assets/logo/`, `assets/ranks/`, `assets/sounds/`, `assets/models/`
+- Platform: iOS + Android primary targets
+
+## Coding Rules
+- Use existing services — never duplicate API logic
+- Prefer editing existing files over creating new ones
+- Keep widgets small and composable; extract to `lib/widgets/` when reused
+- No print() in production code — use proper logging or remove
+- Do not add packages without asking
+
+## Context Efficiency Rules
+- Read only files relevant to the current task
+- Do not scan the entire `lib/` tree speculatively
+- Ask for clarification before large refactors
+- Prefer targeted edits over full file rewrites
+- Do not repeat back large code blocks unless explicitly asked

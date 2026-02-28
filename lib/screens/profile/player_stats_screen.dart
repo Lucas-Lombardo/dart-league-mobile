@@ -34,20 +34,8 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     });
 
     try {
-      var stats = await UserService.getUserStats(widget.userId);
-      
-      // If backend returns zeros, calculate from match history
-      if (stats.totalMatches == 0) {
-        try {
-          final matches = await UserService.getUserMatches(widget.userId);
-          if (matches.isNotEmpty) {
-            stats = UserService.calculateStatsFromMatches(matches, widget.userId);
-          }
-        } catch (_) {
-          // If match history fails, use backend stats (even if zeros)
-        }
-      }
-      
+      final stats = await UserService.getUserStats(widget.userId);
+
       setState(() {
         _stats = stats;
         _isLoading = false;
@@ -114,7 +102,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               mainAxisSpacing: 16,
                               crossAxisSpacing: 16,
-                              childAspectRatio: 1.35,
+                              childAspectRatio: 1.1,
                               children: [
                                 _buildStatCard(
                                   'Win Rate',

@@ -146,7 +146,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
     DartSoundService.playDartHit(base, mul);
     _throwDart(base, mul);
     if (_isWin) {
+      _stopAiCapture();
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
+    } else if (_isBust) {
+      _stopAiCapture();
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
     }
   }
 
@@ -258,8 +262,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   void _confirmRound() {
     _stopAiCapture();
 
+    // Capture round data before clearing local state
+    final int roundScore;
+    final List<String> roundThrows = _currentRoundThrows.map((t) => t.notation).toList();
+
     if (_isBust) {
-      // Bust: revert score
+      roundScore = 0;
       setState(() {
         _myScore = _scoreBeforeRound;
         _dartsThrown = 0;
@@ -268,6 +276,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
         _scoreBeforeRound = _myScore;
       });
     } else {
+      roundScore = _scoreBeforeRound - _myScore;
       setState(() {
         _dartsThrown = 0;
         _currentRoundThrows = [];
@@ -275,11 +284,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
       });
     }
 
-    // Trigger bot turn
-    _executeBotTurn();
+    // Trigger bot turn, sending player's completed round to backend
+    _executeBotTurn(playerRoundScore: roundScore, playerRoundThrows: roundThrows);
   }
 
-  Future<void> _executeBotTurn() async {
+  Future<void> _executeBotTurn({int? playerRoundScore, List<String>? playerRoundThrows}) async {
     if (_botTurnInProgress || _gameEnded) return;
 
     setState(() => _botTurnInProgress = true);
@@ -288,7 +297,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
     if (!mounted) return;
 
     final placement = context.read<PlacementProvider>();
-    final success = await placement.triggerBotTurn();
+    final success = await placement.triggerBotTurn(
+      playerRoundScore: playerRoundScore,
+      playerRoundThrows: playerRoundThrows,
+    );
 
     if (success && mounted) {
       // Short delay to show bot throws
@@ -567,7 +579,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
                               ? _buildWaitingForBot()
                               : _autoScoringEnabled && _autoScoringLoading
                                   ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
-                                  : _autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized && !_isBust && !_isWin
+                                  : _autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized
                                       ? AutoScoreGameView(
                                           scoringService: _autoScoringService!,
                                           onConfirm: () { HapticService.heavyImpact(); _confirmRound(); },

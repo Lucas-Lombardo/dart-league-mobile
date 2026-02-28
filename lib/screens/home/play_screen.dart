@@ -101,9 +101,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 
     HapticService.mediumImpact();
 
-    final matchId = _activeMatch!['matchId'] as String;
-    final opponentId = _activeMatch!['opponentId'] as String;
-    final opponentUsername = _activeMatch!['opponentUsername'] as String;
+    final matchId = _activeMatch!['matchId'] as String?;
+    final opponentId = _activeMatch!['opponentId'] as String?;
+    final opponentUsername = _activeMatch!['opponentUsername'] as String?;
+
+    if (matchId == null) return;
 
     if (mounted) {
       Navigator.of(context).push(

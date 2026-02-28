@@ -113,7 +113,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       final message = result['message'] as String? ?? 'Match result accepted';
       messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
       game.reset();
-      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      // Stay in the AI view instead of navigating to home
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
@@ -197,12 +197,12 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               Navigator.of(dialogCtx).pop();
               await auth.checkAuthStatus();
               game.reset();
-              parentNav.pushNamedAndRemoveUntil('/home', (route) => false);
+              // Stay in the AI view instead of navigating to home
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
             ),
-            child: const Text('Return to Home'),
+            child: const Text('Continue Playing'),
           ),
         ],
       ),
@@ -256,7 +256,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason);
                       final msg = result['message'] as String? ?? 'Dispute submitted';
                       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
-                      Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false); });
+                      Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
                     },
                     onComplete: () {},
                   );
@@ -380,7 +380,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 ],
               ),
             )
-          : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && game.isMyTurn
+          : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && (game.isMyTurn || game.pendingConfirmation)
           ? AutoScoreGameView(
               scoringService: autoScoringService!,
               onConfirm: () => submitAutoScoredDarts(game),

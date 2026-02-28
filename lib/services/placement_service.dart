@@ -19,12 +19,16 @@ class PlacementService {
     }
   }
 
-  static Future<Map<String, dynamic>> triggerBotTurn(String matchId) async {
+  static Future<Map<String, dynamic>> triggerBotTurn(
+    String matchId, {
+    int? playerRoundScore,
+    List<String>? playerRoundThrows,
+  }) async {
     try {
-      final response = await ApiService.post(
-        '/placement/bot-turn',
-        {'matchId': matchId},
-      );
+      final body = <String, dynamic>{'matchId': matchId};
+      if (playerRoundScore != null) body['playerRoundScore'] = playerRoundScore;
+      if (playerRoundThrows != null) body['playerRoundThrows'] = playerRoundThrows;
+      final response = await ApiService.post('/placement/bot-turn', body);
       return response as Map<String, dynamic>;
     } catch (e) {
       rethrow;
