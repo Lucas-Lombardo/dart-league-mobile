@@ -18,6 +18,7 @@ class RankUtils {
       case 'master':
         return 'assets/ranks/master.png';
       case 'unranked':
+        return 'assets/ranks/unranked.png';
       default:
         return 'assets/ranks/bronze.png';
     }
