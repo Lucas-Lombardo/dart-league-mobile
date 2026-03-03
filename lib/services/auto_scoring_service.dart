@@ -64,6 +64,9 @@ class AutoScoringService extends ChangeNotifier {
   // Which slots have been manually overridden (AI must not overwrite them)
   List<bool> _manualOverrideSlots = [false, false, false];
 
+  // Which slots were removed by the user — position is kept to block re-detection
+  List<bool> _removedSlots = [false, false, false];
+
   // Zoom hint
   String? _zoomHint;
 
@@ -130,6 +133,7 @@ class AutoScoringService extends ChangeNotifier {
     _confirmedDarts = [null, null, null];
     _emittedSlots = [false, false, false];
     _manualOverrideSlots = [false, false, false];
+    _removedSlots = [false, false, false];
     _prevDartCount = 0;
     _dartsRemoved = false;
     _zoomHint = null;
@@ -145,6 +149,7 @@ class AutoScoringService extends ChangeNotifier {
       _confirmedDarts[i] = null;
       _emittedSlots[i] = false;
       _manualOverrideSlots[i] = false;
+      _removedSlots[i] = false;
     }
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -177,6 +182,22 @@ class AutoScoringService extends ChangeNotifier {
     _confirmedDarts[index] = null;
     _emittedSlots[index] = false;
     _manualOverrideSlots[index] = false;
+    _removedSlots[index] = false;
+    _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
+    notifyListeners();
+  }
+
+  /// Remove a dart from the scoring display while keeping its physical bounding
+  /// box position so the AI doesn't re-detect it as a new dart in Pass 2.
+  /// The slot stays "occupied" in Pass 1 until the dart is physically pulled out,
+  /// at which point the slot is freed for re-use.
+  void removeDart(int index) {
+    if (index < 0 || index > 2) return;
+    _dartSlots[index] = null;
+    _emittedSlots[index] = false;
+    _manualOverrideSlots[index] = false;
+    _removedSlots[index] = true;
+    // _confirmedDarts[index] intentionally preserved to block re-detection
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
@@ -297,19 +318,32 @@ class AutoScoringService extends ChangeNotifier {
         // doesn't leak into the next empty slot in Pass 2, but keep the
         // user's score intact.
         if (_manualOverrideSlots[s]) continue;
+        // For removed slots: update position (so tracking stays accurate) but
+        // don't restore the score — the slot stays visually empty.
+        if (_removedSlots[s]) {
+          _confirmedDarts[s] = detected[bestIdx];
+          continue;
+        }
         // Update position + score if confidence is equal or higher
         if (detected[bestIdx].confidence >= _confirmedDarts[s]!.confidence) {
           _confirmedDarts[s] = detected[bestIdx];
         }
+      } else {
+        // Not re-detected — if this was a removed slot the physical dart has
+        // been pulled out; free the slot so it can receive a new dart.
+        if (_removedSlots[s]) {
+          _confirmedDarts[s] = null;
+          _removedSlots[s] = false;
+        }
+        // Normal darts stay sticky when briefly occluded.
       }
-      // If not re-detected → keep as-is (sticky)
     }
 
     // Pass 2: add unmatched detected darts to empty slots
     for (int d = 0; d < detected.length; d++) {
       if (matchedDetected.contains(d)) continue;
       for (int s = 0; s < 3; s++) {
-        if (_confirmedDarts[s] == null && !_manualOverrideSlots[s]) {
+        if (_confirmedDarts[s] == null && !_manualOverrideSlots[s] && !_removedSlots[s]) {
           _confirmedDarts[s] = detected[d];
           print('[AutoScoring] New dart in slot $s: ${detected[d].score.formatted} conf=${detected[d].confidence.toStringAsFixed(2)}');
           // Only emit once per slot per turn — prevents duplicate socket events
@@ -323,9 +357,9 @@ class AutoScoringService extends ChangeNotifier {
       }
     }
 
-    // Sync display slots (skip manually overridden slots)
+    // Sync display slots (skip manually overridden and removed slots)
     for (int i = 0; i < 3; i++) {
-      if (!_manualOverrideSlots[i]) {
+      if (!_manualOverrideSlots[i] && !_removedSlots[i]) {
         _dartSlots[i] = _confirmedDarts[i]?.score;
       }
     }

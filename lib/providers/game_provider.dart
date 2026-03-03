@@ -267,6 +267,10 @@ class GameProvider with ChangeNotifier {
   void _handleRoundReadyConfirm(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != null && eventMatchId != _matchId) return;
+    // Only set pending confirmation when it's my turn — the server broadcasts
+    // this event to all match participants, so we must ignore it when the
+    // opponent is the one who just finished throwing.
+    if (!isMyTurn) return;
     _pendingConfirmation = true;
     notifyListeners();
   }

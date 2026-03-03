@@ -31,6 +31,7 @@ class AutoScoreGameView extends StatelessWidget {
   final double minZoom;
   final double maxZoom;
   final void Function(int index, DartScore score)? onEditDart;
+  final void Function(int index)? onRemoveDart;
   final VoidCallback? onToggleAi;
   final bool aiEnabled;
 
@@ -58,6 +59,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
     this.onEditDart,
+    this.onRemoveDart,
     this.onToggleAi,
     this.aiEnabled = true,
   });
@@ -71,6 +73,7 @@ class AutoScoreGameView extends StatelessWidget {
         final turnTotal = scoringService.turnTotal;
         final hint = scoringService.zoomHint;
         final noDartsDetected = slots.every((s) => s == null);
+        final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
         return Column(
           children: [
@@ -228,6 +231,9 @@ class AutoScoreGameView extends StatelessWidget {
                               score: slots[i],
                               isCapturing: scoringService.isCapturing,
                               onTap: () => _editDart(context, i, slots[i]),
+                              onRemove: (onRemoveDart != null && i == lastFilledIndex)
+                                  ? () => onRemoveDart!(i)
+                                  : null,
                             ),
                           );
                         }),
@@ -403,12 +409,14 @@ class _DartIndicator extends StatelessWidget {
   final DartScore? score;
   final bool isCapturing;
   final VoidCallback onTap;
+  final VoidCallback? onRemove;
 
   const _DartIndicator({
     required this.index,
     required this.score,
     required this.isCapturing,
     required this.onTap,
+    this.onRemove,
   });
 
   @override
@@ -421,58 +429,87 @@ class _DartIndicator extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // Dart icon
-          Container(
+          SizedBox(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: hasScore
-                  ? AppTheme.primary.withValues(alpha: 0.15)
-                  : AppTheme.surface,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: hasScore ? AppTheme.primary : AppTheme.surfaceLight,
-                width: 2,
-              ),
-            ),
-            child: hasScore
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _shortLabel(score!),
-                        style: TextStyle(
-                          color: _scoreLabelColor(score!),
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${score!.score}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  )
-                : isCapturing
-                    ? SizedBox(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: hasScore
+                        ? AppTheme.primary.withValues(alpha: 0.15)
+                        : AppTheme.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: hasScore ? AppTheme.primary : AppTheme.surfaceLight,
+                      width: 2,
+                    ),
+                  ),
+                  child: hasScore
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _shortLabel(score!),
+                              style: TextStyle(
+                                color: _scoreLabelColor(score!),
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                height: 1,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${score!.score}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                height: 1,
+                              ),
+                            ),
+                          ],
+                        )
+                      : isCapturing
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.textSecondary.withValues(alpha: 0.3),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.add,
+                              color: AppTheme.textSecondary,
+                              size: 20,
+                            ),
+                ),
+                if (onRemove != null)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticService.heavyImpact();
+                        onRemove!();
+                      },
+                      child: Container(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.textSecondary.withValues(alpha: 0.3),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.error,
+                          shape: BoxShape.circle,
                         ),
-                      )
-                    : const Icon(
-                        Icons.add,
-                        color: AppTheme.textSecondary,
-                        size: 20,
+                        child: const Icon(Icons.close, size: 12, color: Colors.white),
                       ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 4),
           // Label

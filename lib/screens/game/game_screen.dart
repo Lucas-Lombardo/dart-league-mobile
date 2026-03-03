@@ -113,7 +113,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       final message = result['message'] as String? ?? 'Match result accepted';
       messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
       game.reset();
-      // Stay in the AI view instead of navigating to home
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
@@ -196,7 +196,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               Navigator.of(dialogCtx).pop();
               await auth.checkAuthStatus();
               game.reset();
-              // Stay in the AI view instead of navigating to home
+              if (context.mounted) Navigator.of(context).popUntil((route) => route.isFirst);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
@@ -401,6 +401,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               minZoom: cameraMinZoom,
               maxZoom: cameraMaxZoom,
               onEditDart: (index, dartScore) => game.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+              onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
               onToggleAi: toggleAiScoring,
               aiEnabled: !aiManuallyDisabled,
             )

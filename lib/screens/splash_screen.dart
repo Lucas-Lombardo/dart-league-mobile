@@ -92,13 +92,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        l10n.competeRankWin,
-                        style: TextStyle(
-                          fontSize: 14,
-                          letterSpacing: 6,
-                          color: AppTheme.primary.withValues(alpha: 0.8),
-                          fontWeight: FontWeight.bold,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            l10n.competeRankWin,
+                            style: TextStyle(
+                              fontSize: 14,
+                              letterSpacing: 6,
+                              color: AppTheme.primary.withValues(alpha: 0.8),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
                     ],

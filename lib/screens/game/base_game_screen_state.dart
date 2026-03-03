@@ -715,6 +715,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   isAudioMuted: isAudioMuted, onToggleAudio: toggleAudio, onSwitchCamera: switchCamera,
                   onZoomIn: zoomIn, onZoomOut: zoomOut, currentZoom: cameraZoom, minZoom: cameraMinZoom, maxZoom: cameraMaxZoom,
                   onEditDart: (index, dartScore) => readGame().editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+                  onRemoveDart: (index) { autoScoringService?.removeDart(index); readGame().undoLastDart(); },
                   onToggleAi: toggleAiScoring, aiEnabled: !aiManuallyDisabled,
                 )
               : buildScoreInputPanel(game),

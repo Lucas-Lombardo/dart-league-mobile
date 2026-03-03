@@ -265,10 +265,13 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 12),
                   Text(l10n.placementMatches, style: AppTheme.displayMedium),
                   const SizedBox(height: 8),
-                  Text(
-                    l10n.completePlacementToUnlock,
-                    textAlign: TextAlign.center,
-                    style: AppTheme.bodyLarge,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      l10n.completePlacementToUnlock,
+                      textAlign: TextAlign.center,
+                      style: AppTheme.bodyLarge,
+                    ),
                   ),
                 ],
               ),
@@ -486,12 +489,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              l10n.completePlacementToUnlock,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                l10n.completePlacementToUnlock,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ],
