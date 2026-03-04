@@ -175,6 +175,81 @@ class AutoScoreGameView extends StatelessWidget {
                       ),
                     ),
 
+                  // Mini opponent camera — top-right overlay
+                  if (agoraEngine != null && remoteUid != null)
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 200, maxWidth: 120),
+                        child: Container(
+                          width: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24, width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                child: Text(
+                                  opponentName.toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                width: double.infinity,
+                                height: 80,
+                                color: Colors.black,
+                                child: AgoraVideoView(
+                                  controller: VideoViewController.remote(
+                                    rtcEngine: agoraEngine!,
+                                    canvas: VideoCanvas(uid: remoteUid!),
+                                    connection: RtcConnection(channelId: agoraChannelName ?? ''),
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'SCORE',
+                                      style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                    Text(
+                                      '$opponentScore',
+                                      style: const TextStyle(
+                                        color: AppTheme.primary,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
                   // Camera controls overlay (bottom-right)
                   if (agoraEngine != null || localCameraPreview != null)
                     Positioned(

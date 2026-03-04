@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
+import '../../services/auto_scoring_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../game/base_game_screen_state.dart';
@@ -103,6 +105,17 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     }
     game.addListener(handleSharedStateChange);
     await loadAutoScoringPref();
+    // Rejoin scenario: Agora credentials arrive later via game_state_sync.
+    // Show loading spinner instead of the manual dartboard until the model loads.
+    if (autoScoringEnabled && agoraEngine == null && !kIsWeb && AutoScoringService.isSupported) {
+      setState(() => autoScoringLoading = true);
+      // game_state_sync may have already fired before the listener was attached.
+      // If so, process the pending reconnect now instead of waiting for next notification.
+      if (game.needsAgoraReconnect) {
+        game.clearAgoraReconnectFlag();
+        reconnectAgora(game); // fire-and-forget; will reset autoScoringLoading when done
+      }
+    }
   }
 
   @override

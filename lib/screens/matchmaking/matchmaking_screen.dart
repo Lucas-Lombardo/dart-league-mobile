@@ -16,16 +16,18 @@ class MatchmakingScreen extends StatefulWidget {
 }
 
 class _MatchmakingScreenState extends State<MatchmakingScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _rotationController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   MatchmakingProvider? _matchmakingProvider;
   bool _isNavigating = false;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _rotationController = AnimationController(
       vsync: this,
@@ -48,11 +50,24 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
+    _userId ??= context.read<AuthProvider>().currentUser?.id;
+
     if (_matchmakingProvider == null) {
       _matchmakingProvider = context.read<MatchmakingProvider>();
       _matchmakingProvider!.addListener(_onMatchmakingUpdate);
       _isNavigating = false; // Reset navigation flag for new session
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && !_isNavigating) {
+      final userId = _userId;
+      if (userId != null) {
+        _matchmakingProvider?.leaveQueue(userId);
+      }
+      if (mounted) Navigator.of(context).pop();
     }
   }
 
@@ -245,6 +260,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();

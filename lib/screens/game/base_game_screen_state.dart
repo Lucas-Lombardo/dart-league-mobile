@@ -215,10 +215,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   Future<void> reconnectAgora(dynamic game) async {
     final appId = game.agoraAppId; final token = game.agoraToken; final channelName = game.agoraChannelName;
-    if (appId == null || appId.isEmpty || token == null || token.isEmpty || channelName == null || channelName.isEmpty) return;
+    if (appId == null || appId.isEmpty || token == null || token.isEmpty || channelName == null || channelName.isEmpty) {
+      if (mounted) setState(() => autoScoringLoading = false);
+      return;
+    }
     try {
       if (agoraEngine != null) { agoraEngine = null; await AgoraService.dispose(); }
-      if (!permissionsGranted) { permissionsGranted = await AgoraService.requestPermissions(); if (!permissionsGranted) return; }
+      if (!permissionsGranted) { permissionsGranted = await AgoraService.requestPermissions(); if (!permissionsGranted) { if (mounted) setState(() => autoScoringLoading = false); return; } }
       agoraEngine = await AgoraService.initializeEngine(appId);
       await AgoraService.setBackCamera(agoraEngine!);
       _registerAgoraHandlers();
@@ -226,7 +229,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       isAudioMuted = true;
       if (autoScoringService != null) { autoScoringService!.stopCapture(); autoScoringService!.dispose(); autoScoringService = null; }
       await initAutoScoring();
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => autoScoringLoading = false);
+    }
   }
 
   void _registerAgoraHandlers() {

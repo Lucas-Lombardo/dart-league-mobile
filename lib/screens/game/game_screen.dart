@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -6,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../services/auto_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import 'base_game_screen_state.dart';
 
@@ -87,6 +89,17 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     }
     game.addListener(handleSharedStateChange);
     await loadAutoScoringPref();
+    // Rejoin scenario: Agora credentials arrive later via game_state_sync.
+    // Show loading spinner instead of the manual dartboard until the model loads.
+    if (autoScoringEnabled && agoraEngine == null && !kIsWeb && AutoScoringService.isSupported) {
+      setState(() => autoScoringLoading = true);
+      // game_state_sync may have already fired before the listener was attached.
+      // If so, process the pending reconnect now instead of waiting for next notification.
+      if (game.needsAgoraReconnect) {
+        game.clearAgoraReconnectFlag();
+        reconnectAgora(game); // fire-and-forget; will reset autoScoringLoading when done
+      }
+    }
   }
 
   @override
@@ -437,24 +450,14 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                     ),
                   // Video Area - Only show during opponent's turn
                   if (!game.isMyTurn)
-                    const SizedBox(height: 12),
-                  if (!game.isMyTurn)
-                    LayoutBuilder(builder: (context, constraints) {
-                      final w = constraints.maxWidth;
-                      final h = w * (3 / 4);
-                      return SizedBox(
-                        width: w,
-                        height: h,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                          child: buildOpponentTurnVideoLayout(game, channelId: widget.agoraChannelName ?? ''),
-                        ),
-                      );
-                    }),
+                    Expanded(
+                      flex: 62,
+                      child: buildOpponentTurnVideoLayout(game, channelId: widget.agoraChannelName ?? ''),
+                    ),
 
             // Controls Area
             Expanded(
-              flex: 6,
+              flex: game.isMyTurn ? 6 : 38,
               child: Container(
                 decoration: const BoxDecoration(
                   color: AppTheme.surface,
@@ -796,6 +799,97 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 ),
               ),
             
+            // Local camera preview (during opponent's turn — same size/position as camera widget during my turn)
+            if (!game.isMyTurn && agoraEngine != null)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200, maxWidth: 120),
+                  child: Container(
+                    width: 120,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceLight.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.surfaceLight, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          child: Text(
+                            'YOUR CAMERA',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: double.infinity,
+                          height: 80,
+                          decoration: const BoxDecoration(color: AppTheme.surface),
+                          child: AgoraVideoView(
+                            controller: VideoViewController(
+                              rtcEngine: agoraEngine!,
+                              canvas: const VideoCanvas(uid: 0),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              GestureDetector(
+                                onTap: zoomOut,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                                  ),
+                                  child: const Icon(Icons.remove, color: Colors.white, size: 16),
+                                ),
+                              ),
+                              Text(
+                                '${cameraZoom.toStringAsFixed(1)}x',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                              GestureDetector(
+                                onTap: zoomIn,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                                  ),
+                                  child: const Icon(Icons.add, color: Colors.white, size: 16),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             // AI toggle button (floating, during my turn)
             if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
               Positioned(

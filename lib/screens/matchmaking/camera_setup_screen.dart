@@ -61,7 +61,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeCamera();
+    });
     if (!kIsWeb) _initAiDetection();
   }
 
@@ -662,7 +664,6 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   }
 
   Widget _buildBottomSection() {
-    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
