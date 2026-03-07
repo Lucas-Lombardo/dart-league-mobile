@@ -13,7 +13,7 @@ const List<(double, double, String)> rings = [
   (0.100, 0.570, "inner_single"),
   (0.570, 0.625, "triple"),
   (0.625, 0.930, "outer_single"),
-  (0.930, 1.050, "double"),
+  (0.930, 1.015, "double"),
 ];
 
 /// Canonical dartboard space: center at (500, 500), calibration radius = 400
