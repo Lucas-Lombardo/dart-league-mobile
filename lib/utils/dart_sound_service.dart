@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
 import '../providers/game_provider.dart';
 
 class DartSoundService {
@@ -19,6 +20,12 @@ class DartSoundService {
     } catch (_) {
       // Silently fail if sound can't play
     }
+  }
+
+  static Future<void> playYourTurn() async {
+    try {
+      await SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
   }
 
   static void dispose() {

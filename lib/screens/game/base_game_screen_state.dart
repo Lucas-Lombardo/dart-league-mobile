@@ -37,6 +37,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Shared state ─────────────────────────────────────────────────────────────
   late AnimationController scoreAnimationController;
+  String loadingMessage = 'Connecting...';
   int? editingDartIndex;
   String? storedPlayerId;
   bool gameStarted = false;
@@ -67,13 +68,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     WakelockPlus.enable();
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Wait 5 seconds so the screen transition completes before heavy init
-      await Future.delayed(const Duration(seconds: 5));
       if (!mounted) return;
       try {
         await initScreenSpecific().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () => print('[Init] Model loading timed out after 10s'),
+          const Duration(seconds: 30),
+          onTimeout: () => debugPrint('[Init] init timed out after 30s'),
         );
       } catch (_) {}
       if (mounted) setState(() => isLoading = false);
@@ -98,6 +97,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final game = readGame();
       gameStarted = game.gameStarted;
       gameEnded = game.gameEnded;
+      if (game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer) {
+        DartSoundService.playYourTurn();
+      }
       if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
         if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing) {
@@ -107,7 +109,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             captureFrame: _captureFrameCallback!,
             onDartDetected: _onDartDetectedCallback,
           );
-        } else if (!game.isMyTurn && autoScoringService!.isCapturing) {
+        } else if ((!game.isMyTurn || game.pendingConfirmation) && autoScoringService!.isCapturing) {
           autoScoringService!.stopCapture();
         }
       }
@@ -127,6 +129,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       }
       onScreenSpecificStateChange(game);
     } catch (_) {}
+  }
+
+  void updateLoadingMessage(String msg) {
+    if (mounted) setState(() => loadingMessage = msg);
   }
 
   // ─── Auto-scoring ─────────────────────────────────────────────────────────────
@@ -173,7 +179,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     _onDartDetectedCallback = (_, dartScore) {
       if (!mounted) return;
       final g = readGame();
-      if (!g.isMyTurn) return;
+      if (!g.isMyTurn || g.pendingConfirmation) return;
       final (base, mul) = dartScoreToBackend(dartScore);
       HapticService.mediumImpact();
       DartSoundService.playDartHit(base, mul);
@@ -321,7 +327,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
       ]),
       actions: [
-        TextButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
       ],
     )).then((_) => winDialogShowing = false);
@@ -344,7 +350,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
       ]),
       actions: [
-        TextButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
       ],
     )).then((_) => bustDialogShowing = false);
@@ -405,13 +411,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           const SizedBox(height: 24),
           Text('PREPARING MATCH', style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary, letterSpacing: 3, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text('Setting up camera & AI scoring...', style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary)),
+          Text(loadingMessage, style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary)),
         ]))),
       ),
     );
   }
 
-  Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
+  Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = '', bool showMyScore = true}) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -446,7 +452,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 Text('${game.opponentScore}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
               ]),
             )),
-            // ── Your score — top right ──
+            // ── Your score — top right (hidden when the caller shows it in a camera panel) ──
+            if (showMyScore)
             Positioned(top: 12, right: 12, child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
@@ -454,11 +461,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppTheme.success, width: 2),
               ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                const Text('YOUR SCORE', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                const SizedBox(height: 2),
-                Text('${game.myScore}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              ]),
+              child: Text('${game.myScore}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
             )),
             // ── Controls + dart scores — bottom overlay ──
             Positioned(
@@ -560,8 +563,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            const Text('YOUR SCORE: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
             Text('${game.myScore}', style: TextStyle(color: game.myScore <= 170 ? AppTheme.success : AppTheme.primary, fontSize: 22, fontWeight: FontWeight.bold)),
+            if (game.myScore <= 170 && game.myScore >= 2) ...[
+              const SizedBox(width: 8),
+              Text(checkoutHint(game.myScore) ?? '', style: const TextStyle(color: AppTheme.success, fontSize: 11, fontWeight: FontWeight.w500)),
+            ],
           ]),
           const SizedBox(height: 6),
           Row(children: [
@@ -573,7 +579,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               return GestureDetector(
                 onTap: hasThrow ? () { HapticService.lightImpact(); setState(() => editingDartIndex = isEditing ? null : i); } : null,
                 child: Container(
-                  width: 36, height: 36, margin: const EdgeInsets.only(right: 6),
+                  width: 44, height: 44, margin: const EdgeInsets.only(right: 6),
                   decoration: BoxDecoration(
                     color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.background,
                     borderRadius: BorderRadius.circular(8),
@@ -596,7 +602,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 } else { g.throwDart(baseScore: 0, multiplier: ScoreMultiplier.single); }
               },
               child: Container(
-                width: 44, height: 36,
+                width: 44, height: 44,
                 decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.surfaceLight, width: 2)),
                 child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(Icons.close, color: Colors.white70, size: 14),
@@ -605,6 +611,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               ),
             )),
           ]),
+          if (editingDartIndex != null) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Icon(Icons.edit, color: AppTheme.error, size: 12),
+              const SizedBox(width: 4),
+              Text('Editing Dart ${(editingDartIndex ?? 0) + 1}', style: const TextStyle(color: AppTheme.error, fontSize: 11, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => setState(() => editingDartIndex = null),
+                child: const Text('cancel', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, decoration: TextDecoration.underline)),
+              ),
+            ]),
+          ],
         ]),
       )),
       const SizedBox(width: 10),
@@ -625,7 +644,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Widget buildOpponentWaitingPanel(dynamic game) {
-    return SingleChildScrollView(child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2.5)),
       const SizedBox(height: 12),
       Text("OPPONENT'S TURN", style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
@@ -633,14 +652,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       const SizedBox(height: 12),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        margin: const EdgeInsets.symmetric(horizontal: 40),
+        margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.error.withValues(alpha: 0.5))),
         child: const Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.warning_rounded, color: AppTheme.error, size: 18), SizedBox(width: 8),
           Flexible(child: Text("Do not play during opponent's turn", style: TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.w600))),
         ]),
       ),
-    ])));
+    ]));
   }
 
   Widget buildScoreInputPanel(dynamic game) {
@@ -673,9 +692,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   side: BorderSide(color: game.dartsThrown > 0 ? AppTheme.primary : AppTheme.surfaceLight, width: 2),
                 ),
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(game.dartsThrown == 3 ? Icons.check_circle : Icons.send, size: 20),
+                  Icon(game.dartsThrown == 3 ? Icons.check_circle : game.dartsThrown == 0 ? Icons.sports_esports_outlined : Icons.send, size: 20),
                   const SizedBox(width: 8),
-                  Text(game.dartsThrown == 3 ? 'CONFIRM ROUND' : 'END ROUND EARLY (${game.dartsThrown}/3)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  Text(
+                    game.dartsThrown == 3 ? 'CONFIRM ROUND' : game.dartsThrown == 0 ? 'CONFIRM ROUND (0/3)' : 'END ROUND EARLY (${game.dartsThrown}/3)',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+                  ),
                 ]),
               ),
             ),
@@ -685,6 +707,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Widget buildGameBody(dynamic game, AuthProvider auth) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
     return Container(color: AppTheme.background, child: Stack(children: [
       Column(children: [
         if (buildExtraHeader(game, auth) != null) buildExtraHeader(game, auth)!,
@@ -700,6 +723,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (!game.isMyTurn)
           Container(height: 240, padding: const EdgeInsets.all(12), child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? '')),
         if (agoraEngine != null && !game.isMyTurn) buildMediaControls(),
+        if (game.isMyTurn)
+          Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: buildMyTurnOverlay(game)),
         Expanded(flex: 6, child: Container(
           decoration: const BoxDecoration(
             color: AppTheme.surface,
@@ -726,11 +751,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               : buildScoreInputPanel(game),
         )),
       ]),
-      if (game.isMyTurn)
-        Positioned(top: 8, left: 12, right: 12, child: buildMyTurnOverlay(game)),
       if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
         Positioned(
-          bottom: 80,
+          bottom: 80 + bottomPadding,
           right: 12,
           child: Material(
             color: Colors.transparent,
@@ -757,21 +780,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             ),
           ),
         ),
-      if (editingDartIndex != null && game.isMyTurn)
-        Positioned(top: 0, left: 0, right: 0, child: Material(
-          elevation: 100, color: AppTheme.error,
-          child: SafeArea(bottom: false, child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Row(children: [const Icon(Icons.edit, color: Colors.white, size: 20), const SizedBox(width: 8), Text('Editing Dart ${(editingDartIndex ?? 0) + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
-              TextButton(
-                onPressed: () => setState(() => editingDartIndex = null),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), backgroundColor: Colors.white.withValues(alpha: 0.2)),
-                child: const Text('CANCEL', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-              ),
-            ]),
-          )),
-        )),
     ]));
   }
 }

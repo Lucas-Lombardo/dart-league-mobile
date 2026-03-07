@@ -1,9 +1,11 @@
+import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../services/auto_scoring_service.dart';
 import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
+import '../utils/score_converter.dart';
 import 'dartboard_edit_modal.dart';
 
 /// Full-screen auto-scoring layout for when it's the player's turn.
@@ -79,7 +81,7 @@ class AutoScoreGameView extends StatelessWidget {
           children: [
             // ── Camera feed ──
             Expanded(
-              flex: 62,
+              flex: 60,
               child: Stack(
                 children: [
                   // Camera preview — Agora (ranked/tournament) → local (placement) → off
@@ -288,173 +290,194 @@ class AutoScoreGameView extends StatelessWidget {
 
             // ── Scoring panel ──
             Expanded(
-              flex: 38,
-              child: Container(
-                color: AppTheme.background,
-                child: Column(
-                  children: [
-                    // 3 dart indicators
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(3, (i) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: _DartIndicator(
-                              index: i,
-                              score: slots[i],
-                              isCapturing: scoringService.isCapturing,
-                              onTap: () => _editDart(context, i, slots[i]),
-                              onRemove: (onRemoveDart != null && i == lastFilledIndex)
-                                  ? () => onRemoveDart!(i)
-                                  : null,
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
+              flex: 40,
+              child: LayoutBuilder(
+                builder: (context, panelConstraints) {
+                  final panelH = panelConstraints.maxHeight;
+                  final safeBottom = MediaQuery.of(context).padding.bottom;
+                  // Button area: top padding 8 + button 52 + bottom padding 12 + safe area
+                  final buttonSectionH = 72.0 + safeBottom;
+                  // Indicators: 38% of remaining space — min bumped to 115 to fit circle+label+hint
+                  final indicatorSectionH = ((panelH - buttonSectionH) * 0.40).clamp(115.0, 135.0);
+                  // Parse checkout hint into per-dart parts (e.g. "T20 T13 D4" → ["T20","T13","D4"])
+                  final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
+                  final hintParts = hintStr?.split(' ') ?? [];
 
-                    const SizedBox(height: 6),
-
-                    // Dashed separator
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: CustomPaint(
-                        size: const Size(double.infinity, 1),
-                        painter: _DashedLinePainter(),
-                      ),
-                    ),
-
-                    // Score section — my score only, centered
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Big score
-                          Text(
-                            '$myScore',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 52,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                              height: 1,
+                  return Container(
+                    color: AppTheme.background,
+                    child: Column(
+                      children: [
+                        // 3 dart indicators — height-constrained so they never push button off screen
+                        SizedBox(
+                          height: indicatorSectionH,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                            child: Row(
+                              children: List.generate(3, (i) {
+                                return Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                    child: _DartIndicator(
+                                      index: i,
+                                      score: slots[i],
+                                      isCapturing: scoringService.isCapturing,
+                                      onTap: () => _editDart(context, i, slots[i]),
+                                      onRemove: (onRemoveDart != null && i == lastFilledIndex)
+                                          ? () => onRemoveDart!(i)
+                                          : null,
+                                      suggestion: i < hintParts.length ? hintParts[i] : '',
+                                    ),
+                                  ),
+                                );
+                              }),
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          // Turn total box
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: turnTotal > 0
-                                    ? AppTheme.primary.withValues(alpha: 0.5)
-                                    : AppTheme.surfaceLight.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        // Dashed separator
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: CustomPaint(
+                            size: const Size(double.infinity, 1),
+                            painter: _DashedLinePainter(),
+                          ),
+                        ),
+
+                        // Score section — takes remaining space; FittedBox scales down on small phones
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'TURN: ',
-                                  style: TextStyle(
-                                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                                    fontSize: 13,
+                                  '$myScore',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 52,
                                     fontWeight: FontWeight.bold,
+                                    fontFamily: 'monospace',
+                                    height: 1,
                                   ),
                                 ),
-                                Text(
-                                  '$turnTotal',
-                                  style: TextStyle(
-                                    color: turnTotal > 0 ? AppTheme.primary : Colors.white30,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                                const SizedBox(height: 6),
+                                // Turn total box
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surface,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: turnTotal > 0
+                                          ? AppTheme.primary.withValues(alpha: 0.5)
+                                          : AppTheme.surfaceLight.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'TURN: ',
+                                        style: TextStyle(
+                                          color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$turnTotal',
+                                        style: TextStyle(
+                                          color: turnTotal > 0 ? AppTheme.primary : Colors.white30,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    // Confirm / End Round Early button
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      color: AppTheme.surface,
-                      child: noDartsDetected && onEndRoundEarly != null
-                          ? SizedBox(
-                              width: double.infinity,
-                              height: 52,
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  HapticService.heavyImpact();
-                                  onEndRoundEarly!();
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.surfaceLight,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.skip_next, size: 20),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'END ROUND EARLY',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1,
+                        // Button — bottom padding includes safe area
+                        Container(
+                          padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + safeBottom),
+                          color: AppTheme.surface,
+                          child: noDartsDetected && onEndRoundEarly != null
+                              ? SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      HapticService.heavyImpact();
+                                      onEndRoundEarly!();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.surfaceLight,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          : SizedBox(
-                              width: double.infinity,
-                              height: 52,
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  HapticService.heavyImpact();
-                                  onConfirm();
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: pendingConfirmation
-                                      ? AppTheme.primary
-                                      : AppTheme.primary.withValues(alpha: 0.5),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.skip_next, size: 20),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'END ROUND EARLY',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1,
+                                )
+                              : SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      HapticService.heavyImpact();
+                                      onConfirm();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: pendingConfirmation
+                                          ? AppTheme.primary
+                                          : AppTheme.primary.withValues(alpha: 0.5),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.check_circle_outline, size: 20),
-                                  ],
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Icon(Icons.check_circle_outline, size: 20),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -485,6 +508,7 @@ class _DartIndicator extends StatelessWidget {
   final bool isCapturing;
   final VoidCallback onTap;
   final VoidCallback? onRemove;
+  final String suggestion;
 
   const _DartIndicator({
     required this.index,
@@ -492,6 +516,7 @@ class _DartIndicator extends StatelessWidget {
     required this.isCapturing,
     required this.onTap,
     this.onRemove,
+    this.suggestion = '',
   });
 
   @override
@@ -500,106 +525,134 @@ class _DartIndicator extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Dart icon
-          SizedBox(
-            width: 56,
-            height: 56,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: hasScore
-                        ? AppTheme.primary.withValues(alpha: 0.15)
-                        : AppTheme.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: hasScore ? AppTheme.primary : AppTheme.surfaceLight,
-                      width: 2,
-                    ),
-                  ),
-                  child: hasScore
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _shortLabel(score!),
-                              style: TextStyle(
-                                color: _scoreLabelColor(score!),
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                height: 1,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${score!.score}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                height: 1,
-                              ),
-                            ),
-                          ],
-                        )
-                      : isCapturing
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppTheme.textSecondary.withValues(alpha: 0.3),
-                              ),
-                            )
-                          : const Icon(
-                              Icons.add,
-                              color: AppTheme.textSecondary,
-                              size: 20,
-                            ),
-                ),
-                if (onRemove != null)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticService.heavyImpact();
-                        onRemove!();
-                      },
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: const BoxDecoration(
-                          color: AppTheme.error,
-                          shape: BoxShape.circle,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Always reserve the same space so all 3 circles are identical size
+          const reservedForText = 44.0;
+          final widthBased = constraints.maxWidth * 0.85;
+          final heightBased = constraints.maxHeight - reservedForText;
+          final size = min(widthBased, heightBased).clamp(52.0, 96.0);
+          final labelSize = (size * 0.32).clamp(14.0, 26.0);
+          final subSize = (size * 0.20).clamp(10.0, 15.0);
+          final iconSize = (size * 0.36).clamp(18.0, 28.0);
+          final badgeSize = (size * 0.30).clamp(18.0, 26.0);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: size,
+                height: size,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        color: hasScore
+                            ? AppTheme.primary.withValues(alpha: 0.15)
+                            : AppTheme.surface,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: hasScore ? AppTheme.primary : AppTheme.surfaceLight,
+                          width: 2,
                         ),
-                        child: const Icon(Icons.close, size: 12, color: Colors.white),
                       ),
+                      child: hasScore
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _shortLabel(score!),
+                                  style: TextStyle(
+                                    color: _scoreLabelColor(score!),
+                                    fontSize: labelSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${score!.score}',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: subSize,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : isCapturing
+                              ? SizedBox(
+                                  width: iconSize,
+                                  height: iconSize,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTheme.textSecondary.withValues(alpha: 0.3),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.add,
+                                  color: AppTheme.textSecondary,
+                                  size: iconSize,
+                                ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          // Label
-          Text(
-            hasScore ? 'EDIT' : 'Dart ${index + 1}',
-            style: TextStyle(
-              color: hasScore
-                  ? AppTheme.primary.withValues(alpha: 0.7)
-                  : AppTheme.textSecondary.withValues(alpha: 0.5),
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
+                    if (onRemove != null)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticService.heavyImpact();
+                            onRemove!();
+                          },
+                          child: Container(
+                            width: badgeSize,
+                            height: badgeSize,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.error,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.close, size: badgeSize * 0.55, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                hasScore ? 'EDIT' : 'Dart ${index + 1}',
+                style: TextStyle(
+                  color: hasScore
+                      ? AppTheme.primary.withValues(alpha: 0.7)
+                      : AppTheme.textSecondary.withValues(alpha: 0.5),
+                  fontSize: (size * 0.16).clamp(9.0, 13.0),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 3),
+              // Always same height so all circles stay the same size
+              SizedBox(
+                height: (size * 0.22).clamp(12.0, 18.0) + 2,
+                child: suggestion.isNotEmpty
+                    ? Text(
+                        suggestion,
+                        style: TextStyle(
+                          color: AppTheme.success,
+                          fontSize: (size * 0.22).clamp(12.0, 18.0),
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      )
+                    : null,
+              ),
+            ],
+          );
+        },
       ),
     );
   }

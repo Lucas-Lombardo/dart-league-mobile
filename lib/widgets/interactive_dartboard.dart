@@ -156,15 +156,15 @@ class DartboardPainter extends CustomPainter {
       final sweepAngle = math.pi / 10;
       
       // Draw double ring (outermost)
-      _drawSegment(canvas, center, doubleStart, doubleEnd, 
+      _drawSegment(canvas, center, doubleStart, doubleEnd,
                    startAngle, sweepAngle, scoreColor);
-      
+
       // Draw outer single (between double and triple)
-      _drawSegment(canvas, center, outerSingleStart, outerSingleEnd, 
+      _drawSegment(canvas, center, outerSingleStart, outerSingleEnd,
                    startAngle, sweepAngle, singleColor);
-      
+
       // Draw triple ring (connects directly to bull)
-      _drawSegment(canvas, center, tripleStart, tripleEnd, 
+      _drawSegment(canvas, center, tripleStart, tripleEnd,
                    startAngle, sweepAngle, scoreColor);
     }
     

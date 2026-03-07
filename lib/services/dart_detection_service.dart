@@ -16,7 +16,7 @@ const int _modelInputSize = 640;
 const double _defaultConfThreshold = 0.35;
 const double _calibMergeDist = 0.03;
 const int _maxDarts = 3;
-const double _dartMinConf = 0.35;
+const double _dartMinConf = 0.40;
 const double _dartNmsIouThreshold = 0.70;
 const double _dartNmsMinDist = 0.008;
 

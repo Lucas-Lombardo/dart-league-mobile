@@ -96,7 +96,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     _storedMatchId = game.currentGameMatchId;
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
+    updateLoadingMessage('Joining match...');
     if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
+      updateLoadingMessage('Starting camera...');
       await initializeAgora(
         appId: game.agoraAppId!,
         token: game.agoraToken ?? '',
@@ -104,6 +106,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       );
     }
     game.addListener(handleSharedStateChange);
+    updateLoadingMessage('Loading AI model...');
     await loadAutoScoringPref();
     // Rejoin scenario: Agora credentials arrive later via game_state_sync.
     // Show loading spinner instead of the manual dartboard until the model loads.
@@ -271,6 +274,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     if (_resultAccepted) return const SizedBox.shrink();
     final tGame = game as TournamentGameProvider;
     final didWin = tGame.winnerId == auth.currentUser?.id;
+    final isSeriesOver = tGame.tournamentState == TournamentGameState.seriesEnded;
+    final legLabel = isSeriesOver ? 'Match' : 'Leg ${tGame.currentLeg}';
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
@@ -286,18 +291,18 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
           ),
           const SizedBox(height: 32),
-          Text(didWin ? 'LEG WON!' : 'LEG LOST', style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48)),
+          Text(didWin ? '$legLabel WON!' : '$legLabel LOST', style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48)),
           const SizedBox(height: 16),
-          Text(didWin ? 'Well played! Confirm the result to continue.' : 'Better luck next leg. Confirm the result to continue.', style: AppTheme.bodyLarge, textAlign: TextAlign.center),
+          Text(didWin ? 'Well played! Confirm the result to continue.' : 'Better luck next ${isSeriesOver ? 'time' : 'leg'}. Confirm the result to continue.', style: AppTheme.bodyLarge, textAlign: TextAlign.center),
           const SizedBox(height: 48),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
             child: Column(children: [
-              Text('Match Result', style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+              Text(isSeriesOver ? 'Match Result' : '$legLabel Result', style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('Please confirm the match result', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+              Text(isSeriesOver ? 'Please confirm the match result' : 'Confirm to continue to the next leg', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
               const SizedBox(height: 24),
               SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
                 onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
@@ -389,13 +394,13 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.sports_esports_outlined, size: 16, color: AppTheme.textSecondary),
-                        const SizedBox(width: 4),
-                        Text('Dart ${game.dartsThrown + 1}/3', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primary)),
-                      ],
-                    ),
+                    child: game.isMyTurn
+                      ? Row(children: [
+                          const Icon(Icons.sports_esports_outlined, size: 16, color: AppTheme.textSecondary),
+                          const SizedBox(width: 4),
+                          Text('Dart ${game.dartsThrown + 1}/3', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                        ])
+                      : const Text('Waiting...', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
                   ),
                 ],
               ),
@@ -447,12 +452,12 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                 ),
                 child: Text(
                   widget.roundName.replaceAll('_', ' ').toUpperCase(),
-                  style: const TextStyle(color: AppTheme.primary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  style: const TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                 ),
               ),
               const SizedBox(height: 2),
               Text('Leg ${game.currentLeg}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-              Text('Best of ${widget.bestOf}', style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 9)),
+              Text('Best of ${widget.bestOf}', style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 11)),
             ],
           ),
           // Opponent legs

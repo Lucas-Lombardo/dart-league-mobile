@@ -107,6 +107,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 
     if (matchId == null) return;
 
+    // Clear optimistically — re-check on return in case it's still active
+    setState(() => _activeMatch = null);
+
     if (mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -116,7 +119,10 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             rejoinOpponentUsername: opponentUsername,
           ),
         ),
-      );
+      ).then((_) {
+        _checkActiveMatch();
+        _loadRecentMatches();
+      });
     }
   }
 
