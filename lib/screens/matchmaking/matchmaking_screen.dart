@@ -73,9 +73,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
 
   void _onMatchmakingUpdate() {
     final matchmaking = context.read<MatchmakingProvider>();
-    debugPrint('DEBUG: _onMatchmakingUpdate called, matchFound=${matchmaking.matchFound}, mounted=$mounted, isNavigating=$_isNavigating');
     if (matchmaking.matchFound && mounted && !_isNavigating) {
-      debugPrint('DEBUG: Showing match found dialog');
       _showMatchFoundDialog();
     }
   }
@@ -195,12 +193,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
           matchmaking.agoraChannelName != null) {
         
         if (matchmaking.matchId == null || matchmaking.opponentId == null) {
-          debugPrint('DEBUG: matchId or opponentId is null, skipping navigation');
           return;
         }
-        
+
         try {
-          debugPrint('DEBUG: Navigating to GameScreen with matchId=${matchmaking.matchId}');
           // Dismiss the dialog first
           Navigator.of(context).pop();
           // Then navigate to game screen
@@ -509,6 +505,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                                     color: Colors.white,
                                     fontSize: 24,
                                     fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  AppLocalizations.of(context).eloRangeExpandingHint,
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 10,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
                               ],

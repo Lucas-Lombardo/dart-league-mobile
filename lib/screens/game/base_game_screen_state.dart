@@ -16,6 +16,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/interactive_dartboard.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
@@ -717,7 +718,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             color: AppTheme.accent.withValues(alpha: 0.15),
             child: Row(children: [
               const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18), const SizedBox(width: 8),
-              Expanded(child: Text('Opponent disconnected — ${formatSeconds(game.disconnectGraceSeconds)} left', style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600))),
+              Expanded(child: Text('${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}', style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600))),
             ]),
           ),
         if (!game.isMyTurn)
@@ -732,7 +733,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
           ),
           child: autoScoringEnabled && autoScoringLoading
-            ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
+            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(color: AppTheme.primary), const SizedBox(height: 16), Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
             : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && (game.isMyTurn || game.pendingConfirmation)
               ? AutoScoreGameView(
                   scoringService: autoScoringService!,

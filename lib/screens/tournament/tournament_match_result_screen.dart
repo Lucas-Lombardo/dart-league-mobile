@@ -233,6 +233,15 @@ class TournamentMatchResultScreen extends StatelessWidget {
           ),
           overflow: TextOverflow.ellipsis,
         ),
+        const SizedBox(height: 4),
+        Text(
+          '$legsWon',
+          style: TextStyle(
+            color: isWinner ? AppTheme.success : AppTheme.error,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ],
     );
   }

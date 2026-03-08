@@ -39,8 +39,9 @@ class TournamentLegResultScreen extends StatelessWidget {
     final didWinLeg = legWinnerId == myUserId;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
+        child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -129,29 +130,10 @@ class TournamentLegResultScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Leg indicators
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(bestOf, (index) {
-                        Color color;
-                        if (index < myLegsWon) {
-                          color = AppTheme.success;
-                        } else if (index < myLegsWon + opponentLegsWon) {
-                          color = AppTheme.error;
-                        } else {
-                          color = AppTheme.surfaceLight;
-                        }
-                        return Container(
-                          width: 12,
-                          height: 12,
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        );
-                      }),
-                    ),
+                    // Leg indicators — two rows, one per player
+                    _buildLegDots(AppLocalizations.of(context).you, myLegsWon, AppTheme.success),
+                    const SizedBox(height: 6),
+                    _buildLegDots(opponentUsername, opponentLegsWon, AppTheme.error),
                     const SizedBox(height: 12),
                     Text(
                       '${AppLocalizations.of(context).firstToLegsWins} $legsNeeded legs',
@@ -196,6 +178,34 @@ class TournamentLegResultScreen extends StatelessWidget {
           ),
         ),
       ),
+    ),
+    );
+  }
+
+  Widget _buildLegDots(String label, int legsWon, Color wonColor) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+          ),
+        ),
+        const SizedBox(width: 8),
+        ...List.generate(bestOf, (index) {
+          final color = index < legsWon ? wonColor : AppTheme.surfaceLight;
+          return Container(
+            width: 12,
+            height: 12,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          );
+        }),
+      ],
     );
   }
 

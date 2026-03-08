@@ -10,6 +10,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/score_converter.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../l10n/app_localizations.dart';
 import 'base_game_screen_state.dart';
 
 class GameScreen extends StatefulWidget {
@@ -58,7 +59,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   Widget buildAppBarTitle() => Row(children: [
     Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.error, shape: BoxShape.circle)),
     const SizedBox(width: 8),
-    const Text('LIVE MATCH', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
+    Text(AppLocalizations.of(context).liveMatch, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
   ]);
 
   @override
@@ -168,7 +169,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              isWinner ? 'VICTORY!' : 'GAME OVER',
+              isWinner ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).gameOver.toUpperCase(),
               style: AppTheme.titleLarge.copyWith(
                 color: isWinner ? AppTheme.success : AppTheme.error,
                 fontWeight: FontWeight.bold,
@@ -218,7 +219,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
             ),
-            child: const Text('Continue Playing'),
+            child: Text(AppLocalizations.of(context).continuePlaying),
           ),
         ],
       ),
@@ -243,24 +244,24 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
           ),
           const SizedBox(height: 32),
-          Text(didWin ? 'VICTORY!' : 'DEFEAT', style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48)),
+          Text(didWin ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).defeat.toUpperCase(), style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48)),
           const SizedBox(height: 16),
-          Text(didWin ? 'You have proven yourself a legend.' : 'Training is the path to greatness.', style: AppTheme.bodyLarge, textAlign: TextAlign.center),
+          Text(didWin ? AppLocalizations.of(context).provenLegend : AppLocalizations.of(context).trainingPath, style: AppTheme.bodyLarge, textAlign: TextAlign.center),
           const SizedBox(height: 48),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
             child: Column(children: [
-              Text('Match Result', style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+              Text(AppLocalizations.of(context).matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('Please confirm the match result', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+              Text(AppLocalizations.of(context).pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
               const SizedBox(height: 24),
               SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
                 onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 icon: const Icon(Icons.check_circle_outline),
-                label: const Text('ACCEPT RESULT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                label: Text(AppLocalizations.of(context).acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
               )),
               const SizedBox(height: 12),
               SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
@@ -279,7 +280,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 },
                 style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 icon: const Icon(Icons.flag_outlined),
-                label: const Text('REPORT PLAYER', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                label: Text(AppLocalizations.of(context).reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
               )),
             ]),
           ),
@@ -304,10 +305,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
         }, child: Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
-          body: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            CircularProgressIndicator(color: AppTheme.primary),
-            SizedBox(height: 16),
-            Text('INITIALIZING MATCH...', style: TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
+          body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const CircularProgressIndicator(color: AppTheme.primary),
+            const SizedBox(height: 16),
+            Text(AppLocalizations.of(context).initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
           ])),
         ));
       }
@@ -343,9 +344,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'LIVE MATCH',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).liveMatch,
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 2,
@@ -374,7 +375,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       const Icon(Icons.sports_esports_outlined, size: 16, color: AppTheme.textSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        'Dart ${(dartsThrown + 1).clamp(1, 3)}/3',
+                        AppLocalizations.of(context).dartCounter.replaceAll('{current}', '${(dartsThrown + 1).clamp(1, 3)}'),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -383,18 +384,18 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       ),
                     ],
                   )
-                : const Text('Waiting...', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                : Text(AppLocalizations.of(context).waiting, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
             ),
           ],
         ),
         body: autoScoringEnabled && autoScoringLoading
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: AppTheme.primary),
-                  SizedBox(height: 16),
-                  Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                  const CircularProgressIndicator(color: AppTheme.primary),
+                  const SizedBox(height: 16),
+                  Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
                 ],
               ),
             )

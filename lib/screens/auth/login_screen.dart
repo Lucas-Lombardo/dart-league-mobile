@@ -199,28 +199,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "${l10n.dontHaveAccount} ",
+                        l10n.dontHaveAccount,
                         style: AppTheme.bodyLarge,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 56,
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        context.read<AuthProvider>().clearError();
-                        Navigator.pushReplacementNamed(context, '/register');
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppTheme.primary, width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      TextButton(
+                        onPressed: () {
+                          context.read<AuthProvider>().clearError();
+                          Navigator.pushReplacementNamed(context, '/register');
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          l10n.register,
+                          style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      child: Text(l10n.register.toUpperCase()),
-                    ),
+                    ],
                   ),
                 ],
               ),

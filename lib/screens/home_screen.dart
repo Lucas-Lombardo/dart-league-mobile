@@ -180,13 +180,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, l10n.stats),
-                  _buildNavItem(1, Icons.emoji_events_outlined, Icons.emoji_events, l10n.tournament),
-                  _buildNavItem(2, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play),
-                  _buildNavItem(3, Icons.people_outline, Icons.people, l10n.friends),
-                  _buildNavItem(4, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings),
+                  Expanded(child: _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, l10n.stats)),
+                  Expanded(child: _buildNavItem(1, Icons.emoji_events_outlined, Icons.emoji_events, l10n.tournament)),
+                  Expanded(child: _buildNavItem(2, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play)),
+                  Expanded(child: _buildNavItem(3, Icons.people_outline, Icons.people, l10n.friends)),
+                  Expanded(child: _buildNavItem(4, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings)),
                 ],
               ),
             ),

@@ -428,6 +428,21 @@ abstract class AppLocalizations {
   // Play Screen - additional
   String get playFirstGameToSeeHistory;
   String get viewAll;
+
+  // Play Screen - Pro Tips
+  String get proTipLabel;
+  List<String> get proTips;
+
+  // Matchmaking - ELO range expansion hint
+  String get eloRangeExpandingHint;
+
+  // Tournament Game - end screen titles (parameterized)
+  String get matchWonTitle;
+  String get matchLostTitle;
+  String legWonTitle(int legNumber);
+  String legLostTitle(int legNumber);
+  String legResultSubtitle(int legNumber);
+  String get confirmNextLeg;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

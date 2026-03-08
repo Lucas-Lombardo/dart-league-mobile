@@ -1068,4 +1068,42 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get viewAll => 'Voir tout';
+
+  // Play Screen - Pro Tips
+  @override
+  String get proTipLabel => 'Conseil Pro';
+
+  @override
+  List<String> get proTips => [
+    'Entraînez vos doubles — ils sont essentiels pour conclure les parties.',
+    'Visez le T20 régulièrement pour maximiser votre score.',
+    'Une posture stable améliore la précision — gardez les pieds à la largeur des épaules.',
+    'Concentrez-vous sur les combinaisons de sortie pour les scores de 170 ou moins.',
+    'Le contrôle de la respiration stabilise votre lancer sous pression.',
+    'La constance prime sur la puissance — des lancers fluides et répétables gagnent les matchs.',
+    'Connaissez vos sorties pour les scores courants comme 32, 40 et 56.',
+  ];
+
+  // Matchmaking - ELO range expansion hint
+  @override
+  String get eloRangeExpandingHint => 'élargi en attendant';
+
+  // Tournament Game - end screen titles
+  @override
+  String get matchWonTitle => 'MATCH GAGNÉ !';
+
+  @override
+  String get matchLostTitle => 'MATCH PERDU';
+
+  @override
+  String legWonTitle(int legNumber) => 'Manche $legNumber GAGNÉE !';
+
+  @override
+  String legLostTitle(int legNumber) => 'Manche $legNumber PERDUE';
+
+  @override
+  String legResultSubtitle(int legNumber) => 'Résultat Manche $legNumber';
+
+  @override
+  String get confirmNextLeg => 'Confirmez pour passer à la prochaine manche';
 }

@@ -23,15 +23,6 @@ class PlayScreen extends StatefulWidget {
   State<PlayScreen> createState() => _PlayScreenState();
 }
 
-const List<String> _proTips = [
-  'Practice your doubles — they are crucial for closing out games.',
-  'Aim for T20 consistently to maximize your scoring.',
-  'A stable stance improves accuracy — keep your feet shoulder-width apart.',
-  'Focus on checkout combinations for scores of 170 or below.',
-  'Breathing control can steady your throw under pressure.',
-  'Consistency beats power — smooth, repeatable throws win matches.',
-  'Know your checkout routes for common scores like 32, 40, and 56.',
-];
 
 class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
@@ -955,9 +946,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Pro Tip',
-                        style: TextStyle(
+                      Text(
+                        l10n.proTipLabel,
+                        style: const TextStyle(
                           color: AppTheme.primary,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -965,7 +956,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _proTips[DateTime.now().weekday % _proTips.length],
+                        l10n.proTips[DateTime.now().weekday % l10n.proTips.length],
                         style: const TextStyle(
                           color: AppTheme.textSecondary,
                           fontSize: 14,
