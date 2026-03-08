@@ -221,7 +221,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
           child: Container(
             decoration: BoxDecoration(
               color: AppTheme.surface,

@@ -424,6 +424,10 @@ abstract class AppLocalizations {
   String get missButton;
   String get scoreLabel;
   String get dartCounter;
+
+  // Play Screen - additional
+  String get playFirstGameToSeeHistory;
+  String get viewAll;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

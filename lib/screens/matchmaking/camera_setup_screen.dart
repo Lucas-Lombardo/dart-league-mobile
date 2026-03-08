@@ -47,6 +47,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   double _currentZoom = 1.0;
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
+  double _baseZoom = 1.0;
 
   // AI dartboard detection
   DetectionIsolate? _detectionIsolate;
@@ -506,7 +507,10 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppTheme.primary, width: 2),
       ),
-      child: ClipRRect(
+      child: GestureDetector(
+        onScaleStart: _onScaleStart,
+        onScaleUpdate: _onScaleUpdate,
+        child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: Stack(
           children: [
@@ -532,37 +536,20 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
                     Row(
                       children: [
                         Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
                             color: AppTheme.success,
                             shape: BoxShape.circle,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          AppLocalizations.of(context).connected,
+                          AppLocalizations.of(context).cameraReady,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            AppLocalizations.of(context).positionDartboard,
-                            style: const TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 13,
-                            ),
                           ),
                         ),
                       ],
@@ -660,6 +647,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -718,6 +706,17 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
         ],
       ),
     );
+  }
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _baseZoom = _currentZoom;
+  }
+
+  Future<void> _onScaleUpdate(ScaleUpdateDetails details) async {
+    if (details.scale == 1.0) return;
+    final newZoom = (_baseZoom * details.scale).clamp(_minZoom, _maxZoom);
+    await _cameraController?.setZoomLevel(newZoom);
+    setState(() => _currentZoom = newZoom);
   }
 
   Future<void> _zoomIn() async {

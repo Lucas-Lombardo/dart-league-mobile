@@ -1061,4 +1061,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dartCounter => 'Dart {current}/3';
+
+  // Play Screen - additional
+  @override
+  String get playFirstGameToSeeHistory => 'Play your first game to see your history here.';
+
+  @override
+  String get viewAll => 'View All';
 }

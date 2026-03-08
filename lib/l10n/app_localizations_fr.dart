@@ -1061,4 +1061,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get dartCounter => 'Fléchette {current}/3';
+
+  // Play Screen - additional
+  @override
+  String get playFirstGameToSeeHistory => 'Jouez votre première partie pour voir votre historique ici.';
+
+  @override
+  String get viewAll => 'Voir tout';
 }

@@ -14,6 +14,7 @@ import '../../utils/rank_utils.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../placement/placement_hub_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
+import '../profile/match_history_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -21,6 +22,16 @@ class PlayScreen extends StatefulWidget {
   @override
   State<PlayScreen> createState() => _PlayScreenState();
 }
+
+const List<String> _proTips = [
+  'Practice your doubles — they are crucial for closing out games.',
+  'Aim for T20 consistently to maximize your scoring.',
+  'A stable stance improves accuracy — keep your feet shoulder-width apart.',
+  'Focus on checkout combinations for scores of 170 or below.',
+  'Breathing control can steady your throw under pressure.',
+  'Consistency beats power — smooth, repeatable throws win matches.',
+  'Know your checkout routes for common scores like 32, 40, and 56.',
+];
 
 class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
@@ -242,7 +253,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 
     final isUnranked = user.rank.toLowerCase() == 'unranked';
 
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: () async {
+        await Future.wait([
+          _loadRecentMatches(),
+          _checkActiveMatch(),
+        ]);
+      },
+      child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -324,9 +344,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '-${_getEloBelowPreviousRank(currentRank, user.elo).abs()}',
+                                '+${_getEloBelowPreviousRank(currentRank, user.elo).abs()}',
                                 style: const TextStyle(
-                                  color: Color(0xFFEF4444),
+                                  color: AppTheme.textSecondary,
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -862,10 +882,14 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               if (!_loadingMatches)
                 TextButton(
                   onPressed: () {
-                    // Navigate to history tab via parent controller if possible, or just refresh
-                    _loadRecentMatches();
+                    HapticService.lightImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const MatchHistoryScreen(),
+                      ),
+                    );
                   },
-                  child: Text(l10n.refresh),
+                  child: Text(l10n.viewAll),
                 ),
             ],
           ),
@@ -899,9 +923,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                     style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Play your first game to see history',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  Text(
+                    l10n.playFirstGameToSeeHistory,
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                   ),
                 ],
               ),
@@ -927,11 +951,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   child: const Icon(Icons.tips_and_updates_outlined, color: AppTheme.primary),
                 ),
                 const SizedBox(width: 16),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Pro Tip',
                         style: TextStyle(
                           color: AppTheme.primary,
@@ -939,10 +963,10 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                           fontSize: 12,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Practice your doubles! They are crucial for closing out games.',
-                        style: TextStyle(
+                        _proTips[DateTime.now().weekday % _proTips.length],
+                        style: const TextStyle(
                           color: AppTheme.textSecondary,
                           fontSize: 14,
                         ),
@@ -955,6 +979,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
+    ),
     );
   }
 }
