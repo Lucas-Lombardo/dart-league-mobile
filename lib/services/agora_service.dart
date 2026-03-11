@@ -141,13 +141,15 @@ class AgoraService {
     }
   }
 
-  /// Set camera to back camera (rear facing)
+  /// Set camera to back camera (rear facing) with high capture resolution for AI snapshots.
+  /// Capturer resolution (1280×720) is independent of the encoder resolution (640×480),
+  /// so the video call bandwidth is unaffected while snapshots use full quality.
   static Future<void> setBackCamera(RtcEngine engine) async {
     try {
-      // On mobile, switch to back camera
       await engine.setCameraCapturerConfiguration(
         const CameraCapturerConfiguration(
           cameraDirection: CameraDirection.cameraRear,
+          format: VideoFormat(width: 1280, height: 720, fps: 15),
         ),
       );
     } catch (_) {
@@ -182,21 +184,24 @@ class AgoraService {
 
       final completer = Completer<String?>();
 
-      // Register one-shot callback for snapshot result
-      engine.registerEventHandler(
-        RtcEngineEventHandler(
-          onSnapshotTaken: (RtcConnection connection, int uid,
-              String filePath, int width, int height, int errCode) {
-            if (!completer.isCompleted) {
-              if (errCode == 0) {
-                completer.complete(filePath);
-              } else {
-                completer.complete(null);
-              }
-            }
-          },
-        ),
+      // Create handler as a variable so it can be unregistered after use.
+      // Without this, every call accumulates a handler in Agora's list and
+      // all of them fire on every subsequent snapshot.
+      RtcEngineEventHandler? handler;
+      handler = RtcEngineEventHandler(
+        onSnapshotTaken: (RtcConnection connection, int uid,
+            String filePath, int width, int height, int errCode) {
+          // Defer unregister: calling it synchronously here modifies Agora's
+          // internal handler set while it is being iterated, causing a
+          // "Concurrent modification during iteration" crash.
+          Future.microtask(() => engine.unregisterEventHandler(handler!));
+          if (!completer.isCompleted) {
+            completer.complete(errCode == 0 ? filePath : null);
+          }
+        },
       );
+
+      engine.registerEventHandler(handler);
 
       // uid 0 = local user
       await engine.takeSnapshot(uid: 0, filePath: path);
@@ -204,7 +209,10 @@ class AgoraService {
       // Wait for callback with timeout
       final result = await completer.future.timeout(
         const Duration(seconds: 3),
-        onTimeout: () => null,
+        onTimeout: () {
+          Future.microtask(() => engine.unregisterEventHandler(handler!));
+          return null;
+        },
       );
 
       return result;

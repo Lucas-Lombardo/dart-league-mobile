@@ -215,10 +215,10 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
         orElse: () => _cameras!.first,
       );
 
-      // Initialize camera controller
+      // Initialize camera controller — high resolution for reliable AI detection
       _cameraController = CameraController(
         backCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: false,
       );
 

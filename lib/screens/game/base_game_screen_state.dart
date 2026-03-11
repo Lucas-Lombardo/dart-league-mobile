@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -108,6 +109,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           else { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
+            cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
           );
         } else if ((!game.isMyTurn || game.pendingConfirmation) && autoScoringService!.isCapturing) {
@@ -195,6 +197,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (game.isMyTurn) {
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
+            cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
           );
         }

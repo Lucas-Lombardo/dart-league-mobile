@@ -12,7 +12,7 @@ import 'dart_scoring_service.dart';
 import 'dart_detection_types.dart';
 export 'dart_detection_types.dart';
 
-const int _modelInputSize = 640;
+const int _modelInputSize = 704;
 const double _defaultConfThreshold = 0.35;
 const double _calibMergeDist = 0.03;
 const int _maxDarts = 3;
@@ -155,6 +155,7 @@ class DartDetectionService {
     final padX = (sz - newW) ~/ 2;
     final padY = (sz - newH) ~/ 2;
 
+
     final srcStride = origW * 4; // RGBA bytes per row
     final invNewW = origW / newW; // map dest pixel -> source pixel
     final invNewH = origH / newH;
@@ -219,8 +220,10 @@ class DartDetectionService {
     return [pts[topIdx], pts[rightIdx], pts[bottomIdx], pts[leftIdx]];
   }
 
-  /// Parse YOLOv8 output tensor into detections.
-  /// Remaps from letterboxed model space to original image [0,1] coords.
+  /// Parse YOLO output tensor into detections.
+  /// Auto-detects format:
+  ///   Legacy (YOLO11/v8): [1, C, N] where C small (e.g. 6), N large (e.g. 8400)
+  ///   End-to-end (YOLO26): [1, N, C] where N ≤ 1000, C small (e.g. 6)
   List<Detection> _parseOutput(
     List<List<List<double>>> output, {
     double confThreshold = _defaultConfThreshold,
@@ -230,16 +233,32 @@ class DartDetectionService {
     required int origW,
     required int origH,
   }) {
-    final detections = <Detection>[];
+    final data = output[0]; // Legacy: [C][N], E2E: [N][C]
 
-    // YOLOv8 TFLite output shape: [1, 6, 8400]
-    final data = output[0]; // [6][8400]
+    // Legacy [C][N]: rows = C (small, e.g. 6), cols = N (large, e.g. 8400)
+    // E2E [N][C]:    rows = N (detections), cols = C (small, e.g. 6)
+    if (data.length <= 20 && data[0].length > 100) {
+      return _parseOutputLegacy(data, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
+    } else {
+      return _parseOutputE2E(data, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
+    }
+  }
+
+  /// Legacy anchor-based output [C][N]: x, y, w, h, cls0_score, cls1_score (normalized [0,1]).
+  List<Detection> _parseOutputLegacy(
+    List<List<double>> data, {
+    required double confThreshold,
+    required double scale,
+    required int padX,
+    required int padY,
+    required int origW,
+    required int origH,
+  }) {
+    final detections = <Detection>[];
     final numDetections = data[0].length;
-    final numRows = data.length;
-    final numClasses = numRows - 4; // first 4 are bbox
+    final numClasses = data.length - 4;
 
     for (int i = 0; i < numDetections; i++) {
-      // Find best class
       double maxConf = 0;
       int bestClass = 0;
       for (int c = 0; c < numClasses; c++) {
@@ -252,24 +271,17 @@ class DartDetectionService {
 
       if (maxConf < confThreshold) continue;
 
-      // Model outputs normalized [0,1] coords in the letterboxed space
-      // Convert: normalized -> pixel in model input -> remove padding -> undo scale -> normalize to original
-      final rawX = data[0][i];
-      final rawY = data[1][i];
-      final rawW = data[2][i];
-      final rawH = data[3][i];
-
-      final pixelX = rawX * _modelInputSize;
-      final pixelY = rawY * _modelInputSize;
-      final pixelW = rawW * _modelInputSize;
-      final pixelH = rawH * _modelInputSize;
+      // Coords are normalized [0,1] in letterboxed space → convert to pixel
+      final pixelX = data[0][i] * _modelInputSize;
+      final pixelY = data[1][i] * _modelInputSize;
+      final pixelW = data[2][i] * _modelInputSize;
+      final pixelH = data[3][i] * _modelInputSize;
 
       final xCenter = (pixelX - padX) / (scale * origW);
       final yCenter = (pixelY - padY) / (scale * origH);
       final width = pixelW / (scale * origW);
       final height = pixelH / (scale * origH);
 
-      // Skip if outside image bounds
       if (xCenter < -0.01 || xCenter > 1.01 || yCenter < -0.01 || yCenter > 1.01) continue;
 
       detections.add(Detection(
@@ -281,7 +293,80 @@ class DartDetectionService {
         confidence: maxConf,
       ));
     }
+    return detections;
+  }
 
+  /// End-to-end output [N][6]: x1, y1, x2, y2, conf, cls_id (YOLO26).
+  /// Coords may be normalized [0,1] or pixel [0, imgsz] — auto-detected.
+  List<Detection> _parseOutputE2E(
+    List<List<double>> data, {
+    required double confThreshold,
+    required double scale,
+    required int padX,
+    required int padY,
+    required int origW,
+    required int origH,
+  }) {
+    final detections = <Detection>[];
+    final newW = origW * scale;
+    final newH = origH * scale;
+
+    // Filter by confidence first (matches Python _postprocess_e2e logic).
+    // coord_max must be computed ONLY over confident rows — background rows can
+    // have coordinates that barely exceed 1.0 (e.g. 1.003) due to floating
+    // point, which would incorrectly flip coordsNormalized to false and cause
+    // all detections to be treated as pixel-space (then remapped out of bounds).
+    final confident = data.where((r) => r[4] >= confThreshold).toList();
+
+    if (confident.isEmpty) return detections;
+
+    // Detect coord space over confident rows only
+    double maxCoord = 0;
+    for (final row in confident) {
+      for (int c = 0; c < 4; c++) {
+        if (row[c] > maxCoord) maxCoord = row[c];
+      }
+    }
+    final coordsNormalized = maxCoord <= 1.0;
+
+    for (final row in confident) {
+      double x1 = row[0];
+      double y1 = row[1];
+      double x2 = row[2];
+      double y2 = row[3];
+      final conf = row[4];
+      final clsId = row[5].round();
+
+      // Convert normalized to pixel if needed
+      if (coordsNormalized) {
+        x1 *= _modelInputSize;
+        y1 *= _modelInputSize;
+        x2 *= _modelInputSize;
+        y2 *= _modelInputSize;
+      }
+
+      // Convert xyxy pixel → cx, cy, w, h; remove letterbox padding; normalize
+      final cx = (x1 + x2) / 2.0;
+      final cy = (y1 + y2) / 2.0;
+      final bw = x2 - x1;
+      final bh = y2 - y1;
+
+      final xCenter = (cx - padX) / newW;
+      final yCenter = (cy - padY) / newH;
+      final width = bw / newW;
+      final height = bh / newH;
+
+      if (xCenter < -0.01 || xCenter > 1.01 || yCenter < -0.01 || yCenter > 1.01) continue;
+
+      detections.add(Detection(
+        classId: clsId,
+        x: xCenter.clamp(0.0, 1.0),
+        y: yCenter.clamp(0.0, 1.0),
+        width: width,
+        height: height,
+        confidence: conf,
+      ));
+    }
     return detections;
   }
 

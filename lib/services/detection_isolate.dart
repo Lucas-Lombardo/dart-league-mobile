@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'dart_detection_service.dart';
 
-const int _decodeTargetWidth = 640;
+const int _decodeTargetWidth = 704;
 
 /// Manages a persistent background isolate that loads the TFLite model once
 /// and processes images without blocking the UI thread.
