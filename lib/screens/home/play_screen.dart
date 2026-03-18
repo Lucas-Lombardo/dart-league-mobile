@@ -24,7 +24,7 @@ class PlayScreen extends StatefulWidget {
 }
 
 
-class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin {
+class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   List<Match> _recentMatches = [];
@@ -37,6 +37,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -149,7 +150,17 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkActiveMatch();
+      _checkPendingTournamentMatch();
+      _checkActiveTournamentStatus();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();
   }
@@ -791,7 +802,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                       MaterialPageRoute(
                         builder: (context) => const CameraSetupScreen(),
                       ),
-                    );
+                    ).then((_) {
+                      _checkActiveMatch();
+                      _checkPendingTournamentMatch();
+                      _checkActiveTournamentStatus();
+                    });
                   }
                 },
                 child: Container(

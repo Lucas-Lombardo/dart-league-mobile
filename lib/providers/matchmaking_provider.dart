@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/matchmaking_service.dart';
+import '../services/match_service.dart';
 import '../services/socket_service.dart';
 import '../utils/haptic_service.dart';
 import 'game_provider.dart';
@@ -17,6 +18,7 @@ class MatchmakingProvider with ChangeNotifier {
   int _eloRange = 250;
   int _searchTime = 0;
   Timer? _searchTimer;
+  Timer? _pollTimer;
   
   // Agora video credentials
   String? _agoraAppId;
@@ -131,11 +133,40 @@ class MatchmakingProvider with ChangeNotifier {
       _searchTime++;
       notifyListeners();
     });
+    _startActiveMatchPolling();
   }
 
   void _stopSearchTimer() {
     _searchTimer?.cancel();
     _searchTimer = null;
+    _stopPolling();
+  }
+
+  void _startActiveMatchPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!_isSearching || _matchFound || _currentUserId == null) return;
+      try {
+        final result = await MatchService.getActiveMatch(_currentUserId!);
+        if (result['active'] == true && !_matchFound && _isSearching) {
+          debugPrint('QUEUE DEBUG: active match detected via poll - matchId=${result['matchId']}');
+          _handleMatchFound({
+            'matchId': result['matchId'],
+            'opponentId': result['opponentId'],
+            'opponentUsername': result['opponentUsername'] ?? 'Opponent',
+            'opponentElo': result['opponentElo'],
+            'playerElo': result['playerElo'],
+          });
+        }
+      } catch (_) {
+        // ignore poll errors silently
+      }
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   void _handleMatchFound(dynamic data) {
@@ -248,6 +279,7 @@ class MatchmakingProvider with ChangeNotifier {
   @override
   void dispose() {
     _stopSearchTimer();
+    _stopPolling();
     SocketService.clearReconnectHandler();
     _cleanupSocketListeners();
     super.dispose();
