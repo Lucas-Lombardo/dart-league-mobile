@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'dart_detection_service.dart';
 
-const int _decodeTargetWidth = 704;
+const int _decodeTargetWidth = 768;
 
 /// Manages a persistent background isolate that loads the TFLite model once
 /// and processes images without blocking the UI thread.
@@ -32,7 +32,7 @@ class DetectionIsolate {
 
       // Load model bytes on the main thread (has access to asset bundle),
       // then pass them to the isolate so it can use Interpreter.fromBuffer.
-      final modelData = await rootBundle.load('assets/models/best_float16.tflite');
+      final modelData = await rootBundle.load('assets/models/best_int8.tflite');
       final modelBytes = modelData.buffer.asUint8List();
 
       _isolate = await Isolate.spawn(

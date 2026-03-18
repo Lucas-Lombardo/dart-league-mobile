@@ -12,7 +12,7 @@ import 'dart_scoring_service.dart';
 import 'dart_detection_types.dart';
 export 'dart_detection_types.dart';
 
-const int _modelInputSize = 704;
+const int _modelInputSize = 768;
 const double _defaultConfThreshold = 0.35;
 const double _calibMergeDist = 0.03;
 const int _maxDarts = 3;
@@ -29,7 +29,8 @@ class DartDetectionService {
 
   // Pre-allocated buffers (reused across frames)
   Float32List? _inputBuffer;
-  List<List<List<double>>>? _outputBuffer;
+  Uint8List? _outputBytes;
+  List<int>? _outputShape;
 
   bool get isLoaded => _isLoaded;
 
@@ -40,7 +41,7 @@ class DartDetectionService {
     if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/best_float16.tflite',
+        'assets/models/best_int8.tflite',
         options: cpuOptions,
       );
       print('[DartDetection] Model loaded on web with CPU (4 threads)');
@@ -51,24 +52,7 @@ class DartDetectionService {
       _isLoaded = true;
     }
 
-    // Pre-allocate input buffer
-    _inputBuffer = Float32List(1 * _modelInputSize * _modelInputSize * 3);
-
-    // Pre-allocate output buffer
-    final outputTensors = _interpreter!.getOutputTensors();
-    final outputShape = outputTensors[0].shape;
-    _outputBuffer = List.generate(
-      outputShape[0],
-      (_) => List.generate(
-        outputShape[1],
-        (_) => List.filled(outputShape[2], 0.0),
-      ),
-    );
-
-    final inputTensors = _interpreter!.getInputTensors();
-    print('[DartDetection] Model loaded');
-    print('[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
-    print('[DartDetection] Output: ${outputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
+    _allocateBuffers();
   }
 
   /// Load model from pre-loaded bytes (for use in background isolates
@@ -82,20 +66,16 @@ class DartDetectionService {
     print('[DartDetection] Model loaded from buffer on CPU with 4 threads');
     _isLoaded = true;
 
-    // Pre-allocate input buffer
-    _inputBuffer = Float32List(1 * _modelInputSize * _modelInputSize * 3);
+    _allocateBuffers();
+  }
 
-    // Pre-allocate output buffer
+  void _allocateBuffers() {
+    _inputBuffer = Float32List(1 * _modelInputSize * _modelInputSize * 3);
     final outputTensors = _interpreter!.getOutputTensors();
     final outputShape = outputTensors[0].shape;
-    _outputBuffer = List.generate(
-      outputShape[0],
-      (_) => List.generate(
-        outputShape[1],
-        (_) => List.filled(outputShape[2], 0.0),
-      ),
-    );
-
+    _outputShape = outputShape;
+    final outputByteSize = outputShape.fold<int>(1, (a, b) => a * b) * 4;
+    _outputBytes = Uint8List(outputByteSize);
     final inputTensors = _interpreter!.getInputTensors();
     print('[DartDetection] Model loaded');
     print('[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
@@ -106,7 +86,8 @@ class DartDetectionService {
     _interpreter?.close();
     _interpreter = null;
     _inputBuffer = null;
-    _outputBuffer = null;
+    _outputBytes = null;
+    _outputShape = null;
     _isLoaded = false;
   }
 
@@ -225,7 +206,8 @@ class DartDetectionService {
   ///   Legacy (YOLO11/v8): [1, C, N] where C small (e.g. 6), N large (e.g. 8400)
   ///   End-to-end (YOLO26): [1, N, C] where N ≤ 1000, C small (e.g. 6)
   List<Detection> _parseOutput(
-    List<List<List<double>>> output, {
+    Float32List floats,
+    List<int> shape, {
     double confThreshold = _defaultConfThreshold,
     required double scale,
     required int padX,
@@ -233,20 +215,23 @@ class DartDetectionService {
     required int origW,
     required int origH,
   }) {
-    final data = output[0]; // Legacy: [C][N], E2E: [N][C]
-
+    // shape is [batch, rows, cols]; batch dim is always 1
+    final rows = shape[1];
+    final cols = shape[2];
     // Legacy [C][N]: rows = C (small, e.g. 6), cols = N (large, e.g. 8400)
     // E2E [N][C]:    rows = N (detections), cols = C (small, e.g. 6)
-    if (data.length <= 20 && data[0].length > 100) {
-      return _parseOutputLegacy(data, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
+    if (rows <= 20 && cols > 100) {
+      return _parseOutputLegacy(floats, rows, cols, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
     } else {
-      return _parseOutputE2E(data, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
+      return _parseOutputE2E(floats, rows, cols, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
     }
   }
 
   /// Legacy anchor-based output [C][N]: x, y, w, h, cls0_score, cls1_score (normalized [0,1]).
   List<Detection> _parseOutputLegacy(
-    List<List<double>> data, {
+    Float32List floats,
+    int rows,
+    int cols, {
     required double confThreshold,
     required double scale,
     required int padX,
@@ -254,15 +239,16 @@ class DartDetectionService {
     required int origW,
     required int origH,
   }) {
+    // Layout: floats[row * cols + col], batch offset = 0
     final detections = <Detection>[];
-    final numDetections = data[0].length;
-    final numClasses = data.length - 4;
+    final numDetections = cols;
+    final numClasses = rows - 4;
 
     for (int i = 0; i < numDetections; i++) {
       double maxConf = 0;
       int bestClass = 0;
       for (int c = 0; c < numClasses; c++) {
-        final conf = data[4 + c][i];
+        final conf = floats[(4 + c) * cols + i];
         if (conf > maxConf) {
           maxConf = conf;
           bestClass = c;
@@ -272,10 +258,10 @@ class DartDetectionService {
       if (maxConf < confThreshold) continue;
 
       // Coords are normalized [0,1] in letterboxed space → convert to pixel
-      final pixelX = data[0][i] * _modelInputSize;
-      final pixelY = data[1][i] * _modelInputSize;
-      final pixelW = data[2][i] * _modelInputSize;
-      final pixelH = data[3][i] * _modelInputSize;
+      final pixelX = floats[0 * cols + i] * _modelInputSize;
+      final pixelY = floats[1 * cols + i] * _modelInputSize;
+      final pixelW = floats[2 * cols + i] * _modelInputSize;
+      final pixelH = floats[3 * cols + i] * _modelInputSize;
 
       final xCenter = (pixelX - padX) / (scale * origW);
       final yCenter = (pixelY - padY) / (scale * origH);
@@ -299,7 +285,9 @@ class DartDetectionService {
   /// End-to-end output [N][6]: x1, y1, x2, y2, conf, cls_id (YOLO26).
   /// Coords may be normalized [0,1] or pixel [0, imgsz] — auto-detected.
   List<Detection> _parseOutputE2E(
-    List<List<double>> data, {
+    Float32List floats,
+    int rows,
+    int cols, {
     required double confThreshold,
     required double scale,
     required int padX,
@@ -307,6 +295,7 @@ class DartDetectionService {
     required int origW,
     required int origH,
   }) {
+    // Layout: floats[row * cols + col], batch offset = 0
     final detections = <Detection>[];
     final newW = origW * scale;
     final newH = origH * scale;
@@ -316,26 +305,28 @@ class DartDetectionService {
     // have coordinates that barely exceed 1.0 (e.g. 1.003) due to floating
     // point, which would incorrectly flip coordsNormalized to false and cause
     // all detections to be treated as pixel-space (then remapped out of bounds).
-    final confident = data.where((r) => r[4] >= confThreshold).toList();
-
-    if (confident.isEmpty) return detections;
-
-    // Detect coord space over confident rows only
     double maxCoord = 0;
-    for (final row in confident) {
+    bool anyConfident = false;
+    for (int row = 0; row < rows; row++) {
+      final base = row * cols;
+      if (floats[base + 4] < confThreshold) continue;
+      anyConfident = true;
       for (int c = 0; c < 4; c++) {
-        if (row[c] > maxCoord) maxCoord = row[c];
+        if (floats[base + c] > maxCoord) maxCoord = floats[base + c];
       }
     }
+    if (!anyConfident) return detections;
     final coordsNormalized = maxCoord <= 1.0;
 
-    for (final row in confident) {
-      double x1 = row[0];
-      double y1 = row[1];
-      double x2 = row[2];
-      double y2 = row[3];
-      final conf = row[4];
-      final clsId = row[5].round();
+    for (int row = 0; row < rows; row++) {
+      final base = row * cols;
+      final conf = floats[base + 4];
+      if (conf < confThreshold) continue;
+      double x1 = floats[base + 0];
+      double y1 = floats[base + 1];
+      double x2 = floats[base + 2];
+      double y2 = floats[base + 3];
+      final clsId = floats[base + 5].round();
 
       // Convert normalized to pixel if needed
       if (coordsNormalized) {
@@ -486,25 +477,19 @@ class DartDetectionService {
     final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
     final preprocessMs = sw.elapsedMilliseconds;
 
-    final inputTensor = _inputBuffer!.reshape([1, _modelInputSize, _modelInputSize, 3]);
-
-    // Zero the output buffer
-    final output = _outputBuffer!;
-    for (final row in output) {
-      for (final col in row) {
-        col.fillRange(0, col.length, 0.0);
-      }
-    }
+    _outputBytes!.fillRange(0, _outputBytes!.length, 0);
 
     // Run inference
     sw.reset();
-    _interpreter!.run(inputTensor, output);
+    _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
     final inferenceMs = sw.elapsedMilliseconds;
 
     // Parse detections
     sw.reset();
+    final outputFloats = _outputBytes!.buffer.asFloat32List();
     var detections = _parseOutput(
-      output,
+      outputFloats,
+      _outputShape!,
       scale: scale,
       padX: padX,
       padY: padY,
@@ -623,25 +608,19 @@ class DartDetectionService {
     final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
     final preprocessMs = sw.elapsedMilliseconds;
 
-    final inputTensor = _inputBuffer!.reshape([1, _modelInputSize, _modelInputSize, 3]);
-
-    // Zero the output buffer
-    final output = _outputBuffer!;
-    for (final row in output) {
-      for (final col in row) {
-        col.fillRange(0, col.length, 0.0);
-      }
-    }
+    _outputBytes!.fillRange(0, _outputBytes!.length, 0);
 
     // Run inference
     sw.reset();
-    _interpreter!.run(inputTensor, output);
+    _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
     final inferenceMs = sw.elapsedMilliseconds;
 
     // Parse detections (remap from letterboxed model space to original image)
     sw.reset();
+    final outputFloats = _outputBytes!.buffer.asFloat32List();
     var detections = _parseOutput(
-      output,
+      outputFloats,
+      _outputShape!,
       scale: scale,
       padX: padX,
       padY: padY,

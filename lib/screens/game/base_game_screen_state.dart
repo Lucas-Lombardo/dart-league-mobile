@@ -105,7 +105,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
         if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing) {
-          if (justBecameMyTurn) { autoScoringService!.resetTurn(); }
+          if (justBecameMyTurn) { aiManuallyDisabled = false; autoScoringService!.resetTurn(); }
           else { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
@@ -331,7 +331,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
       ]),
       actions: [
-        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiManuallyDisabled = true; }); autoScoringService?.stopCapture(); game.undoLastDart(); }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
       ],
     )).then((_) => winDialogShowing = false);
@@ -354,7 +354,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
       ]),
       actions: [
-        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiManuallyDisabled = true; }); autoScoringService?.stopCapture(); game.undoLastDart(); }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
       ],
     )).then((_) => bustDialogShowing = false);

@@ -315,7 +315,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
     }
 
     if (mounted) {
-      setState(() => _botTurnInProgress = false);
+      setState(() { _botTurnInProgress = false; _aiManuallyDisabled = false; });
       _autoScoringService?.resetTurn();
       _startAiCapture();
     }
@@ -353,12 +353,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
               setState(() {
                 if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
                 _isBust = false;
+                _aiManuallyDisabled = true;
                 _recalculateScore();
               });
-              if (_autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded) {
-                _autoScoringService!.resetTurn();
-                _startAiCapture();
-              }
+              _autoScoringService?.stopCapture();
             },
             child: const Text('Edit Darts'),
           ),
@@ -404,17 +402,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
             onPressed: () {
               _winDialogShowing = false;
               Navigator.pop(ctx);
-              // Undo last dart
               setState(() {
                 if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
                 _isWin = false;
+                _aiManuallyDisabled = true;
                 _recalculateScore();
               });
-              // Restart AI if it was active
-              if (_autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded) {
-                _autoScoringService!.resetTurn();
-                _startAiCapture();
-              }
+              _autoScoringService?.stopCapture();
             },
             child: const Text('Edit Darts'),
           ),

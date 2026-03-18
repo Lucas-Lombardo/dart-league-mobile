@@ -11,7 +11,7 @@ Future<Interpreter> loadModelNative({bool cpuOnly = false}) async {
       final gpuOptions = InterpreterOptions()
         ..addDelegate(GpuDelegate());
       interpreter = await Interpreter.fromAsset(
-        'assets/models/best_float16.tflite',
+        'assets/models/best_int8.tflite',
         options: gpuOptions,
       );
       print('[DartDetection] Model loaded with Metal GPU delegate');
@@ -24,7 +24,7 @@ Future<Interpreter> loadModelNative({bool cpuOnly = false}) async {
       final gpuOptions = InterpreterOptions()
         ..addDelegate(GpuDelegateV2());
       interpreter = await Interpreter.fromAsset(
-        'assets/models/best_float16.tflite',
+        'assets/models/best_int8.tflite',
         options: gpuOptions,
       );
       print('[DartDetection] Model loaded with GPU delegate');
@@ -38,7 +38,7 @@ Future<Interpreter> loadModelNative({bool cpuOnly = false}) async {
   if (interpreter == null) {
     final cpuOptions = InterpreterOptions()..threads = 4;
     interpreter = await Interpreter.fromAsset(
-      'assets/models/best_float16.tflite',
+      'assets/models/best_int8.tflite',
       options: cpuOptions,
     );
     print('[DartDetection] Model loaded on CPU with 4 threads');
