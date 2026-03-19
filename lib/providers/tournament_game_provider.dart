@@ -627,6 +627,27 @@ class TournamentGameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Undo all darts thrown this round (used when editing to avoid negative scores)
+  void undoAllDarts() {
+    while (_dartsEmittedThisRound > 0) {
+      try {
+        SocketService.emit('undo_last_dart', {
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+        });
+      } catch (e) {
+        debugPrint('TournamentGameProvider: undoAllDarts failed: $e');
+      }
+      _dartsEmittedThisRound--;
+    }
+    _currentRoundThrows.clear();
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
+    notifyListeners();
+  }
+
   void reconnectToMatch() {
     if (_currentGameMatchId != null && _myUserId != null) {
       try {

@@ -19,7 +19,10 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/api_service.dart';
 import 'utils/app_theme.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +51,12 @@ void main() async {
   
   // Create GameProvider eagerly at app startup so listeners are ready
   final gameProvider = GameProvider();
-  
+
+  // When token refresh fails, force user back to login
+  ApiService.onAuthFailure = () {
+    navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+  };
+
   runApp(DartLegendsApp(gameProvider: gameProvider));
 }
 
@@ -85,6 +93,7 @@ class DartLegendsApp extends StatelessWidget {
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
           return MaterialApp(
+            navigatorKey: navigatorKey,
             key: ValueKey(localeProvider.locale.languageCode),
             title: 'Dart Legends',
             debugShowCheckedModeBanner: false,

@@ -420,7 +420,13 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               currentZoom: cameraZoom,
               minZoom: cameraMinZoom,
               maxZoom: cameraMaxZoom,
-              onEditDart: (index, dartScore) => game.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+              onEditDart: (index, dartScore) {
+                // Undo all darts first to avoid negative scores on bust
+                game.undoAllDarts();
+                for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
+                // Re-throw only the edited dart
+                game.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore));
+              },
               onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
               onToggleAi: toggleAiScoring,
               aiEnabled: !aiManuallyDisabled,

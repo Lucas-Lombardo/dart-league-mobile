@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class StorageService {
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static const String _tokenKey = 'jwt_token';
+  static const String _refreshTokenKey = 'refresh_token';
   static const String _languageKey = 'user_language';
   static const String _autoScoringKey = 'auto_scoring_enabled';
 
@@ -16,6 +17,18 @@ class StorageService {
 
   static Future<void> deleteToken() async {
     await _storage.delete(key: _tokenKey);
+  }
+
+  static Future<void> saveRefreshToken(String token) async {
+    await _storage.write(key: _refreshTokenKey, value: token);
+  }
+
+  static Future<String?> getRefreshToken() async {
+    return await _storage.read(key: _refreshTokenKey);
+  }
+
+  static Future<void> deleteRefreshToken() async {
+    await _storage.delete(key: _refreshTokenKey);
   }
 
   static Future<void> saveLanguage(String languageCode) async {

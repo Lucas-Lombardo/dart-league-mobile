@@ -115,7 +115,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
 
       _cameraController = CameraController(
         backCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: false,
       );
 

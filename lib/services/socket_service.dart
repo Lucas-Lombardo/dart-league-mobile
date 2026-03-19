@@ -1,6 +1,7 @@
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
+import 'api_service.dart';
 
 class SocketService {
   static io.Socket? _socket;
@@ -64,8 +65,20 @@ class SocketService {
         _onConnectFailedHandler?.call();
       });
 
-      _socket!.onConnectError((error) {
+      _socket!.onConnectError((error) async {
         print('❌ SocketService: Connect error - $error');
+        // If auth-related, try refreshing the token and reconnecting
+        if (error.toString().contains('401') ||
+            error.toString().contains('unauthorized') ||
+            error.toString().contains('jwt')) {
+          print('🔄 SocketService: Auth error, attempting token refresh...');
+          final refreshed = await ApiService.refreshAccessToken();
+          if (refreshed) {
+            print('🔄 SocketService: Token refreshed, reconnecting...');
+            disconnect();
+            await connect();
+          }
+        }
       });
 
       _socket!.onError((error) {

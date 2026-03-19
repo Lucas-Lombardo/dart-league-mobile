@@ -803,6 +803,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                         builder: (context) => const CameraSetupScreen(),
                       ),
                     ).then((_) {
+                      setState(() => _activeMatch = null);
                       _checkActiveMatch();
                       _checkPendingTournamentMatch();
                       _checkActiveTournamentStatus();

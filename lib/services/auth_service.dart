@@ -25,6 +25,9 @@ class AuthService {
       if (response['access_token'] != null) {
         await StorageService.saveToken(response['access_token']);
       }
+      if (response['refresh_token'] != null) {
+        await StorageService.saveRefreshToken(response['refresh_token']);
+      }
 
       return {
         'user': User.fromJson(response['user']),
@@ -52,6 +55,9 @@ class AuthService {
       if (response['access_token'] != null) {
         await StorageService.saveToken(response['access_token']);
       }
+      if (response['refresh_token'] != null) {
+        await StorageService.saveRefreshToken(response['refresh_token']);
+      }
 
       return {
         'user': User.fromJson(response['user']),
@@ -64,7 +70,14 @@ class AuthService {
 
   static Future<void> logout() async {
     try {
+      // Call backend to invalidate the refresh token server-side
+      try {
+        await ApiService.post('/auth/logout', {});
+      } catch (e) {
+        debugPrint('⚠️ Backend logout failed (token may already be invalid): $e');
+      }
       await StorageService.deleteToken();
+      await StorageService.deleteRefreshToken();
     } catch (e) {
       rethrow;
     }
@@ -76,7 +89,8 @@ class AuthService {
       await ApiService.delete('/auth/account');
       debugPrint('✅ Account deleted from backend');
       await StorageService.deleteToken();
-      debugPrint('✅ Token cleared from storage');
+      await StorageService.deleteRefreshToken();
+      debugPrint('✅ Tokens cleared from storage');
     } catch (e) {
       debugPrint('❌ Error deleting account: $e');
       rethrow;
@@ -112,32 +126,25 @@ class AuthService {
         return null;
       }
 
-      // Backend doesn't have /auth/me, need to decode token to get user ID
-      // For now, try fetching from /auth/profile or skip refresh
-      // Actually, we should just return the cached user and only refresh on explicit need
-      
-      // Try the /users/profile endpoint (common pattern)
       try {
         final response = await ApiService.get('/auth/profile');
         debugPrint('✅ User profile fetched successfully');
         return User.fromJson(response);
       } catch (profileError) {
-        // If /auth/profile doesn't exist either, we need to decode the JWT
-        // For now, return null and rely on the user data from login
         debugPrint('⚠️ Could not fetch profile, endpoint may not exist');
         return null;
       }
     } catch (e) {
       debugPrint('❌ Error fetching user profile: $e');
-      
-      // Only delete token if it's a 401 Unauthorized error (invalid token)
+
       if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
         debugPrint('🗑️ Token invalid, deleting...');
         await StorageService.deleteToken();
+        await StorageService.deleteRefreshToken();
       } else {
         debugPrint('⚠️ Network or parsing error, keeping token');
       }
-      
+
       return null;
     }
   }

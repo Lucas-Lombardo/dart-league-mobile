@@ -56,6 +56,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool autoScoringEnabled = false;
   bool autoScoringLoading = false;
   bool aiManuallyDisabled = false;
+  bool aiPausedForEdit = false;
   CaptureFrameCallback? _captureFrameCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
@@ -104,8 +105,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       }
       if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
-        if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing) {
-          if (justBecameMyTurn) { aiManuallyDisabled = false; autoScoringService!.resetTurn(); }
+        if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing && !aiPausedForEdit) {
+          if (justBecameMyTurn) { aiManuallyDisabled = false; aiPausedForEdit = false; autoScoringService!.resetTurn(); }
           else { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
@@ -205,7 +206,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
-  void submitAutoScoredDarts(dynamic game) { autoScoringService?.stopCapture(); game.confirmRound(); }
+  void submitAutoScoredDarts(dynamic game) { aiPausedForEdit = false; autoScoringService?.stopCapture(); game.confirmRound(); }
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
   Future<void> initializeAgora({required String appId, required String token, required String channelName}) async {
@@ -331,7 +332,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
       ]),
       actions: [
-        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiManuallyDisabled = true; }); autoScoringService?.stopCapture(); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
       ],
     )).then((_) => winDialogShowing = false);
@@ -354,7 +355,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         const SizedBox(height: 8), const Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
       ]),
       actions: [
-        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiManuallyDisabled = true; }); autoScoringService?.stopCapture(); game.undoLastDart(); }, child: const Text('Edit Darts')),
+        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
       ],
     )).then((_) => bustDialogShowing = false);
@@ -748,7 +749,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   dartsThrown: game.dartsThrown, agoraEngine: agoraEngine, remoteUid: game.remoteUid,
                   isAudioMuted: isAudioMuted, onToggleAudio: toggleAudio, onSwitchCamera: switchCamera,
                   onZoomIn: zoomIn, onZoomOut: zoomOut, currentZoom: cameraZoom, minZoom: cameraMinZoom, maxZoom: cameraMaxZoom,
-                  onEditDart: (index, dartScore) => readGame().editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore)),
+                  onEditDart: (index, dartScore) {
+                    final g = readGame();
+                    // Undo all darts first to avoid negative scores on bust
+                    g.undoAllDarts();
+                    for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
+                    // Re-throw only the edited dart
+                    g.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore));
+                  },
                   onRemoveDart: (index) { autoScoringService?.removeDart(index); readGame().undoLastDart(); },
                   onToggleAi: toggleAiScoring, aiEnabled: !aiManuallyDisabled,
                 )
