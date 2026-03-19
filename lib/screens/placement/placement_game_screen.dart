@@ -161,6 +161,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
       captureFrame: _captureFrame,
       cleanupFile: _cleanupFile,
       onDartDetected: _onDartDetected,
+      onAutoConfirm: () { if (mounted) { HapticService.heavyImpact(); _confirmRound(); } },
     );
   }
 

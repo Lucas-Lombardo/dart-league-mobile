@@ -105,15 +105,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       }
       if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
-        if (game.isMyTurn && !game.pendingConfirmation && !autoScoringService!.isCapturing && !aiPausedForEdit) {
+        // Keep capture running during normal pending confirmation (not bust/win)
+        // so auto-confirm can detect the user removing darts from the board.
+        final pendingNeedsStop = game.pendingConfirmation && (game.pendingType == 'bust' || game.pendingType == 'win');
+        if (game.isMyTurn && !pendingNeedsStop && !autoScoringService!.isCapturing && !aiPausedForEdit) {
           if (justBecameMyTurn) { aiManuallyDisabled = false; aiPausedForEdit = false; autoScoringService!.resetTurn(); }
-          else { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
+          else if (!game.pendingConfirmation) { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
+            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
           );
-        } else if ((!game.isMyTurn || game.pendingConfirmation) && autoScoringService!.isCapturing) {
+        } else if ((!game.isMyTurn || pendingNeedsStop) && autoScoringService!.isCapturing) {
           autoScoringService!.stopCapture();
         }
       }
@@ -166,6 +170,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (game.isMyTurn) autoScoringService!.startCapture(
           captureFrame: _captureFrameCallback!,
           onDartDetected: _onDartDetectedCallback,
+          onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
         );
       }
     });
@@ -200,6 +205,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             captureFrame: _captureFrameCallback!,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
+            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
           );
         }
       }

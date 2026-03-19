@@ -24,6 +24,10 @@ typedef CleanupFileCallback = Future<void> Function(String path);
 /// Called when a new dart is detected in a slot (slot index, DartScore).
 typedef OnDartDetectedCallback = void Function(int slotIndex, DartScore score);
 
+/// Called when the board is detected empty after all 3 darts were thrown
+/// (auto-confirm trigger).
+typedef OnAutoConfirmCallback = void Function();
+
 class ConfirmedDart {
   final double x, y;
   final double confidence;
@@ -76,6 +80,10 @@ class AutoScoringService extends ChangeNotifier {
   // Dart removal detection — triggers "opponent turn" in unranked mode
   bool _dartsRemoved = false;
 
+  // Auto-confirm: consecutive frames with 4 calib points + 0 darts after all 3 emitted
+  int _consecutiveEmptyBoardCount = 0;
+  static const int _autoConfirmThreshold = 2;
+
   // Getters
   bool get isCapturing => _capturing;
   bool get modelLoaded => _modelLoaded;
@@ -112,12 +120,14 @@ class AutoScoringService extends ChangeNotifier {
     required CaptureFrameCallback captureFrame,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
+    OnAutoConfirmCallback? onAutoConfirm,
   }) {
     if (!_modelLoaded || _capturing) return;
     _capturing = true;
     _dartsRemoved = false;
+    _consecutiveEmptyBoardCount = 0;
     notifyListeners();
-    _captureLoop(captureFrame, cleanupFile, onDartDetected);
+    _captureLoop(captureFrame, cleanupFile, onDartDetected, onAutoConfirm);
   }
 
   /// Stop the auto-capture loop
@@ -136,6 +146,7 @@ class AutoScoringService extends ChangeNotifier {
     _removedSlots = [false, false, false];
     _prevDartCount = 0;
     _dartsRemoved = false;
+    _consecutiveEmptyBoardCount = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
     notifyListeners();
@@ -206,10 +217,11 @@ class AutoScoringService extends ChangeNotifier {
     CaptureFrameCallback captureFrame,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
+    OnAutoConfirmCallback? onAutoConfirm,
   ) async {
     while (_capturing) {
       final cycleSw = Stopwatch()..start();
-      await _fireCapture(captureFrame, cleanupFile, onDartDetected);
+      await _fireCapture(captureFrame, cleanupFile, onDartDetected, onAutoConfirm);
 
       // Enforce minimum interval to avoid hammering the camera API
       final remaining = _minCycleInterval.inMilliseconds - cycleSw.elapsedMilliseconds;
@@ -223,6 +235,7 @@ class AutoScoringService extends ChangeNotifier {
     CaptureFrameCallback captureFrame,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
+    OnAutoConfirmCallback? onAutoConfirm,
   ) async {
     final seq = ++_captureSeq;
     String? imagePath;
@@ -249,6 +262,24 @@ class AutoScoringService extends ChangeNotifier {
 
       // Update zoom hint
       _updateZoomHint(result);
+
+      // Auto-confirm: if all 3 darts were emitted and we see 4 calibration
+      // points with 0 darts, the user has removed their darts from the board.
+      // After 2 consecutive such frames, auto-confirm the round.
+      final allDartsEmitted = _emittedSlots.every((e) => e);
+      if (allDartsEmitted && dartCount == 0 && result.calibrationPoints.length >= 4) {
+        _consecutiveEmptyBoardCount++;
+        print('[AutoScoring] Empty board detected ($_consecutiveEmptyBoardCount/$_autoConfirmThreshold)');
+        if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
+          _consecutiveEmptyBoardCount = 0;
+          _prevDartCount = 0;
+          await _maybeCleanup(imagePath, cleanupFile);
+          onAutoConfirm?.call();
+          return;
+        }
+      } else {
+        _consecutiveEmptyBoardCount = 0;
+      }
 
       // Detect dart removal (darts were on board, now 0)
       if (_prevDartCount > 0 && dartCount == 0) {

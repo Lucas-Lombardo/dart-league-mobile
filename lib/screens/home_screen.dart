@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
 import '../providers/friends_provider.dart';
+import '../main.dart' show routeObserver;
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
@@ -20,15 +21,50 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with RouteAware {
   int _currentIndex = 2; // Start at Play (now index 2)
+  Key _playScreenKey = UniqueKey();
 
-  final List<Widget> _screens = const [
-    StatsScreen(),
-    TournamentScreen(),
-    PlayScreen(),
-    FriendsScreen(),
-    LeaderboardScreen(),
+  late final List<Widget> _fixedScreens;
+
+  @override
+  void initState() {
+    super.initState();
+    _fixedScreens = const [
+      StatsScreen(),
+      TournamentScreen(),
+      FriendsScreen(),
+      LeaderboardScreen(),
+    ];
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // A route was popped and HomeScreen is now visible again — refresh PlayScreen
+    setState(() {
+      _playScreenKey = UniqueKey();
+    });
+    context.read<AuthProvider>().checkAuthStatus();
+  }
+
+  List<Widget> get _screens => [
+    _fixedScreens[0],
+    _fixedScreens[1],
+    PlayScreen(key: _playScreenKey),
+    _fixedScreens[2],
+    _fixedScreens[3],
   ];
 
   @override
