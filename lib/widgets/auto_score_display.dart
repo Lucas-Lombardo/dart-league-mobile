@@ -7,6 +7,7 @@ import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../utils/score_converter.dart';
 import 'dartboard_edit_modal.dart';
+import 'tv_scoreboard.dart';
 
 /// Full-screen auto-scoring layout for when it's the player's turn.
 /// Camera feed on top (~55%), dart indicators + score panel below, confirm button.
@@ -77,16 +78,19 @@ class AutoScoreGameView extends StatelessWidget {
         final noDartsDetected = slots.every((s) => s == null);
         final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
+        final safeTop = MediaQuery.of(context).padding.top;
+
         return Column(
           children: [
             // ── Camera feed ──
             Expanded(
-              flex: 60,
+              flex: 55,
               child: Stack(
                 children: [
                   // Camera preview — Agora (ranked/tournament) → local (placement) → off
                   Container(
                     width: double.infinity,
+                    padding: EdgeInsets.only(top: safeTop),
                     color: Colors.black,
                     child: agoraEngine != null
                         ? AgoraVideoView(
@@ -106,10 +110,10 @@ class AutoScoreGameView extends StatelessWidget {
                               ),
                   ),
 
-                  // Zoom hint overlay (top)
+                  // Zoom hint overlay (top, below status bar)
                   if (hint != null)
                     Positioned(
-                      top: 0,
+                      top: MediaQuery.of(context).padding.top + 4,
                       left: 0,
                       right: 0,
                       child: Container(
@@ -177,81 +181,6 @@ class AutoScoreGameView extends StatelessWidget {
                       ),
                     ),
 
-                  // Mini opponent camera — top-right overlay
-                  if (agoraEngine != null && remoteUid != null)
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 200, maxWidth: 120),
-                        child: Container(
-                          width: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white24, width: 1.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.4),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                child: Text(
-                                  opponentName.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Container(
-                                width: double.infinity,
-                                height: 80,
-                                color: Colors.black,
-                                child: AgoraVideoView(
-                                  controller: VideoViewController.remote(
-                                    rtcEngine: agoraEngine!,
-                                    canvas: VideoCanvas(uid: remoteUid!),
-                                    connection: RtcConnection(channelId: agoraChannelName ?? ''),
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'SCORE',
-                                      style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold),
-                                    ),
-                                    Text(
-                                      '$opponentScore',
-                                      style: const TextStyle(
-                                        color: AppTheme.primary,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
                   // Camera controls overlay (bottom-right)
                   if (agoraEngine != null || localCameraPreview != null)
                     Positioned(
@@ -290,16 +219,18 @@ class AutoScoreGameView extends StatelessWidget {
 
             // ── Scoring panel ──
             Expanded(
-              flex: 40,
+              flex: 45,
               child: LayoutBuilder(
-                builder: (context, panelConstraints) {
-                  final panelH = panelConstraints.maxHeight;
+                builder: (context, constraints) {
                   final safeBottom = MediaQuery.of(context).padding.bottom;
-                  // Button area: top padding 8 + button 52 + bottom padding 12 + safe area
-                  final buttonSectionH = 72.0 + safeBottom;
-                  // Indicators: 38% of remaining space — min bumped to 115 to fit circle+label+hint
-                  final indicatorSectionH = ((panelH - buttonSectionH) * 0.40).clamp(115.0, 135.0);
-                  // Parse checkout hint into per-dart parts (e.g. "T20 T13 D4" → ["T20","T13","D4"])
+                  final screenH = MediaQuery.of(context).size.height;
+                  final isSmallScreen = screenH < 700;
+                  final availableH = constraints.maxHeight;
+                  // Reserve space for button area
+                  final buttonH = 48.0 + 14.0 + safeBottom;
+                  final contentH = availableH - buttonH;
+                  // Adaptive indicator height based on screen size
+                  final indicatorH = (contentH * 0.50).clamp(60.0, 100.0);
                   final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
                   final hintParts = hintStr?.split(' ') ?? [];
 
@@ -307,16 +238,16 @@ class AutoScoreGameView extends StatelessWidget {
                     color: AppTheme.background,
                     child: Column(
                       children: [
-                        // 3 dart indicators — height-constrained so they never push button off screen
+                        // 3 dart indicators
                         SizedBox(
-                          height: indicatorSectionH,
+                          height: indicatorH,
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                            padding: EdgeInsets.fromLTRB(12, isSmallScreen ? 2 : 4, 12, 0),
                             child: Row(
                               children: List.generate(3, (i) {
                                 return Expanded(
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
                                     child: _DartIndicator(
                                       index: i,
                                       score: slots[i],
@@ -334,77 +265,65 @@ class AutoScoreGameView extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(height: 4),
-
-                        // Dashed separator
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: CustomPaint(
-                            size: const Size(double.infinity, 1),
-                            painter: _DashedLinePainter(),
+                        // Turn total
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: turnTotal > 0
+                                  ? AppTheme.primary.withValues(alpha: 0.5)
+                                  : AppTheme.surfaceLight.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'TURN: ',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '$turnTotal',
+                                style: TextStyle(
+                                  color: turnTotal > 0 ? AppTheme.primary : Colors.white30,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
 
-                        // Score section — takes remaining space; FittedBox scales down on small phones
+                        // TV Scoreboard — fills remaining space
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '$myScore',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 52,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'monospace',
-                                    height: 1,
-                                  ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.center,
+                              child: SizedBox(
+                                width: constraints.maxWidth - 24,
+                                child: TvScoreboard(
+                                  myScore: myScore,
+                                  opponentScore: opponentScore,
+                                  myName: myName,
+                                  opponentName: opponentName,
+                                  isMyTurn: true,
                                 ),
-                                const SizedBox(height: 6),
-                                // Turn total box
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: turnTotal > 0
-                                          ? AppTheme.primary.withValues(alpha: 0.5)
-                                          : AppTheme.surfaceLight.withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'TURN: ',
-                                        style: TextStyle(
-                                          color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        '$turnTotal',
-                                        style: TextStyle(
-                                          color: turnTotal > 0 ? AppTheme.primary : Colors.white30,
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
 
-                        // Button — bottom padding includes safe area
+                        // Button
                         Container(
-                          padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + safeBottom),
+                          padding: EdgeInsets.fromLTRB(12, 6, 12, 8 + safeBottom),
                           color: AppTheme.surface,
                           child: noDartsDetected && onEndRoundEarly != null
                               ? SizedBox(
@@ -430,7 +349,7 @@ class AutoScoreGameView extends StatelessWidget {
                                         Text(
                                           'END ROUND EARLY',
                                           style: TextStyle(
-                                            fontSize: 16,
+                                            fontSize: 14,
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 1,
                                           ),
@@ -462,7 +381,7 @@ class AutoScoreGameView extends StatelessWidget {
                                         Text(
                                           pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
                                           style: const TextStyle(
-                                            fontSize: 16,
+                                            fontSize: 15,
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 1,
                                           ),
@@ -488,15 +407,23 @@ class AutoScoreGameView extends StatelessWidget {
 
   Future<void> _editDart(BuildContext context, int index, DartScore? current) async {
     HapticService.lightImpact();
+    // Pause AI capture while the edit modal is open so detections
+    // don't overwrite the manual correction.
+    scoringService.stopCapture();
     final result = await showDartboardEditModal(
       context,
       dartIndex: index,
       currentScore: current,
     );
     if (result != null) {
-      scoringService.overrideDart(index, result);
+      // Order matters: onEditDart clears all slots on the server then
+      // re-emits the edited dart.  overrideDart must come AFTER so the
+      // local display isn't wiped by the clear.
       onEditDart?.call(index, result);
+      scoringService.overrideDart(index, result);
     }
+    // Capture restarts automatically via handleSharedStateChange
+    // when the game state updates after editDartThrow.
   }
 }
 
@@ -528,10 +455,10 @@ class _DartIndicator extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Always reserve the same space so all 3 circles are identical size
-          const reservedForText = 44.0;
-          final widthBased = constraints.maxWidth * 0.85;
+          const reservedForText = 36.0;
+          final widthBased = constraints.maxWidth * 0.82;
           final heightBased = constraints.maxHeight - reservedForText;
-          final size = min(widthBased, heightBased).clamp(52.0, 96.0);
+          final size = min(widthBased, heightBased).clamp(44.0, 84.0);
           final labelSize = (size * 0.32).clamp(14.0, 26.0);
           final subSize = (size * 0.20).clamp(10.0, 15.0);
           final iconSize = (size * 0.36).clamp(18.0, 28.0);
@@ -622,22 +549,22 @@ class _DartIndicator extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 hasScore ? 'EDIT' : 'Dart ${index + 1}',
                 style: TextStyle(
                   color: hasScore
                       ? AppTheme.primary.withValues(alpha: 0.7)
                       : AppTheme.textSecondary.withValues(alpha: 0.5),
-                  fontSize: (size * 0.16).clamp(9.0, 13.0),
+                  fontSize: (size * 0.16).clamp(9.0, 12.0),
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 1),
               // Always same height so all circles stay the same size
               SizedBox(
-                height: (size * 0.22).clamp(12.0, 18.0) + 2,
+                height: (size * 0.20).clamp(10.0, 16.0) + 2,
                 child: suggestion.isNotEmpty
                     ? Text(
                         suggestion,
@@ -753,24 +680,3 @@ class _ZoomButton extends StatelessWidget {
   }
 }
 
-// ── Dashed line painter ──
-
-class _DashedLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppTheme.surfaceLight.withValues(alpha: 0.4)
-      ..strokeWidth = 1;
-
-    const dashWidth = 6.0;
-    const dashSpace = 4.0;
-    double x = 0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
-      x += dashWidth + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

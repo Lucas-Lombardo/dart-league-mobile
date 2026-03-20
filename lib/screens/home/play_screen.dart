@@ -17,7 +17,8 @@ import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
 
 class PlayScreen extends StatefulWidget {
-  const PlayScreen({super.key});
+  final ValueNotifier<int>? refreshNotifier;
+  const PlayScreen({super.key, this.refreshNotifier});
 
   @override
   State<PlayScreen> createState() => _PlayScreenState();
@@ -50,6 +51,15 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       ),
     );
     
+    _loadRecentMatches();
+    _checkActiveMatch();
+    _checkPendingTournamentMatch();
+    _checkActiveTournamentStatus();
+
+    widget.refreshNotifier?.addListener(_onRefresh);
+  }
+
+  void _onRefresh() {
     _loadRecentMatches();
     _checkActiveMatch();
     _checkPendingTournamentMatch();
@@ -160,6 +170,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    widget.refreshNotifier?.removeListener(_onRefresh);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();

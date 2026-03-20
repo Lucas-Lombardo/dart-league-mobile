@@ -23,20 +23,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with RouteAware {
   int _currentIndex = 2; // Start at Play (now index 2)
-  Key _playScreenKey = UniqueKey();
+  final _refreshNotifier = ValueNotifier<int>(0);
 
-  late final List<Widget> _fixedScreens;
-
-  @override
-  void initState() {
-    super.initState();
-    _fixedScreens = const [
-      StatsScreen(),
-      TournamentScreen(),
-      FriendsScreen(),
-      LeaderboardScreen(),
-    ];
-  }
+  final List<Widget> _fixedScreens = const [
+    StatsScreen(),
+    TournamentScreen(),
+    FriendsScreen(),
+    LeaderboardScreen(),
+  ];
 
   @override
   void didChangeDependencies() {
@@ -47,22 +41,24 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    _refreshNotifier.dispose();
     super.dispose();
   }
 
   @override
   void didPopNext() {
-    // A route was popped and HomeScreen is now visible again — refresh PlayScreen
-    setState(() {
-      _playScreenKey = UniqueKey();
+    // A route was popped and HomeScreen is now visible again — refresh after frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _refreshNotifier.value++;
+      context.read<AuthProvider>().checkAuthStatus();
     });
-    context.read<AuthProvider>().checkAuthStatus();
   }
 
   List<Widget> get _screens => [
     _fixedScreens[0],
     _fixedScreens[1],
-    PlayScreen(key: _playScreenKey),
+    PlayScreen(refreshNotifier: _refreshNotifier),
     _fixedScreens[2],
     _fixedScreens[3],
   ];

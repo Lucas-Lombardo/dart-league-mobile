@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../providers/game_provider.dart';
@@ -17,6 +18,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/interactive_dartboard.dart';
+import '../../widgets/tv_scoreboard.dart';
 import '../../l10n/app_localizations.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
@@ -99,9 +101,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try {
       final game = readGame();
       gameStarted = game.gameStarted;
+      final wasGameEnded = gameEnded;
       gameEnded = game.gameEnded;
-      if (game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer) {
-        DartSoundService.playYourTurn();
+      if (game.gameEnded && !wasGameEnded && game.winnerId != null) {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        if (game.winnerId == auth.currentUser?.id) {
+          DartSoundService.playWin();
+        } else {
+          DartSoundService.playLose();
+        }
+      }
+      if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
+        if (game.isMyTurn) {
+          DartSoundService.playYourTurn();
+        } else {
+          DartSoundService.playTurnFinished();
+        }
       }
       if (autoScoringService != null && autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null) {
         final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
@@ -126,7 +141,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !context.mounted) return;
           if (game.pendingType == 'win' && !winDialogShowing) { showPendingWinDialog(game); }
-          else if (game.pendingType == 'bust' && !bustDialogShowing) { showPendingBustDialog(game); }
+          else if (game.pendingType == 'bust' && !bustDialogShowing) { DartSoundService.playBust(); showPendingBustDialog(game); }
         });
       }
       if (game.needsAgoraReconnect) { game.clearAgoraReconnectFlag(); reconnectAgora(game); }
@@ -428,7 +443,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
-  Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = '', bool showMyScore = true}) {
+  Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -454,26 +469,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               ),
             // ── Red border ──
             Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.error, width: 3), borderRadius: BorderRadius.circular(16))),
-            // ── Opponent score — top left ──
-            Positioned(top: 12, left: 12, child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.error, width: 2)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-                Text('${game.opponentScore}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
-              ]),
-            )),
-            // ── Your score — top right (hidden when the caller shows it in a camera panel) ──
-            if (showMyScore)
-            Positioned(top: 12, right: 12, child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.success, width: 2),
-              ),
-              child: Text('${game.myScore}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-            )),
             // ── Controls + dart scores — bottom overlay ──
             Positioned(
               bottom: 0, left: 0, right: 0,
@@ -655,11 +650,24 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Widget buildOpponentWaitingPanel(dynamic game) {
+    final myHint = (game.myScore >= 2 && game.myScore <= 170) ? checkoutHint(game.myScore) : null;
     return Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2.5)),
       const SizedBox(height: 12),
       Text("OPPONENT'S TURN", style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
       const SizedBox(height: 4), const Text("Please wait...", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+      if (myHint != null) ...[
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(color: AppTheme.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.success.withValues(alpha: 0.4))),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.gps_fixed, color: AppTheme.success, size: 18), const SizedBox(width: 8),
+            Text('Finish: $myHint', style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.bold)),
+          ]),
+        ),
+      ],
       const SizedBox(height: 12),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -676,44 +684,43 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Widget buildScoreInputPanel(dynamic game) {
     if (!game.isMyTurn) return buildOpponentWaitingPanel(game);
     return Column(children: [
-      Expanded(child: Column(children: [
-        const Spacer(flex: 1),
-        Expanded(flex: 3, child: Container(
-          color: AppTheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: InteractiveDartboard(onDartThrow: (score, multiplier) {
-            if (editingDartIndex != null && editingDartIndex! < game.currentRoundThrows.length) {
-              game.editDartThrow(editingDartIndex!, score, multiplier);
-              setState(() => editingDartIndex = null);
-            } else { game.throwDart(baseScore: score, multiplier: multiplier); }
-          }),
-        )),
-        if (game.isMyTurn)
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: AppTheme.surface,
-            child: SizedBox(
-              width: double.infinity, height: 64,
-              child: ElevatedButton(
-                onPressed: () { HapticService.heavyImpact(); submitAutoScoredDarts(game); },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: game.dartsThrown > 0 ? AppTheme.primary : AppTheme.surface,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  side: BorderSide(color: game.dartsThrown > 0 ? AppTheme.primary : AppTheme.surfaceLight, width: 2),
-                ),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(game.dartsThrown == 3 ? Icons.check_circle : game.dartsThrown == 0 ? Icons.sports_esports_outlined : Icons.send, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    game.dartsThrown == 3 ? 'CONFIRM ROUND' : game.dartsThrown == 0 ? 'CONFIRM ROUND (0/3)' : 'END ROUND EARLY (${game.dartsThrown}/3)',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
-                  ),
-                ]),
+      Expanded(child: Container(
+        color: AppTheme.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: InteractiveDartboard(onDartThrow: (score, multiplier) {
+          if (editingDartIndex != null && editingDartIndex! < game.currentRoundThrows.length) {
+            game.editDartThrow(editingDartIndex!, score, multiplier);
+            setState(() => editingDartIndex = null);
+          } else { game.throwDart(baseScore: score, multiplier: multiplier); }
+        }),
+      )),
+      Container(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        color: AppTheme.surface,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            width: double.infinity, height: 56,
+            child: ElevatedButton(
+              onPressed: () { HapticService.heavyImpact(); submitAutoScoredDarts(game); },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: game.dartsThrown > 0 ? AppTheme.primary : AppTheme.surface,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                side: BorderSide(color: game.dartsThrown > 0 ? AppTheme.primary : AppTheme.surfaceLight, width: 2),
               ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(game.dartsThrown == 3 ? Icons.check_circle : game.dartsThrown == 0 ? Icons.sports_esports_outlined : Icons.send, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  game.dartsThrown == 3 ? 'CONFIRM ROUND' : game.dartsThrown == 0 ? 'CONFIRM ROUND (0/3)' : 'END ROUND EARLY (${game.dartsThrown}/3)',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+                ),
+              ]),
             ),
           ),
-      ])),
+        ),
+      ),
     ]);
   }
 
@@ -731,11 +738,65 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               Expanded(child: Text('${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}', style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600))),
             ]),
           ),
-        if (!game.isMyTurn)
-          Container(height: 240, padding: const EdgeInsets.all(12), child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? '')),
-        if (agoraEngine != null && !game.isMyTurn) buildMediaControls(),
+        // TV Scoreboard — always visible
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: TvScoreboard(
+            myScore: game.myScore,
+            opponentScore: game.opponentScore,
+            myName: auth.currentUser?.username ?? 'You',
+            opponentName: opponentUsername,
+            isMyTurn: game.isMyTurn,
+          ),
+        ),
+        // Dart throws indicator (during my turn)
         if (game.isMyTurn)
-          Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: buildMyTurnOverlay(game)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Row(
+              children: [
+                ...List.generate(3, (i) {
+                  final throws = game.currentRoundThrows;
+                  final hasThrow = i < throws.length;
+                  final isNext = i == throws.length;
+                  final isEditing = editingDartIndex == i;
+                  return GestureDetector(
+                    onTap: hasThrow ? () { HapticService.lightImpact(); setState(() => editingDartIndex = isEditing ? null : i); } : null,
+                    child: Container(
+                      width: 52, height: 40, margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: isEditing ? AppTheme.error : hasThrow ? AppTheme.primary : isNext ? Colors.white24 : Colors.transparent, width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1)),
+                      ),
+                      child: Center(child: hasThrow
+                        ? Text(throws[i], style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold))
+                        : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 16)),
+                    ),
+                  );
+                }),
+                const Spacer(),
+                if (editingDartIndex != null)
+                  GestureDetector(
+                    onTap: () => setState(() => editingDartIndex = null),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.edit, color: AppTheme.error, size: 14),
+                        const SizedBox(width: 4),
+                        Text('Dart ${(editingDartIndex ?? 0) + 1}', style: const TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.close, color: AppTheme.error, size: 14),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        if (!game.isMyTurn)
+          Container(height: 200, padding: const EdgeInsets.all(12), child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? '')),
+        if (agoraEngine != null && !game.isMyTurn) buildMediaControls(),
         Expanded(flex: 6, child: Container(
           decoration: const BoxDecoration(
             color: AppTheme.surface,
@@ -756,12 +817,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   isAudioMuted: isAudioMuted, onToggleAudio: toggleAudio, onSwitchCamera: switchCamera,
                   onZoomIn: zoomIn, onZoomOut: zoomOut, currentZoom: cameraZoom, minZoom: cameraMinZoom, maxZoom: cameraMaxZoom,
                   onEditDart: (index, dartScore) {
-                    final g = readGame();
-                    // Undo all darts first to avoid negative scores on bust
-                    g.undoAllDarts();
-                    for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
-                    // Re-throw only the edited dart
-                    g.editDartThrow(index, dartScore.segment == 0 && dartScore.ring != 'miss' ? 25 : dartScore.segment, dartScoreToMultiplier(dartScore));
+                    // editDartThrow sends edit_dart socket event for the specific index
+                    // No need to undo/re-throw other darts
+                    final (base, mul) = dartScoreToBackend(dartScore);
+                    readGame().editDartThrow(index, base, mul);
                   },
                   onRemoveDart: (index) { autoScoringService?.removeDart(index); readGame().undoLastDart(); },
                   onToggleAi: toggleAiScoring, aiEnabled: !aiManuallyDisabled,

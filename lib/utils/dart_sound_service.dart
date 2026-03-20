@@ -1,5 +1,4 @@
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/services.dart';
 import '../providers/game_provider.dart';
 
 class DartSoundService {
@@ -12,20 +11,36 @@ class DartSoundService {
     _initialized = true;
   }
 
-  static Future<void> playDartHit(int baseScore, ScoreMultiplier multiplier) async {
+  static Future<void> _play(String asset) async {
     if (!_initialized) await init();
-
     try {
-      await _player.play(AssetSource('sounds/dart_hit.mp3'));
-    } catch (_) {
-      // Silently fail if sound can't play
-    }
+      await _player.stop();
+      await _player.play(AssetSource(asset));
+    } catch (_) {}
+  }
+
+  static Future<void> playDartHit(int baseScore, ScoreMultiplier multiplier) async {
+    await _play('sounds/dart_hit.mp3');
   }
 
   static Future<void> playYourTurn() async {
-    try {
-      await SystemSound.play(SystemSoundType.click);
-    } catch (_) {}
+    await _play('sounds/your_turn.wav');
+  }
+
+  static Future<void> playTurnFinished() async {
+    await _play('sounds/turn_finished.wav');
+  }
+
+  static Future<void> playBust() async {
+    await _play('sounds/bust.wav');
+  }
+
+  static Future<void> playWin() async {
+    await _play('sounds/win.wav');
+  }
+
+  static Future<void> playLose() async {
+    await _play('sounds/lose.wav');
   }
 
   static void dispose() {
