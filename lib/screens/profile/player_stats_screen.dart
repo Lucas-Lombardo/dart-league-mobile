@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/user_service.dart';
 import '../../utils/app_theme.dart';
 
@@ -75,13 +76,13 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadStats,
-                        child: const Text('Retry'),
+                        child: Text(AppLocalizations.of(context).retry),
                       ),
                     ],
                   ),
                 )
               : _stats == null
-                  ? const Center(child: Text('No statistics available'))
+                  ? Center(child: Text(AppLocalizations.of(context).noStatisticsAvailable))
                   : RefreshIndicator(
                       onRefresh: _loadStats,
                       color: AppTheme.primary,
@@ -92,7 +93,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'Performance Overview',
+                              AppLocalizations.of(context).performanceOverview,
                               style: AppTheme.titleLarge,
                             ),
                             const SizedBox(height: 16),
@@ -105,25 +106,25 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                               childAspectRatio: 1.1,
                               children: [
                                 _buildStatCard(
-                                  'Win Rate',
+                                  AppLocalizations.of(context).winRate,
                                   '${_stats!.winRate.toStringAsFixed(1)}%',
                                   Icons.trending_up,
                                   AppTheme.success,
                                 ),
                                 _buildStatCard(
-                                  'Total Matches',
+                                  AppLocalizations.of(context).totalMatches,
                                   _stats!.totalMatches.toString(),
                                   Icons.sports_esports,
                                   AppTheme.primary,
                                 ),
                                 _buildStatCard(
-                                  'Avg Score',
+                                  AppLocalizations.of(context).avgScore,
                                   _stats!.averageScore.toStringAsFixed(1),
                                   Icons.calculate,
                                   AppTheme.accent,
                                 ),
                                 _buildStatCard(
-                                  '180s Count',
+                                  AppLocalizations.of(context).count180s,
                                   _stats!.count180s.toString(),
                                   Icons.emoji_events,
                                   const Color(0xFFFFD700),
@@ -145,7 +146,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         Text(
-                                          'WINS',
+                                          AppLocalizations.of(context).wins.toUpperCase(),
                                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                                         ),
                                         const SizedBox(height: 4),
@@ -170,7 +171,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         Text(
-                                          'LOSSES',
+                                          AppLocalizations.of(context).losses.toUpperCase(),
                                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                                         ),
                                         const SizedBox(height: 4),
@@ -195,7 +196,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         Text(
-                                          'STREAK',
+                                          AppLocalizations.of(context).streak,
                                           style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
                                         ),
                                         const SizedBox(height: 4),

@@ -89,8 +89,8 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
         setState(() => _aiModelLoaded = true);
         _startAiCapture();
       }
-    } catch (_) {
-      // AI not available — queue is still unlocked
+    } catch (e) {
+      debugPrint('[CameraSetup] AI detection init failed: $e');
     }
   }
 
@@ -124,9 +124,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     _aiAnalyzing = true;
     try {
       final xFile = await _cameraController!.takePicture();
-      if (!mounted) { try { await File(xFile.path).delete(); } catch (_) {} return; }
+      if (!mounted) { try { await File(xFile.path).delete(); } catch (e) { debugPrint('[CameraSetup] File cleanup failed: $e'); } return; }
       final result = await _detectionIsolate!.analyze(xFile.path);
-      try { await File(xFile.path).delete(); } catch (_) {}
+      try { await File(xFile.path).delete(); } catch (e) { debugPrint('[CameraSetup] File cleanup failed: $e'); }
       if (!mounted) return;
       final calibs = result.calibrationPoints;
       String? hint;
@@ -158,7 +158,8 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
         _aiHint = hint;
         _boardDetected = detected;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[CameraSetup] AI capture error: $e');
     } finally {
       _aiAnalyzing = false;
     }
@@ -252,14 +253,15 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
       try {
         await _cameraController!.setFlashMode(FlashMode.off);
       } catch (e) {
-        print('[Camera] Flash mode not supported: $e');
+        debugPrint('[Camera] Flash mode not supported: $e');
       }
 
       try {
         _minZoom = await _cameraController!.getMinZoomLevel();
         _maxZoom = await _cameraController!.getMaxZoomLevel();
         _currentZoom = _minZoom;
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[CameraSetup] Zoom config failed: $e');
         _minZoom = 1.0;
         _maxZoom = 1.0;
         _currentZoom = 1.0;

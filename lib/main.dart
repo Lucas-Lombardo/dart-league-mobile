@@ -39,7 +39,7 @@ void main() async {
   
   // Initialize Stripe (skip on web - not supported)
   if (!kIsWeb) {
-    Stripe.publishableKey = 'pk_test_51T1nHARtbfZQ2kA2avIkK0pLCQMnzU7JESQRCt4SGB1wCfJqMjjv8GZC1iUz5DdJtYtxhCt75XZuy2KfdFjRhZ5q00e8zVgNFX';
+    Stripe.publishableKey = const String.fromEnvironment('STRIPE_PUBLISHABLE_KEY', defaultValue: 'pk_test_51T1nHARtbfZQ2kA2avIkK0pLCQMnzU7JESQRCt4SGB1wCfJqMjjv8GZC1iUz5DdJtYtxhCt75XZuy2KfdFjRhZ5q00e8zVgNFX');
     Stripe.urlScheme = 'dartrivals';
     await Stripe.instance.applySettings();
   }

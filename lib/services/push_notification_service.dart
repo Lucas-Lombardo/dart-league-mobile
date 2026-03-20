@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
@@ -14,6 +15,9 @@ class PushNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static String? _fcmToken;
   static bool _initialized = false;
+  static StreamSubscription<RemoteMessage>? _onMessageSub;
+  static StreamSubscription<RemoteMessage>? _onMessageOpenedAppSub;
+  static StreamSubscription<String>? _onTokenRefreshSub;
 
   static String? get fcmToken => _fcmToken;
 
@@ -44,12 +48,14 @@ class PushNotificationService {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
       // Handle foreground messages
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _onMessageSub?.cancel();
+      _onMessageSub = FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('🔔 Foreground message: ${message.notification?.title} - ${message.notification?.body}');
       });
 
       // Handle notification tap when app is in background
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _onMessageOpenedAppSub?.cancel();
+      _onMessageOpenedAppSub = FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('🔔 Notification tapped: ${message.data}');
       });
 
@@ -58,7 +64,8 @@ class PushNotificationService {
       debugPrint('🔔 FCM Token: $_fcmToken');
 
       // Listen for token refresh
-      _messaging.onTokenRefresh.listen((newToken) {
+      _onTokenRefreshSub?.cancel();
+      _onTokenRefreshSub = _messaging.onTokenRefresh.listen((newToken) {
         debugPrint('🔔 FCM Token refreshed');
         _fcmToken = newToken;
         _registerTokenWithBackend(newToken);
@@ -98,6 +105,16 @@ class PushNotificationService {
     } catch (e) {
       debugPrint('❌ Failed to register FCM token: $e');
     }
+  }
+
+  static void dispose() {
+    _onMessageSub?.cancel();
+    _onMessageSub = null;
+    _onMessageOpenedAppSub?.cancel();
+    _onMessageOpenedAppSub = null;
+    _onTokenRefreshSub?.cancel();
+    _onTokenRefreshSub = null;
+    _initialized = false;
   }
 
   static Future<void> unregisterToken() async {

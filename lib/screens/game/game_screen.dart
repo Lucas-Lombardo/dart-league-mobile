@@ -49,8 +49,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   String? get matchIdForLeave => _storedMatchId;
 
   @override
+  @override
   String get leaveWarningText =>
-      'If you leave now, you will forfeit the match and lose ELO points.';
+      AppLocalizations.of(context).forfeitMatchWarning;
 
   @override
   Widget? buildExtraHeader(dynamic game, AuthProvider auth) => null;
@@ -112,7 +113,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     if (!_didForfeit) leaveMatch();
     try {
       context.read<GameProvider>().removeListener(handleSharedStateChange);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[GameScreen] Error removing listener: $e');
+    }
   }
   
 
@@ -124,17 +127,18 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     if (game.matchId == null || auth.currentUser?.id == null) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      messenger.showSnackBar(const SnackBar(content: Text('Accepting match result...'), duration: Duration(seconds: 1)));
+      final l10n = AppLocalizations.of(context);
+      messenger.showSnackBar(SnackBar(content: Text(l10n.acceptingMatchResult), duration: const Duration(seconds: 1)));
       final result = await MatchService.acceptMatchResult(game.matchId!, auth.currentUser!.id);
       if (!mounted) return;
       await auth.checkAuthStatus();
-      final message = result['message'] as String? ?? 'Match result accepted';
+      final message = result['message'] as String? ?? l10n.matchResultAccepted;
       messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
       game.reset();
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
+      messenger.showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context).error}: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
     }
   }
 
@@ -182,8 +186,8 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
           children: [
             Text(
               isWinner
-                  ? 'Your opponent has left the game.\nYou win by forfeit!'
-                  : 'You have left the game.\nMatch forfeited.',
+                  ? AppLocalizations.of(context).opponentLeftForfeit
+                  : AppLocalizations.of(context).youLeftForfeited,
               style: AppTheme.bodyLarge.copyWith(fontSize: 16),
               textAlign: TextAlign.center,
             ),
@@ -196,7 +200,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'ELO: ${eloChange >= 0 ? '+' : ''}$eloChange',
+                  '${AppLocalizations.of(context).eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
                   style: const TextStyle(
                     color: AppTheme.success,
                     fontSize: 18,

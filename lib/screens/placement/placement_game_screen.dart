@@ -129,7 +129,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         final clampedZoom = savedZoom.clamp(minZoom, maxZoom);
         await _cameraController!.setZoomLevel(clampedZoom);
         if (mounted) setState(() { _cameraMinZoom = minZoom; _cameraMaxZoom = maxZoom; _cameraZoom = clampedZoom; });
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[PlacementGame] Zoom config failed: $e');
+      }
 
       _autoScoringService = AutoScoringService();
       await _autoScoringService!.loadModel();

@@ -80,7 +80,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           const Duration(seconds: 30),
           onTimeout: () => debugPrint('[Init] init timed out after 30s'),
         );
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[BaseGameScreen] Init error: $e');
+      }
       if (mounted) setState(() => isLoading = false);
     });
   }

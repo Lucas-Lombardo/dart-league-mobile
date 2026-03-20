@@ -285,4 +285,10 @@ class TournamentProvider extends ChangeNotifier {
     _currentBracket = [];
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    clearSocketListeners();
+    super.dispose();
+  }
 }

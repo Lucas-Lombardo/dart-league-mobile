@@ -132,7 +132,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        matchmaking.opponentUsername ?? 'Unknown Player',
+                        matchmaking.opponentUsername ?? AppLocalizations.of(context).unknownPlayer,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
@@ -143,7 +143,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ELO: ${matchmaking.opponentElo ?? '???'}',
+                        AppLocalizations.of(context).eloValue.replaceAll('{value}', '${matchmaking.opponentElo ?? '???'}'),
                         style: const TextStyle(
                           color: AppTheme.primary,
                           fontSize: 18,
@@ -214,15 +214,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             (route) => route.isFirst,
           );
           
-        } catch (_) {
-          // Navigation error
+        } catch (e) {
+          debugPrint('[Matchmaking] Navigation error: $e');
         }
         return;
       }
-      
+
       // If we've tried for 5 seconds, give up and navigate anyway
       if (attempts >= maxAttempts) {
-        
+
         try {
           // Dismiss the dialog first
           Navigator.of(context).pop();
@@ -240,8 +240,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
             ),
             (route) => route.isFirst,
           );
-        } catch (_) {
-          // Navigation error
+        } catch (e) {
+          debugPrint('[Matchmaking] Navigation error: $e');
         }
         return;
       }

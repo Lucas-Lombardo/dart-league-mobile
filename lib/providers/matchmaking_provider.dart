@@ -76,14 +76,14 @@ class MatchmakingProvider with ChangeNotifier {
       // Ensure game listeners are set up now that socket is connected
       _gameProvider?.ensureListenersSetup();
 
-      // Setup reconnection handler to re-register listeners
+      _setupSocketListeners();
+
+      // Setup reconnection handler to re-register listeners after reconnect
       SocketService.setReconnectHandler(() {
         _setupSocketListeners();
         _gameProvider?.ensureListenersSetup();
         _gameProvider?.reconnectToMatch();
       });
-
-      _setupSocketListeners();
 
       final response = await MatchmakingService.joinQueue(userId);
 
@@ -149,7 +149,9 @@ class MatchmakingProvider with ChangeNotifier {
       if (!_isSearching || _matchFound || _currentUserId == null) return;
       try {
         final result = await MatchService.getActiveMatch(_currentUserId!);
-        if (result['active'] == true && !_matchFound && _isSearching) {
+        // Re-check state after await to avoid acting on stale conditions
+        if (!_isSearching || _matchFound || _currentUserId == null) return;
+        if (result['active'] == true) {
           debugPrint('QUEUE DEBUG: active match detected via poll - matchId=${result['matchId']}');
           _handleMatchFound({
             'matchId': result['matchId'],

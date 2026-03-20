@@ -125,9 +125,9 @@ class SocketService {
     final handler = _handlers.remove(event);
     if (handler != null) {
       _socket!.off(event, handler);
-    } else {
-      _socket!.off(event);
     }
+    // If no tracked handler exists, do nothing — avoids removing
+    // handlers registered by other sources for the same event.
   }
 
   static Future<void> ensureConnected() async {

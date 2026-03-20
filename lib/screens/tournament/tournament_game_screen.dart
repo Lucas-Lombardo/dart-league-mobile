@@ -54,8 +54,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   String? get matchIdForLeave => _storedMatchId;
 
   @override
+  @override
   String get leaveWarningText =>
-      'If you leave now, you will forfeit the tournament match and be eliminated.';
+      AppLocalizations.of(context).forfeitTournamentWarning;
 
   @override
   Widget buildAppBarTitle() => Row(children: [
@@ -125,7 +126,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   @override
   void disposeScreenSpecific() {
     leaveMatch();
-    try { context.read<TournamentGameProvider>().removeListener(handleSharedStateChange); } catch (_) {}
+    try { context.read<TournamentGameProvider>().removeListener(handleSharedStateChange); } catch (e) { debugPrint('[TournamentGame] Error removing listener: $e'); }
   }
 
 
@@ -182,8 +183,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
 
     if (game.currentGameMatchId == null || auth.currentUser?.id == null) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Unable to accept result: Missing data'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).unableToAcceptResult),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -237,7 +238,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             ),
             const SizedBox(width: 12),
             Text(
-              isWinner ? 'YOU ADVANCE!' : 'ELIMINATED',
+              isWinner ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
               style: AppTheme.titleLarge.copyWith(
                 color: isWinner ? AppTheme.success : AppTheme.error,
                 fontWeight: FontWeight.bold,
@@ -247,8 +248,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
         ),
         content: Text(
           isWinner
-              ? 'Your opponent has left. You win by forfeit and advance!'
-              : 'You have left the game. You are eliminated from the tournament.',
+              ? AppLocalizations.of(context).opponentLeftForfeitAdvance
+              : AppLocalizations.of(context).youLeftEliminated,
           style: AppTheme.bodyLarge.copyWith(fontSize: 16),
           textAlign: TextAlign.center,
         ),
@@ -263,7 +264,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
             ),
-            child: const Text('Return to Home'),
+            child: Text(AppLocalizations.of(context).returnToHome),
           ),
         ],
       ),

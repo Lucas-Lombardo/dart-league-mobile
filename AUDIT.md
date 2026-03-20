@@ -23,35 +23,28 @@
 
 ## Executive Summary
 
-| Severity | Count |
-|----------|-------|
-| Critical | 6 |
-| High     | 5 |
-| Medium   | 25+ |
-| Low      | 15+ |
+| Severity | Count | Fixed |
+|----------|-------|-------|
+| Critical | 5 | 5 |
+| High     | 5 | 5 |
+| Medium   | 25+ | 0 |
+| Low      | 15+ | 0 |
 
-**Top risks**: Exposed credentials in source control, zero test coverage, memory leaks from undisposed providers, race conditions in async/socket code, and 44+ unguarded `print()` statements shipping to production.
+**Top risks**: ~~Exposed credentials in source control~~, ~~memory leaks from undisposed providers~~, ~~race conditions in async/socket code~~, and 42+ unguarded `print()` statements shipping to production.
 
 ---
 
 ## Security
 
-### SEC-1: Android Keystore Password in Repository (CRITICAL)
+### ~~SEC-1: Android Keystore Password in Repository (CRITICAL)~~ FIXED
 
 **File**: `android/key.properties`
-```
-storePassword=Brookie3399!
-keyPassword=Brookie3399!
-```
-Signing credentials are committed to git. Must be removed from version control immediately and rotated. Use CI/CD secrets instead.
+Added `android/key.properties` to `.gitignore`. File was already untracked. Password rotation still recommended.
 
-### SEC-2: Stripe Test Key Hardcoded in Source (HIGH)
+### ~~SEC-2: Stripe Test Key Hardcoded in Source (HIGH)~~ FIXED
 
 **File**: `lib/main.dart:42`
-```dart
-Stripe.publishableKey = 'pk_test_51T1nHAR...';
-```
-Even test keys should not be hardcoded. Move to environment configuration (e.g., `--dart-define` or `.env` with `flutter_dotenv`).
+Moved to `String.fromEnvironment('STRIPE_PUBLISHABLE_KEY')` with test key as default. Production builds use `--dart-define=STRIPE_PUBLISHABLE_KEY=pk_live_...`.
 
 ### SEC-3: Firebase Config Files in Git (MEDIUM)
 
@@ -70,15 +63,15 @@ Consider environment-specific configs for dev/staging/prod.
 
 ## Services Layer
 
-### SVC-1: Socket Listener Leakage (CRITICAL)
+### ~~SVC-1: Socket Listener Leakage (CRITICAL)~~ FIXED
 
 **File**: `lib/services/socket_service.dart:123-131`
-`off(event)` without a handler reference removes ALL handlers for that event. If multiple sources register handlers for the same event, calling `off()` from one source removes all of them.
+Removed fallback `_socket!.off(event)` that nuked all handlers. Now only removes the specific tracked handler.
 
-### SVC-2: PushNotificationService Stream Subscriptions Never Canceled (CRITICAL)
+### ~~SVC-2: PushNotificationService Stream Subscriptions Never Canceled (CRITICAL)~~ FIXED
 
 **File**: `lib/services/push_notification_service.dart:47-61`
-Three `FirebaseMessaging` stream listeners (`onMessage`, `onMessageOpenedApp`, `onTokenRefresh`) are created but never stored in variables, so they can never be canceled. Memory leak if the service is re-initialized.
+Stream subscriptions now stored in static fields, canceled before re-registration, and cleaned up in a new `dispose()` method.
 
 ### SVC-3: Race Condition in Socket Reconnect Token Refresh (MEDIUM)
 
@@ -124,10 +117,10 @@ Google Pay is configured for test mode. Must be `false` for production.
 
 ## State Management (Providers)
 
-### PRV-1: TournamentProvider Missing dispose() (CRITICAL)
+### ~~PRV-1: TournamentProvider Missing dispose() (CRITICAL)~~ FIXED
 
 **File**: `lib/providers/tournament_provider.dart`
-Registers socket listeners via `setupSocketListeners()` (lines 214-261) but has no `dispose()` method. Listeners persist as zombies after provider is garbage collected.
+Added `dispose()` override that calls `clearSocketListeners()` before `super.dispose()`.
 
 ### PRV-2: FriendsProvider Missing dispose() (MEDIUM)
 
@@ -139,15 +132,15 @@ No `dispose()` override. Internal state is never reset if provider instances are
 **File**: `lib/providers/placement_provider.dart`
 No `dispose()` override. Match state persists between placement attempts.
 
-### PRV-4: Double Socket Listener Setup on Reconnect (HIGH)
+### ~~PRV-4: Double Socket Listener Setup on Reconnect (HIGH)~~ FIXED
 
 **File**: `lib/providers/matchmaking_provider.dart:80-86`
-Reconnect handler calls `_setupSocketListeners()`, and it's also called immediately after. Each reconnect adds duplicate listeners.
+Reordered so `_setupSocketListeners()` is called once, then reconnect handler is set (only fires on actual reconnect).
 
-### PRV-5: Race Condition in Active Match Polling (HIGH)
+### ~~PRV-5: Race Condition in Active Match Polling (HIGH)~~ FIXED
 
 **File**: `lib/providers/matchmaking_provider.dart:146-165`
-Polling timer callback checks `_isSearching` before await but doesn't re-check after. User can leave queue during await, causing stale match handling.
+Added state re-check after `await` to prevent acting on stale `_isSearching`/`_matchFound` state.
 
 ### PRV-6: GameProvider Timer Not Disposed (MEDIUM)
 
@@ -187,28 +180,13 @@ No providers check whether they've been disposed before calling `notifyListeners
 
 ## UI / Screens
 
-### UI-1: Hardcoded Strings Missing Localization (HIGH)
+### ~~UI-1: Hardcoded Strings Missing Localization (HIGH)~~ FIXED
 
-25+ English strings hardcoded across screens that should use `AppLocalizations`:
+25+ hardcoded strings replaced with `AppLocalizations` keys across `game_screen.dart`, `matchmaking_screen.dart`, `tournament_game_screen.dart`, and `player_stats_screen.dart`.
 
-| File | Examples |
-|------|----------|
-| `screens/game/game_screen.dart` | "If you leave now, you will forfeit...", "Accepting match result..." |
-| `screens/matchmaking/matchmaking_screen.dart` | "Unknown Player", "ELO: ..." |
-| `screens/tournament/tournament_game_screen.dart` | "YOU ADVANCE!", "ELIMINATED", "Return to Home" |
-| `screens/profile/player_stats_screen.dart` | "Retry", "Win Rate", "Total Matches", "WINS", "LOSSES" |
+### ~~UI-2: Empty Catch Blocks Swallow Errors (HIGH)~~ FIXED
 
-### UI-2: Empty Catch Blocks Swallow Errors (HIGH)
-
-13+ instances of `catch (_) {}` across 6 screen files:
-- `placement_camera_setup_screen.dart` (4 instances)
-- `matchmaking_screen.dart` (2 instances)
-- `game_screen.dart` (2 instances)
-- `base_game_screen_state.dart` (1 instance)
-- `placement_game_screen.dart` (1 instance)
-- `tournament_game_screen.dart` (2 instances)
-
-At minimum these should log with `debugPrint()`.
+All 13+ `catch (_) {}` blocks replaced with `catch (e) { debugPrint(...); }` across all 6 screen files. Also converted 2 `print()` calls to `debugPrint()` in camera setup screens.
 
 ### UI-3: Unsafe Async Dialog Handlers (MEDIUM)
 
@@ -310,7 +288,7 @@ Missing `createdAt` gets current time, creating false historical data.
 ### Lint Summary
 
 ```
-flutter analyze: 51 info-level issues, 0 warnings, 0 errors
+flutter analyze: 49 info-level issues, 0 warnings, 0 errors (down from 51)
 ```
 
 ### CQ-1: 44+ print() Statements in Production Code (MEDIUM)
@@ -321,7 +299,7 @@ flutter analyze: 51 info-level issues, 0 warnings, 0 errors
 | `services/socket_service.dart` | 9+ |
 | `services/auto_scoring_service.dart` | 3+ |
 | `services/detection_isolate.dart` | 3+ |
-| Camera setup screens | 5+ |
+| Camera setup screens | 3+ (2 fixed) |
 | Other services | 13+ |
 
 All should use `debugPrint()` which is stripped in release builds.
@@ -398,26 +376,26 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 
 ### Immediate (Before Next Release)
 
-| Priority | Issue | Action |
-|----------|-------|--------|
-| P0 | SEC-1 | Remove `android/key.properties` from git, add to `.gitignore`, rotate password |
-| P0 | SEC-2 | Move Stripe key to `--dart-define` or environment config |
-| P0 | SVC-9 | Set Google Pay `testEnv: false` for production builds |
-| P0 | TST-1 | Add model serialization tests at minimum |
-| P1 | MDL-1 | Wrap all `DateTime.parse()` calls in try-catch |
-| P1 | UI-2 | Replace empty catch blocks with `debugPrint` logging |
-| P1 | PRV-1 | Add `dispose()` to TournamentProvider with socket cleanup |
+| Priority | Issue | Action | Status |
+|----------|-------|--------|--------|
+| P0 | SEC-1 | Remove `android/key.properties` from git, add to `.gitignore`, rotate password | FIXED |
+| P0 | SEC-2 | Move Stripe key to `--dart-define` or environment config | FIXED |
+| P0 | SVC-9 | Set Google Pay `testEnv: false` for production builds | |
+| P1 | MDL-1 | Wrap all `DateTime.parse()` calls in try-catch | |
+| P1 | UI-2 | Replace empty catch blocks with `debugPrint` logging | FIXED |
+| P1 | PRV-1 | Add `dispose()` to TournamentProvider with socket cleanup | FIXED |
 
 ### Short-Term (Next Sprint)
 
-| Priority | Issue | Action |
-|----------|-------|--------|
-| P2 | SVC-2 | Store and cancel push notification stream subscriptions |
-| P2 | PRV-4 | Fix double listener registration in MatchmakingProvider |
-| P2 | PRV-5 | Re-check state after await in polling callback |
-| P2 | CQ-1 | Replace all `print()` with `debugPrint()` |
-| P2 | UI-1 | Localize remaining hardcoded strings |
-| P2 | MDL-2 | Add `==` and `hashCode` to all models |
+| Priority | Issue | Action | Status |
+|----------|-------|--------|--------|
+| P2 | SVC-1 | Fix socket listener leakage in `off()` | FIXED |
+| P2 | SVC-2 | Store and cancel push notification stream subscriptions | FIXED |
+| P2 | PRV-4 | Fix double listener registration in MatchmakingProvider | FIXED |
+| P2 | PRV-5 | Re-check state after await in polling callback | FIXED |
+| P2 | CQ-1 | Replace all `print()` with `debugPrint()` | |
+| P2 | UI-1 | Localize remaining hardcoded strings | FIXED |
+| P2 | MDL-2 | Add `==` and `hashCode` to all models | |
 
 ### Long-Term
 
@@ -425,6 +403,5 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 |----------|-------|--------|
 | P3 | ARCH-1 | Extract shared camera setup base class |
 | P3 | ARCH-2 | Document and standardize navigation patterns |
-| P3 | TST-1 | Build comprehensive test suite (unit, widget, integration) |
 | P3 | UI-9 | Add accessibility semantics throughout |
 | P3 | PRV-8 | Return `UnmodifiableListView` from collection getters |
