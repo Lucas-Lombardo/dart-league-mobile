@@ -24,7 +24,7 @@ import '../../l10n/app_localizations.dart';
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
 abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
 
   // ─── Abstract ────────────────────────────────────────────────────────────────
   dynamic readGame();
@@ -70,6 +70,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -86,6 +87,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     disposeScreenSpecific();
     scoreAnimationController.dispose();
     WakelockPlus.disable();
@@ -93,6 +95,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     autoScoringService = null;
     if (agoraEngine != null) { AgoraService.leaveChannel(agoraEngine!); AgoraService.dispose(); }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      // App came back from background (e.g. phone call) — re-sync everything
+      SocketService.ensureConnected().then((_) {
+        if (!mounted) return;
+        final game = readGame();
+        // Tell the server we're back so opponent sees us as connected
+        game.reconnectToMatch();
+        // Re-register socket listeners in case they were lost
+        game.ensureListenersSetup();
+      });
+    }
   }
 
   // ─── State-change handler ─────────────────────────────────────────────────────

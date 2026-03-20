@@ -20,7 +20,8 @@ class PlacementCameraSetupScreen extends StatefulWidget {
   State<PlacementCameraSetupScreen> createState() => _PlacementCameraSetupScreenState();
 }
 
-class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen> {
+class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
+    with WidgetsBindingObserver {
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isLoading = true;
@@ -36,15 +37,26 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   bool _aiModelLoaded = false;
   String? _aiHint;
   bool _boardDetected = false;
-  Timer? _aiCaptureTimer;
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     if (!kIsWeb) _initAiDetection();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _aiCapturing = false;
+    } else if (state == AppLifecycleState.resumed) {
+      if (_aiModelLoaded && _cameraReady) {
+        _startAiCapture();
+      }
+    }
   }
 
   Future<void> _initAiDetection() async {
@@ -61,11 +73,21 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
   void _startAiCapture() {
     if (_aiCapturing || !_aiModelLoaded) return;
     _aiCapturing = true;
-    _aiCaptureTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      if (mounted && _cameraReady && _cameraController != null) {
-        _runAiCapture();
+    _runAiCaptureLoop();
+  }
+
+  Future<void> _runAiCaptureLoop() async {
+    while (_aiCapturing && mounted && _aiModelLoaded) {
+      if (_cameraReady && _cameraController != null) {
+        await _runAiCapture();
       }
-    });
+      if (!_aiCapturing || !mounted) break;
+      await Future.delayed(
+        Platform.isAndroid
+            ? const Duration(milliseconds: 500)
+            : const Duration(milliseconds: 200),
+      );
+    }
   }
 
   Future<void> _runAiCapture() async {
@@ -206,8 +228,7 @@ class _PlacementCameraSetupScreenState extends State<PlacementCameraSetupScreen>
 
   @override
   void dispose() {
-    _aiCaptureTimer?.cancel();
-    _aiCaptureTimer = null;
+    WidgetsBinding.instance.removeObserver(this);
     _aiCapturing = false;
     _detectionIsolate?.dispose();
     _detectionIsolate = null;

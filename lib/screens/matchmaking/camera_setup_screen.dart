@@ -37,7 +37,8 @@ class CameraSetupScreen extends StatefulWidget {
   State<CameraSetupScreen> createState() => _CameraSetupScreenState();
 }
 
-class _CameraSetupScreenState extends State<CameraSetupScreen> {
+class _CameraSetupScreenState extends State<CameraSetupScreen>
+    with WidgetsBindingObserver {
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isLoading = true;
@@ -54,7 +55,6 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   bool _aiModelLoaded = false;
   String? _aiHint;
   bool _boardDetected = false;
-  Timer? _aiCaptureTimer;
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
 
@@ -62,10 +62,23 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _initializeCamera();
     });
     if (!kIsWeb) _initAiDetection();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      // Stop the capture loop while app is in background
+      _aiCapturing = false;
+    } else if (state == AppLifecycleState.resumed) {
+      if (_aiModelLoaded && _cameraReady) {
+        _startAiCapture();
+      }
+    }
   }
 
   Future<void> _initAiDetection() async {
@@ -84,11 +97,23 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
   void _startAiCapture() {
     if (_aiCapturing || !_aiModelLoaded) return;
     _aiCapturing = true;
-    _aiCaptureTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      if (mounted && _cameraReady && _cameraController != null) {
-        _runAiCapture();
+    _runAiCaptureLoop();
+  }
+
+  Future<void> _runAiCaptureLoop() async {
+    while (_aiCapturing && mounted && _aiModelLoaded) {
+      if (_cameraReady && _cameraController != null) {
+        await _runAiCapture();
       }
-    });
+      // Small delay between captures to avoid thrashing; longer on Android
+      // to reduce camera texture contention from takePicture()
+      if (!_aiCapturing || !mounted) break;
+      await Future.delayed(
+        Platform.isAndroid
+            ? const Duration(milliseconds: 500)
+            : const Duration(milliseconds: 200),
+      );
+    }
   }
 
   Future<void> _runAiCapture() async {
@@ -327,8 +352,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen> {
 
   @override
   void dispose() {
-    _aiCaptureTimer?.cancel();
-    _aiCaptureTimer = null;
+    WidgetsBinding.instance.removeObserver(this);
     _aiCapturing = false;
     _detectionIsolate?.dispose();
     _detectionIsolate = null;

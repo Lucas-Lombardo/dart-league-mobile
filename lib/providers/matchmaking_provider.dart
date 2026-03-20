@@ -129,6 +129,7 @@ class MatchmakingProvider with ChangeNotifier {
 
   void _startSearchTimer() {
     _searchTimer?.cancel();
+    _searchTime = 0;
     _searchTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _searchTime++;
       notifyListeners();

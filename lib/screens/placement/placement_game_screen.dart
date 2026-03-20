@@ -26,7 +26,8 @@ class PlacementGameScreen extends StatefulWidget {
   State<PlacementGameScreen> createState() => _PlacementGameScreenState();
 }
 
-class _PlacementGameScreenState extends State<PlacementGameScreen> {
+class _PlacementGameScreenState extends State<PlacementGameScreen>
+    with WidgetsBindingObserver {
   bool _botTurnInProgress = false;
   bool _gameEnded = false;
   String? _winnerId;
@@ -54,6 +55,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initCameraAndAI();
@@ -62,6 +64,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopAiCapture();
     _autoScoringService?.dispose();
     _autoScoringService = null;
@@ -69,6 +72,18 @@ class _PlacementGameScreenState extends State<PlacementGameScreen> {
     _cameraController = null;
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _stopAiCapture();
+    } else if (state == AppLifecycleState.resumed) {
+      // Restart auto-scoring capture if it was active before
+      if (_autoScoringEnabled && !_aiManuallyDisabled && !_gameEnded && !_botTurnInProgress) {
+        _startAiCapture();
+      }
+    }
   }
 
   int _dartScore(int baseScore, ScoreMultiplier multiplier) {
