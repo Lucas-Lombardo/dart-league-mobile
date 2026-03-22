@@ -5,6 +5,7 @@ import '../../providers/tournament_game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../services/auto_scoring_service.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
@@ -154,19 +155,18 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
   void _navigateToMatchResult(TournamentGameProvider game) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => TournamentMatchResultScreen(
-          tournamentMatchId: widget.tournamentMatchId,
-          tournamentId: widget.tournamentId,
-          tournamentName: widget.tournamentName,
-          roundName: widget.roundName,
-          opponentUsername: widget.opponentUsername,
-          seriesWinnerId: game.seriesWinnerId,
-          myLegsWon: game.myLegsWon,
-          opponentLegsWon: game.opponentLegsWon,
-          bestOf: widget.bestOf,
-        ),
+    AppNavigator.replaceWith(
+      context,
+      TournamentMatchResultScreen(
+        tournamentMatchId: widget.tournamentMatchId,
+        tournamentId: widget.tournamentId,
+        tournamentName: widget.tournamentName,
+        roundName: widget.roundName,
+        opponentUsername: widget.opponentUsername,
+        seriesWinnerId: game.seriesWinnerId,
+        myLegsWon: game.myLegsWon,
+        opponentLegsWon: game.opponentLegsWon,
+        bestOf: widget.bestOf,
       ),
     );
   }

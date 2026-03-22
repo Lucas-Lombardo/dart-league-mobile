@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/match.dart';
 import '../screens/profile/match_detail_screen.dart';
+import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
 
 class RecentMatchesWidget extends StatelessWidget {
@@ -71,12 +72,7 @@ class RecentMatchesWidget extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => MatchDetailScreen(matchId: match.id),
-              ),
-            );
+            AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(

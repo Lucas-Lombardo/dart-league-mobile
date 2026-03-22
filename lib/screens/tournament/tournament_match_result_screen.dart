@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
@@ -187,8 +188,8 @@ class TournamentMatchResultScreen extends StatelessWidget {
                       onPressed: () {
                         HapticService.mediumImpact();
                         final provider = context.read<TournamentGameProvider>();
-                        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false)
-                            .then((_) { try { provider.reset(); } catch (_) {} });
+                        AppNavigator.toHomeClearing(context);
+                        try { provider.reset(); } catch (_) {}
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: didWin ? AppTheme.success : AppTheme.primary,

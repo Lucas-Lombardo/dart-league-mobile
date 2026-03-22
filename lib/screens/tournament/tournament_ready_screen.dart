@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../services/socket_service.dart';
@@ -122,18 +123,17 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       agoraChannelName: agoraChannelName,
     );
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => TournamentGameScreen(
-          tournamentMatchId: widget.matchId,
-          gameMatchId: gameMatchId,
-          tournamentId: widget.tournamentId,
-          tournamentName: widget.tournamentName,
-          roundName: widget.roundName,
-          opponentUsername: widget.opponentUsername,
-          opponentId: widget.opponentId,
-          bestOf: widget.bestOf,
-        ),
+    AppNavigator.replaceWith(
+      context,
+      TournamentGameScreen(
+        tournamentMatchId: widget.matchId,
+        gameMatchId: gameMatchId,
+        tournamentId: widget.tournamentId,
+        tournamentName: widget.tournamentName,
+        roundName: widget.roundName,
+        opponentUsername: widget.opponentUsername,
+        opponentId: widget.opponentId,
+        bestOf: widget.bestOf,
       ),
     );
   }

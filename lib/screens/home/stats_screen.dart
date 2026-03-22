@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import '../profile/match_history_screen.dart';
 import '../../utils/app_theme.dart';
 
@@ -224,12 +225,7 @@ class _StatsScreenState extends State<StatsScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MatchHistoryScreen(),
-                  ),
-                );
+                AppNavigator.toScreen(context, const MatchHistoryScreen());
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.surfaceLight,

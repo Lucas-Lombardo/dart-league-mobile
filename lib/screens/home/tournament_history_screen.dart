@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../models/tournament.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import 'tournament_detail_screen.dart';
@@ -122,12 +123,7 @@ class _TournamentHistoryCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         HapticService.lightImpact();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => TournamentDetailScreen(tournamentId: tournament.id),
-          ),
-        );
+        AppNavigator.toScreen(context, TournamentDetailScreen(tournamentId: tournament.id));
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),

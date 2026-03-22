@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -70,7 +71,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   TextButton(
                     onPressed: () {
                       context.read<AuthProvider>().clearError();
-                      Navigator.pushReplacementNamed(context, '/login');
+                      AppNavigator.toAuth(context, '/login');
                     },
                     child: Text(l10n.backToLogin),
                   ),

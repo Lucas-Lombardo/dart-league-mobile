@@ -5,6 +5,7 @@ import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../profile/player_stats_screen.dart';
@@ -448,14 +449,9 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             ),
             trailing: _buildSearchResultAction(user.id, user.username, status),
             onTap: () {
-              Navigator.push(
+              AppNavigator.toScreen(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => PlayerStatsScreen(
-                    userId: user.id,
-                    username: user.username,
-                  ),
-                ),
+                PlayerStatsScreen(userId: user.id, username: user.username),
               );
             },
           ),
@@ -595,14 +591,9 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 ],
               ),
         onTap: () {
-          Navigator.push(
+          AppNavigator.toScreen(
             context,
-            MaterialPageRoute(
-              builder: (context) => PlayerStatsScreen(
-                userId: request.user.id,
-                username: request.user.username,
-              ),
-            ),
+            PlayerStatsScreen(userId: request.user.id, username: request.user.username),
           );
         },
       ),
@@ -709,14 +700,9 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 onPressed: () => _removeFriend(friend.id, friend.username),
               ),
               onTap: () {
-                Navigator.push(
+                AppNavigator.toScreen(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => PlayerStatsScreen(
-                      userId: friend.id,
-                      username: friend.username,
-                    ),
-                  ),
+                  PlayerStatsScreen(userId: friend.id, username: friend.username),
                 );
               },
             ),

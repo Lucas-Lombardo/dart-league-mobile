@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/tournament.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -72,12 +73,7 @@ class _TournamentScreenState extends State<TournamentScreen> with SingleTickerPr
                 child: InkWell(
                   onTap: () {
                     HapticService.lightImpact();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const TournamentHistoryScreen(),
-                      ),
-                    );
+                    AppNavigator.toScreen(context, const TournamentHistoryScreen());
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
@@ -501,12 +497,7 @@ class _TournamentCardState extends State<_TournamentCard> {
     return GestureDetector(
       onTap: () {
         HapticService.lightImpact();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => TournamentDetailScreen(tournamentId: tournament.id),
-          ),
-        );
+        AppNavigator.toScreen(context, TournamentDetailScreen(tournamentId: tournament.id));
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),

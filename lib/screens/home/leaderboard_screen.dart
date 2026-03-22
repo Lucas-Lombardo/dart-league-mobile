@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
 import '../../services/friends_service.dart';
+import '../../utils/app_navigator.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
 import '../../utils/app_theme.dart';
@@ -218,13 +219,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
                 return InkWell(
                   onTap: () {
-                    Navigator.push(
+                    AppNavigator.toScreen(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => PlayerStatsScreen(
-                          userId: entry.user.id,
-                          username: entry.user.username,
-                        ),
+                      PlayerStatsScreen(
+                        userId: entry.user.id,
+                        username: entry.user.username,
                       ),
                     );
                   },

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
 import '../../l10n/app_localizations.dart';
@@ -209,11 +210,7 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
                         height: 56,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.pushNamedAndRemoveUntil(
-                              context,
-                              '/home',
-                              (route) => false,
-                            );
+                            AppNavigator.toHomeClearing(context);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: rankColor,

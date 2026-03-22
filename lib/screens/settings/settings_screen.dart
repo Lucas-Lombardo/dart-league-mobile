@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_translation.dart';
@@ -377,11 +378,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final navigator = Navigator.of(context);
               final authProvider = context.read<AuthProvider>();
-              navigator.pop();
+              Navigator.pop(context);
               await authProvider.logout();
-              navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+              if (context.mounted) {
+                AppNavigator.toLoginClearing(context);
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error,
@@ -505,7 +507,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Navigator.pop(context);
                   
                   if (success) {
-                    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                    AppNavigator.toLoginClearing(context);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(

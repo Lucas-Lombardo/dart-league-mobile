@@ -3,80 +3,46 @@ import 'api_service.dart';
 
 class FriendsService {
   static Future<List<User>> getFriends() async {
-    try {
-      final response = await ApiService.get('/friends');
-      final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => User.fromJson(json)).toList();
-    } catch (e) {
-      rethrow;
-    }
+    final response = await ApiService.get('/friends');
+    final List<dynamic> data = response as List<dynamic>;
+    return data.map((json) => User.fromJson(json)).toList();
   }
 
   static Future<List<User>> getFriendsLeaderboard() async {
-    try {
-      final response = await ApiService.get('/friends/leaderboard');
-      final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => User.fromJson(json)).toList();
-    } catch (e) {
-      rethrow;
-    }
+    final response = await ApiService.get('/friends/leaderboard');
+    final List<dynamic> data = response as List<dynamic>;
+    return data.map((json) => User.fromJson(json)).toList();
   }
 
   static Future<List<User>> searchUsers(String query) async {
-    try {
-      if (query.trim().isEmpty) {
-        return [];
-      }
-      final response = await ApiService.get('/friends/search?q=${Uri.encodeComponent(query)}');
-      final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => User.fromJson(json)).toList();
-    } catch (e) {
-      rethrow;
-    }
+    if (query.trim().isEmpty) return [];
+    final response = await ApiService.get('/friends/search?q=${Uri.encodeComponent(query)}');
+    final List<dynamic> data = response as List<dynamic>;
+    return data.map((json) => User.fromJson(json)).toList();
   }
 
   static Future<void> sendFriendRequest(String friendId) async {
-    try {
-      await ApiService.post('/friends', {'friendId': friendId});
-    } catch (e) {
-      rethrow;
-    }
+    await ApiService.post('/friends', {'friendId': friendId});
   }
 
   static Future<void> acceptFriendRequest(String friendshipId) async {
-    try {
-      await ApiService.post('/friends/accept/$friendshipId', {});
-    } catch (e) {
-      rethrow;
-    }
+    await ApiService.post('/friends/accept/$friendshipId', {});
   }
 
   static Future<void> rejectFriendRequest(String friendshipId) async {
-    try {
-      await ApiService.post('/friends/reject/$friendshipId', {});
-    } catch (e) {
-      rethrow;
-    }
+    await ApiService.post('/friends/reject/$friendshipId', {});
   }
 
   static Future<List<FriendRequest>> getPendingRequests() async {
-    try {
-      final response = await ApiService.get('/friends/requests/pending');
-      final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => FriendRequest.fromJson(json)).toList();
-    } catch (e) {
-      rethrow;
-    }
+    final response = await ApiService.get('/friends/requests/pending');
+    final List<dynamic> data = response as List<dynamic>;
+    return data.map((json) => FriendRequest.fromJson(json)).toList();
   }
 
   static Future<List<FriendRequest>> getSentRequests() async {
-    try {
-      final response = await ApiService.get('/friends/requests/sent');
-      final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => FriendRequest.fromJson(json)).toList();
-    } catch (e) {
-      rethrow;
-    }
+    final response = await ApiService.get('/friends/requests/sent');
+    final List<dynamic> data = response as List<dynamic>;
+    return data.map((json) => FriendRequest.fromJson(json)).toList();
   }
 
   static Future<int> getPendingRequestsCount() async {
@@ -89,11 +55,7 @@ class FriendsService {
   }
 
   static Future<void> removeFriend(String friendId) async {
-    try {
-      await ApiService.delete('/friends/$friendId');
-    } catch (e) {
-      rethrow;
-    }
+    await ApiService.delete('/friends/$friendId');
   }
 
   static Future<String> getFriendshipStatus(String friendId) async {

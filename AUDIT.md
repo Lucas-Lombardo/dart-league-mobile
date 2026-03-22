@@ -309,30 +309,24 @@ Removed unnecessary `foundation.dart` import (fixed as part of PRV-7).
 
 ## Architecture & Design
 
-### ARCH-1: Duplicated Camera Setup Logic
+### ~~ARCH-1: Duplicated Camera Setup Logic~~ FIXED
 
-Three nearly identical camera setup screens:
-- `screens/matchmaking/camera_setup_screen.dart`
-- `screens/placement/placement_camera_setup_screen.dart`
-- `screens/tournament/tournament_camera_setup_screen.dart`
+Extracted `CameraSetupMixin` in `screens/shared/camera_setup_mixin.dart` with configurable behavior via `CameraSetupConfig`. All three screens now use the mixin for shared camera initialization, zoom controls, AI detection, and common UI builders (loading, error, zoom, info rows, app bar). Each screen only contains its screen-specific logic (navigation, info bars, button labels).
 
-Should be extracted into a shared base class or mixin.
+### ~~ARCH-2: Inconsistent Navigation Patterns~~ FIXED
 
-### ARCH-2: Inconsistent Navigation Patterns
+Created `AppNavigator` utility (`utils/app_navigator.dart`) with documented navigation strategy:
+- `toAuth()`: Named route replacement for auth flow
+- `toHomeClearing()` / `toLoginClearing()`: Clear stack and navigate (post-game, logout)
+- `toScreen()`: Standard push for detail/nested screens
+- `replaceWith()`: Replace current screen (camera setup -> game flow)
+- `back()`: Pop with optional result
 
-Mixed usage across screens:
-- `Navigator.pushReplacementNamed()` (login)
-- `Navigator.pushAndRemoveUntil()` (matchmaking)
-- `Navigator.pushReplacement()` (tournament)
-- `Navigator.popUntil(route.isFirst)` (game)
+All 20+ navigation calls across screens now use `AppNavigator`.
 
-Should establish and document a consistent navigation strategy.
+### ~~ARCH-3: Inconsistent Error Handling in Services~~ FIXED
 
-### ARCH-3: Inconsistent Error Handling in Services
-
-All service methods use bare `rethrow` without context. Callers can't distinguish which operation failed without inspecting exception messages.
-
-**Files**: `matchmaking_service.dart`, `placement_service.dart`, `user_service.dart`, `tournament_service.dart`, `friends_service.dart`, `match_service.dart`
+Removed 43 pointless `try { ... } catch (e) { rethrow; }` wrappers across all 6 service files. Methods now directly return/await API calls. Intentional silent fallbacks (3 methods that catch and return defaults) were preserved. `TournamentService.getActiveTournamentStatus()` retained its catch-with-default pattern as it's intentional graceful degradation.
 
 ---
 
@@ -380,7 +374,7 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 
 | Priority | Issue | Action |
 |----------|-------|--------|
-| P3 | ARCH-1 | Extract shared camera setup base class |
-| P3 | ARCH-2 | Document and standardize navigation patterns |
+| P3 | ARCH-1 | Extract shared camera setup base class | FIXED |
+| P3 | ARCH-2 | Document and standardize navigation patterns | FIXED |
 | P3 | UI-9 | Add accessibility semantics throughout |
 | P3 | PRV-8 | Return `UnmodifiableListView` from collection getters | FIXED |

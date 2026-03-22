@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../utils/app_navigator.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
 import '../../l10n/app_localizations.dart';
@@ -172,12 +173,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => MatchDetailScreen(matchId: match.id),
-              ),
-            );
+            AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(

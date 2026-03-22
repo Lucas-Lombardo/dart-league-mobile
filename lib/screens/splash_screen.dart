@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../services/push_notification_service.dart';
+import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -60,9 +61,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         // Register push notification token for returning users
         await PushNotificationService.initialize();
         await PushNotificationService.registerToken();
-        Navigator.pushReplacementNamed(context, '/home');
+        AppNavigator.toAuth(context, '/home');
       } else {
-        Navigator.pushReplacementNamed(context, '/login');
+        AppNavigator.toAuth(context, '/login');
       }
     }
   }

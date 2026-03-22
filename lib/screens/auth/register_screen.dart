@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -62,7 +63,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
+          AppNavigator.toAuth(context, '/home');
         }
       }
     }
@@ -270,7 +271,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextButton(
                         onPressed: () {
                           context.read<AuthProvider>().clearError();
-                          Navigator.pushReplacementNamed(context, '/login');
+                          AppNavigator.toAuth(context, '/login');
                         },
                         child: Text(l10n.login),
                       ),

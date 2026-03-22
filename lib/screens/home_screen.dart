@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/rank_badge.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
 import '../providers/friends_provider.dart';
@@ -102,12 +103,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
             icon: const Icon(Icons.settings_outlined),
             onPressed: () {
               HapticService.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
-                ),
-              );
+              AppNavigator.toScreen(context, const SettingsScreen());
             },
             tooltip: l10n.settingsTooltip,
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -33,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (success && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        AppNavigator.toAuth(context, '/home');
       }
     }
   }
@@ -128,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: TextButton(
                                 onPressed: () {
                                   context.read<AuthProvider>().clearError();
-                                  Navigator.pushReplacementNamed(context, '/forgot-password');
+                                  AppNavigator.toAuth(context, '/forgot-password');
                                 },
                                 style: TextButton.styleFrom(
                                   padding: EdgeInsets.zero,
@@ -205,7 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextButton(
                         onPressed: () {
                           context.read<AuthProvider>().clearError();
-                          Navigator.pushReplacementNamed(context, '/register');
+                          AppNavigator.toAuth(context, '/register');
                         },
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/placement_provider.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 import 'placement_camera_setup_screen.dart';
@@ -69,14 +70,13 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
         if (isComplete && mounted) {
           final assignedRank = (result?['assignedRank'] as String?) ?? _rankForWins(provider.status?.wins ?? 0);
           final assignedElo = result?['assignedElo'] as int? ?? _eloForWins(provider.status?.wins ?? 0);
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => PlacementResultScreen(
-                assignedRank: assignedRank,
-                assignedElo: assignedElo,
-                wins: provider.status?.wins ?? 0,
-                totalMatches: 4,
-              ),
+          AppNavigator.replaceWith(
+            context,
+            PlacementResultScreen(
+              assignedRank: assignedRank,
+              assignedElo: assignedElo,
+              wins: provider.status?.wins ?? 0,
+              totalMatches: 4,
             ),
           );
         }
