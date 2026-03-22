@@ -8,7 +8,10 @@ import '../../services/auto_scoring_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/score_converter.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/auto_score_display.dart';
+import '../../widgets/tv_scoreboard.dart';
 import '../game/base_game_screen_state.dart';
 import 'tournament_leg_result_screen.dart';
 import 'tournament_match_result_screen.dart';
@@ -386,43 +389,219 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
 
       if (game.gameEnded && !_resultAccepted && game.pendingType != 'forfeit') return buildEndScreen(game, auth);
 
+      final safeTop = MediaQuery.of(context).padding.top;
+
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
           if (await onWillPop() && context.mounted) Navigator.of(context).pop();
         },
-        child: Container(
-          color: AppTheme.surface,
-          child: SafeArea(
-            top: false,
-            child: Scaffold(
-              backgroundColor: AppTheme.background,
-              appBar: AppBar(
-                backgroundColor: AppTheme.surface,
-                title: buildAppBarTitle(),
-                centerTitle: true,
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                  onPressed: () async {
-                    if (await onWillPop() && context.mounted) Navigator.of(context).pop();
+        child: Scaffold(
+          backgroundColor: AppTheme.background,
+          body: Stack(
+            children: [
+              autoScoringEnabled && autoScoringLoading
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: AppTheme.primary),
+                        const SizedBox(height: 16),
+                        Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                      ],
+                    ),
+                  )
+                : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && (game.isMyTurn || game.pendingConfirmation)
+                  ? AutoScoreGameView(
+                      scoringService: autoScoringService!,
+                      onConfirm: () => submitAutoScoredDarts(game),
+                      onEndRoundEarly: () => submitAutoScoredDarts(game),
+                      pendingConfirmation: game.pendingConfirmation,
+                      myScore: game.myScore,
+                      opponentScore: game.opponentScore,
+                      opponentName: widget.opponentUsername,
+                      myName: auth.currentUser?.username ?? 'You',
+                      dartsThrown: game.dartsThrown,
+                      agoraEngine: agoraEngine,
+                      remoteUid: game.remoteUid,
+                      isAudioMuted: isAudioMuted,
+                      onToggleAudio: toggleAudio,
+                      onSwitchCamera: switchCamera,
+                      onZoomIn: zoomIn,
+                      onZoomOut: zoomOut,
+                      currentZoom: cameraZoom,
+                      minZoom: cameraMinZoom,
+                      maxZoom: cameraMaxZoom,
+                      onEditDart: (index, dartScore) {
+                        final (base, mul) = dartScoreToBackend(dartScore);
+                        game.editDartThrow(index, base, mul);
+                      },
+                      onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
+                      onToggleAi: toggleAiScoring,
+                      aiEnabled: !aiManuallyDisabled,
+                    )
+                  : Container(
+                      color: AppTheme.background,
+                      child: Stack(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(height: safeTop),
+                              // Series scoreboard (tournament-specific)
+                              if (buildExtraHeader(game, auth) != null) buildExtraHeader(game, auth)!,
+                              // Opponent disconnected banner
+                              if (game.opponentDisconnected)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  color: AppTheme.accent.withValues(alpha: 0.15),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
+                                          style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              // TV Scoreboard
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                                child: TvScoreboard(
+                                  myScore: game.myScore,
+                                  opponentScore: game.opponentScore,
+                                  myName: auth.currentUser?.username ?? 'You',
+                                  opponentName: widget.opponentUsername,
+                                  isMyTurn: game.isMyTurn,
+                                ),
+                              ),
+                              // Dart throws indicator (during my turn)
+                              if (game.isMyTurn)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                                  child: Row(
+                                    children: [
+                                      ...List.generate(3, (index) {
+                                        final throws = game.currentRoundThrows;
+                                        final hasThrow = index < throws.length;
+                                        final isNext = index == throws.length;
+                                        final isEditing = editingDartIndex == index;
+                                        return GestureDetector(
+                                          onTap: hasThrow ? () { HapticService.lightImpact(); setState(() { editingDartIndex = isEditing ? null : index; }); } : null,
+                                          child: Container(
+                                            width: 52, height: 40, margin: const EdgeInsets.only(right: 8),
+                                            decoration: BoxDecoration(
+                                              color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surface,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: isEditing ? AppTheme.error : hasThrow ? AppTheme.primary : isNext ? Colors.white24 : Colors.transparent, width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1)),
+                                            ),
+                                            child: Center(child: hasThrow
+                                              ? Text(throws[index], style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold))
+                                              : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 16)),
+                                          ),
+                                        );
+                                      }),
+                                      const Spacer(),
+                                      if (editingDartIndex != null)
+                                        GestureDetector(
+                                          onTap: () => setState(() => editingDartIndex = null),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                              const Icon(Icons.edit, color: AppTheme.error, size: 14),
+                                              const SizedBox(width: 4),
+                                              Text('Dart ${(editingDartIndex ?? 0) + 1}', style: const TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.bold)),
+                                              const SizedBox(width: 6),
+                                              const Icon(Icons.close, color: AppTheme.error, size: 14),
+                                            ]),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              // Video Area - Only show during opponent's turn
+                              if (!game.isMyTurn)
+                                Expanded(
+                                  flex: 55,
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                                    child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? ''),
+                                  ),
+                                ),
+                              // Controls Area
+                              Expanded(
+                                flex: game.isMyTurn ? 6 : 38,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.surface,
+                                    borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+                                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
+                                  ),
+                                  child: buildScoreInputPanel(game),
+                                ),
+                              ),
+                            ],
+                          ),
+                          // AI toggle button (floating, during my turn)
+                          if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
+                            Positioned(
+                              bottom: 80 + MediaQuery.of(context).viewPadding.bottom,
+                              right: 12,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: toggleAiScoring,
+                                  borderRadius: BorderRadius.circular(28),
+                                  child: Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: aiManuallyDisabled ? AppTheme.surface : AppTheme.success.withValues(alpha: 0.15),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success, width: 2),
+                                    ),
+                                    child: Icon(
+                                      aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+                                      color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+              // Floating back button
+              Positioned(
+                top: safeTop + 8,
+                left: 12,
+                child: GestureDetector(
+                  onTap: () async {
+                    if (await onWillPop() && context.mounted) {
+                      Navigator.of(context).pop();
+                    }
                   },
-                ),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: game.isMyTurn
-                      ? Row(children: [
-                          const Icon(Icons.sports_esports_outlined, size: 16, color: AppTheme.textSecondary),
-                          const SizedBox(width: 4),
-                          Text(AppLocalizations.of(context).dartCounter.replaceAll('{current}', '${game.dartsThrown + 1}'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primary)),
-                        ])
-                      : Text(AppLocalizations.of(context).waiting, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
                   ),
-                ],
+                ),
               ),
-              body: buildGameBody(game, auth),
-            ),
+            ],
           ),
         ),
       );

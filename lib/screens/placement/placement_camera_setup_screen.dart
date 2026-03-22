@@ -29,7 +29,9 @@ class _PlacementCameraSetupScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    initializeCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) initializeCamera();
+    });
     initCamera();
   }
 

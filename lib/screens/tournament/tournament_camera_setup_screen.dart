@@ -52,7 +52,9 @@ class _TournamentCameraSetupScreenState
   @override
   void initState() {
     super.initState();
-    initializeCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) initializeCamera();
+    });
     initCamera();
   }
 

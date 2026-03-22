@@ -18,6 +18,7 @@ import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/interactive_dartboard.dart';
+import '../../widgets/tv_scoreboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
   const PlacementGameScreen({super.key});
@@ -48,6 +49,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   bool _autoScoringEnabled = false;
   bool _autoScoringLoading = false;
   bool _aiManuallyDisabled = false;
+  bool _aiPausedForEdit = false;
   double _cameraZoom = 1.0;
   double _cameraMinZoom = 1.0;
   double _cameraMaxZoom = 1.0;
@@ -79,7 +81,6 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _stopAiCapture();
     } else if (state == AppLifecycleState.resumed) {
-      // Restart auto-scoring capture if it was active before
       if (_autoScoringEnabled && !_aiManuallyDisabled && !_gameEnded && !_botTurnInProgress) {
         _startAiCapture();
       }
@@ -103,7 +104,6 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (kIsWeb) return;
     if (!AutoScoringService.isSupported) return;
 
-    // Permission already granted on the camera setup screen
     final enabled = await StorageService.getAutoScoring();
     if (!mounted) return;
     setState(() => _autoScoringEnabled = enabled);
@@ -173,7 +173,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   void _startAiCapture() {
-    if (_autoScoringService == null || _aiManuallyDisabled) return;
+    if (_autoScoringService == null || _aiManuallyDisabled || _aiPausedForEdit) return;
     _autoScoringService!.startCapture(
       captureFrame: _captureFrame,
       cleanupFile: _cleanupFile,
@@ -225,6 +225,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       return;
     }
 
+    // Play dart hit sound
+    DartSoundService.playDartHit(baseScore, multiplier);
+
     final score = _dartScore(baseScore, multiplier);
     final newScore = _myScore - score;
 
@@ -235,6 +238,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         _currentRoundThrows.add(_DartThrow(baseScore, multiplier));
         _dartsThrown++;
       });
+      DartSoundService.playBust();
       return;
     }
 
@@ -244,7 +248,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       _dartsThrown++;
     });
 
-    // Check win (checkout on double) — don't auto-end, show confirm button
+    // Check win (checkout on double)
     if (newScore == 0 && multiplier == ScoreMultiplier.double) {
       setState(() => _isWin = true);
       return;
@@ -281,7 +285,6 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   void _confirmRound() {
     _stopAiCapture();
 
-    // Capture round data before clearing local state
     final int roundScore;
     final List<String> roundThrows = _currentRoundThrows.map((t) => t.notation).toList();
 
@@ -303,7 +306,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       });
     }
 
-    // Trigger bot turn, sending player's completed round to backend
+    DartSoundService.playTurnFinished();
     _executeBotTurn(playerRoundScore: roundScore, playerRoundThrows: roundThrows);
   }
 
@@ -322,10 +325,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     );
 
     if (success && mounted) {
-      // Short delay to show bot throws
       await Future.delayed(const Duration(milliseconds: 1200));
 
-      // Check if bot checked out
       if (placement.botIsCheckout && placement.player2Score == 0) {
         _handleGameEnd(null);
         return;
@@ -333,9 +334,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     if (mounted) {
-      setState(() { _botTurnInProgress = false; _aiManuallyDisabled = false; });
+      setState(() { _botTurnInProgress = false; _aiManuallyDisabled = false; _aiPausedForEdit = false; });
       _autoScoringService?.resetTurn();
       _startAiCapture();
+      DartSoundService.playYourTurn();
     }
   }
 
@@ -364,17 +366,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
           Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
         ]),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () {
               _bustDialogShowing = false;
               Navigator.pop(ctx);
               setState(() {
-                if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
+                _aiPausedForEdit = true;
                 _isBust = false;
-                _aiManuallyDisabled = true;
-                _recalculateScore();
+                _currentRoundThrows.clear();
+                _dartsThrown = 0;
+                _myScore = _scoreBeforeRound;
               });
               _autoScoringService?.stopCapture();
+              for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
             },
             child: const Text('Edit Darts'),
           ),
@@ -416,17 +420,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
           const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
         ]),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () {
               _winDialogShowing = false;
               Navigator.pop(ctx);
               setState(() {
-                if (_currentRoundThrows.isNotEmpty) _currentRoundThrows.removeLast();
+                _aiPausedForEdit = true;
                 _isWin = false;
-                _aiManuallyDisabled = true;
-                _recalculateScore();
+                _currentRoundThrows.clear();
+                _dartsThrown = 0;
+                _myScore = _scoreBeforeRound;
               });
               _autoScoringService?.stopCapture();
+              for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
             },
             child: const Text('Edit Darts'),
           ),
@@ -435,6 +441,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _winDialogShowing = false;
               Navigator.pop(ctx);
               final auth = context.read<AuthProvider>();
+              DartSoundService.playWin();
               _handleGameEnd(auth.currentUser?.id);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
@@ -450,6 +457,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       _gameEnded = true;
       _winnerId = winnerId;
     });
+
+    if (winnerId == null) {
+      DartSoundService.playLose();
+    }
 
     final placement = context.read<PlacementProvider>();
     final result = await placement.completeMatch(winnerId, player1Score: _myScore);
@@ -481,6 +492,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       );
     }
 
+    final safeTop = MediaQuery.of(context).padding.top;
+    final botName = 'Bot #${placement.currentBotDifficulty ?? 1}';
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -490,351 +504,219 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
           Navigator.of(context).pop();
         }
       },
-      child: Container(
-        color: AppTheme.surface,
-        child: SafeArea(
-          top: false,
-          child: Scaffold(
-            backgroundColor: AppTheme.background,
-            appBar: AppBar(
-              backgroundColor: AppTheme.surface,
-              title: Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: _botTurnInProgress ? AppTheme.accent : AppTheme.primary,
-                      shape: BoxShape.circle,
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Stack(
+          children: [
+            // Main content
+            _autoScoringEnabled && _autoScoringLoading
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: AppTheme.primary),
+                      const SizedBox(height: 16),
+                      Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                    ],
+                  ),
+                )
+              : _autoScoringEnabled && !_aiManuallyDisabled && !_aiPausedForEdit && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized && !_botTurnInProgress
+                ? AutoScoreGameView(
+                    scoringService: _autoScoringService!,
+                    onConfirm: () { HapticService.heavyImpact(); _confirmRound(); },
+                    onEndRoundEarly: () { HapticService.heavyImpact(); _confirmRound(); },
+                    pendingConfirmation: _isBust || _isWin,
+                    myScore: _myScore,
+                    opponentScore: placement.player2Score,
+                    opponentName: botName,
+                    myName: auth.currentUser?.username ?? 'You',
+                    dartsThrown: _dartsThrown,
+                    localCameraPreview: SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _cameraController!.value.previewSize!.height,
+                          height: _cameraController!.value.previewSize!.width,
+                          child: CameraPreview(_cameraController!),
+                        ),
+                      ),
+                    ),
+                    onZoomIn: _zoomIn,
+                    onZoomOut: _zoomOut,
+                    currentZoom: _cameraZoom,
+                    minZoom: _cameraMinZoom,
+                    maxZoom: _cameraMaxZoom,
+                    onEditDart: (index, dartScore) {
+                      final (base, mul) = dartScoreToBackend(dartScore);
+                      if (index < _currentRoundThrows.length) {
+                        _currentRoundThrows[index] = _DartThrow(base, mul);
+                      } else {
+                        while (_currentRoundThrows.length < index) {
+                          _currentRoundThrows.add(_DartThrow(0, ScoreMultiplier.single));
+                        }
+                        _currentRoundThrows.add(_DartThrow(base, mul));
+                      }
+                      _recalculateScore();
+                      if (_isWin) {
+                        _stopAiCapture();
+                        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
+                      } else if (_isBust) {
+                        _stopAiCapture();
+                        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
+                      }
+                    },
+                    onToggleAi: _toggleAi,
+                    aiEnabled: !_aiManuallyDisabled,
+                  )
+                : Container(
+                    color: AppTheme.background,
+                    child: Stack(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(height: safeTop),
+                            // TV Scoreboard
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                              child: TvScoreboard(
+                                myScore: _myScore,
+                                opponentScore: placement.player2Score,
+                                myName: auth.currentUser?.username ?? 'You',
+                                opponentName: botName,
+                                isMyTurn: !_botTurnInProgress,
+                              ),
+                            ),
+                            // Dart throws indicator (during my turn)
+                            if (!_botTurnInProgress)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                                child: Row(
+                                  children: [
+                                    ...List.generate(3, (index) {
+                                      final hasThrow = index < _currentRoundThrows.length;
+                                      final isNext = index == _currentRoundThrows.length;
+                                      final isEditing = _editingDartIndex == index;
+                                      return GestureDetector(
+                                        onTap: hasThrow ? () {
+                                          HapticService.lightImpact();
+                                          setState(() {
+                                            _editingDartIndex = isEditing ? null : index;
+                                          });
+                                        } : null,
+                                        child: Container(
+                                          width: 52, height: 40, margin: const EdgeInsets.only(right: 8),
+                                          decoration: BoxDecoration(
+                                            color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surface,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: isEditing ? AppTheme.error : hasThrow ? AppTheme.primary : isNext ? Colors.white24 : Colors.transparent,
+                                              width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1),
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: hasThrow
+                                              ? Text(_currentRoundThrows[index].notation, style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold))
+                                              : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 16),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                    const Spacer(),
+                                    if (_editingDartIndex != null)
+                                      GestureDetector(
+                                        onTap: () => setState(() => _editingDartIndex = null),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                            const Icon(Icons.edit, color: AppTheme.error, size: 14),
+                                            const SizedBox(width: 4),
+                                            Text('Dart ${(_editingDartIndex ?? 0) + 1}', style: const TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.bold)),
+                                            const SizedBox(width: 6),
+                                            const Icon(Icons.close, color: AppTheme.error, size: 14),
+                                          ]),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            // Bot turn display
+                            if (_botTurnInProgress)
+                              Expanded(
+                                flex: 55,
+                                child: _buildBotTurnDisplay(placement),
+                              ),
+                            // Controls Area
+                            Expanded(
+                              flex: _botTurnInProgress ? 38 : 6,
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.surface,
+                                  borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+                                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
+                                ),
+                                child: _botTurnInProgress
+                                  ? _buildWaitingForBot()
+                                  : _buildDartboard(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // AI toggle button (floating, during my turn)
+                        if (!_botTurnInProgress && _autoScoringEnabled && _autoScoringService != null && _autoScoringService!.modelLoaded)
+                          Positioned(
+                            bottom: 80 + MediaQuery.of(context).viewPadding.bottom,
+                            right: 12,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _toggleAi,
+                                borderRadius: BorderRadius.circular(28),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: _aiManuallyDisabled ? AppTheme.surface : AppTheme.success.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: _aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success, width: 2),
+                                  ),
+                                  child: Icon(
+                                    _aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
+                                    color: _aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _botTurnInProgress ? AppLocalizations.of(context).botTurn : AppLocalizations.of(context).placementMatch,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              centerTitle: true,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                onPressed: () async {
+
+            // Floating back button
+            Positioned(
+              top: safeTop + 8,
+              left: 12,
+              child: GestureDetector(
+                onTap: () async {
                   final shouldLeave = await _showLeaveDialog();
                   if (shouldLeave && context.mounted) {
                     Navigator.of(context).pop();
                   }
                 },
-              ),
-              actions: [
-                if (_autoScoringEnabled && _autoScoringService != null && _autoScoringService!.modelLoaded && !_botTurnInProgress)
-                  IconButton(
-                    icon: Icon(
-                      _aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
-                      color: _aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
-                    ),
-                    onPressed: _toggleAi,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
                   ),
-                if (!_botTurnInProgress)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.sports_esports_outlined,
-                            size: 16, color: AppTheme.textSecondary),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Dart ${_dartsThrown + 1}/3',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            body: Container(
-              color: AppTheme.background,
-              child: Stack(
-                children: [
-                  Column(
-                    children: [
-                      // Bot turn display area
-                      if (_botTurnInProgress)
-                        _buildBotTurnDisplay(placement),
-
-                      // Controls Area (dartboard)
-                      Expanded(
-                        flex: 6,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(24),
-                              topRight: Radius.circular(24),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 10,
-                                offset: Offset(0, -4),
-                              ),
-                            ],
-                          ),
-                          child: _botTurnInProgress
-                              ? _buildWaitingForBot()
-                              : _autoScoringEnabled && _autoScoringLoading
-                                  ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: AppTheme.primary), SizedBox(height: 16), Text('Loading auto-scoring...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14))]))
-                                  : _autoScoringEnabled && !_aiManuallyDisabled && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized
-                                      ? AutoScoreGameView(
-                                          scoringService: _autoScoringService!,
-                                          onConfirm: () { HapticService.heavyImpact(); _confirmRound(); },
-                                          onEndRoundEarly: () { HapticService.heavyImpact(); _confirmRound(); },
-                                          pendingConfirmation: _isBust || _isWin,
-                                          myScore: _myScore,
-                                          opponentScore: placement.player2Score,
-                                          opponentName: 'Bot #${placement.currentBotDifficulty ?? 1}',
-                                          myName: auth.currentUser?.username ?? 'You',
-                                          dartsThrown: _dartsThrown,
-                                          localCameraPreview: SizedBox.expand(
-                                            child: FittedBox(
-                                              fit: BoxFit.cover,
-                                              child: SizedBox(
-                                                width: _cameraController!.value.previewSize!.height,
-                                                height: _cameraController!.value.previewSize!.width,
-                                                child: CameraPreview(_cameraController!),
-                                              ),
-                                            ),
-                                          ),
-                                          onZoomIn: _zoomIn,
-                                          onZoomOut: _zoomOut,
-                                          currentZoom: _cameraZoom,
-                                          minZoom: _cameraMinZoom,
-                                          maxZoom: _cameraMaxZoom,
-                                          onEditDart: (index, dartScore) {
-                                            final (base, mul) = dartScoreToBackend(dartScore);
-                                            if (index < _currentRoundThrows.length) {
-                                              _currentRoundThrows[index] = _DartThrow(base, mul);
-                                            } else {
-                                              // Slot wasn't filled via AI detection — pad gaps with misses then add
-                                              while (_currentRoundThrows.length < index) {
-                                                _currentRoundThrows.add(_DartThrow(0, ScoreMultiplier.single));
-                                              }
-                                              _currentRoundThrows.add(_DartThrow(base, mul));
-                                            }
-                                            _recalculateScore();
-                                            if (_isWin) {
-                                              _stopAiCapture();
-                                              WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
-                                            } else if (_isBust) {
-                                              _stopAiCapture();
-                                              WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
-                                            }
-                                          },
-                                          onToggleAi: _toggleAi,
-                                          aiEnabled: !_aiManuallyDisabled,
-                                        )
-                                      : _buildDartboard(),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Top bar with scores (only during user's turn)
-                  if (!_botTurnInProgress)
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      right: 16,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Left: Player score + dart indicators + MISS + CONFIRM
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceLight.withValues(alpha: 0.95),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppTheme.surfaceLight, width: 2),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        AppLocalizations.of(context).yourScore,
-                                        style: const TextStyle(
-                                          color: AppTheme.textSecondary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      Text(
-                                        '$_myScore',
-                                        style: TextStyle(
-                                          color: _myScore <= 170 ? AppTheme.success : AppTheme.primary,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      ...List.generate(3, (index) {
-                                        final hasThrow = index < _currentRoundThrows.length;
-                                        final isNext = index == _currentRoundThrows.length;
-                                        final isEditing = _editingDartIndex == index;
-                                        return GestureDetector(
-                                          onTap: hasThrow ? () {
-                                            HapticService.lightImpact();
-                                            setState(() {
-                                              _editingDartIndex = isEditing ? null : index;
-                                            });
-                                          } : null,
-                                          child: Container(
-                                            width: 40,
-                                            height: 40,
-                                            margin: const EdgeInsets.only(right: 8),
-                                            decoration: BoxDecoration(
-                                              color: isEditing
-                                                  ? AppTheme.error.withValues(alpha: 0.3)
-                                                  : hasThrow
-                                                      ? AppTheme.primary.withValues(alpha: 0.2)
-                                                      : AppTheme.background,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: isEditing
-                                                    ? AppTheme.error
-                                                    : hasThrow
-                                                        ? AppTheme.primary
-                                                        : isNext
-                                                            ? Colors.white24
-                                                            : Colors.transparent,
-                                                width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1),
-                                              ),
-                                            ),
-                                            child: Center(
-                                              child: hasThrow
-                                                  ? Text(
-                                                      _currentRoundThrows[index].notation,
-                                                      style: TextStyle(
-                                                        color: isEditing ? AppTheme.error : AppTheme.primary,
-                                                        fontSize: 14,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    )
-                                                  : Icon(
-                                                      Icons.adjust,
-                                                      color: isNext ? Colors.white54 : Colors.white10,
-                                                      size: 16,
-                                                    ),
-                                            ),
-                                          ),
-                                        );
-                                      }),
-                                      // MISS button
-                                      Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          onTap: () {
-                                            HapticService.mediumImpact();
-                                            _throwDart(0, ScoreMultiplier.single);
-                                          },
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Container(
-                                            width: 50,
-                                            height: 40,
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.background,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: AppTheme.surfaceLight, width: 2),
-                                            ),
-                                            child: const Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(Icons.close, color: Colors.white70, size: 16),
-                                                Text('MISS', style: TextStyle(color: Colors.white70, fontSize: 7, fontWeight: FontWeight.bold)),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Right: Bot score card
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceLight.withValues(alpha: 0.95),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppTheme.surfaceLight, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.smart_toy, color: AppTheme.accent, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'BOT #${placement.currentBotDifficulty ?? 1}',
-                                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('SCORE: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 8, fontWeight: FontWeight.bold)),
-                                    Text('${placement.player2Score}', style: const TextStyle(color: AppTheme.primary, fontSize: 20, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+                  child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -886,25 +768,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
             Text(AppLocalizations.of(context).bust, style: const TextStyle(color: AppTheme.error, fontSize: 16, fontWeight: FontWeight.bold))
           else if (placement.botIsCheckout)
             Text(AppLocalizations.of(context).checkout, style: const TextStyle(color: AppTheme.success, fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _scoreColumn(AppLocalizations.of(context).you, _myScore),
-              _scoreColumn(AppLocalizations.of(context).bot, placement.player2Score),
-            ],
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _scoreColumn(String label, int score) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-        Text('$score', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold)),
-      ],
     );
   }
 
@@ -938,53 +803,50 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
             ),
           ),
         ),
-        // Bottom confirm button — always visible
+        // Bottom confirm button
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           color: AppTheme.surface,
-          child: SizedBox(
-            width: double.infinity,
-            height: 64,
-            child: ElevatedButton(
-              onPressed: _dartsThrown > 0
-                  ? () {
-                      HapticService.heavyImpact();
-                      if (_isWin) { _showWinDialog(); } else if (_isBust) { _showBustDialog(); } else { _confirmRound(); }
-                    }
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isBust
-                    ? AppTheme.error
-                    : _isWin
-                        ? AppTheme.success
-                        : AppTheme.primary,
-                disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.3),
-                foregroundColor: Colors.white,
-                disabledForegroundColor: Colors.white54,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _dartsThrown > 0
+                    ? () {
+                        HapticService.heavyImpact();
+                        if (_isWin) { _showWinDialog(); } else if (_isBust) { _showBustDialog(); } else { _confirmRound(); }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isBust
+                      ? AppTheme.error
+                      : _isWin
+                          ? AppTheme.success
+                          : AppTheme.primary,
+                  disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.3),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white54,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _isBust
-                        ? AppLocalizations.of(context).bustConfirm
-                        : _isWin
-                            ? AppLocalizations.of(context).confirmWin
-                            : _dartsThrown >= 3
-                                ? AppLocalizations.of(context).confirmAndEndTurn
-                                : AppLocalizations.of(context).endTurnEarly,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_isBust ? Icons.replay : _dartsThrown == 3 ? Icons.check_circle : _dartsThrown == 0 ? Icons.sports_esports_outlined : Icons.send, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isBust
+                          ? AppLocalizations.of(context).bustConfirm
+                          : _isWin
+                              ? AppLocalizations.of(context).confirmWin
+                              : _dartsThrown >= 3
+                                  ? 'CONFIRM ROUND'
+                                  : 'END ROUND EARLY',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(_isBust ? Icons.replay : Icons.check_circle_outline),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
