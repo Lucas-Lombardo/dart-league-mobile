@@ -20,6 +20,8 @@ class GameProvider with ChangeNotifier {
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
   List<String> _opponentRoundThrows = [];
+  List<int> _myRounds = [];
+  List<int> _opponentRounds = [];
   int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
   bool _listenersSetUp = false;
   bool _pendingConfirmation = false;
@@ -69,6 +71,10 @@ class GameProvider with ChangeNotifier {
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => List.unmodifiable(_currentRoundThrows);
   List<String> get opponentRoundThrows => List.unmodifiable(_opponentRoundThrows);
+  List<int> get myRounds => List.unmodifiable(_myRounds);
+  List<int> get opponentRounds => List.unmodifiable(_opponentRounds);
+  double get myAveragePerRound => _myRounds.isEmpty ? 0.0 : _myRounds.reduce((a, b) => a + b) / _myRounds.length;
+  double get opponentAveragePerRound => _opponentRounds.isEmpty ? 0.0 : _opponentRounds.reduce((a, b) => a + b) / _opponentRounds.length;
   bool get pendingConfirmation => _pendingConfirmation;
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
@@ -141,6 +147,8 @@ class GameProvider with ChangeNotifier {
       _lastThrow = null;
       _currentRoundThrows = [];
       _opponentRoundThrows = [];
+      _myRounds = [];
+      _opponentRounds = [];
       _dartsEmittedThisRound = 0;
       _pendingConfirmation = false;
       _pendingType = null;
@@ -299,10 +307,12 @@ class GameProvider with ChangeNotifier {
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
-    
+
+    _updateRoundsFromData(data);
+
     notifyListeners();
   }
-  
+
   void confirmRound() {
     try {
       if (_currentRoundThrows.length < 3) {
@@ -546,6 +556,8 @@ class GameProvider with ChangeNotifier {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
 
+    _updateRoundsFromData(data);
+
     // Update Agora credentials if provided (reconnection scenario)
     final newAgoraAppId = data['agoraAppId'] as String?;
     final newAgoraToken = data['agoraToken'] as String?;
@@ -714,6 +726,21 @@ class GameProvider with ChangeNotifier {
     return '$prefix$baseScore';
   }
 
+  /// Helper to correctly map player1Rounds/player2Rounds to myRounds/opponentRounds
+  void _updateRoundsFromData(dynamic data) {
+    final p1Rounds = data['player1Rounds'] as List<dynamic>?;
+    final p2Rounds = data['player2Rounds'] as List<dynamic>?;
+    if (p1Rounds == null && p2Rounds == null) return;
+    final isPlayer1 = _myUserId == _player1Id;
+    if (isPlayer1) {
+      if (p1Rounds != null) _myRounds = p1Rounds.map((e) => (e as num).toInt()).toList();
+      if (p2Rounds != null) _opponentRounds = p2Rounds.map((e) => (e as num).toInt()).toList();
+    } else {
+      if (p2Rounds != null) _myRounds = p2Rounds.map((e) => (e as num).toInt()).toList();
+      if (p1Rounds != null) _opponentRounds = p1Rounds.map((e) => (e as num).toInt()).toList();
+    }
+  }
+
   /// Helper to correctly map player1Score/player2Score to myScore/opponentScore
   void _updateScoresFromPlayerScores(int player1Score, int player2Score) {
     final isPlayer1 = _myUserId == _player1Id;
@@ -770,6 +797,8 @@ class GameProvider with ChangeNotifier {
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _myRounds = [];
+    _opponentRounds = [];
     _listenersSetUp = false; // Reset so listeners can be set up for next game
     _pendingConfirmation = false;
     _pendingType = null;

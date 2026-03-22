@@ -768,6 +768,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             myName: auth.currentUser?.username ?? 'You',
             opponentName: opponentUsername,
             isMyTurn: game.isMyTurn,
+            myAverage: game.myAveragePerRound,
+            opponentAverage: game.opponentAveragePerRound,
           ),
         ),
         // Dart throws indicator (during my turn)

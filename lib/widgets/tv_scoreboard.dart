@@ -11,6 +11,8 @@ class TvScoreboard extends StatelessWidget {
   final String opponentName;
   final bool isMyTurn;
   final int startingScore;
+  final double? myAverage;
+  final double? opponentAverage;
 
   const TvScoreboard({
     super.key,
@@ -20,6 +22,8 @@ class TvScoreboard extends StatelessWidget {
     required this.opponentName,
     required this.isMyTurn,
     this.startingScore = 501,
+    this.myAverage,
+    this.opponentAverage,
   });
 
   @override
@@ -58,6 +62,7 @@ class TvScoreboard extends StatelessWidget {
               isActive: isMyTurn,
               color: AppTheme.primary,
               hint: hint,
+              average: myAverage,
             ),
           ),
           // Center info
@@ -102,6 +107,7 @@ class TvScoreboard extends StatelessWidget {
               isActive: !isMyTurn,
               color: AppTheme.error,
               hint: opponentHint,
+              average: opponentAverage,
             ),
           ),
         ],
@@ -117,6 +123,7 @@ class _PlayerScore extends StatelessWidget {
   final bool isActive;
   final Color color;
   final String? hint;
+  final double? average;
 
   const _PlayerScore({
     required this.name,
@@ -125,6 +132,7 @@ class _PlayerScore extends StatelessWidget {
     required this.isActive,
     required this.color,
     this.hint,
+    this.average,
   });
 
   @override
@@ -197,6 +205,20 @@ class _PlayerScore extends StatelessWidget {
                     )
                   : null,
             ),
+            // Average score per round
+            if (average != null && average! > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'AVG ${average!.toStringAsFixed(1)}',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: (screenWidth * 0.024).clamp(9.0, 11.0),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
           ],
         );
       },

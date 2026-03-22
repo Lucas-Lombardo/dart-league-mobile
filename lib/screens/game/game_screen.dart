@@ -413,6 +413,8 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                                 myName: auth.currentUser?.username ?? 'You',
                                 opponentName: widget.opponentUsername,
                                 isMyTurn: game.isMyTurn,
+                                myAverage: game.myAveragePerRound,
+                                opponentAverage: game.opponentAveragePerRound,
                               ),
                             ),
                             // Dart throws indicator (during my turn)
