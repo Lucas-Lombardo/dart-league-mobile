@@ -269,7 +269,7 @@ class AutoScoringService extends ChangeNotifier {
       final allDartsEmitted = _emittedSlots.every((e) => e);
       if (allDartsEmitted && dartCount == 0 && result.calibrationPoints.length >= 4) {
         _consecutiveEmptyBoardCount++;
-        print('[AutoScoring] Empty board detected ($_consecutiveEmptyBoardCount/$_autoConfirmThreshold)');
+        debugPrint('[AutoScoring] Empty board detected ($_consecutiveEmptyBoardCount/$_autoConfirmThreshold)');
         if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
           _consecutiveEmptyBoardCount = 0;
           _prevDartCount = 0;
@@ -300,7 +300,7 @@ class AutoScoringService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       await _maybeCleanup(imagePath, cleanupFile);
-      print('[AutoScoring] Capture error: $e');
+      debugPrint('[AutoScoring] Capture error: $e');
     }
   }
 
@@ -376,7 +376,7 @@ class AutoScoringService extends ChangeNotifier {
       for (int s = 0; s < 3; s++) {
         if (_confirmedDarts[s] == null && !_manualOverrideSlots[s] && !_removedSlots[s]) {
           _confirmedDarts[s] = detected[d];
-          print('[AutoScoring] New dart in slot $s: ${detected[d].score.formatted} conf=${detected[d].confidence.toStringAsFixed(2)}');
+          debugPrint('[AutoScoring] New dart in slot $s: ${detected[d].score.formatted} conf=${detected[d].confidence.toStringAsFixed(2)}');
           // Only emit once per slot per turn — prevents duplicate socket events
           // on brief occlusion (dart disappears then reappears in same slot)
           if (!_emittedSlots[s]) {

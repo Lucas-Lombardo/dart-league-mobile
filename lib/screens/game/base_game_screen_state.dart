@@ -375,7 +375,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
       ],
-    )).then((_) => winDialogShowing = false);
+    )).then((_) { if (mounted) winDialogShowing = false; });
   }
 
   void showPendingBustDialog(dynamic game) {
@@ -398,7 +398,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
         ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
       ],
-    )).then((_) => bustDialogShowing = false);
+    )).then((_) { if (mounted) bustDialogShowing = false; });
   }
 
   void showReportDialog({required Future<void> Function(String) onSubmit, required VoidCallback onComplete}) {

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
@@ -5,7 +8,7 @@ import 'api_service.dart';
 
 class SocketService {
   static io.Socket? _socket;
-  static bool _isConnecting = false;
+  static Completer<void>? _connectCompleter;
   static Function()? _onReconnectHandler;
   static Function()? _onDisconnectHandler;
   static Function()? _onConnectFailedHandler;
@@ -17,21 +20,22 @@ class SocketService {
   static String? get socketId => _socket?.id;
 
   static Future<void> connect() async {
-    if (_isConnecting || isConnected) return;
+    if (_connectCompleter != null) {
+      return _connectCompleter!.future;
+    }
+    if (isConnected) return;
 
-    _isConnecting = true;
+    _connectCompleter = Completer<void>();
 
     try {
       final token = await StorageService.getToken();
-      
+
       if (token == null) {
         throw Exception('No authentication token found');
       }
 
-      // baseUrl is already the full URL (https://api.dart-rivals.com)
-      // No need to modify it - socket.io connects to the same host
       final socketUrl = baseUrl;
-      print('🔌 SocketService: Connecting to $socketUrl');
+      debugPrint('SocketService: Connecting to $socketUrl');
 
       _socket = io.io(
         socketUrl,
@@ -47,59 +51,67 @@ class SocketService {
       );
 
       _socket!.onConnect((_) {
-        print('✅ SocketService: Connected! socketId=${_socket?.id}');
+        debugPrint('SocketService: Connected! socketId=${_socket?.id}');
       });
 
       _socket!.onDisconnect((reason) {
-        print('❌ SocketService: Disconnected - reason: $reason');
+        debugPrint('SocketService: Disconnected - reason: $reason');
         _onDisconnectHandler?.call();
       });
 
       _socket!.on('reconnect', (_) {
-        print('🔄 SocketService: Reconnected');
+        debugPrint('SocketService: Reconnected');
         _onReconnectHandler?.call();
       });
 
       _socket!.on('reconnect_failed', (_) {
-        print('❌ SocketService: Reconnection failed permanently');
+        debugPrint('SocketService: Reconnection failed permanently');
         _onConnectFailedHandler?.call();
       });
 
       _socket!.onConnectError((error) async {
-        print('❌ SocketService: Connect error - $error');
-        // If auth-related, try refreshing the token and reconnecting
+        debugPrint('SocketService: Connect error - $error');
         if (error.toString().contains('401') ||
             error.toString().contains('unauthorized') ||
             error.toString().contains('jwt')) {
-          print('🔄 SocketService: Auth error, attempting token refresh...');
+          debugPrint('SocketService: Auth error, attempting token refresh...');
           final refreshed = await ApiService.refreshAccessToken();
           if (refreshed) {
-            print('🔄 SocketService: Token refreshed, reconnecting...');
-            disconnect();
+            debugPrint('SocketService: Token refreshed, reconnecting...');
+            _disconnectInternal();
+            _connectCompleter = null;
             await connect();
           }
         }
       });
 
       _socket!.onError((error) {
-        print('❌ SocketService: Error - $error');
+        debugPrint('SocketService: Error - $error');
       });
 
       _socket!.connect();
     } catch (e) {
       rethrow;
     } finally {
-      _isConnecting = false;
+      _connectCompleter?.complete();
+      _connectCompleter = null;
     }
   }
 
-  static void disconnect() {
+  static void _disconnectInternal() {
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
       _handlers.clear();
     }
+  }
+
+  static Future<void> disconnect() async {
+    if (_connectCompleter != null) {
+      await _connectCompleter!.future;
+    }
+    _disconnectInternal();
   }
 
   static void emit(String event, dynamic data) {
@@ -130,10 +142,19 @@ class SocketService {
     // handlers registered by other sources for the same event.
   }
 
-  static Future<void> ensureConnected() async {
+  static Future<void> ensureConnected({
+    Duration timeout = const Duration(seconds: 10),
+    Duration pollInterval = const Duration(milliseconds: 250),
+  }) async {
+    if (isConnected) return;
+    await connect();
+
+    final deadline = DateTime.now().add(timeout);
+    while (!isConnected && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(pollInterval);
+    }
     if (!isConnected) {
-      await connect();
-      await Future.delayed(const Duration(milliseconds: 500));
+      throw Exception('Socket connection timed out after ${timeout.inSeconds}s');
     }
   }
 

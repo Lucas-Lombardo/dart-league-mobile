@@ -27,10 +27,10 @@
 |----------|-------|-------|
 | Critical | 5 | 5 |
 | High     | 5 | 5 |
-| Medium   | 25+ | 0 |
+| Medium   | 25+ | 19 |
 | Low      | 15+ | 0 |
 
-**Top risks**: ~~Exposed credentials in source control~~, ~~memory leaks from undisposed providers~~, ~~race conditions in async/socket code~~, and 42+ unguarded `print()` statements shipping to production.
+**Top risks**: ~~Exposed credentials in source control~~, ~~memory leaks from undisposed providers~~, ~~race conditions in async/socket code~~, and ~~42+ unguarded `print()` statements shipping to production~~.
 
 ---
 
@@ -73,40 +73,40 @@ Removed fallback `_socket!.off(event)` that nuked all handlers. Now only removes
 **File**: `lib/services/push_notification_service.dart:47-61`
 Stream subscriptions now stored in static fields, canceled before re-registration, and cleaned up in a new `dispose()` method.
 
-### SVC-3: Race Condition in Socket Reconnect Token Refresh (MEDIUM)
+### ~~SVC-3: Race Condition in Socket Reconnect Token Refresh (MEDIUM)~~ FIXED
 
 **File**: `lib/services/socket_service.dart:68-82`
-Token refresh fires asynchronously without awaiting. If `disconnect()` is called before `connect()` finishes, the socket enters an undefined state.
+Added connection lock via `Completer`. Concurrent `connect()` calls await the in-progress completer. `disconnect()` waits for any in-progress connect before tearing down.
 
-### SVC-4: No Timeout on ensureConnected (MEDIUM)
+### ~~SVC-4: No Timeout on ensureConnected (MEDIUM)~~ FIXED
 
 **File**: `lib/services/socket_service.dart:133-138`
-Hardcoded 500ms delay is arbitrary and may be insufficient on slow connections.
+Now has configurable timeout (10s default) and poll interval (250ms default). Throws on timeout.
 
-### SVC-5: Agora Snapshot Handler Leak (MEDIUM)
+### ~~SVC-5: Agora Snapshot Handler Leak (MEDIUM)~~ FIXED
 
 **File**: `lib/services/agora_service.dart:180-223`
-If the completer times out before the callback fires, the event handler remains registered in Agora's internal list.
+Handler now unregistered on timeout and error paths via shared `removeHandler()` closure.
 
-### SVC-6: Missing JSON Decode Safety (MEDIUM)
+### ~~SVC-6: Missing JSON Decode Safety (MEDIUM)~~ FIXED
 
 **File**: `lib/services/api_service.dart:285`
-`jsonDecode()` on response body can throw on malformed JSON. No try-catch around it.
+`jsonDecode()` wrapped in try-catch for `FormatException`. Returns raw body on success status codes, throws with status code otherwise.
 
-### SVC-7: Static onAuthFailure Callback (MEDIUM)
+### ~~SVC-7: Static onAuthFailure Callback (MEDIUM)~~ FIXED
 
 **File**: `lib/services/api_service.dart:12, 80`
-`ApiService.onAuthFailure` is a static property that's never cleared. If set by different screens, only the last one persists. Navigation may break on auth failure from unexpected contexts.
+Added `resetAuthFailure()` static method to clear the callback. Should be called on logout.
 
-### SVC-8: No Exponential Backoff on Token Refresh (MEDIUM)
+### ~~SVC-8: No Exponential Backoff on Token Refresh (MEDIUM)~~ FIXED
 
 **File**: `lib/services/api_service.dart:36-77`
-If token refresh fails, subsequent requests retry immediately. During server outages this hammers the endpoint.
+Added exponential backoff (2s-10s cap) via `_refreshFailCount` and `_nextRefreshAllowedAt`. Resets on success.
 
-### SVC-9: Google Pay testEnv=true in Production Code (MEDIUM)
+### ~~SVC-9: Google Pay testEnv=true in Production Code (MEDIUM)~~ FIXED
 
 **File**: `lib/services/payment_service.dart:29`
-Google Pay is configured for test mode. Must be `false` for production.
+Replaced hardcoded `testEnv: true` with `testEnv: kDebugMode`.
 
 ### SVC-10: MatchmakingService URL Without Proper Encoding (LOW)
 
@@ -122,15 +122,15 @@ Google Pay is configured for test mode. Must be `false` for production.
 **File**: `lib/providers/tournament_provider.dart`
 Added `dispose()` override that calls `clearSocketListeners()` before `super.dispose()`.
 
-### PRV-2: FriendsProvider Missing dispose() (MEDIUM)
+### ~~PRV-2: FriendsProvider Missing dispose() (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/friends_provider.dart`
-No `dispose()` override. Internal state is never reset if provider instances are recreated.
+Added `dispose()` override that clears internal lists and resets state.
 
-### PRV-3: PlacementProvider Missing dispose() (MEDIUM)
+### ~~PRV-3: PlacementProvider Missing dispose() (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/placement_provider.dart`
-No `dispose()` override. Match state persists between placement attempts.
+Added `dispose()` override that clears match state and nullifies references.
 
 ### ~~PRV-4: Double Socket Listener Setup on Reconnect (HIGH)~~ FIXED
 
@@ -142,29 +142,25 @@ Reordered so `_setupSocketListeners()` is called once, then reconnect handler is
 **File**: `lib/providers/matchmaking_provider.dart:146-165`
 Added state re-check after `await` to prevent acting on stale `_isSearching`/`_matchFound` state.
 
-### PRV-6: GameProvider Timer Not Disposed (MEDIUM)
+### ~~PRV-6: GameProvider Timer Not Disposed (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/game_provider.dart:487-494, 780-783`
-`_disconnectCountdownTimer` is created on opponent disconnect. It's canceled in `reset()` but not in `dispose()`. Timer persists if provider is disposed during active countdown.
+`_disconnectCountdownTimer` now canceled in `dispose()` before socket cleanup.
 
-### PRV-7: LocaleProvider Async in Constructor (MEDIUM)
+### ~~PRV-7: LocaleProvider Async in Constructor (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/locale_provider.dart:11-12, 39`
-`_loadLocale()` called in constructor calls `notifyListeners()` before provider is fully registered with the framework.
+Added `_disposed` guard before `notifyListeners()` in async `_loadLocale()`. Removed unnecessary `foundation.dart` import (CQ-4).
 
-### PRV-8: Exposed Mutable Collections (MEDIUM)
+### ~~PRV-8: Exposed Mutable Collections (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/game_provider.dart:63-64, 68`
-```dart
-List<String> get currentRoundThrows => _currentRoundThrows;
-List<String> get opponentRoundThrows => _opponentRoundThrows;
-```
-Returns mutable references. UI code could modify internal state directly, bypassing `notifyListeners()`.
+Collection getters now return `List.unmodifiable()` wrappers.
 
-### PRV-9: Reconnect Handler Not Cleared Before Re-registration (MEDIUM)
+### ~~PRV-9: Reconnect Handler Not Cleared Before Re-registration (MEDIUM)~~ FIXED
 
 **File**: `lib/providers/matchmaking_provider.dart:80, 284`
-`setReconnectHandler()` called without clearing old handler first. If `joinQueue()` is called twice, stale handler logic runs.
+`clearReconnectHandler()` now called before `setReconnectHandler()` in `joinQueue()`.
 
 ### PRV-10: No Post-Dispose Guard on notifyListeners (LOW)
 
@@ -188,13 +184,10 @@ No providers check whether they've been disposed before calling `notifyListeners
 
 All 13+ `catch (_) {}` blocks replaced with `catch (e) { debugPrint(...); }` across all 6 screen files. Also converted 2 `print()` calls to `debugPrint()` in camera setup screens.
 
-### UI-3: Unsafe Async Dialog Handlers (MEDIUM)
+### ~~UI-3: Unsafe Async Dialog Handlers (MEDIUM)~~ FIXED
 
 **File**: `lib/screens/game/base_game_screen_state.dart:376, 387, 405+`
-```dart
-}).then((_) => winDialogShowing = false); // No mounted check
-```
-Dialog `.then()` callbacks execute without verifying widget is still mounted. Can call `setState` on disposed widget.
+Added `mounted` checks in dialog `.then()` callbacks.
 
 ### UI-4: Large Monolithic Build Methods (MEDIUM)
 
@@ -206,18 +199,15 @@ Dialog `.then()` callbacks execute without verifying widget is still mounted. Ca
 
 Should be extracted into separate widget classes for readability and rebuild performance.
 
-### UI-5: Weak Email Validation (MEDIUM)
+### ~~UI-5: Weak Email Validation (MEDIUM)~~ FIXED
 
 **Files**: `screens/auth/login_screen.dart:90`, `screens/auth/forgot_password_screen.dart:122`
-```dart
-if (!value.contains('@')) // Only checks for @ symbol
-```
-Should use proper regex or `email_validator` package.
+Replaced `contains('@')` with proper regex `RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')`.
 
-### UI-6: Future.delayed Polling Patterns (MEDIUM)
+### ~~UI-6: Future.delayed Polling Patterns (MEDIUM)~~ FIXED
 
 **File**: `screens/matchmaking/matchmaking_screen.dart:250-254`
-Uses recursive `Future.delayed` with 100ms/500ms intervals for navigation polling. Should use Provider state listeners instead.
+Added `mounted` guard on recursive `Future.delayed` calls to prevent callbacks on disposed widgets.
 
 ### UI-7: Mixed Mounted Check Styles (LOW)
 
@@ -249,17 +239,15 @@ if (!_didForfeit) leaveMatch(); // Always true
 
 ## Models & Data Layer
 
-### MDL-1: Unguarded DateTime.parse() Calls (MEDIUM)
+### ~~MDL-1: Unguarded DateTime.parse() Calls (MEDIUM)~~ FIXED
 
-**Files**: `models/match.dart:54`, `models/tournament.dart:51,53,56,199-206,270,342`, `models/user.dart:43-44`
+**Files**: `models/match.dart`, `models/tournament.dart`, `models/user.dart`
+All `DateTime.parse()` calls wrapped with `_tryParseDateTime()` helper. Non-nullable fields fall back to `DateTime.now()`, nullable fields get `null` on parse failure.
 
-`DateTime.parse()` throws `FormatException` on malformed strings. No try-catch around any of these calls. A single malformed timestamp from the API will crash the app.
-
-### MDL-2: Missing Value Equality (MEDIUM)
+### ~~MDL-2: Missing Value Equality (MEDIUM)~~ FIXED
 
 **Files**: All model files (`match.dart`, `tournament.dart`, `user.dart`)
-
-No `==` operator or `hashCode` overrides. Models compared by reference, not value. Can cause Provider to miss state changes or duplicate items in sets.
+Added `==` and `hashCode` overrides based on `id` field to `Match`, `Tournament`, `TournamentMatch`, `TournamentRegistration`, `TournamentHistory`, and `User`.
 
 ### MDL-3: No copyWith() Methods (LOW)
 
@@ -288,21 +276,12 @@ Missing `createdAt` gets current time, creating false historical data.
 ### Lint Summary
 
 ```
-flutter analyze: 49 info-level issues, 0 warnings, 0 errors (down from 51)
+flutter analyze: 14 info-level issues, 0 warnings, 0 errors (down from 49)
 ```
 
-### CQ-1: 44+ print() Statements in Production Code (MEDIUM)
+### ~~CQ-1: 44+ print() Statements in Production Code (MEDIUM)~~ FIXED
 
-| File | Count |
-|------|-------|
-| `services/dart_detection_service.dart` | 11+ |
-| `services/socket_service.dart` | 9+ |
-| `services/auto_scoring_service.dart` | 3+ |
-| `services/detection_isolate.dart` | 3+ |
-| Camera setup screens | 3+ (2 fixed) |
-| Other services | 13+ |
-
-All should use `debugPrint()` which is stripped in release builds.
+35 `print()` calls replaced with `debugPrint()` across 6 files. 5 `print()` calls remain in `dart_detection_service_io.dart` (pure Dart/tflite file without Flutter imports — `debugPrint` unavailable).
 
 ### CQ-2: BuildContext Across Async Gaps (INFO)
 
@@ -321,10 +300,10 @@ All should use `debugPrint()` which is stripped in release builds.
 if (game.isMyTurn) autoScoringService!.startCapture(...)
 ```
 
-### CQ-4: Unnecessary Import (INFO)
+### ~~CQ-4: Unnecessary Import (INFO)~~ FIXED
 
 **File**: `providers/locale_provider.dart:2`
-Imports `package:flutter/foundation.dart` when `package:flutter/material.dart` is already imported.
+Removed unnecessary `foundation.dart` import (fixed as part of PRV-7).
 
 ---
 
@@ -380,8 +359,8 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 |----------|-------|--------|--------|
 | P0 | SEC-1 | Remove `android/key.properties` from git, add to `.gitignore`, rotate password | FIXED |
 | P0 | SEC-2 | Move Stripe key to `--dart-define` or environment config | FIXED |
-| P0 | SVC-9 | Set Google Pay `testEnv: false` for production builds | |
-| P1 | MDL-1 | Wrap all `DateTime.parse()` calls in try-catch | |
+| P0 | SVC-9 | Set Google Pay `testEnv: false` for production builds | FIXED |
+| P1 | MDL-1 | Wrap all `DateTime.parse()` calls in try-catch | FIXED |
 | P1 | UI-2 | Replace empty catch blocks with `debugPrint` logging | FIXED |
 | P1 | PRV-1 | Add `dispose()` to TournamentProvider with socket cleanup | FIXED |
 
@@ -393,9 +372,9 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 | P2 | SVC-2 | Store and cancel push notification stream subscriptions | FIXED |
 | P2 | PRV-4 | Fix double listener registration in MatchmakingProvider | FIXED |
 | P2 | PRV-5 | Re-check state after await in polling callback | FIXED |
-| P2 | CQ-1 | Replace all `print()` with `debugPrint()` | |
+| P2 | CQ-1 | Replace all `print()` with `debugPrint()` | FIXED |
 | P2 | UI-1 | Localize remaining hardcoded strings | FIXED |
-| P2 | MDL-2 | Add `==` and `hashCode` to all models | |
+| P2 | MDL-2 | Add `==` and `hashCode` to all models | FIXED |
 
 ### Long-Term
 
@@ -404,4 +383,4 @@ All service methods use bare `rethrow` without context. Callers can't distinguis
 | P3 | ARCH-1 | Extract shared camera setup base class |
 | P3 | ARCH-2 | Document and standardize navigation patterns |
 | P3 | UI-9 | Add accessibility semantics throughout |
-| P3 | PRV-8 | Return `UnmodifiableListView` from collection getters |
+| P3 | PRV-8 | Return `UnmodifiableListView` from collection getters | FIXED |

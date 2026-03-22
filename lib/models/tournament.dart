@@ -1,3 +1,12 @@
+DateTime? _tryParseDateTime(String? value) {
+  if (value == null) return null;
+  try {
+    return DateTime.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 class Tournament {
   final String id;
   final String name;
@@ -48,13 +57,9 @@ class Tournament {
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
-      scheduledDate: DateTime.parse(json['scheduledDate'] as String),
-      registrationOpenDate: json['registrationOpenDate'] != null
-          ? DateTime.parse(json['registrationOpenDate'] as String)
-          : null,
-      registrationCloseDate: json['registrationCloseDate'] != null
-          ? DateTime.parse(json['registrationCloseDate'] as String)
-          : null,
+      scheduledDate: _tryParseDateTime(json['scheduledDate'] as String?) ?? DateTime.now(),
+      registrationOpenDate: _tryParseDateTime(json['registrationOpenDate'] as String?),
+      registrationCloseDate: _tryParseDateTime(json['registrationCloseDate'] as String?),
       status: json['status'] as String,
       maxParticipants: json['maxParticipants'] as int? ?? 32,
       currentParticipants: json['currentParticipants'] as int? ?? 0,
@@ -126,6 +131,13 @@ class Tournament {
         return status;
     }
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Tournament && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class TournamentMatch {
@@ -195,15 +207,9 @@ class TournamentMatch {
       nextMatchId: json['nextMatchId'] as String?,
       player1Ready: json['player1Ready'] as bool? ?? false,
       player2Ready: json['player2Ready'] as bool? ?? false,
-      inviteSentAt: json['inviteSentAt'] != null
-          ? DateTime.parse(json['inviteSentAt'] as String)
-          : null,
-      startedAt: json['startedAt'] != null
-          ? DateTime.parse(json['startedAt'] as String)
-          : null,
-      completedAt: json['completedAt'] != null
-          ? DateTime.parse(json['completedAt'] as String)
-          : null,
+      inviteSentAt: _tryParseDateTime(json['inviteSentAt'] as String?),
+      startedAt: _tryParseDateTime(json['startedAt'] as String?),
+      completedAt: _tryParseDateTime(json['completedAt'] as String?),
     );
   }
 
@@ -235,6 +241,13 @@ class TournamentMatch {
       status == 'player1_forfeit' ||
       status == 'player2_forfeit' ||
       status == 'both_forfeit';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is TournamentMatch && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class TournamentRegistration {
@@ -267,7 +280,7 @@ class TournamentRegistration {
       rank: json['rank'] as String?,
       status: json['status'] as String,
       seed: json['seed'] as int? ?? 0,
-      registeredAt: DateTime.parse(json['registeredAt'] as String),
+      registeredAt: _tryParseDateTime(json['registeredAt'] as String?) ?? DateTime.now(),
     );
   }
 
@@ -289,6 +302,13 @@ class TournamentRegistration {
         return 'Unranked';
     }
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is TournamentRegistration && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class TournamentHistory {
@@ -339,7 +359,7 @@ class TournamentHistory {
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
-      scheduledDate: DateTime.parse(json['scheduledDate'] as String),
+      scheduledDate: _tryParseDateTime(json['scheduledDate'] as String?) ?? DateTime.now(),
       status: json['status'] as String,
       maxParticipants: json['maxParticipants'] as int? ?? 32,
       totalParticipants: json['totalParticipants'] as int? ?? 0,
@@ -379,4 +399,11 @@ class TournamentHistory {
     }
     return prizeDescription ?? 'Trophy';
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is TournamentHistory && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

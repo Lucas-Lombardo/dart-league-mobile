@@ -1,3 +1,12 @@
+DateTime? _tryParseDateTime(String? value) {
+  if (value == null) return null;
+  try {
+    return DateTime.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 class User {
   final String id;
   final String username;
@@ -40,8 +49,8 @@ class User {
       losses: json['losses'] as int? ?? 0,
       role: json['role'] as String? ?? 'player',
       isBanned: json['isBanned'] as bool? ?? false,
-      bannedUntil: json['bannedUntil'] != null ? DateTime.parse(json['bannedUntil'] as String) : null,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String) : null,
+      bannedUntil: _tryParseDateTime(json['bannedUntil'] as String?),
+      createdAt: _tryParseDateTime(json['createdAt'] as String?),
       language: json['language'] as String? ?? 'en',
       isEmailVerified: json['isEmailVerified'] as bool? ?? false,
     );
@@ -64,4 +73,11 @@ class User {
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is User && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

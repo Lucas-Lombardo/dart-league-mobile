@@ -254,4 +254,14 @@ class PlacementProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    _status = null;
+    _currentMatchId = null;
+    _currentBotDifficulty = null;
+    _error = null;
+    _lastBotThrows = [];
+    super.dispose();
+  }
 }

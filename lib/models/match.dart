@@ -1,3 +1,12 @@
+DateTime? _tryParseDateTime(String? value) {
+  if (value == null) return null;
+  try {
+    return DateTime.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 class Match {
   final String id;
   final String player1Id;
@@ -50,9 +59,7 @@ class Match {
       winnerId: json['winnerId'] as String? ?? '',
       player1EloChange: json['player1EloChange'] as int? ?? 0,
       player2EloChange: json['player2EloChange'] as int? ?? 0,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : DateTime.now(),
+      createdAt: _tryParseDateTime(json['createdAt'] as String?) ?? DateTime.now(),
       status: json['status'] as String? ?? 'completed',
       matchType: json['matchType'] as String? ?? 'ranked',
       botDifficulty: json['botDifficulty'] as int?,
@@ -151,6 +158,13 @@ class Match {
   int getOpponentScore(String userId) {
     return userId == player1Id ? player2Score : player1Score;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Match && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class MatchRound {

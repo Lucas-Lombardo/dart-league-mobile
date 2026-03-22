@@ -78,7 +78,8 @@ class MatchmakingProvider with ChangeNotifier {
 
       _setupSocketListeners();
 
-      // Setup reconnection handler to re-register listeners after reconnect
+      // Clear old handler before setting new one to avoid stale closures
+      SocketService.clearReconnectHandler();
       SocketService.setReconnectHandler(() {
         _setupSocketListeners();
         _gameProvider?.ensureListenersSetup();

@@ -124,7 +124,7 @@ class _TournamentCameraSetupScreenState extends State<TournamentCameraSetupScree
       try {
         await _cameraController!.setFlashMode(FlashMode.off);
       } catch (e) {
-        print('[Camera] Flash mode not supported: $e');
+        debugPrint('[Camera] Flash mode not supported: $e');
       }
 
       try {

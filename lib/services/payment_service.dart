@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_stripe/flutter_stripe.dart';
 
@@ -24,9 +24,9 @@ class PaymentService {
             merchantCountryCode: 'FR',
           ),
           // Google Pay configuration
-          googlePay: const PaymentSheetGooglePay(
+          googlePay: PaymentSheetGooglePay(
             merchantCountryCode: 'FR',
-            testEnv: true, // Set to false for production
+            testEnv: kDebugMode,
           ),
         ),
       );

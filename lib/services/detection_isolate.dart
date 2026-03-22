@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'dart_detection_service.dart';
@@ -84,7 +85,7 @@ class DetectionIsolate {
       await _fallbackService!.loadModel(cpuOnly: true);
       _usingFallback = true;
       _ready = true;
-      print('[DetectionIsolate] Fallback to main-thread CPU model: $e');
+      debugPrint('[DetectionIsolate] Fallback to main-thread CPU model: $e');
     }
   }
 
@@ -128,7 +129,7 @@ class DetectionIsolate {
     final sw = Stopwatch()..start();
     final (Uint8List rgba, int w, int h) = await _decodeNative(imagePath);
     final decodeMs = sw.elapsedMilliseconds;
-    print('[Isolate] decode=${decodeMs}ms (main thread, native)');
+    debugPrint('[Isolate] decode=${decodeMs}ms (main thread, native)');
 
     final id = _nextId++;
     final completer = Completer<ScoringResult>();
@@ -183,7 +184,7 @@ class DetectionIsolate {
       service = DartDetectionService(useNativeDecode: false);
       service.loadModelFromBuffer(init.modelBytes);
       init.mainPort.send(const _InitStatus(ok: true));
-      print('[DetectionIsolate] Model loaded in background isolate');
+      debugPrint('[DetectionIsolate] Model loaded in background isolate');
     } catch (e) {
       init.mainPort.send(_InitStatus(ok: false, error: e.toString()));
       return;

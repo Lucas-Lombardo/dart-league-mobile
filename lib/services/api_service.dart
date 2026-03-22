@@ -8,10 +8,18 @@ import '../utils/storage_service.dart';
 class ApiService {
   static const Duration _timeout = Duration(seconds: 30);
 
-  /// Called when token refresh fails — the app should navigate to login.
+  /// Called when token refresh fails -- the app should navigate to login.
+  /// This is a static callback that persists for the app lifetime.
+  /// Use [resetAuthFailure] during logout/cleanup to prevent stale references.
   static void Function()? onAuthFailure;
 
+  static void resetAuthFailure() {
+    onAuthFailure = null;
+  }
+
   static Completer<bool>? _refreshCompleter;
+  static int _refreshFailCount = 0;
+  static DateTime? _nextRefreshAllowedAt;
 
   static Future<Map<String, String>> _getHeaders({bool includeAuth = true}) async {
     final headers = {
@@ -34,9 +42,13 @@ class ApiService {
   /// Returns true if refresh succeeded, false otherwise.
   /// Deduplicates concurrent refresh calls.
   static Future<bool> refreshAccessToken() async {
-    // If a refresh is already in progress, wait for it
     if (_refreshCompleter != null) {
       return _refreshCompleter!.future;
+    }
+
+    if (_nextRefreshAllowedAt != null &&
+        DateTime.now().isBefore(_nextRefreshAllowedAt!)) {
+      return false;
     }
 
     _refreshCompleter = Completer<bool>();
@@ -59,21 +71,30 @@ class ApiService {
         final body = jsonDecode(response.body);
         await StorageService.saveToken(body['access_token']);
         await StorageService.saveRefreshToken(body['refresh_token']);
-        debugPrint('🔄 Token refreshed successfully');
+        _refreshFailCount = 0;
+        _nextRefreshAllowedAt = null;
         _refreshCompleter!.complete(true);
         return true;
       } else {
-        debugPrint('❌ Token refresh failed: ${response.statusCode}');
+        debugPrint('Token refresh failed: ${response.statusCode}');
+        _applyRefreshBackoff();
         _refreshCompleter!.complete(false);
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Token refresh error: $e');
+      debugPrint('Token refresh error: $e');
+      _applyRefreshBackoff();
       _refreshCompleter!.complete(false);
       return false;
     } finally {
       _refreshCompleter = null;
     }
+  }
+
+  static void _applyRefreshBackoff() {
+    _refreshFailCount++;
+    final delaySec = _refreshFailCount.clamp(1, 5) * 2; // 2, 4, 6, 8, 10s cap
+    _nextRefreshAllowedAt = DateTime.now().add(Duration(seconds: delaySec));
   }
 
   static void _handleAuthFailure() {
@@ -282,7 +303,17 @@ class ApiService {
 
   static dynamic _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
-    final body = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    dynamic body;
+    if (response.body.isNotEmpty) {
+      try {
+        body = jsonDecode(response.body);
+      } on FormatException {
+        if (statusCode >= 200 && statusCode < 300) {
+          return response.body;
+        }
+        throw Exception('Error $statusCode: Invalid response from server');
+      }
+    }
 
     if (statusCode >= 200 && statusCode < 300) {
       return body;

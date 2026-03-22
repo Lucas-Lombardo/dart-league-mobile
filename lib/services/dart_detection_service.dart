@@ -2,7 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -44,7 +44,7 @@ class DartDetectionService {
         'assets/models/best_int8.tflite',
         options: cpuOptions,
       );
-      print('[DartDetection] Model loaded on web with CPU (4 threads)');
+      debugPrint('[DartDetection] Model loaded on web with CPU (4 threads)');
       _isLoaded = true;
     } else {
       // Use Metal GPU on iOS, GPU on Android, fallback to CPU with threads
@@ -63,7 +63,7 @@ class DartDetectionService {
     // CPU with multi-threading (GPU delegates often fail in isolates)
     final cpuOptions = InterpreterOptions()..threads = 4;
     _interpreter = Interpreter.fromBuffer(modelBytes, options: cpuOptions);
-    print('[DartDetection] Model loaded from buffer on CPU with 4 threads');
+    debugPrint('[DartDetection] Model loaded from buffer on CPU with 4 threads');
     _isLoaded = true;
 
     _allocateBuffers();
@@ -77,9 +77,9 @@ class DartDetectionService {
     final outputByteSize = outputShape.fold<int>(1, (a, b) => a * b) * 4;
     _outputBytes = Uint8List(outputByteSize);
     final inputTensors = _interpreter!.getInputTensors();
-    print('[DartDetection] Model loaded');
-    print('[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
-    print('[DartDetection] Output: ${outputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
+    debugPrint('[DartDetection] Model loaded');
+    debugPrint('[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
+    debugPrint('[DartDetection] Output: ${outputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
   }
 
   void dispose() {
@@ -545,17 +545,17 @@ class DartDetectionService {
       sw.stop();
       final scoreMs = sw.elapsedMilliseconds;
       for (final line in filterLogs) {
-        print(line);
+        debugPrint(line);
       }
-      print('---------------------');
-      print('[Image] ${totalMs + scoreMs} ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
-      print('[Image] ${scores.length} dart(s)');
+      debugPrint('---------------------');
+      debugPrint('[Image] ${totalMs + scoreMs} ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
+      debugPrint('[Image] ${scores.length} dart(s)');
       for (int i = 0; i < scores.length; i++) {
         final d = dartTips[i];
         final s = scores[i];
-        print('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+        debugPrint('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
       }
-      print('---------------------');
+      debugPrint('---------------------');
       final total = scores.fold<int>(0, (sum, s) => sum + s.score);
       return ScoringResult(
         calibrationPoints: calibPoints,
@@ -686,17 +686,17 @@ class DartDetectionService {
       sw.stop();
       final scoreMs = sw.elapsedMilliseconds;
       for (final line in filterLogs) {
-        print(line);
+        debugPrint(line);
       }
-      print('---------------------');
-      print('[Image] ${totalMs + scoreMs} ms | read=$readMs decode=$decodeMs preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
-      print('[Image] ${scores.length} dart(s)');
+      debugPrint('---------------------');
+      debugPrint('[Image] ${totalMs + scoreMs} ms | read=$readMs decode=$decodeMs preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
+      debugPrint('[Image] ${scores.length} dart(s)');
       for (int i = 0; i < scores.length; i++) {
         final d = dartTips[i];
         final s = scores[i];
-        print('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+        debugPrint('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
       }
-      print('---------------------');
+      debugPrint('---------------------');
       final total = scores.fold<int>(0, (sum, s) => sum + s.score);
 
       return ScoringResult(

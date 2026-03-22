@@ -127,4 +127,14 @@ class FriendsProvider with ChangeNotifier {
   bool isFriend(String userId) {
     return _friends.any((friend) => friend.id == userId);
   }
+
+  @override
+  void dispose() {
+    _friends = [];
+    _pendingRequests = [];
+    _sentRequests = [];
+    _pendingRequestsCount = 0;
+    _error = null;
+    super.dispose();
+  }
 }

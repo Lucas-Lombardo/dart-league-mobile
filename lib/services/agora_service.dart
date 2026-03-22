@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -178,23 +179,27 @@ class AgoraService {
   /// Take a snapshot of the local video stream and return the file path.
   /// Uses Agora's takeSnapshot API. Returns null on failure.
   static Future<String?> takeLocalSnapshot(RtcEngine engine) async {
+    RtcEngineEventHandler? handler;
     try {
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/agora_snap_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       final completer = Completer<String?>();
+      bool handlerRemoved = false;
 
-      // Create handler as a variable so it can be unregistered after use.
-      // Without this, every call accumulates a handler in Agora's list and
-      // all of them fire on every subsequent snapshot.
-      RtcEngineEventHandler? handler;
+      void removeHandler() {
+        if (!handlerRemoved && handler != null) {
+          handlerRemoved = true;
+          try {
+            engine.unregisterEventHandler(handler);
+          } catch (_) {}
+        }
+      }
+
       handler = RtcEngineEventHandler(
         onSnapshotTaken: (RtcConnection connection, int uid,
             String filePath, int width, int height, int errCode) {
-          // Defer unregister: calling it synchronously here modifies Agora's
-          // internal handler set while it is being iterated, causing a
-          // "Concurrent modification during iteration" crash.
-          Future.microtask(() => engine.unregisterEventHandler(handler!));
+          Future.microtask(removeHandler);
           if (!completer.isCompleted) {
             completer.complete(errCode == 0 ? filePath : null);
           }
@@ -203,21 +208,22 @@ class AgoraService {
 
       engine.registerEventHandler(handler);
 
-      // uid 0 = local user
       await engine.takeSnapshot(uid: 0, filePath: path);
 
-      // Wait for callback with timeout
       final result = await completer.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          Future.microtask(() => engine.unregisterEventHandler(handler!));
+          Future.microtask(removeHandler);
           return null;
         },
       );
 
       return result;
     } catch (e) {
-      print('[AgoraService] takeLocalSnapshot error: $e');
+      if (handler != null) {
+        try { engine.unregisterEventHandler(handler); } catch (_) {}
+      }
+      debugPrint('[AgoraService] takeLocalSnapshot error: $e');
       return null;
     }
   }

@@ -60,8 +60,8 @@ class GameProvider with ChangeNotifier {
   bool get gameEnded => _gameEnded;
   String? get winnerId => _winnerId;
   String? get lastThrow => _lastThrow;
-  List<String> get currentRoundThrows => _currentRoundThrows;
-  List<String> get opponentRoundThrows => _opponentRoundThrows;
+  List<String> get currentRoundThrows => List.unmodifiable(_currentRoundThrows);
+  List<String> get opponentRoundThrows => List.unmodifiable(_opponentRoundThrows);
   bool get pendingConfirmation => _pendingConfirmation;
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
@@ -778,6 +778,8 @@ class GameProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
     _cleanupSocketListeners();
     super.dispose();
   }

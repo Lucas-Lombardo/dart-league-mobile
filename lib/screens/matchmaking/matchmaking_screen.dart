@@ -246,8 +246,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
         return;
       }
       
-      // Try again in 100ms
-      Future.delayed(const Duration(milliseconds: 100), checkAndNavigate);
+      // Try again in 100ms if still mounted
+      if (mounted) {
+        Future.delayed(const Duration(milliseconds: 100), checkAndNavigate);
+      }
     }
     
     // Start checking after a brief delay
