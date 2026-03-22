@@ -1,4 +1,3 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
@@ -130,94 +129,24 @@ class _PlacementCameraSetupScreenState
 
   Widget _buildCameraPreview() {
     final l10n = AppLocalizations.of(context);
-    if (cameraController == null || !cameraController!.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primary, width: 2),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
+    return buildCameraPreview(
+      overlayChildren: [
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox.expand(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: cameraController!.value.previewSize!.height,
-                  height: cameraController!.value.previewSize!.width,
-                  child: CameraPreview(cameraController!),
-                ),
+            Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l10n.positionDeviceInstruction,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 13),
               ),
-            ),
-            Positioned(
-              top: 16,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.5)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: const BoxDecoration(
-                              color: AppTheme.success,
-                              shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(l10n.cameraReady,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.info_outline,
-                            color: AppTheme.primary, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            l10n.positionDeviceInstruction,
-                            style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (aiModelLoaded) ...[
-                      const SizedBox(height: 10),
-                      buildAiStatusOverlay(l10n),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              right: 12,
-              top: 0,
-              bottom: 0,
-              child: buildZoomControls(),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 

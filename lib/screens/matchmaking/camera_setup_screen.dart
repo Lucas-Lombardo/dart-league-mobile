@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:camera/camera.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -139,81 +138,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     );
   }
 
-  Widget _buildCameraPreview() {
-    final l10n = AppLocalizations.of(context);
-    if (cameraController == null || !cameraController!.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primary, width: 2),
-      ),
-      child: GestureDetector(
-        onScaleStart: onScaleStart,
-        onScaleUpdate: onScaleUpdate,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            children: [
-              Center(child: CameraPreview(cameraController!)),
-              Positioned(
-                top: 16,
-                left: 16,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: AppTheme.primary.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.success,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            l10n.cameraReady,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (aiModelLoaded) ...[
-                        const SizedBox(height: 10),
-                        buildAiStatusOverlay(l10n),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 12,
-                top: 0,
-                bottom: 0,
-                child: buildZoomControls(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildCameraPreview() => buildCameraPreview();
 
   Widget _buildBottomSection() {
     final l10n = AppLocalizations.of(context);

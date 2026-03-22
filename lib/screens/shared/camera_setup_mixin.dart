@@ -355,6 +355,97 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
 
   // --- Shared UI Builders ---
 
+  /// Builds the camera preview with a border, full-width fitted preview,
+  /// zoom controls, and a customizable overlay.
+  /// [overlayChildren] are placed inside the status overlay container
+  /// after the "Camera ready" row.
+  Widget buildCameraPreview({List<Widget> overlayChildren = const []}) {
+    final l10n = AppLocalizations.of(context);
+    if (cameraController == null || !cameraController!.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primary, width: 2),
+      ),
+      child: GestureDetector(
+        onScaleStart: cameraSetupConfig.enableGestureZoom ? onScaleStart : null,
+        onScaleUpdate:
+            cameraSetupConfig.enableGestureZoom ? onScaleUpdate : null,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Stack(
+            children: [
+              SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: cameraController!.value.previewSize!.height,
+                    height: cameraController!.value.previewSize!.width,
+                    child: CameraPreview(cameraController!),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 16,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            l10n.cameraReady,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      ...overlayChildren,
+                      if (aiModelLoaded) ...[
+                        const SizedBox(height: 10),
+                        buildAiStatusOverlay(l10n),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 12,
+                top: 0,
+                bottom: 0,
+                child: buildZoomControls(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildLoadingView() {
     return Center(
       child: Column(
