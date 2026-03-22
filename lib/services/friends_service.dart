@@ -1,24 +1,33 @@
 import '../models/user.dart';
 import 'api_service.dart';
 
+DateTime? _tryParseDateTime(String? value) {
+  if (value == null) return null;
+  try {
+    return DateTime.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 class FriendsService {
   static Future<List<User>> getFriends() async {
     final response = await ApiService.get('/friends');
-    final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => User.fromJson(json)).toList();
+    if (response is! List<dynamic>) return [];
+    return response.whereType<Map<String, dynamic>>().map((json) => User.fromJson(json)).toList();
   }
 
   static Future<List<User>> getFriendsLeaderboard() async {
     final response = await ApiService.get('/friends/leaderboard');
-    final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => User.fromJson(json)).toList();
+    if (response is! List<dynamic>) return [];
+    return response.whereType<Map<String, dynamic>>().map((json) => User.fromJson(json)).toList();
   }
 
   static Future<List<User>> searchUsers(String query) async {
     if (query.trim().isEmpty) return [];
     final response = await ApiService.get('/friends/search?q=${Uri.encodeComponent(query)}');
-    final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => User.fromJson(json)).toList();
+    if (response is! List<dynamic>) return [];
+    return response.whereType<Map<String, dynamic>>().map((json) => User.fromJson(json)).toList();
   }
 
   static Future<void> sendFriendRequest(String friendId) async {
@@ -35,14 +44,14 @@ class FriendsService {
 
   static Future<List<FriendRequest>> getPendingRequests() async {
     final response = await ApiService.get('/friends/requests/pending');
-    final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => FriendRequest.fromJson(json)).toList();
+    if (response is! List<dynamic>) return [];
+    return response.whereType<Map<String, dynamic>>().map((json) => FriendRequest.fromJson(json)).toList();
   }
 
   static Future<List<FriendRequest>> getSentRequests() async {
     final response = await ApiService.get('/friends/requests/sent');
-    final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => FriendRequest.fromJson(json)).toList();
+    if (response is! List<dynamic>) return [];
+    return response.whereType<Map<String, dynamic>>().map((json) => FriendRequest.fromJson(json)).toList();
   }
 
   static Future<int> getPendingRequestsCount() async {
@@ -81,9 +90,9 @@ class FriendRequest {
 
   factory FriendRequest.fromJson(Map<String, dynamic> json) {
     return FriendRequest(
-      id: json['id'] as String,
-      user: User.fromJson(json['user'] as Map<String, dynamic>),
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      id: json['id'] as String? ?? '',
+      user: User.fromJson(json['user'] as Map<String, dynamic>? ?? <String, dynamic>{}),
+      createdAt: _tryParseDateTime(json['createdAt'] as String?) ?? DateTime.now(),
     );
   }
 }

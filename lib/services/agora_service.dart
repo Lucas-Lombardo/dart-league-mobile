@@ -95,31 +95,28 @@ class AgoraService {
 
   /// Leave the current Agora channel
   static Future<void> leaveChannel(RtcEngine engine) async {
-    
     try {
       await engine.leaveChannel();
-    } catch (_) {
-      // Leave channel error
+    } catch (e) {
+      debugPrint('[AgoraService] leaveChannel error: $e');
     }
   }
 
   /// Toggle local video on/off
   static Future<void> toggleLocalVideo(RtcEngine engine, bool enabled) async {
-    
     try {
       await engine.enableLocalVideo(enabled);
-    } catch (_) {
-      // Toggle video error
+    } catch (e) {
+      debugPrint('[AgoraService] toggleLocalVideo error: $e');
     }
   }
 
   /// Toggle local audio on/off (mute/unmute)
   static Future<void> toggleLocalAudio(RtcEngine engine, bool muted) async {
-    
     try {
       await engine.muteLocalAudioStream(muted);
-    } catch (_) {
-      // Toggle audio error
+    } catch (e) {
+      debugPrint('[AgoraService] toggleLocalAudio error: $e');
     }
   }
 
@@ -127,18 +124,17 @@ class AgoraService {
   static Future<void> muteAllRemoteAudio(RtcEngine engine, bool muted) async {
     try {
       await engine.muteAllRemoteAudioStreams(muted);
-    } catch (_) {
-      // Mute remote audio error
+    } catch (e) {
+      debugPrint('[AgoraService] muteAllRemoteAudio error: $e');
     }
   }
 
   /// Switch between front and back camera
   static Future<void> switchCamera(RtcEngine engine) async {
-    
     try {
       await engine.switchCamera();
-    } catch (_) {
-      // Switch camera error
+    } catch (e) {
+      debugPrint('[AgoraService] switchCamera error: $e');
     }
   }
 
@@ -153,8 +149,8 @@ class AgoraService {
           format: VideoFormat(width: 1280, height: 720, fps: 15),
         ),
       );
-    } catch (_) {
-      // Set camera error
+    } catch (e) {
+      debugPrint('[AgoraService] setBackCamera error: $e');
     }
   }
 
@@ -162,8 +158,8 @@ class AgoraService {
   static Future<void> startPreview(RtcEngine engine) async {
     try {
       await engine.startPreview();
-    } catch (_) {
-      // Start preview error
+    } catch (e) {
+      debugPrint('[AgoraService] startPreview error: $e');
     }
   }
 
@@ -171,8 +167,8 @@ class AgoraService {
   static Future<void> stopPreview(RtcEngine engine) async {
     try {
       await engine.stopPreview();
-    } catch (_) {
-      // Stop preview error
+    } catch (e) {
+      debugPrint('[AgoraService] stopPreview error: $e');
     }
   }
 

@@ -54,13 +54,13 @@ class Tournament {
 
   factory Tournament.fromJson(Map<String, dynamic> json) {
     return Tournament(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       scheduledDate: _tryParseDateTime(json['scheduledDate'] as String?) ?? DateTime.now(),
       registrationOpenDate: _tryParseDateTime(json['registrationOpenDate'] as String?),
       registrationCloseDate: _tryParseDateTime(json['registrationCloseDate'] as String?),
-      status: json['status'] as String,
+      status: json['status'] as String? ?? 'unknown',
       maxParticipants: json['maxParticipants'] as int? ?? 32,
       currentParticipants: json['currentParticipants'] as int? ?? 0,
       winnerEloReward: json['winnerEloReward'] as int? ?? 500,
@@ -189,17 +189,17 @@ class TournamentMatch {
 
   factory TournamentMatch.fromJson(Map<String, dynamic> json) {
     return TournamentMatch(
-      id: json['id'] as String,
+      id: json['id'] as String? ?? '',
       tournamentId: json['tournamentId'] as String? ?? '',
       tournamentName: json['tournamentName'] as String?,
-      roundNumber: json['roundNumber'] as int,
-      roundName: json['roundName'] as String,
+      roundNumber: json['roundNumber'] as int? ?? 0,
+      roundName: json['roundName'] as String? ?? '',
       matchNumber: json['matchNumber'] as int? ?? 0,
       player1Id: json['player1Id'] as String?,
       player1Username: json['player1Username'] as String?,
       player2Id: json['player2Id'] as String?,
       player2Username: json['player2Username'] as String?,
-      status: json['status'] as String,
+      status: json['status'] as String? ?? 'unknown',
       player1Score: json['player1Score'] as int? ?? 0,
       player2Score: json['player2Score'] as int? ?? 0,
       winnerId: json['winnerId'] as String?,
@@ -273,12 +273,12 @@ class TournamentRegistration {
 
   factory TournamentRegistration.fromJson(Map<String, dynamic> json) {
     return TournamentRegistration(
-      id: json['id'] as String,
-      userId: json['userId'] as String,
+      id: json['id'] as String? ?? '',
+      userId: json['userId'] as String? ?? '',
       username: json['username'] as String?,
       elo: json['elo'] as int?,
       rank: json['rank'] as String?,
-      status: json['status'] as String,
+      status: json['status'] as String? ?? 'unknown',
       seed: json['seed'] as int? ?? 0,
       registeredAt: _tryParseDateTime(json['registeredAt'] as String?) ?? DateTime.now(),
     );
@@ -356,18 +356,18 @@ class TournamentHistory {
 
   factory TournamentHistory.fromJson(Map<String, dynamic> json) {
     return TournamentHistory(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       scheduledDate: _tryParseDateTime(json['scheduledDate'] as String?) ?? DateTime.now(),
-      status: json['status'] as String,
+      status: json['status'] as String? ?? 'unknown',
       maxParticipants: json['maxParticipants'] as int? ?? 32,
       totalParticipants: json['totalParticipants'] as int? ?? 0,
       winnerEloReward: json['winnerEloReward'] as int? ?? 500,
       winnerId: json['winnerId'] as String?,
       winnerUsername: json['winnerUsername'] as String?,
       placement: json['placement'] as int?,
-      registrationStatus: json['registrationStatus'] as String,
+      registrationStatus: json['registrationStatus'] as String? ?? 'unknown',
       roundReached: json['roundReached'] as int? ?? 0,
       entryFee: json['entryFee'] as int? ?? 0,
       currency: json['currency'] as String? ?? 'eur',

@@ -5,45 +5,61 @@ import 'api_service.dart';
 class TournamentService {
   static Future<List<Tournament>> getAllTournaments() async {
     final response = await ApiService.get('/tournaments');
-    return (response['tournaments'] as List)
-        .map((t) => Tournament.fromJson(t as Map<String, dynamic>))
+    final list = response?['tournaments'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((t) => Tournament.fromJson(t))
         .toList();
   }
 
   static Future<List<Tournament>> getUpcomingTournaments() async {
     final response = await ApiService.get('/tournaments/upcoming');
-    return (response['tournaments'] as List)
-        .map((t) => Tournament.fromJson(t as Map<String, dynamic>))
+    final list = response?['tournaments'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((t) => Tournament.fromJson(t))
         .toList();
   }
 
   static Future<Map<String, List<Tournament>>> getMyTournaments() async {
     final response = await ApiService.get('/tournaments/my');
-    final registered = (response['registered'] as List)
-        .map((t) => Tournament.fromJson(t as Map<String, dynamic>))
+    final registeredList = response?['registered'] as List<dynamic>? ?? [];
+    final activeList = response?['active'] as List<dynamic>? ?? [];
+    final registered = registeredList
+        .whereType<Map<String, dynamic>>()
+        .map((t) => Tournament.fromJson(t))
         .toList();
-    final active = (response['active'] as List)
-        .map((t) => Tournament.fromJson(t as Map<String, dynamic>))
+    final active = activeList
+        .whereType<Map<String, dynamic>>()
+        .map((t) => Tournament.fromJson(t))
         .toList();
     return {'registered': registered, 'active': active};
   }
 
   static Future<Tournament> getTournament(String id) async {
     final response = await ApiService.get('/tournaments/$id');
-    return Tournament.fromJson(response['tournament'] as Map<String, dynamic>);
+    final data = response?['tournament'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Invalid tournament data');
+    }
+    return Tournament.fromJson(data);
   }
 
   static Future<List<TournamentMatch>> getBracket(String tournamentId) async {
     final response = await ApiService.get('/tournaments/$tournamentId/bracket');
-    return (response['matches'] as List)
-        .map((m) => TournamentMatch.fromJson(m as Map<String, dynamic>))
+    final list = response?['matches'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((m) => TournamentMatch.fromJson(m))
         .toList();
   }
 
   static Future<List<TournamentRegistration>> getRegistrations(String tournamentId) async {
     final response = await ApiService.get('/tournaments/$tournamentId/registrations');
-    return (response['registrations'] as List)
-        .map((r) => TournamentRegistration.fromJson(r as Map<String, dynamic>))
+    final list = response?['registrations'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((r) => TournamentRegistration.fromJson(r))
         .toList();
   }
 
@@ -66,20 +82,24 @@ class TournamentService {
 
   static Future<Map<String, dynamic>> getMyRegistration(String tournamentId) async {
     final response = await ApiService.get('/tournaments/$tournamentId/my-registration');
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<List<TournamentMatch>> getPendingMatches() async {
     final response = await ApiService.get('/tournaments/pending-matches');
-    return (response['matches'] as List)
-        .map((m) => TournamentMatch.fromJson(m as Map<String, dynamic>))
+    final list = response?['matches'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((m) => TournamentMatch.fromJson(m))
         .toList();
   }
 
   static Future<TournamentMatch?> getActiveMatch() async {
     final response = await ApiService.get('/tournaments/active-match');
-    if (response['match'] == null) return null;
-    return TournamentMatch.fromJson(response['match'] as Map<String, dynamic>);
+    final match = response?['match'];
+    if (match is! Map<String, dynamic>) return null;
+    return TournamentMatch.fromJson(match);
   }
 
   static Future<Map<String, dynamic>> getActiveTournamentStatus() async {
@@ -98,8 +118,10 @@ class TournamentService {
 
   static Future<List<TournamentHistory>> getTournamentHistory() async {
     final response = await ApiService.get('/tournaments/history');
-    return (response['tournaments'] as List)
-        .map((t) => TournamentHistory.fromJson(t as Map<String, dynamic>))
+    final list = response?['tournaments'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((t) => TournamentHistory.fromJson(t))
         .toList();
   }
 }

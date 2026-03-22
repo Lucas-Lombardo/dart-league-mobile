@@ -42,10 +42,11 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
       final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
       final micGranted = statuses[Permission.microphone]?.isGranted ?? false;
 
+      if (!mounted) return;
       setState(() {
         _permissionsGranted = cameraGranted && micGranted;
         _isLoading = false;
-        
+
         if (!_permissionsGranted) {
           if (!cameraGranted && !micGranted) {
             _errorMessage = 'Camera and microphone permissions are required to join a match';
@@ -57,6 +58,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
         }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Failed to check permissions: ${e.toString()}';

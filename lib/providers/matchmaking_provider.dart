@@ -9,6 +9,7 @@ import 'game_provider.dart';
 
 class MatchmakingProvider with ChangeNotifier {
   bool _isSearching = false;
+  bool _disposed = false;
   bool _matchFound = false;
   String? _matchId;
   String? _opponentId;
@@ -27,6 +28,11 @@ class MatchmakingProvider with ChangeNotifier {
   GameProvider? _gameProvider;
   String? _errorMessage;
   String? _currentUserId; // Store userId for initGame call
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   bool get isSearching => _isSearching;
   int get searchTime => _searchTime;
@@ -115,6 +121,8 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _setupSocketListeners() {
+    _cleanupSocketListeners();
+
     SocketService.on('match_found', (data) {
       _handleMatchFound(data);
     });
@@ -126,6 +134,7 @@ class MatchmakingProvider with ChangeNotifier {
     SocketService.on('queue_error', (data) {
       _handleQueueError(data);
     });
+
   }
 
   void _startSearchTimer() {
@@ -282,6 +291,7 @@ class MatchmakingProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _stopSearchTimer();
     _stopPolling();
     SocketService.clearReconnectHandler();

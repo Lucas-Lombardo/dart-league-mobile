@@ -28,7 +28,7 @@ class TvScoreboard extends StatelessWidget {
     final opponentHint = (opponentScore >= 2 && opponentScore <= 170) ? checkoutHint(opponentScore) : null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -133,9 +133,10 @@ class _PlayerScore extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Adaptive circle size: use available width but cap it
-        final circleSize = (constraints.maxWidth * 0.50).clamp(42.0, 64.0);
-        final fontSize = circleSize * (score >= 100 ? 0.30 : 0.35);
+        final screenWidth = MediaQuery.of(context).size.width;
+        // Adaptive circle size: scale with screen width for visibility
+        final circleSize = (screenWidth * 0.22).clamp(70.0, 110.0);
+        final fontSize = circleSize * (score >= 100 ? 0.34 : 0.40);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -145,14 +146,14 @@ class _PlayerScore extends StatelessWidget {
               name.toUpperCase(),
               style: TextStyle(
                 color: isActive ? Colors.white : AppTheme.textSecondary,
-                fontSize: 10,
+                fontSize: (screenWidth * 0.032).clamp(11.0, 15.0),
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1,
               ),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             // Circular score
             SizedBox(
               width: circleSize,
@@ -176,18 +177,18 @@ class _PlayerScore extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             // Checkout hint
             SizedBox(
-              height: 14,
+              height: 16,
               child: hint != null
                   ? FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
                         hint!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.success,
-                          fontSize: 10,
+                          fontSize: (screenWidth * 0.028).clamp(10.0, 13.0),
                           fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
@@ -217,7 +218,8 @@ class _ScoreArcPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 4;
+    final strokeWidth = size.width * 0.06;
+    final radius = size.width / 2 - strokeWidth;
 
     // Background circle
     final bgPaint = Paint()
@@ -225,7 +227,7 @@ class _ScoreArcPainter extends CustomPainter {
           ? AppTheme.surfaceLight.withValues(alpha: 0.6)
           : AppTheme.surface
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4;
+      ..strokeWidth = strokeWidth;
     canvas.drawCircle(center, radius, bgPaint);
 
     // Progress arc
@@ -233,7 +235,7 @@ class _ScoreArcPainter extends CustomPainter {
       final arcPaint = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
+        ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),

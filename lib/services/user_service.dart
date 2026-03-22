@@ -62,19 +62,25 @@ class LeaderboardEntry {
 class UserService {
   static Future<UserStats> getUserStats(String userId) async {
     final response = await ApiService.get('/users/$userId/stats');
-    // Backend wraps stats in { userId, stats } object
-    final statsData = response['stats'] ?? response;
-    return UserStats.fromJson(statsData);
+    if (response is Map<String, dynamic>) {
+      final statsData = response['stats'] ?? response;
+      if (statsData is Map<String, dynamic>) {
+        return UserStats.fromJson(statsData);
+      }
+    }
+    return UserStats.fromJson(<String, dynamic>{});
   }
 
   static Future<List<LeaderboardEntry>> getLeaderboard() async {
     final response = await ApiService.get('/users/leaderboard');
-    final List<dynamic> data = response as List<dynamic>;
+    if (response is! List<dynamic>) return [];
 
-    // Backend sends flat user objects, we need to add position index
-    return data.asMap().entries.map((entry) {
+    return response.asMap().entries.map((entry) {
       final index = entry.key;
-      final json = entry.value as Map<String, dynamic>;
+      final json = entry.value;
+      if (json is! Map<String, dynamic>) {
+        return LeaderboardEntry.fromJson(<String, dynamic>{}, index + 1);
+      }
 
       // Add username if missing (use email)
       if (json['username'] == null) {
@@ -99,7 +105,10 @@ class UserService {
       return [];
     }
 
-    return data.map((json) => Match.fromJson(json, userId)).toList();
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((json) => Match.fromJson(json, userId))
+        .toList();
   }
 
   static Future<void> updateLanguage(String languageCode) async {

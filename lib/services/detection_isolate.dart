@@ -103,6 +103,7 @@ class DetectionIsolate {
     final h = image.height;
     final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
+    codec.dispose();
     return (byteData!.buffer.asUint8List(), w, h);
   }
 

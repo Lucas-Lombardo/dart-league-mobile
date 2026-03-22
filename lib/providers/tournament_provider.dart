@@ -158,7 +158,19 @@ class TournamentProvider extends ChangeNotifier {
         );
       }
 
-      await TournamentService.registerForTournament(tournamentId, paymentIntentId: paymentIntentId);
+      // Retry registration up to 2 times if it fails after successful payment
+      int retries = 0;
+      while (true) {
+        try {
+          await TournamentService.registerForTournament(tournamentId, paymentIntentId: paymentIntentId);
+          break;
+        } catch (regError) {
+          retries++;
+          if (retries >= 3 || paymentIntentId == null) rethrow;
+          debugPrint('Registration failed after payment (attempt $retries/3), retrying: $regError');
+          await Future.delayed(Duration(seconds: retries));
+        }
+      }
       await loadMyTournaments();
       await loadUpcomingTournaments();
       return true;
@@ -212,6 +224,7 @@ class TournamentProvider extends ChangeNotifier {
   }
 
   void setupSocketListeners() {
+    clearSocketListeners();
     try {
       SocketService.on('tournamentRegistrationOpen', (data) {
         debugPrint('Tournament registration open: $data');

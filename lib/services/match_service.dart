@@ -9,7 +9,8 @@ class MatchService {
       '/matches/$matchId/accept',
       {'playerId': playerId},
     );
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> disputeMatchResult(
@@ -21,16 +22,19 @@ class MatchService {
       '/matches/$matchId/dispute',
       {'playerId': playerId, 'reason': reason},
     );
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> getActiveMatch(String userId) async {
     final response = await ApiService.get('/matches/active/$userId');
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> getMatchDetail(String matchId) async {
     final response = await ApiService.get('/matches/$matchId');
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 }

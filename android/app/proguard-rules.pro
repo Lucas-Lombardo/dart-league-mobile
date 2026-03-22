@@ -7,3 +7,20 @@
 
 # TensorFlow Lite GPU delegate (optional feature)
 -dontwarn org.tensorflow.lite.gpu.GpuDelegateFactory$Options
+
+# Agora RTC Engine — uses reflection for native bridge
+-keep class io.agora.** { *; }
+-dontwarn io.agora.**
+
+# Socket.IO client — uses reflection for event handling
+-keep class io.socket.** { *; }
+-dontwarn io.socket.**
+
+# Flutter plugin classes
+-keep class io.flutter.** { *; }
+-dontwarn io.flutter.**
+
+# Keep model/serialization classes used via reflection
+-keep class com.google.gson.** { *; }
+-keepattributes *Annotation*
+-keepattributes Signature

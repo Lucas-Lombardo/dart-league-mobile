@@ -47,18 +47,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             losses: user.losses,
           );
         }).toList();
+        if (!mounted) return;
         setState(() {
           _entries = entries;
           _isLoading = false;
         });
       } else {
         final entries = await UserService.getLeaderboard();
+        if (!mounted) return;
         setState(() {
           _entries = entries;
           _isLoading = false;
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isLoading = false;

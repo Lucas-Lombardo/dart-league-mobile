@@ -11,6 +11,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/tv_scoreboard.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/app_navigator.dart';
 import 'base_game_screen_state.dart';
 
 class GameScreen extends StatefulWidget {
@@ -135,7 +136,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       final message = result['message'] as String? ?? l10n.matchResultAccepted;
       messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
       game.reset();
-      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+      if (mounted) AppNavigator.toHomeClearing(context);
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context).error}: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
@@ -218,7 +219,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               Navigator.of(dialogCtx).pop();
               await auth.checkAuthStatus();
               game.reset();
-              if (context.mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+              if (context.mounted) AppNavigator.toHomeClearing(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,

@@ -77,7 +77,7 @@ class SocketService {
           debugPrint('SocketService: Auth error, attempting token refresh...');
           final refreshed = await ApiService.refreshAccessToken();
           if (refreshed) {
-            debugPrint('SocketService: Token refreshed, reconnecting...');
+            debugPrint('SocketService: Token refreshed, reconnecting with new token...');
             _disconnectInternal();
             _connectCompleter = null;
             await connect();

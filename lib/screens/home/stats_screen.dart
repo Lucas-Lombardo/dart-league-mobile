@@ -34,16 +34,18 @@ class _StatsScreenState extends State<StatsScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
       final userId = authProvider.currentUser?.id;
-      
+
       if (userId != null) {
         final stats = await UserService.getUserStats(userId);
 
+        if (!mounted) return;
         setState(() {
           _stats = stats;
           _isLoading = false;
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isLoading = false;

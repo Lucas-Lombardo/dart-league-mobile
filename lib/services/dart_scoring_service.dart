@@ -224,6 +224,9 @@ class DartScoringService {
       for (int j = i + 1; j < n; j++) {
         x[i] -= aug[i][j] * x[j];
       }
+      if (aug[i][i].abs() < 1e-12) {
+        throw ArgumentError('Singular matrix: calibration points may be collinear');
+      }
       x[i] /= aug[i][i];
     }
     return x;

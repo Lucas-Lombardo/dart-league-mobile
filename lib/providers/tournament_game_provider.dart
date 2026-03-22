@@ -62,8 +62,14 @@ class TournamentGameProvider with ChangeNotifier {
   bool _needsAgoraReconnect = false;
 
   bool _listenersSetUp = false;
+  bool _disposed = false;
 
   TournamentGameProvider();
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   // Getters — match identifiers
   String? get tournamentMatchId => _tournamentMatchId;
@@ -243,13 +249,12 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
     // Track opponent's throws during their turn
-    // Use currentRoundThrows as source of truth so edits are reflected (not just appends)
+    // Only use currentRoundThrows as source of truth — never append _lastThrow
+    // separately, as it causes duplicates on reconnect.
     if (!isMyTurn) {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _opponentRoundThrows = throws.map((t) => t.toString()).toList();
-      } else if (_lastThrow != null) {
-        _opponentRoundThrows.add(_lastThrow!);
       }
     }
     notifyListeners();
@@ -766,6 +771,7 @@ class TournamentGameProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _cleanupSocketListeners();
     _disconnectCountdownTimer?.cancel();
     super.dispose();

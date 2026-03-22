@@ -3,12 +3,14 @@ import 'api_service.dart';
 class PlacementService {
   static Future<Map<String, dynamic>> getStatus() async {
     final response = await ApiService.get('/placement/status');
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> startMatch() async {
     final response = await ApiService.post('/placement/start', {});
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> triggerBotTurn(
@@ -20,7 +22,8 @@ class PlacementService {
     if (playerRoundScore != null) body['playerRoundScore'] = playerRoundScore;
     if (playerRoundThrows != null) body['playerRoundThrows'] = playerRoundThrows;
     final response = await ApiService.post('/placement/bot-turn', body);
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> completeMatch(
@@ -31,6 +34,7 @@ class PlacementService {
     final body = <String, dynamic>{'matchId': matchId, 'winnerId': winnerId};
     if (player1Score != null) body['player1Score'] = player1Score;
     final response = await ApiService.post('/placement/complete', body);
-    return response as Map<String, dynamic>;
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
   }
 }

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http/http.dart' as http;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
@@ -141,7 +141,7 @@ class ApiService {
       final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
 
-      debugPrint('📤 POST $endpoint with body: $body');
+      if (kDebugMode) debugPrint('POST $endpoint');
 
       final response = await http.post(
         url,
@@ -149,8 +149,7 @@ class ApiService {
         body: jsonEncode(body),
       ).timeout(_timeout);
 
-      debugPrint('📥 Response status: ${response.statusCode}');
-      debugPrint('📥 Response body: ${response.body}');
+      if (kDebugMode) debugPrint('Response status: ${response.statusCode}');
 
       if (response.statusCode == 401 && includeAuth) {
         final refreshed = await refreshAccessToken();
@@ -269,12 +268,9 @@ class ApiService {
       final url = Uri.parse('$baseUrl$endpoint');
       final headers = await _getHeaders(includeAuth: includeAuth);
 
-      debugPrint('🗑️ DELETE $endpoint');
+      if (kDebugMode) debugPrint('DELETE $endpoint');
 
       final response = await http.delete(url, headers: headers).timeout(_timeout);
-
-      debugPrint('📥 Response status: ${response.statusCode}');
-      debugPrint('📥 Response body: ${response.body}');
 
       if (response.statusCode == 401 && includeAuth) {
         final refreshed = await refreshAccessToken();

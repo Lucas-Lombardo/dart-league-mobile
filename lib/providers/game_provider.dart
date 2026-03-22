@@ -38,7 +38,14 @@ class GameProvider with ChangeNotifier {
   bool _localUserJoined = false;
   bool _needsAgoraReconnect = false;
 
+  bool _disposed = false;
+
   GameProvider();
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   void ensureListenersSetup() {
     if (_listenersSetUp) {
@@ -251,13 +258,13 @@ class GameProvider with ChangeNotifier {
     }
     
     // Track opponent's throws during their turn
-    // Use currentRoundThrows as source of truth so edits are reflected (not just appends)
+    // Only use currentRoundThrows as source of truth — never append _lastThrow
+    // separately, as it causes duplicates when the server already sent
+    // currentRoundThrows in the same or a previous score_updated payload.
     if (!isMyTurn) {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _opponentRoundThrows = throws.map((t) => t.toString()).toList();
-      } else if (_lastThrow != null) {
-        _opponentRoundThrows.add(_lastThrow!);
       }
     }
     
@@ -359,30 +366,34 @@ class GameProvider with ChangeNotifier {
 
   void _handleGameWon(dynamic data) {
     debugPrint('GAME DEBUG: game_won received - winnerId=${data['winnerId']}, currentMatchId=$_matchId');
-    
+
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
       debugPrint('GAME DEBUG: game_won IGNORED (already ended)');
       return;
     }
-    
+
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;
-    
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+
     debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId');
     notifyListeners();
   }
 
   void _handleMatchEnded(dynamic data) {
-    
+
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
       return;
     }
-    
+
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;
-    
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+
     notifyListeners();
   }
 
@@ -454,18 +465,20 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handlePlayerForfeited(dynamic data) {
-    
+
     final eventMatchId = data['matchId'] as String?;
     final winnerId = data['winnerId'] as String?;
-    
+
     // Validate this event is for the current match
     if (eventMatchId != _matchId) {
       return;
     }
-    
+
     // Mark game as ended
     _gameEnded = true;
     _winnerId = winnerId;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
     
     // Store forfeit data for UI
     _pendingType = 'forfeit';
@@ -778,6 +791,7 @@ class GameProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
     _cleanupSocketListeners();

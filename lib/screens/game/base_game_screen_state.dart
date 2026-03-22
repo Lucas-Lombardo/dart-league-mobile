@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -261,7 +261,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       _registerAgoraHandlers();
       await AgoraService.joinChannel(engine: agoraEngine!, token: token, channelName: channelName, uid: 0);
       await initAutoScoring();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[BaseGameScreen] initializeAgora error: $e');
+    }
   }
 
   Future<void> reconnectAgora(dynamic game) async {
@@ -301,10 +303,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try {
       final maxZoom = await agoraEngine!.getCameraMaxZoomFactor();
       if (mounted && maxZoom > 1.0) {
-        cameraZoomInitialized = true;
         final savedZoom = await StorageService.getCameraZoom();
         final clampedZoom = savedZoom.clamp(1.0, maxZoom.clamp(1.0, 10.0));
-        try { await agoraEngine!.setCameraZoomFactor(clampedZoom); } catch (_) {}
+        await agoraEngine!.setCameraZoomFactor(clampedZoom);
+        cameraZoomInitialized = true;
         setState(() { cameraMinZoom = 1.0; cameraMaxZoom = maxZoom.clamp(1.0, 10.0); cameraZoom = clampedZoom; });
       }
     } catch (_) {
@@ -373,7 +375,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       ]),
       actions: [
         OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
-        ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
+        ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: const Text('Confirm Win')),
       ],
     )).then((_) { if (mounted) winDialogShowing = false; });
   }
@@ -396,7 +398,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       ]),
       actions: [
         OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: const Text('Edit Darts')),
-        ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
+        ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: const Text('Confirm Bust')),
       ],
     )).then((_) { if (mounted) bustDialogShowing = false; });
   }

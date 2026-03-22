@@ -50,6 +50,7 @@ class AutoScoringService extends ChangeNotifier {
 
   // Capture state
   bool _capturing = false;
+  bool _inferenceInProgress = false;
   int _captureSeq = 0;
   bool _modelLoaded = false;
   String? _initError;
@@ -237,10 +238,14 @@ class AutoScoringService extends ChangeNotifier {
     OnDartDetectedCallback? onDartDetected,
     OnAutoConfirmCallback? onAutoConfirm,
   ) async {
+    // Skip frame if previous inference is still running (backpressure)
+    if (_inferenceInProgress) return;
+
     final seq = ++_captureSeq;
     String? imagePath;
 
     try {
+      _inferenceInProgress = true;
       imagePath = await captureFrame();
 
       if (imagePath == null || seq != _captureSeq || !_capturing) {
@@ -301,6 +306,8 @@ class AutoScoringService extends ChangeNotifier {
     } catch (e) {
       await _maybeCleanup(imagePath, cleanupFile);
       debugPrint('[AutoScoring] Capture error: $e');
+    } finally {
+      _inferenceInProgress = false;
     }
   }
 
