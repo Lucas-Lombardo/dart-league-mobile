@@ -12,8 +12,8 @@ const List<(double, double, String)> rings = [
   (0.040, 0.100, "single_bull"),
   (0.100, 0.570, "inner_single"),
   (0.570, 0.625, "triple"),
-  (0.625, 0.930, "outer_single"),
-  (0.930, 1.015, "double"),
+  (0.625, 0.940, "outer_single"),
+  (0.940, 0.990, "double"),
 ];
 
 /// Canonical dartboard space: center at (500, 500), calibration radius = 400
