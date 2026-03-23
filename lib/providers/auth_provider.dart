@@ -112,6 +112,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await PushNotificationService.unregisterToken();
+      PushNotificationService.dispose();
       await AuthService.logout();
       _currentUser = null;
       _errorMessage = null;
