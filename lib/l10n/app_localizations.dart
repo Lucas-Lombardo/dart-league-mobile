@@ -413,6 +413,8 @@ abstract class AppLocalizations {
   String get opponentLeftForfeit;
   String get youLeftForfeited;
   String get continuePlaying;
+  String get rankUp;
+  String get rankDown;
   String get provenLegend;
   String get trainingPath;
   String get matchResult;
@@ -443,6 +445,19 @@ abstract class AppLocalizations {
   String legLostTitle(int legNumber);
   String legResultSubtitle(int legNumber);
   String get confirmNextLeg;
+
+  // Tournament end screen
+  String get tournamentChampion;
+  String get tournamentRunnerUp;
+  String get tournamentSemiFinalist;
+  String get tournamentQuarterFinalist;
+  String get tournamentParticipant;
+  String get tournamentFirstPlace;
+  String get tournamentSecondPlace;
+  String get tournamentThirdFourthPlace;
+  String get tournamentTopEight;
+  String get tournamentTopSixteen;
+  String get yourTournamentJourney;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

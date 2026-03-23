@@ -1027,6 +1027,12 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get continuePlaying => 'Continuer à jouer';
 
+  @override
+  String get rankUp => 'Promotion';
+
+  @override
+  String get rankDown => 'Rétrogradation';
+
   // Note: 'defeat' already defined at line 92
 
   @override
@@ -1106,4 +1112,38 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get confirmNextLeg => 'Confirmez pour passer à la prochaine manche';
+
+  // Tournament end screen
+  @override
+  String get tournamentChampion => 'CHAMPION DU TOURNOI !';
+
+  @override
+  String get tournamentRunnerUp => 'FINALISTE';
+
+  @override
+  String get tournamentSemiFinalist => 'DEMI-FINALISTE';
+
+  @override
+  String get tournamentQuarterFinalist => 'QUART-FINALISTE';
+
+  @override
+  String get tournamentParticipant => 'PARTICIPANT';
+
+  @override
+  String get tournamentFirstPlace => '1ère Place';
+
+  @override
+  String get tournamentSecondPlace => '2ème Place';
+
+  @override
+  String get tournamentThirdFourthPlace => '3ème / 4ème Place';
+
+  @override
+  String get tournamentTopEight => 'Top 8';
+
+  @override
+  String get tournamentTopSixteen => 'Top 16';
+
+  @override
+  String get yourTournamentJourney => 'Votre Parcours';
 }

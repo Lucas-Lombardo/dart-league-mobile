@@ -12,6 +12,7 @@ import '../../widgets/auto_score_display.dart';
 import '../../widgets/tv_scoreboard.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
+import '../../widgets/rank_change_overlay.dart';
 import 'base_game_screen_state.dart';
 
 class GameScreen extends StatefulWidget {
@@ -124,15 +125,42 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
 
 
+  void _showRankChangeAndNavigateHome(String oldRank, String newRank, GameProvider game) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: true,
+        pageBuilder: (context, _, __) => RankChangeOverlay(
+          oldRank: oldRank,
+          newRank: newRank,
+          onDismiss: () {
+            game.reset();
+            AppNavigator.toHomeClearing(context);
+          },
+        ),
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
+
   void _acceptMatchResult(GameProvider game, AuthProvider auth) async {
     if (game.matchId == null || auth.currentUser?.id == null) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final l10n = AppLocalizations.of(context);
+      final oldRank = auth.currentUser!.rank;
       messenger.showSnackBar(SnackBar(content: Text(l10n.acceptingMatchResult), duration: const Duration(seconds: 1)));
       final result = await MatchService.acceptMatchResult(game.matchId!, auth.currentUser!.id);
       if (!mounted) return;
       await auth.checkAuthStatus();
+      if (!mounted) return;
+      final newRank = auth.currentUser?.rank ?? oldRank;
+      if (newRank != oldRank) {
+        _showRankChangeAndNavigateHome(oldRank, newRank, game);
+        return;
+      }
       final message = result['message'] as String? ?? l10n.matchResultAccepted;
       messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
       game.reset();
@@ -216,8 +244,15 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
           ElevatedButton(
             onPressed: () async {
               forfeitDialogShowing = false;
+              final oldRank = auth.currentUser?.rank ?? 'unranked';
               Navigator.of(dialogCtx).pop();
               await auth.checkAuthStatus();
+              if (!context.mounted) return;
+              final newRank = auth.currentUser?.rank ?? oldRank;
+              if (newRank != oldRank) {
+                _showRankChangeAndNavigateHome(oldRank, newRank, game);
+                return;
+              }
               game.reset();
               if (context.mounted) AppNavigator.toHomeClearing(context);
             },
@@ -237,59 +272,75 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
-              boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
-            ),
-            child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
-          ),
-          const SizedBox(height: 32),
-          Text(didWin ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).defeat.toUpperCase(), style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48)),
-          const SizedBox(height: 16),
-          Text(didWin ? AppLocalizations.of(context).provenLegend : AppLocalizations.of(context).trainingPath, style: AppTheme.bodyLarge, textAlign: TextAlign.center),
-          const SizedBox(height: 48),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 24),
+        child: SafeArea(
+          child: Padding(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-            child: Column(children: [
-              Text(AppLocalizations.of(context).matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(AppLocalizations.of(context).pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-              const SizedBox(height: 24),
-              SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
-                onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(AppLocalizations.of(context).acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              )),
-              const SizedBox(height: 12),
-              SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
-                onPressed: () {
-                  HapticService.lightImpact();
-                  showReportDialog(
-                    onSubmit: (reason) async {
-                      if (game.matchId == null || auth.currentUser?.id == null) return;
-                      final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason);
-                      final msg = result['message'] as String? ?? 'Dispute submitted';
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
-                      Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
-                    },
-                    onComplete: () {},
-                  );
-                },
-                style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                icon: const Icon(Icons.flag_outlined),
-                label: Text(AppLocalizations.of(context).reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              )),
-            ]),
+            child: Column(
+              children: [
+                const Spacer(flex: 2),
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
+                    boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
+                  ),
+                  child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  didWin ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).defeat.toUpperCase(),
+                  style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  didWin ? AppLocalizations.of(context).provenLegend : AppLocalizations.of(context).trainingPath,
+                  style: AppTheme.bodyLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const Spacer(flex: 1),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
+                  child: Column(children: [
+                    Text(AppLocalizations.of(context).matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(AppLocalizations.of(context).pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                    const SizedBox(height: 24),
+                    SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+                      onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: Text(AppLocalizations.of(context).acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    )),
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+                      onPressed: () {
+                        HapticService.lightImpact();
+                        showReportDialog(
+                          onSubmit: (reason) async {
+                            if (game.matchId == null || auth.currentUser?.id == null) return;
+                            final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason);
+                            final msg = result['message'] as String? ?? 'Dispute submitted';
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
+                            Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
+                          },
+                          onComplete: () {},
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      icon: const Icon(Icons.flag_outlined),
+                      label: Text(AppLocalizations.of(context).reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    )),
+                  ]),
+                ),
+                const Spacer(flex: 2),
+              ],
+            ),
           ),
-        ]))),
+        ),
       ),
     );
   }

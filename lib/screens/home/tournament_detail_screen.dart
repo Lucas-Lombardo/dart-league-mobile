@@ -437,9 +437,13 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
     if (_isLoading || !widget.canRegister) return;
 
     final authProvider = context.read<AuthProvider>();
-    if (!widget.isRegistered && authProvider.currentUser?.isEmailVerified == false) {
-      _showEmailVerificationDialog(context, authProvider);
-      return;
+    if (!widget.isRegistered) {
+      await authProvider.checkAuthStatus();
+      if (!mounted) return;
+      if (authProvider.currentUser?.isEmailVerified == false) {
+        _showEmailVerificationDialog(context, authProvider);
+        return;
+      }
     }
 
     setState(() => _isLoading = true);

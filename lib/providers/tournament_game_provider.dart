@@ -224,7 +224,10 @@ class TournamentGameProvider with ChangeNotifier {
     debugPrint('TOURNAMENT: game_started received');
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
-    _player1Id = _currentPlayerId;
+    // _player1Id is fixed for the entire match. Only assign it on the first leg
+    // (when it's still null). Legs 2+ alternate who throws first, so using
+    // currentPlayerId again would swap the score mapping.
+    _player1Id ??= _currentPlayerId;
     _myScore = 501;
     _opponentScore = 501;
     _tournamentState = TournamentGameState.playing;

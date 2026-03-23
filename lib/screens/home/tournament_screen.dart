@@ -404,9 +404,13 @@ class _TournamentCardState extends State<_TournamentCard> {
     if (_isLoading) return;
 
     final authProvider = context.read<AuthProvider>();
-    if (_isRegistered != true && authProvider.currentUser?.isEmailVerified == false) {
-      _showEmailVerificationDialog(context, authProvider);
-      return;
+    if (_isRegistered != true) {
+      await authProvider.checkAuthStatus();
+      if (!mounted) return;
+      if (authProvider.currentUser?.isEmailVerified == false) {
+        _showEmailVerificationDialog(context, authProvider);
+        return;
+      }
     }
 
     setState(() => _isLoading = true);
@@ -819,9 +823,13 @@ class _RegisterButtonState extends State<_RegisterButton> {
     if (_isLoading) return;
 
     final authProvider = context.read<AuthProvider>();
-    if (_isRegistered != true && authProvider.currentUser?.isEmailVerified == false) {
-      _showEmailVerificationDialog(context, authProvider);
-      return;
+    if (_isRegistered != true) {
+      await authProvider.checkAuthStatus();
+      if (!mounted) return;
+      if (authProvider.currentUser?.isEmailVerified == false) {
+        _showEmailVerificationDialog(context, authProvider);
+        return;
+      }
     }
 
     setState(() => _isLoading = true);

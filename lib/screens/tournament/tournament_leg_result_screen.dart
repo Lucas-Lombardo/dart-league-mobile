@@ -75,6 +75,7 @@ class TournamentLegResultScreen extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                   letterSpacing: 2,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(

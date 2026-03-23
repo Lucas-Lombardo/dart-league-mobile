@@ -284,72 +284,81 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
-              boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
-            ),
-            child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            isSeriesOver
-                ? (didWin ? l10n.matchWonTitle : l10n.matchLostTitle)
-                : (didWin ? l10n.legWonTitle(tGame.currentLeg) : l10n.legLostTitle(tGame.currentLeg)),
-            style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            didWin ? l10n.wellPlayedConfirmResult : (isSeriesOver ? l10n.betterLuckNextTime : l10n.betterLuckNextLeg),
-            style: AppTheme.bodyLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 48),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 24),
+        child: SafeArea(
+          child: Padding(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-            child: Column(children: [
-              Text(
-                isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
-                style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isSeriesOver ? l10n.pleaseConfirmMatchResult : l10n.confirmNextLeg,
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
-                onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              )),
-              const SizedBox(height: 12),
-              SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
-                onPressed: () {
-                  HapticService.lightImpact();
-                  showReportDialog(
-                    onSubmit: (reason) async {
-                      if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
-                      await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason);
-                      if (mounted) { setState(() => _resultAccepted = true); handleSharedStateChange(); }
-                    },
-                    onComplete: () {},
-                  );
-                },
-                style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                icon: const Icon(Icons.flag_outlined),
-                label: Text(l10n.reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              )),
-            ]),
+            child: Column(
+              children: [
+                const Spacer(flex: 2),
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
+                    boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
+                  ),
+                  child: Icon(didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied, color: didWin ? AppTheme.success : AppTheme.error, size: 80),
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  isSeriesOver
+                      ? (didWin ? l10n.matchWonTitle : l10n.matchLostTitle)
+                      : (didWin ? l10n.legWonTitle(tGame.currentLeg) : l10n.legLostTitle(tGame.currentLeg)),
+                  style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: 48),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  didWin ? l10n.wellPlayedConfirmResult : (isSeriesOver ? l10n.betterLuckNextTime : l10n.betterLuckNextLeg),
+                  style: AppTheme.bodyLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const Spacer(flex: 1),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
+                  child: Column(children: [
+                    Text(
+                      isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
+                      style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isSeriesOver ? l10n.pleaseConfirmMatchResult : l10n.confirmNextLeg,
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+                      onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    )),
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+                      onPressed: () {
+                        HapticService.lightImpact();
+                        showReportDialog(
+                          onSubmit: (reason) async {
+                            if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
+                            await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason);
+                            if (mounted) { setState(() => _resultAccepted = true); handleSharedStateChange(); }
+                          },
+                          onComplete: () {},
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      icon: const Icon(Icons.flag_outlined),
+                      label: Text(l10n.reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    )),
+                  ]),
+                ),
+                const Spacer(flex: 2),
+              ],
+            ),
           ),
-        ]))),
+        ),
       ),
     );
   }

@@ -1,7 +1,7 @@
 DateTime? _tryParseDateTime(String? value) {
   if (value == null) return null;
   try {
-    return DateTime.parse(value);
+    return DateTime.parse(value).toLocal();
   } on FormatException {
     return null;
   }

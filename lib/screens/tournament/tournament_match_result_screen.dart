@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/tournament_game_provider.dart';
 import '../../l10n/app_localizations.dart';
+import 'tournament_end_screen.dart';
 
 class TournamentMatchResultScreen extends StatelessWidget {
   final String tournamentMatchId;
@@ -84,6 +83,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -187,9 +187,19 @@ class TournamentMatchResultScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         HapticService.mediumImpact();
-                        final provider = context.read<TournamentGameProvider>();
-                        AppNavigator.toHomeClearing(context);
-                        try { provider.reset(); } catch (_) {}
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => TournamentEndScreen(
+                              tournamentId: tournamentId,
+                              tournamentName: tournamentName,
+                              roundName: roundName,
+                              didWin: didWin,
+                              opponentUsername: opponentUsername,
+                              myLegsWon: myLegsWon,
+                              opponentLegsWon: opponentLegsWon,
+                            ),
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: didWin ? AppTheme.success : AppTheme.primary,
