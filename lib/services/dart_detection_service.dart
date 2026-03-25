@@ -17,8 +17,9 @@ const double _defaultConfThreshold = 0.35;
 const double _calibMergeDist = 0.03;
 const int _maxDarts = 3;
 const double _dartMinConf = 0.40;
-const double _dartNmsIouThreshold = 0.70;
+const double _dartNmsIouThreshold = 0.85;
 const double _dartNmsMinDist = 0.004;
+const double _calibMatchDist = 0.04; // max drift for a calib point to be considered "same position"
 
 class DartDetectionService {
   Interpreter? _interpreter;
@@ -31,6 +32,10 @@ class DartDetectionService {
   Float32List? _inputBuffer;
   Uint8List? _outputBytes;
   List<int>? _outputShape;
+
+  // Last known good calibration (4 points). Used as fallback when the current
+  // frame detects fewer than 4 (e.g. a dart is hiding a calibration point).
+  List<Detection>? _lastGoodCalib;
 
   bool get isLoaded => _isLoaded;
 
@@ -88,6 +93,7 @@ class DartDetectionService {
     _inputBuffer = null;
     _outputBytes = null;
     _outputShape = null;
+    _lastGoodCalib = null;
     _isLoaded = false;
   }
 
@@ -385,6 +391,85 @@ class DartDetectionService {
     return kept;
   }
 
+  /// Try to use cached calibration when the current frame has fewer than 4.
+  /// Only falls back if:
+  ///   - At least 1 current calib point was detected (not 0 — camera may have moved)
+  ///   - Every detected point matches closely to one in the cache (camera hasn't shifted)
+  /// When valid, returns the cached 4 points; otherwise returns the current list as-is.
+  List<Detection> _applyCalibFallback(List<Detection> current) {
+    if (current.length == 4) {
+      // Full set detected — update cache
+      _lastGoodCalib = List.of(current);
+      return current;
+    }
+
+    if (current.isEmpty || _lastGoodCalib == null) {
+      // No points at all — can't verify camera position, don't guess
+      return current;
+    }
+
+    // Verify every detected point matches a cached point within threshold
+    final usedCached = <int>{};
+    for (final det in current) {
+      bool matched = false;
+      for (int i = 0; i < _lastGoodCalib!.length; i++) {
+        if (usedCached.contains(i)) continue;
+        final dist = sqrt(
+          pow(det.x - _lastGoodCalib![i].x, 2) +
+          pow(det.y - _lastGoodCalib![i].y, 2),
+        );
+        if (dist < _calibMatchDist) {
+          usedCached.add(i);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // A detected point doesn't match any cached point — camera likely moved
+        debugPrint('[Calib] Detected point x=${det.x.toStringAsFixed(3)} y=${det.y.toStringAsFixed(3)} '
+            'does not match cached calibration — not using fallback');
+        _lastGoodCalib = null;
+        return current;
+      }
+    }
+
+    // All detected points match the cache — safe to reuse
+    debugPrint('[Calib] ${current.length}/4 calib points match cache — using last good calibration');
+    return _lastGoodCalib!;
+  }
+
+  /// Reject dart detections outside the dartboard area.
+  /// Uses calibration points to define board center and radius, rejects darts
+  /// beyond margin * board_radius from center.
+  List<Detection> _filterDartsOutsideBoard(
+    List<Detection> darts,
+    List<Detection> calibs, {
+    double margin = 1.3,
+  }) {
+    if (calibs.length < 3 || darts.isEmpty) return darts;
+
+    final cx = calibs.fold(0.0, (s, d) => s + d.x) / calibs.length;
+    final cy = calibs.fold(0.0, (s, d) => s + d.y) / calibs.length;
+
+    double boardR = 0;
+    for (final c in calibs) {
+      final dist = sqrt(pow(c.x - cx, 2) + pow(c.y - cy, 2));
+      if (dist > boardR) boardR = dist;
+    }
+    final maxR = boardR * margin;
+
+    final kept = <Detection>[];
+    for (final d in darts) {
+      final dist = sqrt(pow(d.x - cx, 2) + pow(d.y - cy, 2));
+      if (dist > maxR) {
+        debugPrint('[Filter] Rejected dart outside board: x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} dist=${dist.toStringAsFixed(3)} > $maxR');
+      } else {
+        kept.add(d);
+      }
+    }
+    return kept;
+  }
+
   /// Compute bounding-box IoU between two detections.
   static double _iou(Detection a, Detection b) {
     final aLeft = a.x - a.width / 2;
@@ -506,9 +591,17 @@ class DartDetectionService {
     // Filter calibration points (merge close duplicates, cap at 4)
     sw.reset();
     calibPoints = _filterCalibPoints(calibPoints);
+
+    // Use cached calibration if current frame is missing points but camera hasn't moved
+    calibPoints = _applyCalibFallback(calibPoints);
+
     calibPoints = _sortCalibPoints(calibPoints);
     final (filteredDarts, filterLogs) = _filterDarts(dartTips);
     dartTips = filteredDarts;
+
+    // Reject darts outside the dartboard area
+    dartTips = _filterDartsOutsideBoard(dartTips, calibPoints);
+
     final filterMs = sw.elapsedMilliseconds;
 
     final totalMs = preprocessMs + inferenceMs + parseMs + filterMs;
@@ -640,12 +733,19 @@ class DartDetectionService {
     sw.reset();
     calibPoints = _filterCalibPoints(calibPoints);
 
+    // Use cached calibration if current frame is missing points but camera hasn't moved
+    calibPoints = _applyCalibFallback(calibPoints);
+
     // Sort calibration points: D20 (top), D6 (right), D3 (bottom), D11 (left)
     calibPoints = _sortCalibPoints(calibPoints);
 
     // Filter darts (merge close ones, max 3)
     final (filteredDarts, filterLogs) = _filterDarts(dartTips);
     dartTips = filteredDarts;
+
+    // Reject darts outside the dartboard area
+    dartTips = _filterDartsOutsideBoard(dartTips, calibPoints);
+
     final filterMs = sw.elapsedMilliseconds;
 
     final totalMs = readMs + decodeMs + preprocessMs + inferenceMs + parseMs + filterMs;
