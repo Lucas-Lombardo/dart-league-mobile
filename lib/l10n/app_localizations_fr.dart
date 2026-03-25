@@ -1146,4 +1146,32 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get yourTournamentJourney => 'Votre Parcours';
+
+  // Content Creator
+  @override
+  String get contentCreator => 'Créateur de contenu';
+
+  @override
+  String get enterCreatorCode => 'Entrer un code créateur';
+
+  @override
+  String get creatorCodeHint => 'ex. FORTNITE';
+
+  @override
+  String get supporting => 'Vous soutenez';
+
+  @override
+  String get clearCreatorCode => 'Retirer';
+
+  @override
+  String get creatorCodeSet => 'Code créateur activé ! Il a été ajouté en ami.';
+
+  @override
+  String get creatorCodeCleared => 'Code créateur retiré';
+
+  @override
+  String get invalidCreatorCode => 'Code créateur invalide';
+
+  @override
+  String get submit => 'Valider';
 }

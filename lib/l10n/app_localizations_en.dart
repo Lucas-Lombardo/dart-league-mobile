@@ -1146,4 +1146,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get yourTournamentJourney => 'Your Journey';
+
+  // Content Creator
+  @override
+  String get contentCreator => 'Content Creator';
+
+  @override
+  String get enterCreatorCode => 'Enter Creator Code';
+
+  @override
+  String get creatorCodeHint => 'e.g. FORTNITE';
+
+  @override
+  String get supporting => 'Supporting';
+
+  @override
+  String get clearCreatorCode => 'Clear';
+
+  @override
+  String get creatorCodeSet => 'Creator code set! They have been added as a friend.';
+
+  @override
+  String get creatorCodeCleared => 'Creator code cleared';
+
+  @override
+  String get invalidCreatorCode => 'Invalid creator code';
+
+  @override
+  String get submit => 'Submit';
 }

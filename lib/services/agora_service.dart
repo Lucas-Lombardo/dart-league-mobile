@@ -30,6 +30,12 @@ class AgoraService {
       await _engine!.enableVideo();
       await _engine!.enableAudio();
 
+      // Route audio through the speaker so iOS hardware volume buttons
+      // control the same volume stream used by the app.  Without this,
+      // Agora's playAndRecord audio session uses a separate in-call
+      // volume that ignores changes made on the home screen.
+      await _engine!.setDefaultAudioRouteToSpeakerphone(true);
+
       // Disable flash/torch for captures
       try { await _engine!.setCameraTorchOn(false); } catch (_) {}
       

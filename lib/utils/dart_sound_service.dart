@@ -8,6 +8,12 @@ class DartSoundService {
   static Future<void> init() async {
     if (_initialized) return;
     await _player.setReleaseMode(ReleaseMode.stop);
+    // Use ambient category so sound effects follow the system volume
+    // and don't fight with Agora's playAndRecord audio session.
+    await _player.setAudioContext(AudioContext(
+      iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+      android: const AudioContextAndroid(),
+    ));
     _initialized = true;
   }
 

@@ -10,6 +10,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_translation.dart';
 import '../../utils/storage_service.dart';
+import '../../services/content_creator_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,6 +23,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hapticEnabled = true;
   bool _autoScoringEnabled = true;
   String _appVersion = 'Loading...';
+  String? _creatorCode;
+  String? _creatorUsername;
+  bool _isLoadingCreator = true;
 
   @override
   void initState() {
@@ -29,12 +33,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _hapticEnabled = HapticService.isEnabled;
     _loadAutoScoringPref();
     _loadAppVersion();
+    _loadCreatorInfo();
   }
 
   Future<void> _loadAutoScoringPref() async {
     final enabled = await StorageService.getAutoScoring();
     if (mounted) {
       setState(() => _autoScoringEnabled = enabled);
+    }
+  }
+
+  Future<void> _loadCreatorInfo() async {
+    final creator = await ContentCreatorService.getMyCreator();
+    if (mounted) {
+      setState(() {
+        _creatorCode = creator?['code'] as String?;
+        _creatorUsername = creator?['username'] as String?;
+        _isLoadingCreator = false;
+      });
     }
   }
 
@@ -70,7 +86,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildAccountInfo(user?.username ?? l10n.accountInfoDefaultUsername, user?.email ?? l10n.accountInfoDefaultEmail),
           _buildAccountInfo(l10n.elo, '${user?.elo ?? 0}'),
           _buildAccountInfo(l10n.rank, user?.rank != null ? RankTranslation.translate(l10n, user!.rank) : 'Unranked'),
-          
+
+          const SizedBox(height: 24),
+          _buildSection(l10n.contentCreator.toUpperCase()),
+          _buildCreatorTile(l10n),
+
           const SizedBox(height: 24),
           _buildSection(l10n.preferences.toUpperCase()),
           _buildLanguageTile(l10n),
@@ -351,6 +371,244 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCreatorTile(AppLocalizations l10n) {
+    if (_isLoadingCreator) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary)),
+          ),
+        ),
+      );
+    }
+
+    if (_creatorCode != null) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.star, color: AppTheme.primary),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${l10n.supporting} $_creatorUsername',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    _creatorCode!,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                await ContentCreatorService.clearCreatorCode();
+                setState(() {
+                  _creatorCode = null;
+                  _creatorUsername = null;
+                });
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(l10n.creatorCodeCleared),
+                      backgroundColor: AppTheme.primary,
+                    ),
+                  );
+                }
+              },
+              child: Text(l10n.clearCreatorCode, style: const TextStyle(color: AppTheme.error)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        onTap: () => _showCreatorCodeDialog(context),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.star_border, color: AppTheme.primary),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.enterCreatorCode,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      l10n.creatorCodeHint,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCreatorCodeDialog(BuildContext context) {
+    final controller = TextEditingController();
+    bool isSubmitting = false;
+    final l10n = AppLocalizations.of(context);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            l10n.enterCreatorCode,
+            style: const TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: l10n.creatorCodeHint,
+              hintStyle: const TextStyle(color: AppTheme.textSecondary),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.primary),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(context),
+              child: Text(l10n.cancel, style: const TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final code = controller.text.trim();
+                      if (code.isEmpty) return;
+
+                      setState(() => isSubmitting = true);
+
+                      try {
+                        final result = await ContentCreatorService.setCreatorCode(code);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                        this.setState(() {
+                          _creatorCode = code;
+                          _creatorUsername = result['creatorUsername'] as String?;
+                        });
+                        if (this.mounted) {
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                              content: Text(l10n.creatorCodeSet),
+                              backgroundColor: AppTheme.primary,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() => isSubmitting = false);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(l10n.invalidCreatorCode),
+                              backgroundColor: AppTheme.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(l10n.submit),
+            ),
+          ],
+        ),
       ),
     );
   }

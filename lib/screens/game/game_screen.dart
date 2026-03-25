@@ -13,6 +13,7 @@ import '../../widgets/tv_scoreboard.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../widgets/rank_change_overlay.dart';
+import '../../widgets/elo_change_overlay.dart';
 import 'base_game_screen_state.dart';
 
 class GameScreen extends StatefulWidget {
@@ -145,26 +146,62 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     );
   }
 
+  void _showEloChangeOverlay({
+    required int oldElo,
+    required int newElo,
+    required bool isWin,
+    required GameProvider game,
+    String? oldRank,
+    String? newRank,
+  }) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: true,
+        pageBuilder: (context, _, __) => EloChangeOverlay(
+          oldElo: oldElo,
+          newElo: newElo,
+          isWin: isWin,
+          onDismiss: () {
+            Navigator.of(context).pop(); // pop the elo overlay
+            if (oldRank != null && newRank != null && oldRank != newRank) {
+              _showRankChangeAndNavigateHome(oldRank, newRank, game);
+            } else {
+              game.reset();
+              AppNavigator.toHomeClearing(context);
+            }
+          },
+        ),
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
+
   void _acceptMatchResult(GameProvider game, AuthProvider auth) async {
     if (game.matchId == null || auth.currentUser?.id == null) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final l10n = AppLocalizations.of(context);
       final oldRank = auth.currentUser!.rank;
+      final oldElo = auth.currentUser!.elo;
+      final didWin = game.winnerId == auth.currentUser!.id;
       messenger.showSnackBar(SnackBar(content: Text(l10n.acceptingMatchResult), duration: const Duration(seconds: 1)));
-      final result = await MatchService.acceptMatchResult(game.matchId!, auth.currentUser!.id);
+      await MatchService.acceptMatchResult(game.matchId!, auth.currentUser!.id);
       if (!mounted) return;
       await auth.checkAuthStatus();
       if (!mounted) return;
       final newRank = auth.currentUser?.rank ?? oldRank;
-      if (newRank != oldRank) {
-        _showRankChangeAndNavigateHome(oldRank, newRank, game);
-        return;
-      }
-      final message = result['message'] as String? ?? l10n.matchResultAccepted;
-      messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: AppTheme.success, duration: const Duration(milliseconds: 500)));
-      game.reset();
-      if (mounted) AppNavigator.toHomeClearing(context);
+      final newElo = auth.currentUser?.elo ?? oldElo;
+      _showEloChangeOverlay(
+        oldElo: oldElo,
+        newElo: newElo,
+        isWin: didWin,
+        game: game,
+        oldRank: oldRank,
+        newRank: newRank,
+      );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context).error}: $e'), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
@@ -245,16 +282,20 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             onPressed: () async {
               forfeitDialogShowing = false;
               final oldRank = auth.currentUser?.rank ?? 'unranked';
+              final oldElo = auth.currentUser?.elo ?? 1200;
               Navigator.of(dialogCtx).pop();
               await auth.checkAuthStatus();
               if (!context.mounted) return;
               final newRank = auth.currentUser?.rank ?? oldRank;
-              if (newRank != oldRank) {
-                _showRankChangeAndNavigateHome(oldRank, newRank, game);
-                return;
-              }
-              game.reset();
-              if (context.mounted) AppNavigator.toHomeClearing(context);
+              final newElo = auth.currentUser?.elo ?? oldElo;
+              _showEloChangeOverlay(
+                oldElo: oldElo,
+                newElo: newElo,
+                isWin: isWinner,
+                game: game,
+                oldRank: oldRank,
+                newRank: newRank,
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,

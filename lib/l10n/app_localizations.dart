@@ -458,6 +458,17 @@ abstract class AppLocalizations {
   String get tournamentTopEight;
   String get tournamentTopSixteen;
   String get yourTournamentJourney;
+
+  // Content Creator
+  String get contentCreator;
+  String get enterCreatorCode;
+  String get creatorCodeHint;
+  String get supporting;
+  String get clearCreatorCode;
+  String get creatorCodeSet;
+  String get creatorCodeCleared;
+  String get invalidCreatorCode;
+  String get submit;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
