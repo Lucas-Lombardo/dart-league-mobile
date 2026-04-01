@@ -14,6 +14,7 @@ import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/score_converter.dart';
+import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
@@ -146,8 +147,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   Future<String?> _captureFrame() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return null;
     try {
-      final xFile = await _cameraController!.takePicture();
-      return xFile.path;
+      return await silentCapture(_cameraController!);
     } catch (_) {
       return null;
     }

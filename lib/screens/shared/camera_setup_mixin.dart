@@ -10,6 +10,7 @@ import '../../services/detection_isolate_stub.dart'
     if (dart.library.io) '../../services/detection_isolate.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 
 /// Configuration for camera setup behavior.
@@ -272,18 +273,20 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     }
     _aiAnalyzing = true;
     try {
-      final xFile = await cameraController!.takePicture();
-      if (!mounted) {
-        try {
-          await File(xFile.path).delete();
-        } catch (e) {
-          debugPrint('[CameraSetup] File cleanup failed: $e');
+      final imagePath = await silentCapture(cameraController!);
+      if (imagePath == null || !mounted) {
+        if (imagePath != null) {
+          try {
+            await File(imagePath).delete();
+          } catch (e) {
+            debugPrint('[CameraSetup] File cleanup failed: $e');
+          }
         }
         return;
       }
-      final result = await _detectionIsolate!.analyze(xFile.path);
+      final result = await _detectionIsolate!.analyze(imagePath);
       try {
-        await File(xFile.path).delete();
+        await File(imagePath).delete();
       } catch (e) {
         debugPrint('[CameraSetup] File cleanup failed: $e');
       }

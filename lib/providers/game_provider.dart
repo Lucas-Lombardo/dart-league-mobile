@@ -154,6 +154,7 @@ class GameProvider with ChangeNotifier {
       _pendingType = null;
       _pendingReason = null;
       _pendingData = null;
+      _player1Id = null; // Reset so game_started sets it correctly for the new match
       // Don't reset _gameStarted — game_started event may have already fired for this match
     } else {
       debugPrint('GAME DEBUG: initGame - preserving state (same match reconnection)');
@@ -229,15 +230,25 @@ class GameProvider with ChangeNotifier {
     debugPrint('DEBUG: game_started received, myUserId=$_myUserId');
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
-    
-    // Track player1Id for correct score mapping
-    // player1Id is whoever has the first turn (currentPlayerId at game start)
-    _player1Id = _currentPlayerId;
-    
+
+    // Use server-provided player1Id for correct score mapping.
+    // player1Id is NOT necessarily whoever goes first — the server assigns
+    // it based on join order and may alternate who starts between games.
+    final serverPlayer1Id = data['player1Id'] as String?;
+    if (serverPlayer1Id != null) {
+      _player1Id = serverPlayer1Id;
+    } else {
+      // Fallback: if server doesn't send player1Id, use the matchmaking-
+      // established convention where the first user passed to initGame is player1.
+      // _myUserId is always set before game_started fires (via initGame in match_found).
+      _player1Id ??= _myUserId;
+    }
+    debugPrint('DEBUG: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId');
+
     // Both players start at 501
     _myScore = 501;
     _opponentScore = 501;
-    
+
     notifyListeners();
   }
 

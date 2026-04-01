@@ -224,10 +224,21 @@ class TournamentGameProvider with ChangeNotifier {
     debugPrint('TOURNAMENT: game_started received');
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
-    // _player1Id is fixed for the entire match. Only assign it on the first leg
-    // (when it's still null). Legs 2+ alternate who throws first, so using
-    // currentPlayerId again would swap the score mapping.
-    _player1Id ??= _currentPlayerId;
+
+    // Use server-provided player1Id for correct score mapping.
+    // player1Id is fixed for the entire series — it does NOT change between legs.
+    // Who throws first (currentPlayerId) alternates between legs, so it must NOT
+    // be used for score mapping.
+    final serverPlayer1Id = data['player1Id'] as String?;
+    if (serverPlayer1Id != null) {
+      _player1Id = serverPlayer1Id;
+    } else {
+      // Fallback for first leg only — if server doesn't send player1Id,
+      // use myUserId as convention. Never overwrite on subsequent legs.
+      _player1Id ??= _myUserId;
+    }
+    debugPrint('TOURNAMENT: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId');
+
     _myScore = 501;
     _opponentScore = 501;
     _tournamentState = TournamentGameState.playing;
@@ -462,6 +473,10 @@ class TournamentGameProvider with ChangeNotifier {
     _currentLeg = data['legNumber'] as int? ?? _currentLeg + 1;
     _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
     _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+
+    // Keep player1Id in sync if server sends it (should stay the same across legs)
+    final serverPlayer1Id = data['player1Id'] as String?;
+    if (serverPlayer1Id != null) _player1Id = serverPlayer1Id;
 
     if (newMatchId != null) {
       _currentGameMatchId = newMatchId;
