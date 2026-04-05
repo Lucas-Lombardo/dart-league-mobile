@@ -380,14 +380,15 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
                       // Continue button
                       FadeTransition(
                         opacity: _buttonFade,
-                        child: SizedBox(
-                          width: 200,
-                          height: 50,
-                          child: ElevatedButton(
+                        child: ElevatedButton(
                             onPressed: widget.onDismiss,
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
                                   widget.isWin ? color : AppTheme.primary,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 14,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
@@ -401,7 +402,6 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
                                 letterSpacing: 1,
                               ),
                             ),
-                          ),
                         ),
                       ),
                     ],
