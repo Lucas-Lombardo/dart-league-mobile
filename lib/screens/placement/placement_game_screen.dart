@@ -162,7 +162,17 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final (base, mul) = dartScoreToBackend(dartScore);
     HapticService.mediumImpact();
     DartSoundService.playDartHit(base, mul);
-    _throwDart(base, mul);
+
+    // Score update for an already-tracked dart (model refined its prediction)
+    if (slotIndex < _currentRoundThrows.length) {
+      setState(() {
+        _currentRoundThrows[slotIndex] = _DartThrow(base, mul);
+      });
+      _recalculateScore();
+    } else {
+      _throwDart(base, mul);
+    }
+
     if (_isWin) {
       _stopAiCapture();
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
@@ -523,7 +533,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               : _autoScoringEnabled && !_aiManuallyDisabled && !_aiPausedForEdit && _autoScoringService != null && _autoScoringService!.modelLoaded && _cameraController != null && _cameraController!.value.isInitialized && !_botTurnInProgress
                 ? AutoScoreGameView(
                     scoringService: _autoScoringService!,
-                    onConfirm: () { HapticService.heavyImpact(); _confirmRound(); },
+                    onConfirm: () {
+                      HapticService.heavyImpact();
+                      if (_isWin) { _showWinDialog(); } else if (_isBust) { _showBustDialog(); } else { _confirmRound(); }
+                    },
                     onEndRoundEarly: () { HapticService.heavyImpact(); _confirmRound(); },
                     pendingConfirmation: _isBust || _isWin,
                     myScore: _myScore,

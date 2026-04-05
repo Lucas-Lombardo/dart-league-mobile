@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'dart_detection_service.dart';
 
-const int _decodeTargetWidth = 768;
+const int _decodeTargetWidth = 1024;
 
 /// Manages a persistent background isolate that loads the TFLite model once
 /// and processes images without blocking the UI thread.
@@ -33,7 +33,7 @@ class DetectionIsolate {
 
       // Load model bytes on the main thread (has access to asset bundle),
       // then pass them to the isolate so it can use Interpreter.fromBuffer.
-      final modelData = await rootBundle.load('assets/models/best_int8.tflite');
+      final modelData = await rootBundle.load('assets/models/t201.tflite');
       final modelBytes = modelData.buffer.asUint8List();
 
       _isolate = await Isolate.spawn(
@@ -107,10 +107,7 @@ class DetectionIsolate {
     return (byteData!.buffer.asUint8List(), w, h);
   }
 
-  /// Analyze an image in the background isolate.
-  /// Decodes on the main thread (native, fast), then sends RGBA to isolate.
-  /// Times out after 8 seconds to prevent the capture loop from hanging
-  /// if the isolate crashes or stalls mid-inference.
+  /// Analyze an image file (slow path — file I/O + decode).
   Future<ScoringResult> analyze(String imagePath) async {
     if (_usingFallback && _fallbackService != null) {
       return _fallbackService!.analyzeImage(imagePath);
@@ -126,11 +123,30 @@ class DetectionIsolate {
       );
     }
 
-    // Decode on main thread with native dart:ui (fast)
     final sw = Stopwatch()..start();
     final (Uint8List rgba, int w, int h) = await _decodeNative(imagePath);
     final decodeMs = sw.elapsedMilliseconds;
     debugPrint('[Isolate] decode=${decodeMs}ms (main thread, native)');
+
+    return analyzeRgba(rgba, w, h);
+  }
+
+  /// Analyze raw RGBA pixels directly — no file I/O.
+  /// This is the fast path matching DartsMind: camera buffer → model.
+  Future<ScoringResult> analyzeRgba(Uint8List rgba, int w, int h) async {
+    if (_usingFallback && _fallbackService != null) {
+      return _fallbackService!.analyzeRgba(rgba, w, h);
+    }
+
+    if (!_ready || _sendPort == null) {
+      return ScoringResult(
+        calibrationPoints: [],
+        dartTips: [],
+        scores: [],
+        totalScore: 0,
+        error: 'Isolate not ready',
+      );
+    }
 
     final id = _nextId++;
     final completer = Completer<ScoringResult>();

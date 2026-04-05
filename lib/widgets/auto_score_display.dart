@@ -92,15 +92,15 @@ class AutoScoreGameView extends StatelessWidget {
                     width: double.infinity,
                     padding: EdgeInsets.only(top: safeTop),
                     color: Colors.black,
-                    child: agoraEngine != null
-                        ? AgoraVideoView(
-                            controller: VideoViewController(
-                              rtcEngine: agoraEngine!,
-                              canvas: const VideoCanvas(uid: 0),
-                            ),
-                          )
-                        : localCameraPreview != null
-                            ? localCameraPreview!
+                    child: localCameraPreview != null
+                        ? localCameraPreview!
+                        : agoraEngine != null
+                            ? AgoraVideoView(
+                                controller: VideoViewController(
+                                  rtcEngine: agoraEngine!,
+                                  canvas: const VideoCanvas(uid: 0),
+                                ),
+                              )
                             : const Center(
                                 child: Icon(
                                   Icons.videocam_off,

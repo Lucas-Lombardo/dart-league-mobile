@@ -6,20 +6,26 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
-import 'dart_detection_service_io.dart' if (dart.library.html) 'dart_detection_service_web.dart';
+import 'dart_detection_service_io.dart'
+    if (dart.library.html) 'dart_detection_service_web.dart';
 
 import 'dart_scoring_service.dart';
 import 'dart_detection_types.dart';
 export 'dart_detection_types.dart';
 
-const int _modelInputSize = 768;
-const double _defaultConfThreshold = 0.35;
-const double _calibMergeDist = 0.03;
+// ---------------------------------------------------------------------------
+// DartsMind model constants  (Detector.java)
+// ---------------------------------------------------------------------------
+const int _modelInputSize = 1024;
+const double _confidenceThreshold = 0.8;
+const double _iouThresholdTip = 0.958;
+const double _iouThresholdP = 0.85;
 const int _maxDarts = 3;
-const double _dartMinConf = 0.40;
-const double _dartNmsIouThreshold = 0.85;
 const double _dartNmsMinDist = 0.004;
-const double _calibMatchDist = 0.04; // max drift for a calib point to be considered "same position"
+
+const List<String> _labels = [
+  'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'tip'
+];
 
 class DartDetectionService {
   Interpreter? _interpreter;
@@ -28,13 +34,11 @@ class DartDetectionService {
 
   DartDetectionService({this.useNativeDecode = true});
 
-  // Pre-allocated buffers (reused across frames)
   Float32List? _inputBuffer;
   Uint8List? _outputBytes;
   List<int>? _outputShape;
 
-  // Last known good calibration (4 points). Used as fallback when the current
-  // frame detects fewer than 4 (e.g. a dart is hiding a calibration point).
+  // Cached calibration (4 control points with flags).
   List<Detection>? _lastGoodCalib;
 
   bool get isLoaded => _isLoaded;
@@ -42,17 +46,15 @@ class DartDetectionService {
   Future<void> loadModel({bool cpuOnly = false}) async {
     if (_isLoaded) return;
 
-    // Web doesn't support GPU delegates or Platform checks
     if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/best_int8.tflite',
+        'assets/models/t201.tflite',
         options: cpuOptions,
       );
       debugPrint('[DartDetection] Model loaded on web with CPU (4 threads)');
       _isLoaded = true;
     } else {
-      // Use Metal GPU on iOS, GPU on Android, fallback to CPU with threads
       _interpreter = await loadModelNative(cpuOnly: cpuOnly);
       _isLoaded = true;
     }
@@ -60,17 +62,12 @@ class DartDetectionService {
     _allocateBuffers();
   }
 
-  /// Load model from pre-loaded bytes (for use in background isolates
-  /// where ServicesBinding / asset bundle is not available).
   void loadModelFromBuffer(Uint8List modelBytes) {
     if (_isLoaded) return;
-
-    // CPU with multi-threading (GPU delegates often fail in isolates)
     final cpuOptions = InterpreterOptions()..threads = 4;
     _interpreter = Interpreter.fromBuffer(modelBytes, options: cpuOptions);
     debugPrint('[DartDetection] Model loaded from buffer on CPU with 4 threads');
     _isLoaded = true;
-
     _allocateBuffers();
   }
 
@@ -83,8 +80,10 @@ class DartDetectionService {
     _outputBytes = Uint8List(outputByteSize);
     final inputTensors = _interpreter!.getInputTensors();
     debugPrint('[DartDetection] Model loaded');
-    debugPrint('[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
-    debugPrint('[DartDetection] Output: ${outputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
+    debugPrint(
+        '[DartDetection] Input: ${inputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
+    debugPrint(
+        '[DartDetection] Output: ${outputTensors.map((t) => '${t.shape} ${t.type}').join(', ')}');
   }
 
   void dispose() {
@@ -97,8 +96,8 @@ class DartDetectionService {
     _isLoaded = false;
   }
 
-  /// Decode image bytes using dart:ui (native, much faster than `image` package).
-  /// Downsamples at decode time if the image is larger than needed.
+  // ---- Image decode -------------------------------------------------------
+
   Future<(Uint8List, int, int)> _decodeImageNative(Uint8List bytes) async {
     final codec = await ui.instantiateImageCodec(
       bytes,
@@ -108,17 +107,16 @@ class DartDetectionService {
     final image = frame.image;
     final w = image.width;
     final h = image.height;
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final byteData =
+        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     codec.dispose();
     return (byteData!.buffer.asUint8List(), w, h);
   }
 
-  /// Decode image bytes using package:image (works in background isolates).
   (Uint8List, int, int) _decodeImagePure(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) throw Exception('Failed to decode image');
-    // Resize down to reduce preprocessing work (similar to native targetWidth)
     final resized = decoded.width > _modelInputSize
         ? img.copyResize(decoded, width: _modelInputSize)
         : decoded;
@@ -126,54 +124,68 @@ class DartDetectionService {
     return (Uint8List.fromList(rgba), resized.width, resized.height);
   }
 
-  /// Letterbox RGBA pixel data directly into the pre-allocated Float32List.
-  /// Single-pass: nearest-neighbor sampling, writes RGB into NHWC tensor.
-  /// Returns (scale, padX, padY, origW, origH).
-  (double, int, int, int, int) _preprocessDirect(
-    Uint8List rgba, int origW, int origH,
+  // ---- Preprocessing (DartsMind: top-left scale, black background) --------
+
+  /// Matches DartsMind's `convertToInputSizeBitmap` exactly:
+  /// - Uniform scale to fit within 1024×1024
+  /// - Anchored at top-left (0,0)
+  /// - Black background (0.0) for padding
+  /// - Normalises RGB to [0,1] by dividing by 255
+  ///
+  /// Returns (xScale, yScale, origW, origH) for coordinate remapping.
+  (double, double, int, int) _preprocessDirect(
+    Uint8List rgba,
+    int origW,
+    int origH,
   ) {
     final input = _inputBuffer!;
     const sz = _modelInputSize;
-    const gray = 114.0 / 255.0;
 
-    // Letterbox geometry
+    // Uniform scale to fit within canvas (same as DartsMind)
     final scale = min(sz / origW, sz / origH).toDouble();
     final newW = (origW * scale).round();
     final newH = (origH * scale).round();
-    final padX = (sz - newW) ~/ 2;
-    final padY = (sz - newH) ~/ 2;
 
+    // DartsMind coordinate remapping: xScale / yScale
+    final double xScale;
+    final double yScale;
+    if (origW >= origH) {
+      xScale = 1.0;
+      yScale = origW / origH;
+    } else {
+      xScale = origH / origW;
+      yScale = 1.0;
+    }
 
     final srcStride = origW * 4; // RGBA bytes per row
-    final invNewW = origW / newW; // map dest pixel -> source pixel
+    final invNewW = origW / newW; // map dest pixel → source pixel
     final invNewH = origH / newH;
 
     int idx = 0;
     for (int y = 0; y < sz; y++) {
-      final inY = y - padY;
-      if (inY < 0 || inY >= newH) {
-        // Padding row — fill with gray
+      if (y >= newH) {
+        // Black padding rows (below image)
         for (int x = 0; x < sz; x++) {
-          input[idx] = gray;
-          input[idx + 1] = gray;
-          input[idx + 2] = gray;
+          input[idx] = 0.0;
+          input[idx + 1] = 0.0;
+          input[idx + 2] = 0.0;
           idx += 3;
         }
         continue;
       }
-      final srcY = (inY * invNewH).toInt().clamp(0, origH - 1);
+      final srcY = (y * invNewH).toInt().clamp(0, origH - 1);
       final rowOffset = srcY * srcStride;
 
       for (int x = 0; x < sz; x++) {
-        final inX = x - padX;
-        if (inX < 0 || inX >= newW) {
-          input[idx] = gray;
-          input[idx + 1] = gray;
-          input[idx + 2] = gray;
+        if (x >= newW) {
+          // Black padding columns (right of image)
+          input[idx] = 0.0;
+          input[idx + 1] = 0.0;
+          input[idx + 2] = 0.0;
           idx += 3;
           continue;
         }
-        final srcX = (inX * invNewW).toInt().clamp(0, origW - 1);
+        final srcX = (x * invNewW).toInt().clamp(0, origW - 1);
         final pixelOffset = rowOffset + srcX * 4;
         input[idx] = rgba[pixelOffset] / 255.0;
         input[idx + 1] = rgba[pixelOffset + 1] / 255.0;
@@ -181,296 +193,74 @@ class DartDetectionService {
         idx += 3;
       }
     }
-    return (scale, padX, padY, origW, origH);
+    return (xScale, yScale, origW, origH);
   }
 
-  /// Sort 4 calibration points into order: D20 (top), D6 (right), D3 (bottom), D11 (left)
-  List<Detection> _sortCalibPoints(List<Detection> pts) {
-    if (pts.length != 4) return pts;
+  // ---- Output parsing (DartsMind: findBestBox) ----------------------------
 
-    final indexed = List.generate(4, (i) => i);
-    // Sort by Y to find top (min y) and bottom (max y)
-    indexed.sort((a, b) => pts[a].y.compareTo(pts[b].y));
-    final topIdx = indexed[0];
-    final bottomIdx = indexed[3];
-
-    // Remaining two: left (min x) and right (max x)
-    final remaining = indexed.sublist(1, 3);
-    int leftIdx, rightIdx;
-    if (pts[remaining[0]].x < pts[remaining[1]].x) {
-      leftIdx = remaining[0];
-      rightIdx = remaining[1];
-    } else {
-      leftIdx = remaining[1];
-      rightIdx = remaining[0];
-    }
-
-    return [pts[topIdx], pts[rightIdx], pts[bottomIdx], pts[leftIdx]];
-  }
-
-  /// Parse YOLO output tensor into detections.
-  /// Auto-detects format:
-  ///   Legacy (YOLO11/v8): [1, C, N] where C small (e.g. 6), N large (e.g. 8400)
-  ///   End-to-end (YOLO26): [1, N, C] where N ≤ 1000, C small (e.g. 6)
+  /// Matches DartsMind's `findBestBox` exactly:
+  /// - Iterates 21504 elements, 9 class channels (p1-p8 + tip)
+  /// - Confidence threshold 0.8
+  /// - Coordinates scaled by xScale/yScale (aspect ratio correction)
+  /// - Boundary check: minX ≤ 1, minY ≤ 1, maxX ≥ 0, maxY ≥ 0
   List<Detection> _parseOutput(
     Float32List floats,
     List<int> shape, {
-    double confThreshold = _defaultConfThreshold,
-    required double scale,
-    required int padX,
-    required int padY,
-    required int origW,
-    required int origH,
+    required double xScale,
+    required double yScale,
   }) {
-    // shape is [batch, rows, cols]; batch dim is always 1
-    final rows = shape[1];
-    final cols = shape[2];
-    // Legacy [C][N]: rows = C (small, e.g. 6), cols = N (large, e.g. 8400)
-    // E2E [N][C]:    rows = N (detections), cols = C (small, e.g. 6)
-    if (rows <= 20 && cols > 100) {
-      return _parseOutputLegacy(floats, rows, cols, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
-    } else {
-      return _parseOutputE2E(floats, rows, cols, confThreshold: confThreshold, scale: scale, padX: padX, padY: padY, origW: origW, origH: origH);
-    }
-  }
-
-  /// Legacy anchor-based output [C][N]: x, y, w, h, cls0_score, cls1_score (normalized [0,1]).
-  List<Detection> _parseOutputLegacy(
-    Float32List floats,
-    int rows,
-    int cols, {
-    required double confThreshold,
-    required double scale,
-    required int padX,
-    required int padY,
-    required int origW,
-    required int origH,
-  }) {
-    // Layout: floats[row * cols + col], batch offset = 0
+    final numChannels = shape[1]; // 13
+    final numElements = shape[2]; // 21504
     final detections = <Detection>[];
-    final numDetections = cols;
-    final numClasses = rows - 4;
 
-    for (int i = 0; i < numDetections; i++) {
-      double maxConf = 0;
-      int bestClass = 0;
-      for (int c = 0; c < numClasses; c++) {
-        final conf = floats[(4 + c) * cols + i];
-        if (conf > maxConf) {
-          maxConf = conf;
-          bestClass = c;
+    for (int i = 0; i < numElements; i++) {
+      // Find best class (channels 4..12 = p1..tip)
+      int bestClass = -1;
+      double bestConf = _confidenceThreshold;
+      for (int c = 4; c < numChannels; c++) {
+        final conf = floats[numElements * c + i];
+        if (conf > bestConf) {
+          bestClass = c - 4;
+          bestConf = conf;
         }
       }
+      if (bestConf <= _confidenceThreshold) continue;
 
-      if (maxConf < confThreshold) continue;
+      // Raw model output in [0,1] relative to 1024×1024 canvas
+      final cx = floats[i];
+      final cy = floats[numElements + i];
+      final w = floats[numElements * 2 + i];
+      final h = floats[numElements * 3 + i];
 
-      // Coords are normalized [0,1] in letterboxed space → convert to pixel
-      final pixelX = floats[0 * cols + i] * _modelInputSize;
-      final pixelY = floats[1 * cols + i] * _modelInputSize;
-      final pixelW = floats[2 * cols + i] * _modelInputSize;
-      final pixelH = floats[3 * cols + i] * _modelInputSize;
+      // Apply xScale / yScale  (DartsMind's findBestBox)
+      final scaledCx = cx * xScale;
+      final scaledCy = cy * yScale;
+      final halfW = (w / 2.0) * xScale;
+      final halfH = (h / 2.0) * yScale;
 
-      final xCenter = (pixelX - padX) / (scale * origW);
-      final yCenter = (pixelY - padY) / (scale * origH);
-      final width = pixelW / (scale * origW);
-      final height = pixelH / (scale * origH);
+      final minX = scaledCx - halfW;
+      final minY = scaledCy - halfH;
+      final maxX = scaledCx + halfW;
+      final maxY = scaledCy + halfH;
 
-      if (xCenter < -0.01 || xCenter > 1.01 || yCenter < -0.01 || yCenter > 1.01) continue;
+      // DartsMind boundary check
+      if (minX > 1.0 || minY > 1.0 || maxX < 0.0 || maxY < 0.0) continue;
 
       detections.add(Detection(
         classId: bestClass,
-        x: xCenter.clamp(0.0, 1.0),
-        y: yCenter.clamp(0.0, 1.0),
-        width: width,
-        height: height,
-        confidence: maxConf,
+        className: _labels[bestClass],
+        x: scaledCx.clamp(0.0, 1.5), // can exceed 1.0 due to aspect ratio
+        y: scaledCy.clamp(0.0, 1.5),
+        width: w * xScale,
+        height: h * yScale,
+        confidence: bestConf,
       ));
     }
     return detections;
   }
 
-  /// End-to-end output [N][6]: x1, y1, x2, y2, conf, cls_id (YOLO26).
-  /// Coords may be normalized [0,1] or pixel [0, imgsz] — auto-detected.
-  List<Detection> _parseOutputE2E(
-    Float32List floats,
-    int rows,
-    int cols, {
-    required double confThreshold,
-    required double scale,
-    required int padX,
-    required int padY,
-    required int origW,
-    required int origH,
-  }) {
-    // Layout: floats[row * cols + col], batch offset = 0
-    final detections = <Detection>[];
-    final newW = origW * scale;
-    final newH = origH * scale;
+  // ---- Class-specific NMS (DartsMind: classSpecificNMS) -------------------
 
-    // Filter by confidence first (matches Python _postprocess_e2e logic).
-    // coord_max must be computed ONLY over confident rows — background rows can
-    // have coordinates that barely exceed 1.0 (e.g. 1.003) due to floating
-    // point, which would incorrectly flip coordsNormalized to false and cause
-    // all detections to be treated as pixel-space (then remapped out of bounds).
-    double maxCoord = 0;
-    bool anyConfident = false;
-    for (int row = 0; row < rows; row++) {
-      final base = row * cols;
-      if (floats[base + 4] < confThreshold) continue;
-      anyConfident = true;
-      for (int c = 0; c < 4; c++) {
-        if (floats[base + c] > maxCoord) maxCoord = floats[base + c];
-      }
-    }
-    if (!anyConfident) return detections;
-    final coordsNormalized = maxCoord <= 1.0;
-
-    for (int row = 0; row < rows; row++) {
-      final base = row * cols;
-      final conf = floats[base + 4];
-      if (conf < confThreshold) continue;
-      double x1 = floats[base + 0];
-      double y1 = floats[base + 1];
-      double x2 = floats[base + 2];
-      double y2 = floats[base + 3];
-      final clsId = floats[base + 5].round();
-
-      // Convert normalized to pixel if needed
-      if (coordsNormalized) {
-        x1 *= _modelInputSize;
-        y1 *= _modelInputSize;
-        x2 *= _modelInputSize;
-        y2 *= _modelInputSize;
-      }
-
-      // Convert xyxy pixel → cx, cy, w, h; remove letterbox padding; normalize
-      final cx = (x1 + x2) / 2.0;
-      final cy = (y1 + y2) / 2.0;
-      final bw = x2 - x1;
-      final bh = y2 - y1;
-
-      final xCenter = (cx - padX) / newW;
-      final yCenter = (cy - padY) / newH;
-      final width = bw / newW;
-      final height = bh / newH;
-
-      if (xCenter < -0.01 || xCenter > 1.01 || yCenter < -0.01 || yCenter > 1.01) continue;
-
-      detections.add(Detection(
-        classId: clsId,
-        x: xCenter.clamp(0.0, 1.0),
-        y: yCenter.clamp(0.0, 1.0),
-        width: width,
-        height: height,
-        confidence: conf,
-      ));
-    }
-    return detections;
-  }
-
-  /// Filter calibration detections: merge close duplicates, cap at 4
-  List<Detection> _filterCalibPoints(List<Detection> calibs) {
-    if (calibs.isEmpty) return calibs;
-
-    final sorted = List<Detection>.from(calibs)
-      ..sort((a, b) => b.confidence.compareTo(a.confidence));
-
-    final kept = <Detection>[];
-    for (final d in sorted) {
-      bool tooClose = false;
-      for (final k in kept) {
-        final dist = sqrt(pow(d.x - k.x, 2) + pow(d.y - k.y, 2));
-        if (dist < _calibMergeDist) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (!tooClose) kept.add(d);
-      if (kept.length >= 4) break;
-    }
-    return kept;
-  }
-
-  /// Try to use cached calibration when the current frame has fewer than 4.
-  /// Only falls back if:
-  ///   - At least 1 current calib point was detected (not 0 — camera may have moved)
-  ///   - Every detected point matches closely to one in the cache (camera hasn't shifted)
-  /// When valid, returns the cached 4 points; otherwise returns the current list as-is.
-  List<Detection> _applyCalibFallback(List<Detection> current) {
-    if (current.length == 4) {
-      // Full set detected — update cache
-      _lastGoodCalib = List.of(current);
-      return current;
-    }
-
-    if (current.isEmpty || _lastGoodCalib == null) {
-      // No points at all — can't verify camera position, don't guess
-      return current;
-    }
-
-    // Verify every detected point matches a cached point within threshold
-    final usedCached = <int>{};
-    for (final det in current) {
-      bool matched = false;
-      for (int i = 0; i < _lastGoodCalib!.length; i++) {
-        if (usedCached.contains(i)) continue;
-        final dist = sqrt(
-          pow(det.x - _lastGoodCalib![i].x, 2) +
-          pow(det.y - _lastGoodCalib![i].y, 2),
-        );
-        if (dist < _calibMatchDist) {
-          usedCached.add(i);
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) {
-        // A detected point doesn't match any cached point — camera likely moved
-        debugPrint('[Calib] Detected point x=${det.x.toStringAsFixed(3)} y=${det.y.toStringAsFixed(3)} '
-            'does not match cached calibration — not using fallback');
-        _lastGoodCalib = null;
-        return current;
-      }
-    }
-
-    // All detected points match the cache — safe to reuse
-    debugPrint('[Calib] ${current.length}/4 calib points match cache — using last good calibration');
-    return _lastGoodCalib!;
-  }
-
-  /// Reject dart detections outside the dartboard area.
-  /// Uses calibration points to define board center and radius, rejects darts
-  /// beyond margin * board_radius from center.
-  List<Detection> _filterDartsOutsideBoard(
-    List<Detection> darts,
-    List<Detection> calibs, {
-    double margin = 1.3,
-  }) {
-    if (calibs.length < 3 || darts.isEmpty) return darts;
-
-    final cx = calibs.fold(0.0, (s, d) => s + d.x) / calibs.length;
-    final cy = calibs.fold(0.0, (s, d) => s + d.y) / calibs.length;
-
-    double boardR = 0;
-    for (final c in calibs) {
-      final dist = sqrt(pow(c.x - cx, 2) + pow(c.y - cy, 2));
-      if (dist > boardR) boardR = dist;
-    }
-    final maxR = boardR * margin;
-
-    final kept = <Detection>[];
-    for (final d in darts) {
-      final dist = sqrt(pow(d.x - cx, 2) + pow(d.y - cy, 2));
-      if (dist > maxR) {
-        debugPrint('[Filter] Rejected dart outside board: x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} dist=${dist.toStringAsFixed(3)} > $maxR');
-      } else {
-        kept.add(d);
-      }
-    }
-    return kept;
-  }
-
-  /// Compute bounding-box IoU between two detections.
   static double _iou(Detection a, Detection b) {
     final aLeft = a.x - a.width / 2;
     final aRight = a.x + a.width / 2;
@@ -497,132 +287,224 @@ class DartDetectionService {
     return unionArea > 0 ? interArea / unionArea : 0.0;
   }
 
-  /// Filter dart detections: drop low confidence, NMS by IoU, cap at max.
-  /// Returns (kept, logLines) — log lines are deferred so caller can decide whether to print.
+  /// Groups by className, applies IoU threshold per class:
+  ///   tip → 0.958, p1-p8 → 0.85
+  List<Detection> _classSpecificNMS(List<Detection> detections) {
+    final grouped = <String, List<Detection>>{};
+    for (final d in detections) {
+      grouped.putIfAbsent(d.className, () => []).add(d);
+    }
+
+    final result = <Detection>[];
+    for (final entry in grouped.entries) {
+      final cls = entry.key;
+      final bboxes = entry.value
+        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+      final threshold = cls == 'tip' ? _iouThresholdTip : _iouThresholdP;
+
+      final kept = <Detection>[];
+      for (final bbox in bboxes) {
+        bool suppressed = false;
+        for (final k in kept) {
+          if (_iou(bbox, k) > threshold) {
+            suppressed = true;
+            break;
+          }
+        }
+        if (!suppressed) kept.add(bbox);
+      }
+      result.addAll(kept);
+    }
+    return result;
+  }
+
+  // ---- Control point extraction (extract4CPs equivalent) ------------------
+
+  /// Select best 4 control points from p1-p8 detections.
+  /// Picks highest-confidence per quadrant:
+  ///   Q1 (upper-right): p1, p2   Q2 (lower-right): p3, p4
+  ///   Q3 (lower-left):  p5, p6   Q4 (upper-left):  p7, p8
+  List<Detection> _extract4CPs(List<Detection> controlPoints) {
+    if (controlPoints.isEmpty) return [];
+
+    final quadrants = <int, List<Detection>>{};
+    for (final cp in controlPoints) {
+      final q = cp.classId ~/ 2; // 0=Q1, 1=Q2, 2=Q3, 3=Q4
+      quadrants.putIfAbsent(q, () => []).add(cp);
+    }
+
+    final selected = <Detection>[];
+    for (int q = 0; q < 4; q++) {
+      final group = quadrants[q];
+      if (group == null || group.isEmpty) continue;
+      group.sort((a, b) => b.confidence.compareTo(a.confidence));
+      selected.add(group.first);
+    }
+
+    if (selected.length == 4) return selected;
+
+    // Fallback: pick 4 best from different classes
+    if (selected.length < 4 && controlPoints.length >= 4) {
+      final sorted = List<Detection>.from(controlPoints)
+        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+      final bestByClass = <int, Detection>{};
+      for (final cp in sorted) {
+        bestByClass.putIfAbsent(cp.classId, () => cp);
+        if (bestByClass.length >= 4) break;
+      }
+      if (bestByClass.length >= 4) {
+        return bestByClass.values.take(4).toList();
+      }
+    }
+
+    return selected;
+  }
+
+  /// Fallback to cached calibration when < 4 points detected.
+  List<Detection> _applyCalibFallback(List<Detection> current) {
+    if (current.length >= 4) {
+      _lastGoodCalib = List.of(current);
+      return current;
+    }
+
+    if (current.isEmpty || _lastGoodCalib == null) return current;
+
+    const matchDist = 0.04;
+    final usedCached = <int>{};
+    for (final det in current) {
+      bool matched = false;
+      for (int i = 0; i < _lastGoodCalib!.length; i++) {
+        if (usedCached.contains(i)) continue;
+        final dist = sqrt(
+          pow(det.x - _lastGoodCalib![i].x, 2) +
+              pow(det.y - _lastGoodCalib![i].y, 2),
+        );
+        if (dist < matchDist) {
+          usedCached.add(i);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        _lastGoodCalib = null;
+        return current;
+      }
+    }
+
+    debugPrint(
+        '[Calib] ${current.length}/4 control points match cache — using fallback');
+    return _lastGoodCalib!;
+  }
+
+  // ---- Dart filtering -----------------------------------------------------
+
   (List<Detection>, List<String>) _filterDarts(List<Detection> darts) {
     if (darts.isEmpty) return (darts, []);
 
     final logs = <String>[];
-
-    // Sort by confidence descending, drop below threshold
     final sorted = List<Detection>.from(darts)
       ..sort((a, b) => b.confidence.compareTo(a.confidence));
-    sorted.removeWhere((d) => d.confidence < _dartMinConf);
 
-    logs.add('[Filter] Raw darts before NMS: ${sorted.length}');
-    for (int i = 0; i < sorted.length; i++) {
-      final d = sorted[i];
-      logs.add('[Filter]   [$i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)}');
-    }
+    logs.add('[Filter] Raw tips before filtering: ${sorted.length}');
 
     final kept = <Detection>[];
     for (final d in sorted) {
       bool suppressed = false;
-      String? reason;
       for (final k in kept) {
         final iou = _iou(d, k);
         final dist = sqrt(pow(d.x - k.x, 2) + pow(d.y - k.y, 2));
-        if (iou > _dartNmsIouThreshold) {
+        if (iou > _iouThresholdTip) {
           suppressed = true;
-          reason = 'IoU=${iou.toStringAsFixed(3)} > $_dartNmsIouThreshold with kept (${k.x.toStringAsFixed(3)},${k.y.toStringAsFixed(3)})';
           break;
         }
         if (dist < _dartNmsMinDist) {
           suppressed = true;
-          reason = 'dist=${dist.toStringAsFixed(4)} < $_dartNmsMinDist with kept (${k.x.toStringAsFixed(3)},${k.y.toStringAsFixed(3)})';
           break;
         }
       }
-      if (!suppressed) {
-        kept.add(d);
-      } else {
-        logs.add('[Filter]   DROPPED x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} — $reason');
-      }
+      if (!suppressed) kept.add(d);
       if (kept.length >= _maxDarts) break;
     }
     return (kept, logs);
   }
 
-  /// Fast entry point: takes pre-decoded RGBA bytes + dimensions.
-  /// Skips file read and image decode — caller is responsible for decoding
-  /// (e.g. on the main thread with native dart:ui).
-  Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {
-    if (!_isLoaded) {
-      return ScoringResult(
-        calibrationPoints: [],
-        dartTips: [],
-        scores: [],
-        totalScore: 0,
-        error: 'Model not loaded',
-      );
+  List<Detection> _filterDartsOutsideBoard(
+    List<Detection> darts,
+    List<Detection> calibs, {
+    double margin = 1.3,
+  }) {
+    if (calibs.length < 3 || darts.isEmpty) return darts;
+
+    final cx = calibs.fold(0.0, (s, d) => s + d.x) / calibs.length;
+    final cy = calibs.fold(0.0, (s, d) => s + d.y) / calibs.length;
+
+    double boardR = 0;
+    for (final c in calibs) {
+      final dist = sqrt(pow(c.x - cx, 2) + pow(c.y - cy, 2));
+      if (dist > boardR) boardR = dist;
     }
+    final maxR = boardR * margin;
 
+    final kept = <Detection>[];
+    for (final d in darts) {
+      final dist = sqrt(pow(d.x - cx, 2) + pow(d.y - cy, 2));
+      if (dist <= maxR) {
+        kept.add(d);
+      }
+    }
+    return kept;
+  }
+
+  // ---- Main analysis entry points -----------------------------------------
+
+  /// Core analysis: preprocess → inference → parse → filter → score.
+  ScoringResult _analyze(
+    Float32List outputFloats,
+    double xScale,
+    double yScale,
+    int imgW,
+    int imgH,
+    int preprocessMs,
+    int inferenceMs,
+  ) {
     final sw = Stopwatch()..start();
-
-    // Preprocess: single-pass letterbox directly into pre-allocated Float32List
-    final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
-    final preprocessMs = sw.elapsedMilliseconds;
-
-    _outputBytes!.fillRange(0, _outputBytes!.length, 0);
-
-    // Run inference
-    sw.reset();
-    _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
-    final inferenceMs = sw.elapsedMilliseconds;
-
-    // Parse detections
-    sw.reset();
-    final outputFloats = _outputBytes!.buffer.asFloat32List();
     var detections = _parseOutput(
       outputFloats,
       _outputShape!,
-      scale: scale,
-      padX: padX,
-      padY: padY,
-      origW: origW,
-      origH: origH,
+      xScale: xScale,
+      yScale: yScale,
     );
     final parseMs = sw.elapsedMilliseconds;
 
-    // Separate calibration points and darts
-    var calibPoints = detections.where((d) => d.classId == 1).toList();
-    var dartTips = detections.where((d) => d.classId == 0).toList();
-
-    // Filter calibration points (merge close duplicates, cap at 4)
     sw.reset();
-    calibPoints = _filterCalibPoints(calibPoints);
+    detections = _classSpecificNMS(detections);
 
-    // Use cached calibration if current frame is missing points but camera hasn't moved
-    calibPoints = _applyCalibFallback(calibPoints);
+    var controlPoints = detections.where((d) => d.isControlPoint).toList();
+    var dartTips = detections.where((d) => d.isTip).toList();
 
-    calibPoints = _sortCalibPoints(calibPoints);
+    controlPoints = _extract4CPs(controlPoints);
+    controlPoints = _applyCalibFallback(controlPoints);
+
     final (filteredDarts, filterLogs) = _filterDarts(dartTips);
     dartTips = filteredDarts;
-
-    // Reject darts outside the dartboard area
-    dartTips = _filterDartsOutsideBoard(dartTips, calibPoints);
-
+    dartTips = _filterDartsOutsideBoard(dartTips, controlPoints);
     final filterMs = sw.elapsedMilliseconds;
 
-    final totalMs = preprocessMs + inferenceMs + parseMs + filterMs;
-
-    if (calibPoints.length < 4) {
-      sw.stop();
+    if (controlPoints.length < 4) {
       return ScoringResult(
-        calibrationPoints: calibPoints,
+        calibrationPoints: controlPoints,
         dartTips: dartTips,
         scores: [],
         totalScore: 0,
         imageWidth: imgW,
         imageHeight: imgH,
-        error: 'Need 4 calibration points, found ${calibPoints.length}',
+        error: 'Need 4 control points, found ${controlPoints.length}',
       );
     }
 
     if (dartTips.isEmpty) {
-      sw.stop();
       return ScoringResult(
-        calibrationPoints: calibPoints,
+        calibrationPoints: controlPoints,
         dartTips: dartTips,
         scores: [],
         totalScore: 0,
@@ -633,26 +515,31 @@ class DartDetectionService {
     }
 
     try {
-      final calibXY = calibPoints.map((c) => [c.x, c.y]).toList();
-      final scorer = DartScoringService(calibXY);
+      final calibData =
+          controlPoints.map((c) => [c.x, c.y, c.flag.toDouble()]).toList();
+      final scorer = DartScoringService(calibData);
       final scores = dartTips.map((d) => scorer.score(d.x, d.y)).toList();
       sw.stop();
       final scoreMs = sw.elapsedMilliseconds;
+      final totalMs = preprocessMs + inferenceMs + parseMs + filterMs + scoreMs;
+
       for (final line in filterLogs) {
         debugPrint(line);
       }
       debugPrint('---------------------');
-      debugPrint('[Image] ${totalMs + scoreMs} ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
-      debugPrint('[Image] ${scores.length} dart(s)');
+      debugPrint(
+          '[Image] ${totalMs}ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
       for (int i = 0; i < scores.length; i++) {
         final d = dartTips[i];
         final s = scores[i];
-        debugPrint('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+        debugPrint(
+            '[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
       }
       debugPrint('---------------------');
+
       final total = scores.fold<int>(0, (sum, s) => sum + s.score);
       return ScoringResult(
-        calibrationPoints: calibPoints,
+        calibrationPoints: controlPoints,
         dartTips: dartTips,
         scores: scores,
         totalScore: total,
@@ -661,7 +548,7 @@ class DartDetectionService {
       );
     } catch (e) {
       return ScoringResult(
-        calibrationPoints: calibPoints,
+        calibrationPoints: controlPoints,
         dartTips: dartTips,
         scores: [],
         totalScore: 0,
@@ -672,152 +559,63 @@ class DartDetectionService {
     }
   }
 
-  /// Main entry point: take a picture file, detect darts, compute scores
-  Future<ScoringResult> analyzeImage(String imagePath) async {
+  Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {
     if (!_isLoaded) {
       return ScoringResult(
-        calibrationPoints: [],
-        dartTips: [],
-        scores: [],
-        totalScore: 0,
-        error: 'Model not loaded',
-      );
+          calibrationPoints: [],
+          dartTips: [],
+          scores: [],
+          totalScore: 0,
+          error: 'Model not loaded');
     }
 
     final sw = Stopwatch()..start();
+    final (xScale, yScale, _, _) = _preprocessDirect(rgba, imgW, imgH);
+    final preprocessMs = sw.elapsedMilliseconds;
 
-    // Load image bytes
+    _outputBytes!.fillRange(0, _outputBytes!.length, 0);
+    sw.reset();
+    _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
+    final inferenceMs = sw.elapsedMilliseconds;
+
+    final outputFloats = _outputBytes!.buffer.asFloat32List();
+    return _analyze(
+        outputFloats, xScale, yScale, imgW, imgH, preprocessMs, inferenceMs);
+  }
+
+  Future<ScoringResult> analyzeImage(String imagePath) async {
+    if (!_isLoaded) {
+      return ScoringResult(
+          calibrationPoints: [],
+          dartTips: [],
+          scores: [],
+          totalScore: 0,
+          error: 'Model not loaded');
+    }
+
+    final sw = Stopwatch()..start();
     final bytes = await readImageBytes(imagePath);
     final readMs = sw.elapsedMilliseconds;
 
-    // Decode image
     sw.reset();
     final (Uint8List rgba, int imgW, int imgH) = useNativeDecode
         ? await _decodeImageNative(bytes)
         : _decodeImagePure(bytes);
     final decodeMs = sw.elapsedMilliseconds;
 
-    // Preprocess: single-pass letterbox directly into pre-allocated Float32List
     sw.reset();
-    final (scale, padX, padY, origW, origH) = _preprocessDirect(rgba, imgW, imgH);
+    final (xScale, yScale, _, _) = _preprocessDirect(rgba, imgW, imgH);
     final preprocessMs = sw.elapsedMilliseconds;
 
     _outputBytes!.fillRange(0, _outputBytes!.length, 0);
-
-    // Run inference
     sw.reset();
     _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
     final inferenceMs = sw.elapsedMilliseconds;
 
-    // Parse detections (remap from letterboxed model space to original image)
-    sw.reset();
+    debugPrint('[Image] read=${readMs}ms decode=${decodeMs}ms');
+
     final outputFloats = _outputBytes!.buffer.asFloat32List();
-    var detections = _parseOutput(
-      outputFloats,
-      _outputShape!,
-      scale: scale,
-      padX: padX,
-      padY: padY,
-      origW: origW,
-      origH: origH,
-    );
-    final parseMs = sw.elapsedMilliseconds;
-
-    // Separate calibration points and darts
-    var calibPoints =
-        detections.where((d) => d.classId == 1).toList();
-    var dartTips =
-        detections.where((d) => d.classId == 0).toList();
-
-    // Filter calibration points (merge close duplicates, cap at 4)
-    sw.reset();
-    calibPoints = _filterCalibPoints(calibPoints);
-
-    // Use cached calibration if current frame is missing points but camera hasn't moved
-    calibPoints = _applyCalibFallback(calibPoints);
-
-    // Sort calibration points: D20 (top), D6 (right), D3 (bottom), D11 (left)
-    calibPoints = _sortCalibPoints(calibPoints);
-
-    // Filter darts (merge close ones, max 3)
-    final (filteredDarts, filterLogs) = _filterDarts(dartTips);
-    dartTips = filteredDarts;
-
-    // Reject darts outside the dartboard area
-    dartTips = _filterDartsOutsideBoard(dartTips, calibPoints);
-
-    final filterMs = sw.elapsedMilliseconds;
-
-    final totalMs = readMs + decodeMs + preprocessMs + inferenceMs + parseMs + filterMs;
-
-
-    // Score darts
-    if (calibPoints.length < 4) {
-      sw.stop();
-      return ScoringResult(
-        calibrationPoints: calibPoints,
-        dartTips: dartTips,
-        scores: [],
-        totalScore: 0,
-        imageWidth: imgW,
-        imageHeight: imgH,
-        error: 'Need 4 calibration points, found ${calibPoints.length}',
-      );
-    }
-
-    if (dartTips.isEmpty) {
-      sw.stop();
-      return ScoringResult(
-        calibrationPoints: calibPoints,
-        dartTips: dartTips,
-        scores: [],
-        totalScore: 0,
-        imageWidth: imgW,
-        imageHeight: imgH,
-        error: 'No darts detected',
-      );
-    }
-
-    try {
-      final calibXY =
-          calibPoints.map((c) => [c.x, c.y]).toList();
-      final scorer = DartScoringService(calibXY);
-      final scores =
-          dartTips.map((d) => scorer.score(d.x, d.y)).toList();
-      sw.stop();
-      final scoreMs = sw.elapsedMilliseconds;
-      for (final line in filterLogs) {
-        debugPrint(line);
-      }
-      debugPrint('---------------------');
-      debugPrint('[Image] ${totalMs + scoreMs} ms | read=$readMs decode=$decodeMs preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
-      debugPrint('[Image] ${scores.length} dart(s)');
-      for (int i = 0; i < scores.length; i++) {
-        final d = dartTips[i];
-        final s = scores[i];
-        debugPrint('[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
-      }
-      debugPrint('---------------------');
-      final total = scores.fold<int>(0, (sum, s) => sum + s.score);
-
-      return ScoringResult(
-        calibrationPoints: calibPoints,
-        dartTips: dartTips,
-        scores: scores,
-        totalScore: total,
-        imageWidth: imgW,
-        imageHeight: imgH,
-      );
-    } catch (e) {
-      return ScoringResult(
-        calibrationPoints: calibPoints,
-        dartTips: dartTips,
-        scores: [],
-        totalScore: 0,
-        imageWidth: imgW,
-        imageHeight: imgH,
-        error: 'Scoring error: $e',
-      );
-    }
+    return _analyze(outputFloats, xScale, yScale, imgW, imgH,
+        preprocessMs + readMs + decodeMs, inferenceMs);
   }
 }

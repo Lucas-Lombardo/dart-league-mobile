@@ -8,6 +8,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/agora_service.dart';
+import '../../services/camera_frame_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/dart_sound_service.dart';
@@ -47,6 +48,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool gameStarted = false;
   bool gameEnded = false;
   RtcEngine? agoraEngine;
+  CameraFrameService? cameraFrameService;
+  int? customVideoTrackId;
   bool isAudioMuted = true;
   bool permissionsGranted = false;
   bool cameraZoomInitialized = false;
@@ -60,6 +63,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool aiManuallyDisabled = false;
   bool aiPausedForEdit = false;
   CaptureFrameCallback? _captureFrameCallback;
+  CaptureRgbaCallback? _captureRgbaCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
   bool winDialogShowing = false;
@@ -95,13 +99,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     WakelockPlus.disable();
     autoScoringService?.dispose();
     autoScoringService = null;
+    cameraFrameService?.dispose();
+    cameraFrameService = null;
     if (agoraEngine != null) { AgoraService.leaveChannel(agoraEngine!); AgoraService.dispose(); }
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      cameraFrameService?.pause();
+    } else if (state == AppLifecycleState.resumed && mounted) {
+      cameraFrameService?.resume();
       // App came back from background (e.g. phone call) — re-sync everything
       SocketService.ensureConnected().then((_) {
         if (!mounted) return;
@@ -147,6 +156,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           else if (!game.pendingConfirmation) { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
+            captureRgba: _captureRgbaCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
             onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
@@ -203,6 +213,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         final game = readGame();
         if (game.isMyTurn) autoScoringService!.startCapture(
           captureFrame: _captureFrameCallback!,
+          captureRgba: _captureRgbaCallback,
           onDartDetected: _onDartDetectedCallback,
           onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
         );
@@ -211,14 +222,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Future<void> initAutoScoring() async {
-    if (agoraEngine == null || kIsWeb || !AutoScoringService.isSupported) return;
+    if (cameraFrameService == null || kIsWeb || !AutoScoringService.isSupported) return;
     final enabled = await StorageService.getAutoScoring();
     if (!mounted) return;
     setState(() => autoScoringEnabled = enabled);
     if (!autoScoringEnabled) return;
     setState(() => autoScoringLoading = true);
-    final engine = agoraEngine!;
-    _captureFrameCallback = () => AgoraService.takeLocalSnapshot(engine);
+    final camService = cameraFrameService!;
+    _captureFrameCallback = () => camService.captureFrame();
+    _captureRgbaCallback = () => camService.captureRgba();
     _onDartDetectedCallback = (_, dartScore) {
       if (!mounted) return;
       final g = readGame();
@@ -237,6 +249,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (game.isMyTurn) {
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
+            captureRgba: _captureRgbaCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
             onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
@@ -250,17 +263,60 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
   Future<void> initializeAgora({required String appId, required String token, required String channelName}) async {
-    permissionsGranted = await AgoraService.requestPermissions();
-    if (!permissionsGranted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera and microphone permissions are required'), backgroundColor: AppTheme.error));
-      return;
+    if (!kIsWeb) {
+      permissionsGranted = await AgoraService.requestPermissions();
+      if (!permissionsGranted) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera and microphone permissions are required'), backgroundColor: AppTheme.error));
+        return;
+      }
+    } else {
+      permissionsGranted = true;
     }
     try {
-      agoraEngine = await AgoraService.initializeEngine(appId);
-      await AgoraService.setBackCamera(agoraEngine!);
-      _registerAgoraHandlers();
-      await AgoraService.joinChannel(engine: agoraEngine!, token: token, channelName: channelName, uid: 0);
-      await initAutoScoring();
+      if (kIsWeb) {
+        // Web: use default Agora camera capture (custom video track not supported)
+        agoraEngine = await AgoraService.initializeEngineWeb(appId);
+        _registerAgoraHandlers();
+        await AgoraService.joinChannel(
+          engine: agoraEngine!,
+          token: token,
+          channelName: channelName,
+          uid: 0,
+          customVideoTrackId: null, // use default camera on web
+        );
+      } else {
+        // Native: use custom video track with external video source
+        // 1. Init Agora engine (with external video source enabled)
+        agoraEngine = await AgoraService.initializeEngine(appId);
+
+        // 2. Create custom video track
+        customVideoTrackId = await AgoraService.createCustomVideoTrack();
+
+        // 3. Start Flutter camera and begin pushing frames to Agora
+        cameraFrameService = CameraFrameService();
+        await cameraFrameService!.initialize(
+          agoraEngine: agoraEngine!,
+          videoTrackId: customVideoTrackId!,
+        );
+
+        // 4. Register Agora event handlers
+        _registerAgoraHandlers();
+
+        // 5. Join channel with custom video track
+        await AgoraService.joinChannel(
+          engine: agoraEngine!,
+          token: token,
+          channelName: channelName,
+          uid: 0,
+          customVideoTrackId: customVideoTrackId,
+        );
+
+        // 6. Init camera zoom from saved preferences
+        await initCameraZoom();
+
+        // 7. Init auto scoring (uses camera frame service for captures)
+        await initAutoScoring();
+      }
     } catch (e) {
       debugPrint('[BaseGameScreen] initializeAgora error: $e');
     }
@@ -273,15 +329,47 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       return;
     }
     try {
+      // Tear down camera and Agora
+      await cameraFrameService?.dispose();
+      cameraFrameService = null;
+      customVideoTrackId = null;
       if (agoraEngine != null) { agoraEngine = null; await AgoraService.dispose(); }
-      if (!permissionsGranted) { permissionsGranted = await AgoraService.requestPermissions(); if (!permissionsGranted) { if (mounted) setState(() => autoScoringLoading = false); return; } }
-      agoraEngine = await AgoraService.initializeEngine(appId);
-      await AgoraService.setBackCamera(agoraEngine!);
-      _registerAgoraHandlers();
-      await AgoraService.joinChannel(engine: agoraEngine!, token: token, channelName: channelName, uid: 0);
+      if (!kIsWeb && !permissionsGranted) { permissionsGranted = await AgoraService.requestPermissions(); if (!permissionsGranted) { if (mounted) setState(() => autoScoringLoading = false); return; } }
+
+      if (kIsWeb) {
+        // Web: use default Agora camera capture
+        agoraEngine = await AgoraService.initializeEngineWeb(appId);
+        _registerAgoraHandlers();
+        await AgoraService.joinChannel(
+          engine: agoraEngine!,
+          token: token,
+          channelName: channelName,
+          uid: 0,
+          customVideoTrackId: null,
+        );
+      } else {
+        // Native: reinitialize with custom video track
+        agoraEngine = await AgoraService.initializeEngine(appId);
+        customVideoTrackId = await AgoraService.createCustomVideoTrack();
+        cameraFrameService = CameraFrameService();
+        await cameraFrameService!.initialize(
+          agoraEngine: agoraEngine!,
+          videoTrackId: customVideoTrackId!,
+        );
+        _registerAgoraHandlers();
+        await AgoraService.joinChannel(
+          engine: agoraEngine!,
+          token: token,
+          channelName: channelName,
+          uid: 0,
+          customVideoTrackId: customVideoTrackId,
+        );
+        cameraZoomInitialized = false;
+        await initCameraZoom();
+        if (autoScoringService != null) { autoScoringService!.stopCapture(); autoScoringService!.dispose(); autoScoringService = null; }
+        await initAutoScoring();
+      }
       isAudioMuted = true;
-      if (autoScoringService != null) { autoScoringService!.stopCapture(); autoScoringService!.dispose(); autoScoringService = null; }
-      await initAutoScoring();
     } catch (_) {
       if (mounted) setState(() => autoScoringLoading = false);
     }
@@ -292,22 +380,20 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       onJoinChannelSuccess: (_, _) { if (!mounted) return; readGame().setLocalUserJoined(true); },
       onUserJoined: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(uid); },
       onUserOffline: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(null); },
-      onLocalVideoStateChanged: (_, state, _) {
-        if (state == LocalVideoStreamState.localVideoStreamStateCapturing || state == LocalVideoStreamState.localVideoStreamStateEncoding) initCameraZoom();
-      },
     ));
   }
 
   Future<void> initCameraZoom({int attempt = 0}) async {
-    if (agoraEngine == null || !mounted || cameraZoomInitialized) return;
+    if (cameraFrameService == null || !mounted || cameraZoomInitialized) return;
     try {
-      final maxZoom = await agoraEngine!.getCameraMaxZoomFactor();
+      final minZoom = await cameraFrameService!.getMinZoomLevel();
+      final maxZoom = await cameraFrameService!.getMaxZoomLevel();
       if (mounted && maxZoom > 1.0) {
         final savedZoom = await StorageService.getCameraZoom();
-        final clampedZoom = savedZoom.clamp(1.0, maxZoom.clamp(1.0, 10.0));
-        await agoraEngine!.setCameraZoomFactor(clampedZoom);
+        final clampedZoom = savedZoom.clamp(minZoom, maxZoom.clamp(1.0, 10.0));
+        await cameraFrameService!.setZoomLevel(clampedZoom);
         cameraZoomInitialized = true;
-        setState(() { cameraMinZoom = 1.0; cameraMaxZoom = maxZoom.clamp(1.0, 10.0); cameraZoom = clampedZoom; });
+        setState(() { cameraMinZoom = minZoom; cameraMaxZoom = maxZoom.clamp(1.0, 10.0); cameraZoom = clampedZoom; });
       }
     } catch (_) {
       if (attempt < 5 && mounted) Future.delayed(Duration(milliseconds: 500 * (attempt + 1)), () => initCameraZoom(attempt: attempt + 1));
@@ -320,16 +406,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(publishMicrophoneTrack: !isAudioMuted));
     await agoraEngine!.muteLocalAudioStream(isAudioMuted);
   }
-  Future<void> switchCamera() async { if (agoraEngine != null) await AgoraService.switchCamera(agoraEngine!); }
+  Future<void> switchCamera() async {
+    // Not applicable with custom video track — always uses back camera
+  }
   Future<void> zoomIn() async {
-    if (agoraEngine == null) return;
+    if (cameraFrameService == null) return;
     final next = (cameraZoom + 0.1).clamp(cameraMinZoom, cameraMaxZoom);
-    try { await agoraEngine!.setCameraZoomFactor(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
+    try { await cameraFrameService!.setZoomLevel(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
   }
   Future<void> zoomOut() async {
-    if (agoraEngine == null) return;
+    if (cameraFrameService == null) return;
     final next = (cameraZoom - 0.1).clamp(cameraMinZoom, cameraMaxZoom);
-    try { await agoraEngine!.setCameraZoomFactor(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
+    try { await cameraFrameService!.setZoomLevel(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
   }
 
   // ─── Leave / pop ──────────────────────────────────────────────────────────────

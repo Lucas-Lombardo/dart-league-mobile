@@ -1,24 +1,113 @@
 import 'dart:math';
 
-/// Standard dartboard segment order (clockwise from top)
-const List<int> segmentOrder = [
-  20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5
-];
-const double segmentDeg = 360.0 / 20; // 18° per segment
+// ---------------------------------------------------------------------------
+// Dartboard constants from DartsMind (dvBoard)
+// Constructor: DartboardData(tMidR=101.9, dtThickness=10.0, sBullR=16.85, dBullR=6.9)
+// All radii normalised to 170 mm board radius = 1.0
+// ---------------------------------------------------------------------------
 
-/// Ring boundaries normalized to double ring center radius = 1.0
+const double _innerBullR = 6.9 / 170.0; // 0.04059
+const double _outerBullR = 16.85 / 170.0; // 0.09912
+const double _tripleMidR = 101.9 / 170.0; // 0.59941
+const double _dtHalf = 10.0 / (170.0 * 2.0); // half ring thickness 0.02941
+
+// Double ring: distance in (zone2Lo, zone2Hi] = (0.94118, 1.0]
+const double _zone2Hi = 1.0;
+const double _zone2Lo = (170.0 - 10.0 * 0.5) / 170.0 - _dtHalf; // 0.94118
+
+// Triple ring: distance in (zone3Lo, zone3Hi] = (0.57000, 0.62882]
+const double _zone3Hi = _dtHalf + _tripleMidR; // 0.62882
+const double _zone3Lo = _tripleMidR - _dtHalf; // 0.57000
+
+// ---------------------------------------------------------------------------
+// Segment / zone angle lookup  (radians, atan2(dy,dx), screen y-down)
+// ---------------------------------------------------------------------------
+
+/// Zone radian ranges – each entry maps segment number ➜ (startRad, endRad).
+/// Angles measured with atan2(dy, dx) in screen-space (y-down), [0, 2π].
+const Map<int, (double, double)> _zoneRadianDict = {
+  10: (0.15707964, 0.47123891),
+  15: (0.47123891, 0.78539819),
+  2: (0.78539819, 1.09955747),
+  17: (1.09955747, 1.41371674),
+  3: (1.41371674, 1.72787602),
+  19: (1.72787602, 2.04203530),
+  7: (2.04203530, 2.35619450),
+  16: (2.35619450, 2.67035380),
+  8: (2.67035380, 2.98451310),
+  11: (2.98451310, 3.29867240),
+  14: (3.29867240, 3.61283160),
+  9: (3.61283160, 3.92699090),
+  12: (3.92699090, 4.24115040),
+  5: (4.24115040, 4.55530930),
+  20: (4.55530930, 4.86946870),
+  1: (4.86946870, 5.18362800),
+  18: (5.18362800, 5.49778750),
+  4: (5.49778750, 5.81194640),
+  13: (5.81194640, 6.12610600),
+  6: (6.12610600, 6.44026470),
+};
+
+/// Ring boundaries (normalised radius).
 const List<(double, double, String)> rings = [
-  (0.000, 0.040, "double_bull"),
-  (0.040, 0.100, "single_bull"),
-  (0.100, 0.570, "inner_single"),
-  (0.570, 0.625, "triple"),
-  (0.625, 0.940, "outer_single"),
-  (0.940, 0.990, "double"),
+  (0.0, _innerBullR, 'double_bull'),
+  (_innerBullR, _outerBullR, 'single_bull'),
+  (_outerBullR, _zone3Lo, 'inner_single'),
+  (_zone3Lo, _zone3Hi, 'triple'),
+  (_zone3Hi, _zone2Lo, 'outer_single'),
+  (_zone2Lo, _zone2Hi, 'double'),
 ];
 
-/// Canonical dartboard space: center at (500, 500), calibration radius = 400
-const double _c = 500.0;
-const double _r = 400.0;
+// ---------------------------------------------------------------------------
+// Canonical dartboard space used by the perspective transform.
+// centre = (_c, _c), calibration reference radius = _calibR,
+// board-edge (scoring) radius = _boardR.
+// ---------------------------------------------------------------------------
+
+// DartsMind autoScore remaps to a 340×340 space: centre at (170, 170),
+// board-edge radius = 170.  dartTipToShoot is called with boardR = 170.
+// Calibration points (p1-p8) sit at the board edge (normalised distance 1.0).
+// _calibR == _boardR == _c so that centre/boardR = 1.0.
+const double _c = 170.0;
+const double _calibR = 170.0;
+const double _boardR = 170.0;
+
+// Pre-computed flag → destination coordinate on canonical dartboard.
+// Flags 1-8 correspond to 8 control points around the board at distance
+// _calibR from centre.  The DartsMind source names these sin025/cos025 and
+// sin035/cos035, but the actual radian values are π/4 (45°) and ~1.0996 (63°).
+// (Verified from DVMind.java lines 113-116.)
+final double _sin025 = sin(0.7853981633974483); // sin(45°) = 0.7071
+final double _cos025 = cos(0.7853981633974483); // cos(45°) = 0.7071
+final double _sin035 = sin(1.0995574287564276); // sin(63°) = 0.8910
+final double _cos035 = cos(1.0995574287564276); // cos(63°) = 0.4540
+
+List<double> _flagDestination(int flag) {
+  switch (flag) {
+    case 1:
+      return [_c + _sin025 * _calibR, _c - _cos025 * _calibR];
+    case 2:
+      return [_c + _sin035 * _calibR, _c - _cos035 * _calibR];
+    case 3:
+      return [_c + _sin035 * _calibR, _c + _cos035 * _calibR];
+    case 4:
+      return [_c + _sin025 * _calibR, _c + _cos025 * _calibR];
+    case 5:
+      return [_c - _sin025 * _calibR, _c + _cos025 * _calibR];
+    case 6:
+      return [_c - _sin035 * _calibR, _c + _cos035 * _calibR];
+    case 7:
+      return [_c - _sin035 * _calibR, _c - _cos035 * _calibR];
+    case 8:
+      return [_c - _sin025 * _calibR, _c - _cos025 * _calibR];
+    default:
+      return [_c + _sin025 * _calibR, _c - _cos025 * _calibR];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DartScore
+// ---------------------------------------------------------------------------
 
 class DartScore {
   final int score;
@@ -36,59 +125,43 @@ class DartScore {
   });
 
   String get formatted {
-    if (ring == "double_bull") return "DBull (50)";
-    if (ring == "single_bull") return "SBull (25)";
-    if (ring == "triple") return "T$segment (${segment * 3})";
-    if (ring == "double") return "D$segment (${segment * 2})";
-    if (ring == "inner_single" || ring == "outer_single") {
-      return "S$segment ($segment)";
+    if (ring == 'double_bull') return 'DBull (50)';
+    if (ring == 'single_bull') return 'SBull (25)';
+    if (ring == 'triple') return 'T$segment (${segment * 3})';
+    if (ring == 'double') return 'D$segment (${segment * 2})';
+    if (ring == 'inner_single' || ring == 'outer_single') {
+      return 'S$segment ($segment)';
     }
-    return "Miss (0)";
+    return 'Miss (0)';
   }
 }
 
+// ---------------------------------------------------------------------------
+// DartScoringService – perspective transform + DartsMind scoring
+// ---------------------------------------------------------------------------
+
 class DartScoringService {
-  /// Perspective transform matrix (3x3)
   late List<List<double>> _h;
 
-  DartScoringService(List<List<double>> calibPoints) {
-    if (calibPoints.length < 4) {
+  /// Build from 4 calibration points. Each entry is [x, y, flag]
+  /// where x,y are normalised image coordinates and flag is 1-8.
+  DartScoringService(List<List<double>> calibPointsWithFlags) {
+    if (calibPointsWithFlags.length < 4) {
       throw ArgumentError(
-          'Need 4 calibration points, got ${calibPoints.length}');
+          'Need 4 calibration points, got ${calibPointsWithFlags.length}');
     }
-    final sorted = _sortCalibPoints(calibPoints.sublist(0, 4));
-    _h = _computePerspectiveTransform(sorted);
+    _h = _computePerspectiveTransform(calibPointsWithFlags.sublist(0, 4));
   }
 
-  /// Sort 4 calibration points into order: top, right, bottom, left
-  List<List<double>> _sortCalibPoints(List<List<double>> pts) {
-    final indexed = List.generate(4, (i) => i);
+  // ---- Perspective transform (DLT + Hartley normalisation) ----------------
 
-    // Sort by Y to find top (min y) and bottom (max y)
-    indexed.sort((a, b) => pts[a][1].compareTo(pts[b][1]));
-    final topIdx = indexed[0];
-    final bottomIdx = indexed[3];
-
-    // Remaining two: left (min x) and right (max x)
-    final remaining = indexed.sublist(1, 3);
-    int leftIdx, rightIdx;
-    if (pts[remaining[0]][0] < pts[remaining[1]][0]) {
-      leftIdx = remaining[0];
-      rightIdx = remaining[1];
-    } else {
-      leftIdx = remaining[1];
-      rightIdx = remaining[0];
-    }
-
-    return [pts[topIdx], pts[rightIdx], pts[bottomIdx], pts[leftIdx]];
-  }
-
-  /// Hartley normalization: compute similarity transform T such that
-  /// points have centroid at origin and average distance sqrt(2)
-  /// Returns (normalizedPoints, T as 3x3 matrix)
-  (List<List<double>>, List<List<double>>) _hartleyNormalize(List<List<double>> pts) {
+  (List<List<double>>, List<List<double>>) _hartleyNormalize(
+      List<List<double>> pts) {
     double cx = 0, cy = 0;
-    for (final p in pts) { cx += p[0]; cy += p[1]; }
+    for (final p in pts) {
+      cx += p[0];
+      cy += p[1];
+    }
     cx /= pts.length;
     cy /= pts.length;
 
@@ -108,7 +181,6 @@ class DartScoringService {
     return (norm, t);
   }
 
-  /// 3x3 matrix multiply
   List<List<double>> _matMul3x3(List<List<double>> a, List<List<double>> b) {
     final r = List.generate(3, (_) => List.filled(3, 0.0));
     for (int i = 0; i < 3; i++) {
@@ -121,7 +193,6 @@ class DartScoringService {
     return r;
   }
 
-  /// Invert a 3x3 similarity matrix [[s,0,tx],[0,s,ty],[0,0,1]]
   List<List<double>> _invertSimilarity(List<List<double>> t) {
     final s = t[0][0];
     final tx = t[0][2];
@@ -134,21 +205,16 @@ class DartScoringService {
     ];
   }
 
-  /// Compute 3x3 perspective transform from src to dst using DLT with Hartley normalization
+  /// Compute perspective transform from src (image) to dst (canonical dartboard).
+  /// Each entry in [src] is [x, y, flag]. Flag determines destination point.
   List<List<double>> _computePerspectiveTransform(List<List<double>> src) {
-    // Destination: canonical dartboard coordinates
-    final dst = [
-      [_c, _c - _r], // D20 — top
-      [_c + _r, _c], // D6  — right
-      [_c, _c + _r], // D3  — bottom
-      [_c - _r, _c], // D11 — left
-    ];
+    final srcXY = src.map((p) => [p[0], p[1]]).toList();
+    final dst =
+        src.map((p) => _flagDestination(p[2].round())).toList();
 
-    // Hartley normalization for numerical stability
-    final (normSrc, tSrc) = _hartleyNormalize(src);
+    final (normSrc, tSrc) = _hartleyNormalize(srcXY);
     final (normDst, tDst) = _hartleyNormalize(dst);
 
-    // Build the 8x8 matrix for DLT on normalized points
     final a = List.generate(8, (_) => List.filled(8, 0.0));
     final b = List.filled(8, 0.0);
 
@@ -159,16 +225,10 @@ class DartScoringService {
       a[i * 2][0] = sx;
       a[i * 2][1] = sy;
       a[i * 2][2] = 1;
-      a[i * 2][3] = 0;
-      a[i * 2][4] = 0;
-      a[i * 2][5] = 0;
       a[i * 2][6] = -dx * sx;
       a[i * 2][7] = -dx * sy;
       b[i * 2] = dx;
 
-      a[i * 2 + 1][0] = 0;
-      a[i * 2 + 1][1] = 0;
-      a[i * 2 + 1][2] = 0;
       a[i * 2 + 1][3] = sx;
       a[i * 2 + 1][4] = sy;
       a[i * 2 + 1][5] = 1;
@@ -177,7 +237,6 @@ class DartScoringService {
       b[i * 2 + 1] = dy;
     }
 
-    // Solve using Gaussian elimination
     final hVec = _solveLinearSystem(a, b);
     final hNorm = [
       [hVec[0], hVec[1], hVec[2]],
@@ -185,23 +244,18 @@ class DartScoringService {
       [hVec[6], hVec[7], 1.0],
     ];
 
-    // Denormalize: H = T_dst^(-1) * H_norm * T_src
     return _matMul3x3(_matMul3x3(_invertSimilarity(tDst), hNorm), tSrc);
   }
 
   List<double> _solveLinearSystem(List<List<double>> a, List<double> b) {
     final n = b.length;
-    // Augmented matrix
-    final aug =
-        List.generate(n, (i) => List.generate(n + 1, (j) => j < n ? a[i][j] : b[i]));
+    final aug = List.generate(
+        n, (i) => List.generate(n + 1, (j) => j < n ? a[i][j] : b[i]));
 
-    // Forward elimination with partial pivoting
     for (int col = 0; col < n; col++) {
       int maxRow = col;
       for (int row = col + 1; row < n; row++) {
-        if (aug[row][col].abs() > aug[maxRow][col].abs()) {
-          maxRow = row;
-        }
+        if (aug[row][col].abs() > aug[maxRow][col].abs()) maxRow = row;
       }
       final temp = aug[col];
       aug[col] = aug[maxRow];
@@ -217,7 +271,6 @@ class DartScoringService {
       }
     }
 
-    // Back substitution
     final x = List.filled(n, 0.0);
     for (int i = n - 1; i >= 0; i--) {
       x[i] = aug[i][n];
@@ -225,14 +278,16 @@ class DartScoringService {
         x[i] -= aug[i][j] * x[j];
       }
       if (aug[i][i].abs() < 1e-12) {
-        throw ArgumentError('Singular matrix: calibration points may be collinear');
+        throw ArgumentError(
+            'Singular matrix: calibration points may be collinear');
       }
       x[i] /= aug[i][i];
     }
     return x;
   }
 
-  /// Transform normalized image point to canonical dartboard point
+  // ---- Coordinate transform & scoring ------------------------------------
+
   List<double> _toBoard(double x, double y) {
     final w = _h[2][0] * x + _h[2][1] * y + _h[2][2];
     final bx = (_h[0][0] * x + _h[0][1] * y + _h[0][2]) / w;
@@ -240,53 +295,72 @@ class DartScoringService {
     return [bx, by];
   }
 
-  /// Board point to (normalized radius, angle CW from top)
-  /// Uses actual center and radius computed from transformed calibration points
-  (double, double) _polar(double bx, double by) {
-    final dx = bx - _c;
-    final dy = by - _c;
-    final r = sqrt(dx * dx + dy * dy) / _r;
-    final angle = (atan2(dx, -dy) * 180.0 / pi) % 360;
-    return (r, angle);
-  }
-
-  /// Angle (degrees CW from top) to segment number
-  static int _segment(double angle) {
-    final idx = ((angle + segmentDeg / 2) % 360 / segmentDeg).floor();
-    return segmentOrder[idx];
-  }
-
-  /// Normalized radius to ring name
-  static String _ring(double r) {
-    for (final (rMin, rMax, name) in rings) {
-      if (r >= rMin && r < rMax) return name;
-    }
-    return "miss";
-  }
-
-  /// Ring + segment to point value
-  static int _points(String ring, int segment) {
-    if (ring == "double_bull") return 50;
-    if (ring == "single_bull") return 25;
-    if (ring == "triple") return segment * 3;
-    if (ring == "double") return segment * 2;
-    if (ring == "inner_single" || ring == "outer_single") return segment;
-    return 0;
-  }
-
-  /// Score a dart at normalized image position (x, y)
+  /// Replicate DartsMind's `dartTipToShoot` exactly.
   DartScore score(double x, double y) {
     final board = _toBoard(x, y);
-    final (r, angle) = _polar(board[0], board[1]);
-    final segment = _segment(angle);
-    final ring = _ring(r);
-    final pts = _points(ring, segment);
+
+    // Normalise to unit circle centred at (1.0, 1.0)
+    final normX = board[0] / _boardR;
+    final normY = board[1] / _boardR;
+
+    // Distance from centre (1.0, 1.0)
+    final dist = sqrt(pow(normX - 1.0, 2) + pow(normY - 1.0, 2));
+
+    // Angle using atan2(dy, dx) – screen coords (y-down)
+    double angle =
+        atan2(normY - 1.0, normX - 1.0);
+    while (angle < 0) {
+      angle += 2 * pi;
+    }
+    // Wrap at ±π/20 to keep zone 6 contiguous
+    if (angle < 0.15707964) {
+      angle += 2 * pi;
+    } else if (angle > 6.44026470) {
+      angle -= 2 * pi;
+    }
+
+    // --- Bull / miss ---
+    if (dist <= _innerBullR) {
+      return DartScore(
+          score: 50, segment: 25, ring: 'double_bull', radius: dist, angle: angle);
+    }
+    if (dist <= _outerBullR) {
+      return DartScore(
+          score: 25, segment: 25, ring: 'single_bull', radius: dist, angle: angle);
+    }
+    if (dist > 1.0) {
+      return DartScore(
+          score: 0, segment: 0, ring: 'miss', radius: dist, angle: angle);
+    }
+
+    // --- Segment from angle ---
+    // DartsMind iterates zones 1..20 without break (last match wins).
+    // Zones don't overlap so result is the same, but we match the pattern.
+    int segment = 20; // default (DartsMind: i2 = 20)
+    for (int i = 1; i <= 20; i++) {
+      final range = _zoneRadianDict[i];
+      if (range != null && angle >= range.$1 && angle < range.$2) {
+        segment = i;
+      }
+    }
+
+    // --- Ring from distance (exact DartsMind conditions) ---
+    int ringMul = 1; // single
+    String ringName;
+    if (dist <= _zone2Hi && dist > _zone2Lo) {
+      ringMul = 2;
+      ringName = 'double';
+    } else if (dist <= _zone3Hi && dist > _zone3Lo) {
+      ringMul = 3;
+      ringName = 'triple';
+    } else if (dist < _zone3Lo) {
+      ringName = 'inner_single';
+    } else {
+      ringName = 'outer_single';
+    }
+
+    final pts = ringMul == 1 ? segment : segment * ringMul;
     return DartScore(
-      score: pts,
-      segment: segment,
-      ring: ring,
-      radius: r,
-      angle: angle,
-    );
+        score: pts, segment: segment, ring: ringName, radius: dist, angle: angle);
   }
 }

@@ -1,3 +1,4 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -433,6 +434,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                       myName: auth.currentUser?.username ?? 'You',
                       dartsThrown: game.dartsThrown,
                       agoraEngine: agoraEngine,
+                      localCameraPreview: cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
+                          ? CameraPreview(cameraFrameService!.controller!)
+                          : null,
                       remoteUid: game.remoteUid,
                       isAudioMuted: isAudioMuted,
                       onToggleAudio: toggleAudio,
