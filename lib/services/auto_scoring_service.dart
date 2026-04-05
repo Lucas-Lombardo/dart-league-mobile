@@ -18,7 +18,11 @@ const double _maxPixelDiff = 8.0;
 const double _maxShiftThreshold = 40.0;
 const int _maxShiftFrames = 2;
 const double _defaultZeroProximity = 3.0;
-const Duration _minCycleInterval = Duration(milliseconds: 800);
+// DartsMind: no fixed interval — runs inference back-to-back.
+// CameraX's STRATEGY_KEEP_ONLY_LATEST + detectInProgress flag means it
+// processes as fast as inference allows (~200-400ms per frame = 2.5-5 fps).
+// We mirror this: small gap between cycles to yield to UI, but no artificial delay.
+const Duration _minCycleInterval = Duration(milliseconds: 50);
 
 // ---------------------------------------------------------------------------
 // Callbacks

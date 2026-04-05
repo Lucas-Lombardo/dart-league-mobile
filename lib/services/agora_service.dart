@@ -41,13 +41,14 @@ class AgoraService {
       await _engine!.setDefaultAudioRouteToSpeakerphone(true);
 
       // Set video encoder configuration (960x720 like DartsMind for 2 players)
+      // DartsMind uses ORIENTATION_MODE_ADAPTIVE (not FIXED_PORTRAIT)
       await _engine!.setVideoEncoderConfiguration(
         const VideoEncoderConfiguration(
           dimensions: VideoDimensions(width: 960, height: 720),
           frameRate: 15,
           bitrate: 0,
           mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
-          orientationMode: OrientationMode.orientationModeFixedPortrait,
+          orientationMode: OrientationMode.orientationModeAdaptive,
         ),
       );
 
