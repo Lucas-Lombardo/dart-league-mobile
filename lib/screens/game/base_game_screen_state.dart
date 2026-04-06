@@ -310,8 +310,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // 6. Init camera zoom from saved preferences
         await initCameraZoom();
 
-        // 7. Init auto scoring (uses camera frame service for captures)
-        await initAutoScoring();
+        // 7. Init auto scoring — fire-and-forget so the game screen shows immediately.
+        // autoScoringLoading flag drives the UI loading state.
+        initAutoScoring();
       }
     } catch (e) {
       debugPrint('[BaseGameScreen] initializeAgora error: $e');
@@ -365,7 +366,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         await initCameraZoom();
         autoScoringService!.stopCapture();
         autoScoringService!.resetTurn();
-        await initAutoScoring();
+        initAutoScoring();
       }
       isAudioMuted = true;
     } catch (_) {
@@ -559,13 +560,37 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           children: [
             // ── Camera feed ──
             if (agoraEngine != null && game.remoteUid != null)
-              AgoraVideoView(
-                controller: VideoViewController.remote(
-                  rtcEngine: agoraEngine!,
-                  canvas: VideoCanvas(uid: game.remoteUid!),
-                  connection: RtcConnection(channelId: channelId),
-                ),
-              )
+              kIsWeb
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: RotatedBox(
+                      quarterTurns: 1,
+                      child: SizedBox(
+                        width: 720,
+                        height: 960,
+                        child: AgoraVideoView(
+                          controller: VideoViewController.remote(
+                            rtcEngine: agoraEngine!,
+                            canvas: VideoCanvas(
+                              uid: game.remoteUid!,
+                              renderMode: RenderModeType.renderModeHidden,
+                            ),
+                            connection: RtcConnection(channelId: channelId),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : AgoraVideoView(
+                    controller: VideoViewController.remote(
+                      rtcEngine: agoraEngine!,
+                      canvas: VideoCanvas(
+                        uid: game.remoteUid!,
+                        renderMode: RenderModeType.renderModeHidden,
+                      ),
+                      connection: RtcConnection(channelId: channelId),
+                    ),
+                  )
             else
               Container(
                 color: AppTheme.surface,

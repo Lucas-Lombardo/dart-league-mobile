@@ -63,6 +63,11 @@ android {
     }
 }
 
+dependencies {
+    implementation("com.google.ai.edge.litert:litert:1.4.0")
+    implementation("com.google.ai.edge.litert:litert-gpu:1.4.0")
+}
+
 flutter {
     source = "../.."
 }

@@ -468,6 +468,21 @@ class DartDetectionService {
   // ---- Main analysis entry points -----------------------------------------
 
   /// Core analysis: preprocess → inference → parse → filter → score.
+  /// Parse raw TFLite output tensor into a [ScoringResult].
+  /// Used by [NativeInference] to parse output from native-side inference.
+  /// The model's output shape is [1, 13, 21504].
+  ScoringResult parseRawOutput(
+    Float32List outputFloats,
+    double xScale,
+    double yScale,
+    int imgW,
+    int imgH,
+  ) {
+    // Ensure output shape is set even if model wasn't loaded via this instance.
+    _outputShape ??= [1, 13, 21504];
+    return _analyze(outputFloats, xScale, yScale, imgW, imgH, 0, 0);
+  }
+
   ScoringResult _analyze(
     Float32List outputFloats,
     double xScale,

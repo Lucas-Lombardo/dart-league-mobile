@@ -16,6 +16,10 @@ class DartDetectionService {
 
   void loadModelFromFile(dynamic modelFile) {}
 
+  ScoringResult parseRawOutput(Float32List outputFloats, double xScale, double yScale, int imgW, int imgH) {
+    return ScoringResult(calibrationPoints: [], dartTips: [], scores: [], totalScore: 0, error: 'Not supported on web');
+  }
+
   void dispose() {}
 
   Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {

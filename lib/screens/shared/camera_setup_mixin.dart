@@ -6,8 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
-import '../../services/detection_isolate_stub.dart'
-    if (dart.library.io) '../../services/detection_isolate.dart';
+import '../../services/native_inference.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/silent_capture.dart';
@@ -55,7 +54,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   double _baseZoom = 1.0;
 
   // AI dartboard detection
-  DetectionIsolate? _detectionIsolate;
+  NativeInference? _nativeInference;
   bool aiModelLoaded = false;
   String? aiHint;
   bool boardDetected = false;
@@ -91,8 +90,8 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// Call from dispose to clean up resources.
   void disposeCamera() {
     _aiCapturing = false;
-    _detectionIsolate?.dispose();
-    _detectionIsolate = null;
+    _nativeInference?.dispose();
+    _nativeInference = null;
     cameraController?.dispose();
   }
 
@@ -232,9 +231,9 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
 
   Future<void> _initAiDetection() async {
     try {
-      _detectionIsolate = DetectionIsolate();
-      await _detectionIsolate!.start();
-      if (mounted) {
+      _nativeInference = NativeInference();
+      await _nativeInference!.loadModel();
+      if (mounted && _nativeInference!.isLoaded) {
         setState(() => aiModelLoaded = true);
         _startAiCapture();
       }
@@ -266,7 +265,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   Future<void> _runAiCapture() async {
     final l10n = AppLocalizations.of(context);
     if (_aiAnalyzing) return;
-    if (_detectionIsolate == null || !aiModelLoaded) return;
+    if (_nativeInference == null || !aiModelLoaded) return;
     if (cameraController == null ||
         !cameraController!.value.isInitialized) {
       return;
@@ -276,20 +275,12 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       final imagePath = await silentCapture(cameraController!);
       if (imagePath == null || !mounted) {
         if (imagePath != null) {
-          try {
-            await File(imagePath).delete();
-          } catch (e) {
-            debugPrint('[CameraSetup] File cleanup failed: $e');
-          }
+          try { await File(imagePath).delete(); } catch (_) {}
         }
         return;
       }
-      final result = await _detectionIsolate!.analyze(imagePath);
-      try {
-        await File(imagePath).delete();
-      } catch (e) {
-        debugPrint('[CameraSetup] File cleanup failed: $e');
-      }
+      final result = await _nativeInference!.analyzeFile(imagePath);
+      try { await File(imagePath).delete(); } catch (_) {}
       if (!mounted) return;
       final calibs = result.calibrationPoints;
       String? hint;

@@ -7,8 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dart_scoring_service.dart';
-import 'detection_isolate_stub.dart'
-    if (dart.library.io) 'detection_isolate.dart';
 
 // ---------------------------------------------------------------------------
 // DartsMind constants  (DVMind.java fields)
@@ -160,8 +158,11 @@ double _nowSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
 // AutoScoringService
 // ---------------------------------------------------------------------------
 class AutoScoringService extends ChangeNotifier {
-  /// Inference runs in a background isolate to keep the UI thread smooth.
-  DetectionIsolate? _isolate;
+  /// Direct inference on the calling thread. On iOS the CPU interpreter runs
+  /// at ~400ms which blocks the Dart event loop, but the camera preview is
+  /// rendered by the native platform layer and stays smooth. We yield to the
+  /// event loop between inference cycles so Flutter widgets can rebuild.
+  final DartDetectionService _detector = DartDetectionService(useNativeDecode: false);
 
   // Capture state
   bool _capturing = false;
@@ -224,10 +225,9 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> loadModel() async {
     if (!isSupported) return;
     try {
-      _isolate = DetectionIsolate();
-      await _isolate!.start();
-      _modelLoaded = _isolate!.isReady;
-      _initError = _modelLoaded ? null : 'Isolate failed to start';
+      await _detector.loadModel();
+      _modelLoaded = true;
+      _initError = null;
     } catch (e) {
       _initError = 'Model loading failed: $e';
       _modelLoaded = false;
@@ -329,14 +329,19 @@ class AutoScoringService extends ChangeNotifier {
     OnAutoConfirmCallback? onAutoConfirm,
   ) async {
     while (_capturing) {
-      final cycleSw = Stopwatch()..start();
+      // Yield to the event loop BEFORE inference so pending UI frames,
+      // touch events, and setState callbacks can be processed.
+      // This is critical because inference blocks the Dart thread for ~400ms.
+      await Future.delayed(const Duration(milliseconds: 16)); // ~1 frame at 60fps
+
+      if (!_capturing) break;
+
       await _fireCapture(
           captureFrame, captureRgba, cleanupFile, onDartDetected, onAutoConfirm);
-      final remaining =
-          _minCycleInterval.inMilliseconds - cycleSw.elapsedMilliseconds;
-      if (remaining > 0 && _capturing) {
-        await Future.delayed(Duration(milliseconds: remaining));
-      }
+
+      // Yield AFTER inference too, so the results (notifyListeners) can
+      // trigger widget rebuilds before the next cycle starts.
+      await Future.delayed(const Duration(milliseconds: 16));
     }
   }
 
@@ -360,14 +365,14 @@ class AutoScoringService extends ChangeNotifier {
       final rgbaData = captureRgba?.call();
       if (rgbaData != null) {
         final (rgba, w, h) = rgbaData;
-        result = await _isolate!.analyzeRgba(rgba, w, h);
+        result = await _detector.analyzeRgba(rgba, w, h);
       } else {
         imagePath = await captureFrame();
         if (imagePath == null || seq != _captureSeq || !_capturing) {
           await _maybeCleanup(imagePath, cleanupFile);
           return;
         }
-        result = await _isolate!.analyze(imagePath);
+        result = await _detector.analyzeImage(imagePath);
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
@@ -1163,8 +1168,7 @@ class AutoScoringService extends ChangeNotifier {
   @override
   void dispose() {
     _capturing = false;
-    _isolate?.dispose();
-    _isolate = null;
+    _detector.dispose();
     super.dispose();
   }
 }
