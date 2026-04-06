@@ -411,18 +411,22 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
           backgroundColor: AppTheme.background,
           body: Stack(
             children: [
-              autoScoringEnabled && autoScoringLoading
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: AppTheme.primary),
-                        const SizedBox(height: 16),
-                        Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-                      ],
+              // Main content
+              autoScoringLoading && (game.isMyTurn || game.pendingConfirmation)
+                ? Container(
+                    color: AppTheme.background,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: AppTheme.primary),
+                          const SizedBox(height: 16),
+                          Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                        ],
+                      ),
                     ),
                   )
-                : autoScoringEnabled && !aiManuallyDisabled && autoScoringService != null && autoScoringService!.modelLoaded && (game.isMyTurn || game.pendingConfirmation)
+                : (game.isMyTurn || game.pendingConfirmation)
                   ? AutoScoreGameView(
                       scoringService: autoScoringService!,
                       onConfirm: () => submitAutoScoredDarts(game),
@@ -451,144 +455,63 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                         game.editDartThrow(index, base, mul);
                       },
                       onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
-                      onToggleAi: toggleAiScoring,
+                      onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                       aiEnabled: !aiManuallyDisabled,
                     )
+                  // Opponent's turn
                   : Container(
                       color: AppTheme.background,
-                      child: Stack(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              SizedBox(height: safeTop),
-                              // Series scoreboard (tournament-specific)
-                              if (buildExtraHeader(game, auth) != null) buildExtraHeader(game, auth)!,
-                              // Opponent disconnected banner
-                              if (game.opponentDisconnected)
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                  color: AppTheme.accent.withValues(alpha: 0.15),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
-                                          style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              // TV Scoreboard
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                                child: TvScoreboard(
-                                  myScore: game.myScore,
-                                  opponentScore: game.opponentScore,
-                                  myName: auth.currentUser?.username ?? 'You',
-                                  opponentName: widget.opponentUsername,
-                                  isMyTurn: game.isMyTurn,
-                                ),
-                              ),
-                              // Dart throws indicator (during my turn)
-                              if (game.isMyTurn)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                                  child: Row(
-                                    children: [
-                                      ...List.generate(3, (index) {
-                                        final throws = game.currentRoundThrows;
-                                        final hasThrow = index < throws.length;
-                                        final isNext = index == throws.length;
-                                        final isEditing = editingDartIndex == index;
-                                        return GestureDetector(
-                                          onTap: hasThrow ? () { HapticService.lightImpact(); setState(() { editingDartIndex = isEditing ? null : index; }); } : null,
-                                          child: Container(
-                                            width: 52, height: 40, margin: const EdgeInsets.only(right: 8),
-                                            decoration: BoxDecoration(
-                                              color: isEditing ? AppTheme.error.withValues(alpha: 0.3) : hasThrow ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surface,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: isEditing ? AppTheme.error : hasThrow ? AppTheme.primary : isNext ? Colors.white24 : Colors.transparent, width: isEditing ? 3 : (hasThrow || isNext ? 2 : 1)),
-                                            ),
-                                            child: Center(child: hasThrow
-                                              ? Text(throws[index], style: TextStyle(color: isEditing ? AppTheme.error : AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold))
-                                              : Icon(Icons.adjust, color: isNext ? Colors.white54 : Colors.white10, size: 16)),
-                                          ),
-                                        );
-                                      }),
-                                      const Spacer(),
-                                      if (editingDartIndex != null)
-                                        GestureDetector(
-                                          onTap: () => setState(() => editingDartIndex = null),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                              const Icon(Icons.edit, color: AppTheme.error, size: 14),
-                                              const SizedBox(width: 4),
-                                              Text('Dart ${(editingDartIndex ?? 0) + 1}', style: const TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.bold)),
-                                              const SizedBox(width: 6),
-                                              const Icon(Icons.close, color: AppTheme.error, size: 14),
-                                            ]),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              // Video Area - Only show during opponent's turn
-                              if (!game.isMyTurn)
-                                Expanded(
-                                  flex: 55,
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                                    child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? ''),
-                                  ),
-                                ),
-                              // Controls Area
-                              Expanded(
-                                flex: game.isMyTurn ? 6 : 38,
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.surface,
-                                    borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-                                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
-                                  ),
-                                  child: buildScoreInputPanel(game),
-                                ),
-                              ),
-                            ],
-                          ),
-                          // AI toggle button (floating, during my turn)
-                          if (game.isMyTurn && autoScoringEnabled && autoScoringService != null && autoScoringService!.modelLoaded)
-                            Positioned(
-                              bottom: 80 + MediaQuery.of(context).viewPadding.bottom,
-                              right: 12,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: toggleAiScoring,
-                                  borderRadius: BorderRadius.circular(28),
-                                  child: Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: aiManuallyDisabled ? AppTheme.surface : AppTheme.success.withValues(alpha: 0.15),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success, width: 2),
-                                    ),
-                                    child: Icon(
-                                      aiManuallyDisabled ? Icons.smart_toy_outlined : Icons.smart_toy,
-                                      color: aiManuallyDisabled ? AppTheme.textSecondary : AppTheme.success,
-                                      size: 22,
+                          SizedBox(height: safeTop),
+                          if (buildExtraHeader(game, auth) != null) buildExtraHeader(game, auth)!,
+                          if (game.opponentDisconnected)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              color: AppTheme.accent.withValues(alpha: 0.15),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
+                                      style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                            child: TvScoreboard(
+                              myScore: game.myScore,
+                              opponentScore: game.opponentScore,
+                              myName: auth.currentUser?.username ?? 'You',
+                              opponentName: widget.opponentUsername,
+                              isMyTurn: false,
+                            ),
+                          ),
+                          Expanded(
+                            flex: 55,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                              child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? ''),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 38,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: AppTheme.surface,
+                                borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+                                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
+                              ),
+                              child: buildOpponentWaitingPanel(game),
+                            ),
+                          ),
                         ],
                       ),
                     ),

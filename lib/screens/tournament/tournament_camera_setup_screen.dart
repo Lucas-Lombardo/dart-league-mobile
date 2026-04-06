@@ -45,7 +45,7 @@ class _TournamentCameraSetupScreenState
   CameraSetupConfig get cameraSetupConfig => const CameraSetupConfig(
         requireMicrophone: true,
         enableAiDetection: false,
-        restoreSavedZoom: false,
+        restoreSavedZoom: true,
         enableGestureZoom: false,
       );
 

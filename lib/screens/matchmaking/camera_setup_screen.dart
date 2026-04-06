@@ -36,7 +36,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
   CameraSetupConfig get cameraSetupConfig => const CameraSetupConfig(
         requireMicrophone: true,
         enableAiDetection: true,
-        restoreSavedZoom: false,
+        restoreSavedZoom: true,
         enableGestureZoom: true,
       );
 

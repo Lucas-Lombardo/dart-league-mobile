@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dart_scoring_service.dart';
+import 'detection_isolate_stub.dart'
+    if (dart.library.io) 'detection_isolate.dart';
 
 // ---------------------------------------------------------------------------
 // DartsMind constants  (DVMind.java fields)
@@ -158,10 +160,8 @@ double _nowSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
 // AutoScoringService
 // ---------------------------------------------------------------------------
 class AutoScoringService extends ChangeNotifier {
-  /// DartsMind runs inference directly on the calling thread — no isolate.
-  /// DartDetectionService.analyzeRgba() does preprocess → inference → score
-  /// in a single synchronous call, same as Detector.detectVideoBuffer().
-  final DartDetectionService _detector = DartDetectionService(useNativeDecode: false);
+  /// Inference runs in a background isolate to avoid blocking the UI thread.
+  DetectionIsolate? _isolate;
 
   // Capture state
   bool _capturing = false;
@@ -224,9 +224,10 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> loadModel() async {
     if (!isSupported) return;
     try {
-      await _detector.loadModel();
-      _modelLoaded = true;
-      _initError = null;
+      _isolate = DetectionIsolate();
+      await _isolate!.start();
+      _modelLoaded = _isolate!.isReady;
+      _initError = _modelLoaded ? null : 'Isolate failed to start';
     } catch (e) {
       _initError = 'Model loading failed: $e';
       _modelLoaded = false;
@@ -353,23 +354,21 @@ class AutoScoringService extends ChangeNotifier {
     try {
       _inferenceInProgress = true;
 
-      // DartsMind: detectVideoBuffer(bitmap) — direct, no file I/O.
-      // Fast path: raw RGBA from camera stream.
-      // Fallback: file-based capture (slow, but works for Agora snapshots).
+      // Inference runs in background isolate to avoid blocking the UI thread.
       final infSw = Stopwatch()..start();
       ScoringResult result;
 
       final rgbaData = captureRgba?.call();
       if (rgbaData != null) {
         final (rgba, w, h) = rgbaData;
-        result = await _detector.analyzeRgba(rgba, w, h);
+        result = await _isolate!.analyzeRgba(rgba, w, h);
       } else {
         imagePath = await captureFrame();
         if (imagePath == null || seq != _captureSeq || !_capturing) {
           await _maybeCleanup(imagePath, cleanupFile);
           return;
         }
-        result = await _detector.analyzeImage(imagePath);
+        result = await _isolate!.analyze(imagePath);
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
@@ -734,11 +733,7 @@ class AutoScoringService extends ChangeNotifier {
   // DartsMind: analyseTipGroups (exact port from DVMind.java lines 682-1131)
   // ========================================================================
   void _analyseTipGroups() {
-    // Guard: all tip groups must have at least tipThreshold (2) tips
     if (_tipGroups.isEmpty) return;
-    for (final tg in _tipGroups) {
-      if (tg.tips.length < 2) return; // tipThreshold = 2
-    }
 
     final now = _nowSeconds();
 
@@ -746,6 +741,8 @@ class AutoScoringService extends ChangeNotifier {
     // Then collapse tips to their average (DartsMind replaces tips with [avg])
     for (int i = _tipGroups.length - 1; i >= 0; i--) {
       final tg = _tipGroups[i];
+      // Skip groups that don't have enough history yet (tipThreshold = 2)
+      if (tg.tips.length < 2) continue;
       final threshold85 = tg.tips.length * 0.85;
       final nonNullCount =
           tg.tips.whereType<CnfPoint>().length.toDouble();
@@ -900,7 +897,6 @@ class AutoScoringService extends ChangeNotifier {
             tg.firstPassTime != null)
         .toList()
       ..sort((a, b) => b.createdTime.compareTo(a.createdTime));
-
     // Phase 8: Convert visible groups to Shoots via dartTipToShoot
     // (In DartsMind: dartTipToShoot(170.0f, tipPosition))
     // In our architecture, scoring happens in the detection service,
@@ -1168,7 +1164,8 @@ class AutoScoringService extends ChangeNotifier {
   @override
   void dispose() {
     _capturing = false;
-    _detector.dispose();
+    _isolate?.dispose();
+    _isolate = null;
     super.dispose();
   }
 }
