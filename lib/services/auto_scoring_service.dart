@@ -160,7 +160,7 @@ double _nowSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
 // AutoScoringService
 // ---------------------------------------------------------------------------
 class AutoScoringService extends ChangeNotifier {
-  /// Inference runs in a background isolate to avoid blocking the UI thread.
+  /// Inference runs in a background isolate to keep the UI thread smooth.
   DetectionIsolate? _isolate;
 
   // Capture state
@@ -354,7 +354,6 @@ class AutoScoringService extends ChangeNotifier {
     try {
       _inferenceInProgress = true;
 
-      // Inference runs in background isolate to avoid blocking the UI thread.
       final infSw = Stopwatch()..start();
       ScoringResult result;
 

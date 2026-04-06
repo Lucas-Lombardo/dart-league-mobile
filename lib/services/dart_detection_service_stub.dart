@@ -12,6 +12,10 @@ class DartDetectionService {
 
   Future<void> loadModel({bool cpuOnly = false}) async {}
 
+  void loadModelFromBuffer(Uint8List modelBytes) {}
+
+  void loadModelFromFile(dynamic modelFile) {}
+
   void dispose() {}
 
   Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {

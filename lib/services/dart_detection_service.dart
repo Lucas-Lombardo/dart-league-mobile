@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -67,6 +68,15 @@ class DartDetectionService {
     final cpuOptions = InterpreterOptions()..threads = 4;
     _interpreter = Interpreter.fromBuffer(modelBytes, options: cpuOptions);
     debugPrint('[DartDetection] Model loaded from buffer on CPU with 4 threads');
+    _isLoaded = true;
+    _allocateBuffers();
+  }
+
+  void loadModelFromFile(File modelFile, {int threads = 4}) {
+    if (_isLoaded) return;
+    final cpuOptions = InterpreterOptions()..threads = threads;
+    _interpreter = Interpreter.fromFile(modelFile, options: cpuOptions);
+    debugPrint('[DartDetection] Model loaded from file on CPU with $threads thread(s)');
     _isLoaded = true;
     _allocateBuffers();
   }
