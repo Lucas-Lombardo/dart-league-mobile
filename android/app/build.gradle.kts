@@ -20,6 +20,12 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // Prevent AAPT2 from compressing .tflite files — TFLite needs
+    // uncompressed assets for memory-mapped loading via openFd().
+    androidResources {
+        noCompress += "tflite"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

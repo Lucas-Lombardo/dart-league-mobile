@@ -60,6 +60,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool aiPausedForEdit = false;
   CaptureFrameCallback? _captureFrameCallback;
   CaptureRgbaCallback? _captureRgbaCallback;
+  CaptureYuvCallback? _captureYuvCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
   bool winDialogShowing = false;
@@ -154,6 +155,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
             captureRgba: _captureRgbaCallback,
+            captureYuv: _captureYuvCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
             onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
@@ -211,6 +213,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (game.isMyTurn) autoScoringService!.startCapture(
           captureFrame: _captureFrameCallback!,
           captureRgba: _captureRgbaCallback,
+          captureYuv: _captureYuvCallback,
           onDartDetected: _onDartDetectedCallback,
           onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
         );
@@ -228,6 +231,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final camService = cameraFrameService!;
     _captureFrameCallback = () => camService.captureFrame();
     _captureRgbaCallback = () => camService.captureRgba();
+    _captureYuvCallback = () => camService.captureYuvPlanes();
     _onDartDetectedCallback = (_, dartScore) {
       if (!mounted) return;
       final g = readGame();
@@ -246,6 +250,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
             captureRgba: _captureRgbaCallback,
+            captureYuv: _captureYuvCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
             onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dart_scoring_service.dart';
+import 'native_inference.dart';
 
 // ---------------------------------------------------------------------------
 // DartsMind constants  (DVMind.java fields)
@@ -24,11 +26,29 @@ const double _defaultZeroProximity = 3.0;
 // We mirror this: small gap between cycles to yield to UI, but no artificial delay.
 const Duration _minCycleInterval = Duration(milliseconds: 50);
 
+// DartsMind Android: frame skipping (DVMind.java: everyXFrame = 2)
+// Process every Nth frame to match DartsMind's frame rate control.
+const int _androidEveryXFrame = 2;
+
 // ---------------------------------------------------------------------------
 // Callbacks
 // ---------------------------------------------------------------------------
 typedef CaptureFrameCallback = Future<String?> Function();
 typedef CaptureRgbaCallback = (Uint8List, int, int)? Function();
+
+/// Android YUV capture callback — returns raw YUV planes for native processing.
+/// Matches DartsMind's ZLVideoCapture: raw ImageProxy → native dvExecutor.
+typedef CaptureYuvCallback = ({
+  Uint8List yPlane,
+  Uint8List uPlane,
+  Uint8List vPlane,
+  int width,
+  int height,
+  int yRowStride,
+  int uvRowStride,
+  int uvPixelStride,
+  int rotation,
+})? Function();
 typedef CleanupFileCallback = Future<void> Function(String path);
 typedef OnDartDetectedCallback = void Function(int slotIndex, DartScore score);
 typedef OnAutoConfirmCallback = void Function();
@@ -164,12 +184,18 @@ class AutoScoringService extends ChangeNotifier {
   /// event loop between inference cycles so Flutter widgets can rebuild.
   final DartDetectionService _detector = DartDetectionService(useNativeDecode: false);
 
+  /// Android: native inference via platform channel (DartsMind-style YUV pipeline).
+  NativeInference? _nativeInference;
+
   // Capture state
   bool _capturing = false;
   bool _inferenceInProgress = false;
   int _captureSeq = 0;
   bool _modelLoaded = false;
   String? _initError;
+
+  // DartsMind Android: frame counter for everyXFrame skip
+  int _frameCounter = 0;
 
   // Game state — 3 dart slots
   List<DartScore?> _dartSlots = [null, null, null];
@@ -225,12 +251,22 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> loadModel() async {
     if (!isSupported) return;
     try {
-      await _detector.loadModel();
+      if (!kIsWeb && Platform.isAndroid) {
+        // Android: load via native plugin ONLY (DartsMind-style GPU/CPU delegate).
+        // Do NOT also load _detector — having two GPU delegates causes conflicts.
+        _nativeInference = NativeInference();
+        await _nativeInference!.loadModel();
+      } else {
+        // iOS: load Dart-side interpreter (CPU only, works perfectly)
+        await _detector.loadModel();
+      }
       _modelLoaded = true;
       _initError = null;
-    } catch (e) {
+    } catch (e, stack) {
       _initError = 'Model loading failed: $e';
       _modelLoaded = false;
+      debugPrint('[AutoScoring] *** MODEL LOAD FAILED: $e');
+      debugPrint('[AutoScoring] $stack');
     }
     notifyListeners();
   }
@@ -239,6 +275,7 @@ class AutoScoringService extends ChangeNotifier {
   void startCapture({
     required CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
     OnAutoConfirmCallback? onAutoConfirm,
@@ -247,8 +284,9 @@ class AutoScoringService extends ChangeNotifier {
     _capturing = true;
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
+    _frameCounter = 0;
     notifyListeners();
-    _captureLoop(captureFrame, captureRgba, cleanupFile, onDartDetected, onAutoConfirm);
+    _captureLoop(captureFrame, captureRgba, captureYuv, cleanupFile, onDartDetected, onAutoConfirm);
   }
 
   void stopCapture() {
@@ -274,6 +312,7 @@ class AutoScoringService extends ChangeNotifier {
     _prevDartCount = 0;
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
+    _frameCounter = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
     notifyListeners();
@@ -324,6 +363,7 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> _captureLoop(
     CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
     OnAutoConfirmCallback? onAutoConfirm,
@@ -337,7 +377,7 @@ class AutoScoringService extends ChangeNotifier {
       if (!_capturing) break;
 
       await _fireCapture(
-          captureFrame, captureRgba, cleanupFile, onDartDetected, onAutoConfirm);
+          captureFrame, captureRgba, captureYuv, cleanupFile, onDartDetected, onAutoConfirm);
 
       // Yield AFTER inference too, so the results (notifyListeners) can
       // trigger widget rebuilds before the next cycle starts.
@@ -348,6 +388,7 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> _fireCapture(
     CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
     OnAutoConfirmCallback? onAutoConfirm,
@@ -359,20 +400,49 @@ class AutoScoringService extends ChangeNotifier {
     try {
       _inferenceInProgress = true;
 
+      // DartsMind Android: frame skipping (DVMind.java everyXFrame)
+      final bool isAndroid = !kIsWeb && Platform.isAndroid;
+      if (isAndroid) {
+        _frameCounter++;
+        if (_frameCounter % _androidEveryXFrame != 0) {
+          return; // Skip this frame — matches DartsMind's frameFlag logic
+        }
+      }
+
       final infSw = Stopwatch()..start();
       ScoringResult result;
 
-      final rgbaData = captureRgba?.call();
-      if (rgbaData != null) {
-        final (rgba, w, h) = rgbaData;
-        result = await _detector.analyzeRgba(rgba, w, h);
+      if (isAndroid && captureYuv != null && _nativeInference != null) {
+        // ── Android path: DartsMind-style native YUV pipeline ──
+        // Raw YUV → native (YUV→Bitmap→rotation→preprocess→inference)
+        // Matches ZLVideoCapture → Detector.detectVideoBuffer exactly.
+        final yuvData = captureYuv();
+        if (yuvData == null || seq != _captureSeq || !_capturing) return;
+        result = await _nativeInference!.analyzeYuv(
+          yPlane: yuvData.yPlane,
+          uPlane: yuvData.uPlane,
+          vPlane: yuvData.vPlane,
+          width: yuvData.width,
+          height: yuvData.height,
+          yRowStride: yuvData.yRowStride,
+          uvRowStride: yuvData.uvRowStride,
+          uvPixelStride: yuvData.uvPixelStride,
+          rotation: yuvData.rotation,
+        );
       } else {
-        imagePath = await captureFrame();
-        if (imagePath == null || seq != _captureSeq || !_capturing) {
-          await _maybeCleanup(imagePath, cleanupFile);
-          return;
+        // ── iOS path: unchanged RGBA pipeline (works perfectly) ──
+        final rgbaData = captureRgba?.call();
+        if (rgbaData != null) {
+          final (rgba, w, h) = rgbaData;
+          result = await _detector.analyzeRgba(rgba, w, h);
+        } else {
+          imagePath = await captureFrame();
+          if (imagePath == null || seq != _captureSeq || !_capturing) {
+            await _maybeCleanup(imagePath, cleanupFile);
+            return;
+          }
+          result = await _detector.analyzeImage(imagePath);
         }
-        result = await _detector.analyzeImage(imagePath);
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
@@ -1169,6 +1239,8 @@ class AutoScoringService extends ChangeNotifier {
   void dispose() {
     _capturing = false;
     _detector.dispose();
+    _nativeInference?.dispose();
+    _nativeInference = null;
     super.dispose();
   }
 }

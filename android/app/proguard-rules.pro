@@ -5,8 +5,9 @@
 -dontwarn com.stripe.android.pushProvisioning.PushProvisioningActivityStarter
 -dontwarn com.stripe.android.pushProvisioning.PushProvisioningEphemeralKeyProvider
 
-# TensorFlow Lite GPU delegate (optional feature)
--dontwarn org.tensorflow.lite.gpu.GpuDelegateFactory$Options
+# TensorFlow Lite / LiteRT — keep all runtime classes (used via native JNI)
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.**
 
 # Agora RTC Engine — uses reflection for native bridge
 -keep class io.agora.** { *; }

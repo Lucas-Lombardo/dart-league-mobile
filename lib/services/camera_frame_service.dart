@@ -119,22 +119,72 @@ class CameraFrameService {
         final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
 
         if (uvPixelStride == 1) {
-          // True I420: Y, U, V are separate planes — concatenate them
           buffer = _buildI420Buffer(image);
           format = VideoPixelFormat.videoPixelI420;
         } else {
-          // NV21/NV12: U and V are interleaved — build NV21 for Agora
           buffer = _buildNv21Buffer(image);
           format = VideoPixelFormat.videoPixelNv21;
         }
-        stride = image.width; // For YUV formats, stride = width (not bytesPerRow which may have padding)
+        stride = image.width;
         height = image.height;
       } else {
-        // iOS: BGRA8888 — single plane
-        buffer = Uint8List.fromList(image.planes[0].bytes);
+        // iOS: BGRA8888 — rotate the pixel data ourselves because the
+        // Flutter Agora SDK's ExternalVideoFrame.rotation field does not
+        // reliably apply rotation. Raw sensor frames are landscape; we
+        // rotate to portrait before pushing so rotation=0 works everywhere.
+        final rotation = _sensorOrientation ?? 0;
+        final bgra = image.planes[0].bytes;
+        final srcW = image.width;
+        final srcH = image.height;
+        final srcStride = image.planes[0].bytesPerRow;
+
+        if (rotation == 90) {
+          // Rotate 90° CW: output is srcH × srcW
+          final outW = srcH;
+          final outH = srcW;
+          final out = Uint8List(outW * outH * 4);
+          for (int sy = 0; sy < srcH; sy++) {
+            final srcRow = sy * srcStride;
+            for (int sx = 0; sx < srcW; sx++) {
+              final dx = srcH - 1 - sy;
+              final dy = sx;
+              final si = srcRow + sx * 4;
+              final di = (dy * outW + dx) * 4;
+              out[di]     = bgra[si];
+              out[di + 1] = bgra[si + 1];
+              out[di + 2] = bgra[si + 2];
+              out[di + 3] = bgra[si + 3];
+            }
+          }
+          buffer = out;
+          stride = outW;
+          height = outH;
+        } else if (rotation == 270) {
+          final outW = srcH;
+          final outH = srcW;
+          final out = Uint8List(outW * outH * 4);
+          for (int sy = 0; sy < srcH; sy++) {
+            final srcRow = sy * srcStride;
+            for (int sx = 0; sx < srcW; sx++) {
+              final dx = sy;
+              final dy = srcW - 1 - sx;
+              final si = srcRow + sx * 4;
+              final di = (dy * outW + dx) * 4;
+              out[di]     = bgra[si];
+              out[di + 1] = bgra[si + 1];
+              out[di + 2] = bgra[si + 2];
+              out[di + 3] = bgra[si + 3];
+            }
+          }
+          buffer = out;
+          stride = outW;
+          height = outH;
+        } else {
+          buffer = Uint8List.fromList(bgra);
+          stride = image.planes[0].bytesPerRow ~/ 4;
+          height = image.height;
+        }
         format = VideoPixelFormat.videoPixelBgra;
-        stride = image.planes[0].bytesPerRow ~/ 4; // BGRA = 4 bytes per pixel
-        height = image.height;
       }
 
       final frame = ExternalVideoFrame(
@@ -143,10 +193,7 @@ class CameraFrameService {
         buffer: buffer,
         stride: stride,
         height: height,
-        // DartsMind uses imageProxy.getImageInfo().getRotationDegrees()
-        // In Flutter camera, sensorOrientation gives the equivalent rotation
-        // needed to transform the sensor image to portrait display orientation.
-        rotation: _sensorOrientation ?? 0,
+        rotation: 0,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
 
@@ -403,6 +450,42 @@ class CameraFrameService {
       }
     } catch (e) {
       debugPrint('[CameraFrameService] captureRgba error: $e');
+      return null;
+    }
+  }
+
+  /// Capture the latest frame as raw YUV planes for native-side processing.
+  /// Android only — returns (yPlane, uPlane, vPlane, width, height,
+  /// yRowStride, uvRowStride, uvPixelStride, rotation) or null.
+  /// This matches DartsMind's flow: raw camera data → native conversion.
+  ({
+    Uint8List yPlane,
+    Uint8List uPlane,
+    Uint8List vPlane,
+    int width,
+    int height,
+    int yRowStride,
+    int uvRowStride,
+    int uvPixelStride,
+    int rotation,
+  })? captureYuvPlanes() {
+    final frame = _latestFrame;
+    if (frame == null || !Platform.isAndroid) return null;
+
+    try {
+      return (
+        yPlane: Uint8List.fromList(frame.planes[0].bytes),
+        uPlane: Uint8List.fromList(frame.planes[1].bytes),
+        vPlane: Uint8List.fromList(frame.planes[2].bytes),
+        width: frame.width,
+        height: frame.height,
+        yRowStride: frame.planes[0].bytesPerRow,
+        uvRowStride: frame.planes[1].bytesPerRow,
+        uvPixelStride: frame.planes[1].bytesPerPixel ?? 1,
+        rotation: _sensorOrientation ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[CameraFrameService] captureYuvPlanes error: $e');
       return null;
     }
   }
