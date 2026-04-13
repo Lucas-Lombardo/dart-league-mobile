@@ -187,13 +187,17 @@ class CameraFrameService {
         format = VideoPixelFormat.videoPixelBgra;
       }
 
+      // DartsMind: pass rotationDegrees on Android so Agora handles orientation.
+      // iOS: pixels are already rotated above, so rotation stays 0.
+      final int frameRotation = Platform.isAndroid ? (_sensorOrientation ?? 0) : 0;
+
       final frame = ExternalVideoFrame(
         type: VideoBufferType.videoBufferRawData,
         format: format,
         buffer: buffer,
         stride: stride,
         height: height,
-        rotation: 0,
+        rotation: frameRotation,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
 

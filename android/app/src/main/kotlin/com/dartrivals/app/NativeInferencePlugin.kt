@@ -1,7 +1,12 @@
 package com.dartrivals.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -63,6 +68,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         channel.setMethodCallHandler(null)
         interpreter?.close()
         interpreter = null
+        squareBitmap.recycle()
         dvExecutor.shutdown()
     }
 
@@ -306,10 +312,27 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     // ---- YUV Inference (DartsMind: ZLVideoCapture → Detector.detectVideoBuffer) ----
 
+    // Reusable objects for convertToInputSizeBitmap (DartsMind: Detector fields)
+    private var squareBitmap: Bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+    private var squareCanvas: Canvas = Canvas(squareBitmap)
+    private val scalePaint: Paint = Paint()
+    private val scaleMatrix: Matrix = Matrix()
+    private var lastBitmapWidth = 0
+    private var lastBitmapHeight = 0
+
     /**
-     * DartsMind-style YUV→inference pipeline.
-     * Converts YUV420 directly to the Float32 RGB tensor (no Bitmap/JPEG round-trip).
-     * Applies rotation + scale to 1024×1024 in one pass.
+     * DartsMind-style YUV→Bitmap→rotation→scale→inference pipeline.
+     *
+     * Matches DartsMind exactly:
+     * 1. YUV → Bitmap (like imageProxy.toBitmap())
+     * 2. Matrix.postRotate(rotationDegrees) with filter=true (bilinear)
+     * 3. convertToInputSizeBitmap: Canvas + Matrix scale to 1024×1024
+     * 4. Bitmap pixels → normalized Float32 tensor
+     * 5. TFLite inference
+     *
+     * Using Bitmap APIs for rotation + scaling ensures bilinear interpolation,
+     * which produces stable tip positions across frames (critical for TipGroup
+     * merge threshold of 1.6px).
      */
     private fun analyzeYuv(
         yPlane: ByteArray, uPlane: ByteArray, vPlane: ByteArray,
@@ -326,55 +349,10 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             val startTime = System.currentTimeMillis()
 
-            // Compute output dimensions after rotation
-            val outW: Int
-            val outH: Int
-            if (rotation == 90 || rotation == 270) {
-                outW = height; outH = width
-            } else {
-                outW = width; outH = height
-            }
-
-            // DartsMind: convertToInputSizeBitmap — scale to fit 1024×1024
-            val sz = modelInputSize
-            val scale = min(sz.toDouble() / outW, sz.toDouble() / outH)
-            val newW = (outW * scale + 0.5).roundToInt()
-            val newH = (outH * scale + 0.5).roundToInt()
-            val invNewW = outW.toFloat() / newW
-            val invNewH = outH.toFloat() / newH
-
-            // Build Float32 RGB tensor directly from YUV + rotation
-            val buffer = ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder())
-            val floatBuffer = buffer.asFloatBuffer()
-
-            for (dy in 0 until sz) {
-                if (dy >= newH) {
-                    // Black padding rows
-                    for (x in 0 until sz * 3) floatBuffer.put(0.0f)
-                    continue
-                }
-                // Map dest Y → source Y in rotated space
-                val oy = min((dy * invNewH).toInt(), outH - 1)
-
-                for (dx in 0 until sz) {
-                    if (dx >= newW) {
-                        floatBuffer.put(0.0f); floatBuffer.put(0.0f); floatBuffer.put(0.0f)
-                        continue
-                    }
-                    // Map dest X → source X in rotated space
-                    val ox = min((dx * invNewW).toInt(), outW - 1)
-
-                    // Reverse rotation to get original YUV coordinates
-                    val sy: Int
-                    val sx: Int
-                    when (rotation) {
-                        90  -> { sx = oy; sy = height - 1 - ox }
-                        180 -> { sx = width - 1 - ox; sy = height - 1 - oy }
-                        270 -> { sx = width - 1 - oy; sy = ox }
-                        else -> { sx = ox; sy = oy }
-                    }
-
-                    // Read YUV values
+            // Step 1: YUV → ARGB Bitmap (DartsMind: imageProxy.toBitmap())
+            val pixels = IntArray(width * height)
+            for (sy in 0 until height) {
+                for (sx in 0 until width) {
                     val yIdx = sy * yRowStride + sx
                     val yVal = if (yIdx < yPlane.size) (yPlane[yIdx].toInt() and 0xFF) else 0
 
@@ -384,21 +362,64 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     val uVal = if (uvIdx < uPlane.size) (uPlane[uvIdx].toInt() and 0xFF) else 128
                     val vVal = if (uvIdx < vPlane.size) (vPlane[uvIdx].toInt() and 0xFF) else 128
 
-                    // YUV→RGB (same coefficients as DartsMind/camera_frame_service)
-                    val r = (yVal + 1.370705f * (vVal - 128)).coerceIn(0f, 255f)
-                    val g = (yVal - 0.337633f * (uVal - 128) - 0.698001f * (vVal - 128)).coerceIn(0f, 255f)
-                    val b = (yVal + 1.732446f * (uVal - 128)).coerceIn(0f, 255f)
+                    val r = (yVal + 1.370705f * (vVal - 128)).coerceIn(0f, 255f).toInt()
+                    val g = (yVal - 0.337633f * (uVal - 128) - 0.698001f * (vVal - 128)).coerceIn(0f, 255f).toInt()
+                    val b = (yVal + 1.732446f * (uVal - 128)).coerceIn(0f, 255f).toInt()
 
-                    // Normalize to [0,1]
-                    floatBuffer.put(r / 255.0f)
-                    floatBuffer.put(g / 255.0f)
-                    floatBuffer.put(b / 255.0f)
+                    pixels[sy * width + sx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
-            buffer.rewind()
+            val rawBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            rawBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+
+            // Step 2: Rotate using Matrix (DartsMind: Matrix.postRotate + filter=true)
+            val rotatedBitmap = if (rotation != 0) {
+                val rotMatrix = Matrix()
+                rotMatrix.postRotate(rotation.toFloat())
+                val bmp = Bitmap.createBitmap(rawBitmap, 0, 0, width, height, rotMatrix, true)
+                rawBitmap.recycle()
+                bmp
+            } else {
+                rawBitmap
+            }
+
+            val bw = rotatedBitmap.width
+            val bh = rotatedBitmap.height
+
+            // Step 3: convertToInputSizeBitmap (DartsMind: Detector.convertToInputSizeBitmap)
+            val sz = modelInputSize
+            squareCanvas.drawColor(Color.BLACK)
+            val bMax = maxOf(bw, bh)
+            if (bMax == sz || bMax == 960) {
+                squareCanvas.drawBitmap(rotatedBitmap, 0f, 0f, scalePaint)
+            } else {
+                if (bw != lastBitmapWidth || bh != lastBitmapHeight) {
+                    lastBitmapWidth = bw
+                    lastBitmapHeight = bh
+                    val s = min(squareBitmap.width.toFloat() / bw, squareBitmap.height.toFloat() / bh)
+                    scaleMatrix.reset()
+                    scaleMatrix.setScale(s, s)
+                }
+                squareCanvas.drawBitmap(rotatedBitmap, scaleMatrix, scalePaint)
+            }
+            rotatedBitmap.recycle()
             val preprocessMs = System.currentTimeMillis() - startTime
 
-            // Run TFLite inference
+            // Step 4: Bitmap pixels → normalized Float32 RGB tensor
+            // (DartsMind: TensorImage.load(squareBitmap) + NormalizeOp(0, 255))
+            val tensorPixels = IntArray(sz * sz)
+            squareBitmap.getPixels(tensorPixels, 0, sz, 0, 0, sz, sz)
+
+            val buffer = ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder())
+            val floatBuffer = buffer.asFloatBuffer()
+            for (pixel in tensorPixels) {
+                floatBuffer.put(((pixel shr 16) and 0xFF) / 255.0f) // R
+                floatBuffer.put(((pixel shr 8) and 0xFF) / 255.0f)  // G
+                floatBuffer.put((pixel and 0xFF) / 255.0f)           // B
+            }
+            buffer.rewind()
+
+            // Step 5: Run TFLite inference
             val outputShape = interp.getOutputTensor(0).shape()
             val outputSize = outputShape.fold(1) { acc, v -> acc * v }
             val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).order(ByteOrder.nativeOrder())
@@ -408,22 +429,22 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val inferenceMs = System.currentTimeMillis() - inferStart
 
             val totalMs = System.currentTimeMillis() - startTime
-            println("[NativeInference-Android] YUV: ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
+            println("[NativeInference-Android] YUV-Bitmap: ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
 
             outputBuffer.rewind()
             val outputBytes = ByteArray(outputBuffer.remaining())
             outputBuffer.get(outputBytes)
 
-            // Scale factors based on rotated dimensions
-            val xScale: Double = if (outW >= outH) 1.0 else outH.toDouble() / outW.toDouble()
-            val yScale: Double = if (outW >= outH) outW.toDouble() / outH.toDouble() else 1.0
+            // Scale factors based on rotated dimensions (DartsMind: Detector.detectVideoBuffer)
+            val xScale: Double = if (bw >= bh) 1.0 else bh.toDouble() / bw.toDouble()
+            val yScale: Double = if (bw >= bh) bw.toDouble() / bh.toDouble() else 1.0
 
             val response = HashMap<String, Any>()
             response["output"] = outputBytes
             response["xScale"] = xScale
             response["yScale"] = yScale
-            response["imageWidth"] = outW
-            response["imageHeight"] = outH
+            response["imageWidth"] = bw
+            response["imageHeight"] = bh
 
             mainHandler.post { result.success(response) }
         } catch (e: Throwable) {
