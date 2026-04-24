@@ -22,6 +22,7 @@ class TournamentGameProvider with ChangeNotifier {
   String? _myUserId;
   String? _opponentUserId;
   String? _player1Id;
+  String? _firstThrowerId; // Whoever threw first in the match (set once)
 
   // Current leg game state (same as GameProvider)
   int _myScore = 501;
@@ -98,6 +99,11 @@ class TournamentGameProvider with ChangeNotifier {
   bool get opponentDisconnected => _opponentDisconnected;
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
   bool get isMyTurn => _currentPlayerId == _myUserId;
+  // True when this user was the second to throw in the match (captured from
+  // the first game_started event). Used to render the current user on the
+  // right side of the scoreboard. Derived from currentPlayerId so both clients
+  // agree regardless of whether the server sends a player1Id field.
+  bool get iAmPlayer2 => _firstThrowerId != null && _myUserId != null && _firstThrowerId != _myUserId;
 
   // Getters — series state
   int get player1LegsWon => _player1LegsWon;
@@ -167,6 +173,8 @@ class TournamentGameProvider with ChangeNotifier {
     _tournamentState = TournamentGameState.waiting;
     _seriesWinnerId = null;
     _seriesLoserId = null;
+    _player1Id = null;
+    _firstThrowerId = null;
 
     if (agoraAppId != null) _agoraAppId = agoraAppId;
     if (agoraToken != null) _agoraToken = agoraToken;
@@ -225,6 +233,10 @@ class TournamentGameProvider with ChangeNotifier {
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
 
+    // Capture the first thrower for the match (stable for scoreboard
+    // positioning across legs). Set once; never overwritten.
+    _firstThrowerId ??= _currentPlayerId;
+
     // Use server-provided player1Id for correct score mapping.
     // player1Id is fixed for the entire series — it does NOT change between legs.
     // Who throws first (currentPlayerId) alternates between legs, so it must NOT
@@ -237,7 +249,7 @@ class TournamentGameProvider with ChangeNotifier {
       // use myUserId as convention. Never overwrite on subsequent legs.
       _player1Id ??= _myUserId;
     }
-    debugPrint('TOURNAMENT: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId');
+    debugPrint('TOURNAMENT: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId, firstThrowerId=$_firstThrowerId');
 
     _myScore = 501;
     _opponentScore = 501;

@@ -13,6 +13,7 @@ class GameProvider with ChangeNotifier {
   String? _myUserId;
   String? _opponentUserId;
   String? _player1Id; // Track which userId is player1 for score mapping
+  String? _firstThrowerId; // Whoever threw first in the match (set once)
   int _dartsThrown = 0;
   bool _gameStarted = false;
   bool _gameEnded = false;
@@ -91,6 +92,11 @@ class GameProvider with ChangeNotifier {
   bool get needsAgoraReconnect => _needsAgoraReconnect;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
+  // True when this user was the second to throw in the match (captured from
+  // the first game_started event). Used to render the current user on the
+  // right side of the scoreboard. Derived from currentPlayerId so both clients
+  // agree regardless of whether the server sends a player1Id field.
+  bool get iAmPlayer2 => _firstThrowerId != null && _myUserId != null && _firstThrowerId != _myUserId;
   
   void setScore(int newScore) {
     _myScore = newScore;
@@ -155,6 +161,7 @@ class GameProvider with ChangeNotifier {
       _pendingReason = null;
       _pendingData = null;
       _player1Id = null; // Reset so game_started sets it correctly for the new match
+      _firstThrowerId = null; // Reset so the first thrower is captured anew for this match
       // Don't reset _gameStarted — game_started event may have already fired for this match
     } else {
       debugPrint('GAME DEBUG: initGame - preserving state (same match reconnection)');
@@ -231,6 +238,10 @@ class GameProvider with ChangeNotifier {
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
 
+    // Capture the first thrower for the match (stable for scoreboard
+    // positioning across legs). Set once; never overwritten.
+    _firstThrowerId ??= _currentPlayerId;
+
     // Use server-provided player1Id for correct score mapping.
     // player1Id is NOT necessarily whoever goes first — the server assigns
     // it based on join order and may alternate who starts between games.
@@ -243,7 +254,7 @@ class GameProvider with ChangeNotifier {
       // _myUserId is always set before game_started fires (via initGame in match_found).
       _player1Id ??= _myUserId;
     }
-    debugPrint('DEBUG: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId');
+    debugPrint('DEBUG: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId, firstThrowerId=$_firstThrowerId');
 
     // Both players start at 501
     _myScore = 501;

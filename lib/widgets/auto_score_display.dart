@@ -37,6 +37,7 @@ class AutoScoreGameView extends StatelessWidget {
   final void Function(int index)? onRemoveDart;
   final VoidCallback? onToggleAi;
   final bool aiEnabled;
+  final bool iAmPlayer2;
 
   const AutoScoreGameView({
     super.key,
@@ -65,6 +66,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.onRemoveDart,
     this.onToggleAi,
     this.aiEnabled = true,
+    this.iAmPlayer2 = false,
   });
 
   @override
@@ -315,6 +317,7 @@ class AutoScoreGameView extends StatelessWidget {
                                   myName: myName,
                                   opponentName: opponentName,
                                   isMyTurn: true,
+                                  iAmPlayer2: iAmPlayer2,
                                 ),
                               ),
                             ),

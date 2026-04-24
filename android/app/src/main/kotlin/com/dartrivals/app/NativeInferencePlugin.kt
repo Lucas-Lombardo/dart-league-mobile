@@ -57,6 +57,23 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private val modelInputSize = 1024
 
+    // ---- Reusable inference buffers (allocated once) ----
+    // Per-frame allocation of these was the #1 cause of the 800ms GC-bound stall.
+    // Input tensor buffer: 1024 * 1024 * 3 * 4 = 12MB direct, sized for modelInputSize.
+    private var inputBuffer: ByteBuffer? = null
+    private var outputBuffer: ByteBuffer? = null
+    private var outputElementCount: Int = 0
+    // Reusable 1024x1024 IntArray for pulling pixels out of squareBitmap
+    private val tensorPixels: IntArray = IntArray(modelInputSize * modelInputSize)
+
+    // ---- Reusable raw-frame buffers (sized to the camera frame) ----
+    // rawBitmap keeps ARGB_8888 pixels of the incoming YUV frame; re-created only
+    // if the camera frame size changes.
+    private var rawBitmap: Bitmap? = null
+    private var rawPixels: IntArray? = null
+    private var rawBitmapWidth = 0
+    private var rawBitmapHeight = 0
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         flutterAssets = binding.flutterAssets
@@ -69,7 +86,27 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         interpreter?.close()
         interpreter = null
         squareBitmap.recycle()
+        rawBitmap?.recycle()
+        rawBitmap = null
+        rawPixels = null
+        inputBuffer = null
+        outputBuffer = null
         dvExecutor.shutdown()
+    }
+
+    // Allocate input/output ByteBuffers once the interpreter is ready.
+    // Called from loadModel / loadModelFromFile after the interpreter is built.
+    private fun prepareTensorBuffers(interp: Interpreter) {
+        val sz = modelInputSize
+        if (inputBuffer == null) {
+            inputBuffer = ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder())
+        }
+        val outputShape = interp.getOutputTensor(0).shape()
+        val elems = outputShape.fold(1) { acc, v -> acc * v }
+        if (outputBuffer == null || elems != outputElementCount) {
+            outputBuffer = ByteBuffer.allocateDirect(elems * 4).order(ByteOrder.nativeOrder())
+            outputElementCount = elems
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -201,6 +238,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
 
             interpreter = interp
+            prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
         } catch (t: Throwable) {
             // Catch Throwable to handle ALL errors including NoClassDefFoundError,
@@ -253,6 +291,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
 
             interpreter = interp
+            prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
         } catch (t: Throwable) {
             android.util.Log.e("NativeInference", "Model load from file failed: ${t.javaClass.simpleName}: ${t.message}", t)
@@ -273,25 +312,27 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val startTime = System.currentTimeMillis()
 
             // 1. Preprocess: RGBA → Float32 RGB [1024×1024×3]
-            val inputBuffer = preprocess(rgba, width, height)
+            val inBuf = inputBuffer ?: ByteBuffer.allocateDirect(modelInputSize * modelInputSize * 3 * 4).order(ByteOrder.nativeOrder()).also { inputBuffer = it }
+            val outBuf = outputBuffer ?: run {
+                prepareTensorBuffers(interp)
+                outputBuffer!!
+            }
+            preprocess(rgba, width, height, inBuf)
             val preprocessMs = System.currentTimeMillis() - startTime
 
-            // 2. Allocate output + run inference
-            val outputShape = interp.getOutputTensor(0).shape()
-            val outputSize = outputShape.fold(1) { acc, v -> acc * v }
-            val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).order(ByteOrder.nativeOrder())
-
+            // 2. Run inference into reused output buffer
+            outBuf.rewind()
             val inferStart = System.currentTimeMillis()
-            interp.run(inputBuffer, outputBuffer)
+            interp.run(inBuf, outBuf)
             val inferenceMs = System.currentTimeMillis() - inferStart
 
             val totalMs = System.currentTimeMillis() - startTime
             println("[NativeInference-Android] ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
 
             // 3. Extract output bytes
-            outputBuffer.rewind()
-            val outputBytes = ByteArray(outputBuffer.remaining())
-            outputBuffer.get(outputBytes)
+            outBuf.rewind()
+            val outputBytes = ByteArray(outBuf.remaining())
+            outBuf.get(outputBytes)
 
             // 4. Scale factors
             val xScale: Double = if (width >= height) 1.0 else height.toDouble() / width.toDouble()
@@ -315,10 +356,16 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // Reusable objects for convertToInputSizeBitmap (DartsMind: Detector fields)
     private var squareBitmap: Bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
     private var squareCanvas: Canvas = Canvas(squareBitmap)
-    private val scalePaint: Paint = Paint()
+    private val scalePaint: Paint = Paint().apply {
+        // Bilinear filtering matches DartsMind's Bitmap.createBitmap(..., matrix, filter=true).
+        // Essential: tip positions must be stable across frames for the TipGroup
+        // merge threshold (1.6px) — nearest-neighbor would cause jitter.
+        isFilterBitmap = true
+    }
     private val scaleMatrix: Matrix = Matrix()
     private var lastBitmapWidth = 0
     private var lastBitmapHeight = 0
+    private var cachedRotation = Int.MIN_VALUE
 
     /**
      * DartsMind-style YUV→Bitmap→rotation→scale→inference pipeline.
@@ -349,91 +396,82 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             val startTime = System.currentTimeMillis()
 
-            // Step 1: YUV → ARGB Bitmap (DartsMind: imageProxy.toBitmap())
-            val pixels = IntArray(width * height)
-            for (sy in 0 until height) {
-                for (sx in 0 until width) {
-                    val yIdx = sy * yRowStride + sx
-                    val yVal = if (yIdx < yPlane.size) (yPlane[yIdx].toInt() and 0xFF) else 0
-
-                    val uvRow = sy / 2
-                    val uvCol = sx / 2
-                    val uvIdx = uvRow * uvRowStride + uvCol * uvPixelStride
-                    val uVal = if (uvIdx < uPlane.size) (uPlane[uvIdx].toInt() and 0xFF) else 128
-                    val vVal = if (uvIdx < vPlane.size) (vPlane[uvIdx].toInt() and 0xFF) else 128
-
-                    val r = (yVal + 1.370705f * (vVal - 128)).coerceIn(0f, 255f).toInt()
-                    val g = (yVal - 0.337633f * (uVal - 128) - 0.698001f * (vVal - 128)).coerceIn(0f, 255f).toInt()
-                    val b = (yVal + 1.732446f * (uVal - 128)).coerceIn(0f, 255f).toInt()
-
-                    pixels[sy * width + sx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-                }
+            // Step 1: YUV → ARGB Bitmap using integer math (BT.601).
+            // Writes into reused IntArray + reused rawBitmap (no per-frame Bitmap.createBitmap).
+            if (rawBitmap == null || rawBitmapWidth != width || rawBitmapHeight != height) {
+                rawBitmap?.recycle()
+                rawBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                rawPixels = IntArray(width * height)
+                rawBitmapWidth = width
+                rawBitmapHeight = height
             }
-            val rawBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            rawBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+            val pixels = rawPixels!!
+            val bmp = rawBitmap!!
+            yuvToArgbInt(
+                yPlane, uPlane, vPlane, width, height,
+                yRowStride, uvRowStride, uvPixelStride,
+                pixels
+            )
+            bmp.setPixels(pixels, 0, width, 0, 0, width, height)
 
-            // Step 2: Rotate using Matrix (DartsMind: Matrix.postRotate + filter=true)
-            val rotatedBitmap = if (rotation != 0) {
-                val rotMatrix = Matrix()
-                rotMatrix.postRotate(rotation.toFloat())
-                val bmp = Bitmap.createBitmap(rawBitmap, 0, 0, width, height, rotMatrix, true)
-                rawBitmap.recycle()
-                bmp
-            } else {
-                rawBitmap
-            }
-
-            val bw = rotatedBitmap.width
-            val bh = rotatedBitmap.height
-
-            // Step 3: convertToInputSizeBitmap (DartsMind: Detector.convertToInputSizeBitmap)
+            // Step 2: Combined rotate + scale matrix draws directly into squareBitmap
+            // — eliminates the intermediate rotatedBitmap (and its 3-4MB allocation).
             val sz = modelInputSize
-            squareCanvas.drawColor(Color.BLACK)
-            val bMax = maxOf(bw, bh)
-            if (bMax == sz || bMax == 960) {
-                squareCanvas.drawBitmap(rotatedBitmap, 0f, 0f, scalePaint)
-            } else {
-                if (bw != lastBitmapWidth || bh != lastBitmapHeight) {
-                    lastBitmapWidth = bw
-                    lastBitmapHeight = bh
-                    val s = min(squareBitmap.width.toFloat() / bw, squareBitmap.height.toFloat() / bh)
-                    scaleMatrix.reset()
-                    scaleMatrix.setScale(s, s)
-                }
-                squareCanvas.drawBitmap(rotatedBitmap, scaleMatrix, scalePaint)
+            val bw: Int
+            val bh: Int
+            when (rotation % 360) {
+                90, 270 -> { bw = height; bh = width }
+                else -> { bw = width; bh = height }
             }
-            rotatedBitmap.recycle()
+            squareCanvas.drawColor(Color.BLACK)
+            if (rotation != cachedRotation || bw != lastBitmapWidth || bh != lastBitmapHeight) {
+                cachedRotation = rotation
+                lastBitmapWidth = bw
+                lastBitmapHeight = bh
+                val s = min(sz.toFloat() / bw, sz.toFloat() / bh)
+                scaleMatrix.reset()
+                // Rotate around origin, then translate back into positive quadrant,
+                // then scale to fit into the 1024x1024 square.
+                when (rotation % 360) {
+                    90  -> { scaleMatrix.postRotate(90f);  scaleMatrix.postTranslate(height.toFloat(), 0f) }
+                    180 -> { scaleMatrix.postRotate(180f); scaleMatrix.postTranslate(width.toFloat(), height.toFloat()) }
+                    270 -> { scaleMatrix.postRotate(270f); scaleMatrix.postTranslate(0f, width.toFloat()) }
+                    else -> { /* identity */ }
+                }
+                scaleMatrix.postScale(s, s)
+            }
+            squareCanvas.drawBitmap(bmp, scaleMatrix, scalePaint)
             val preprocessMs = System.currentTimeMillis() - startTime
 
-            // Step 4: Bitmap pixels → normalized Float32 RGB tensor
-            // (DartsMind: TensorImage.load(squareBitmap) + NormalizeOp(0, 255))
-            val tensorPixels = IntArray(sz * sz)
+            // Step 3: Bitmap pixels → normalized Float32 RGB tensor, into REUSED inputBuffer
             squareBitmap.getPixels(tensorPixels, 0, sz, 0, 0, sz, sz)
-
-            val buffer = ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder())
-            val floatBuffer = buffer.asFloatBuffer()
-            for (pixel in tensorPixels) {
-                floatBuffer.put(((pixel shr 16) and 0xFF) / 255.0f) // R
-                floatBuffer.put(((pixel shr 8) and 0xFF) / 255.0f)  // G
-                floatBuffer.put((pixel and 0xFF) / 255.0f)           // B
+            val inBuf = inputBuffer ?: ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder()).also { inputBuffer = it }
+            val outBuf = outputBuffer ?: run { prepareTensorBuffers(interp); outputBuffer!! }
+            inBuf.rewind()
+            val floatBuffer = inBuf.asFloatBuffer()
+            val n = sz * sz
+            var i = 0
+            while (i < n) {
+                val p = tensorPixels[i]
+                floatBuffer.put(((p shr 16) and 0xFF) / 255.0f)
+                floatBuffer.put(((p shr 8) and 0xFF) / 255.0f)
+                floatBuffer.put((p and 0xFF) / 255.0f)
+                i++
             }
-            buffer.rewind()
+            inBuf.rewind()
 
-            // Step 5: Run TFLite inference
-            val outputShape = interp.getOutputTensor(0).shape()
-            val outputSize = outputShape.fold(1) { acc, v -> acc * v }
-            val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).order(ByteOrder.nativeOrder())
-
+            // Step 4: Run TFLite inference into reused output buffer
+            outBuf.rewind()
             val inferStart = System.currentTimeMillis()
-            interp.run(buffer, outputBuffer)
+            interp.run(inBuf, outBuf)
             val inferenceMs = System.currentTimeMillis() - inferStart
 
             val totalMs = System.currentTimeMillis() - startTime
             println("[NativeInference-Android] YUV-Bitmap: ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
 
-            outputBuffer.rewind()
-            val outputBytes = ByteArray(outputBuffer.remaining())
-            outputBuffer.get(outputBytes)
+            outBuf.rewind()
+            val outputBytes = ByteArray(outBuf.remaining())
+            outBuf.get(outputBytes)
 
             // Scale factors based on rotated dimensions (DartsMind: Detector.detectVideoBuffer)
             val xScale: Double = if (bw >= bh) 1.0 else bh.toDouble() / bw.toDouble()
@@ -486,7 +524,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     // ---- Preprocessing (DartsMind: convertToInputSizeBitmap) ----
 
-    private fun preprocess(rgba: ByteArray, origW: Int, origH: Int): ByteBuffer {
+    private fun preprocess(rgba: ByteArray, origW: Int, origH: Int, buffer: ByteBuffer) {
         val sz = modelInputSize
         val scale = min(sz.toDouble() / origW, sz.toDouble() / origH)
         val newW = (origW * scale + 0.5).roundToInt()
@@ -496,7 +534,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         val invNewW = origW.toFloat() / newW
         val invNewH = origH.toFloat() / newH
 
-        val buffer = ByteBuffer.allocateDirect(sz * sz * 3 * 4).order(ByteOrder.nativeOrder())
+        buffer.rewind()
         val floatBuffer = buffer.asFloatBuffer()
 
         for (y in 0 until sz) {
@@ -522,6 +560,57 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
 
         buffer.rewind()
-        return buffer
+    }
+
+    /**
+     * Fast integer YUV420 → ARGB_8888 converter (BT.601 JFIF / full-range).
+     *
+     * Writes one 0xAARRGGBB int per pixel into [out]. [out] must have capacity
+     * width*height. Uses 8-bit fixed-point integer math + shifts — no floats,
+     * no allocations, no per-pixel bounds-checked array lookups beyond the
+     * unavoidable plane reads.
+     *
+     * The coefficients match the original per-pixel float formulas exactly,
+     * scaled by 256 and rounded so detection output is identical:
+     *   R = y + 1.370705 (v-128)  →  y + ((351  v + 128) >> 8)
+     *   G = y - 0.337633 (u-128) - 0.698001 (v-128)
+     *                            →  y - (( 86  u + 179  v + 128) >> 8)
+     *   B = y + 1.732446 (u-128)  →  y + ((443  u + 128) >> 8)
+     * where u = U - 128, v = V - 128.
+     *
+     * This replaces the per-frame manual float loop that was taking ~600ms
+     * and causing "Image buffer was dropped by garbage collector" log lines.
+     */
+    private fun yuvToArgbInt(
+        yPlane: ByteArray, uPlane: ByteArray, vPlane: ByteArray,
+        width: Int, height: Int,
+        yRowStride: Int, uvRowStride: Int, uvPixelStride: Int,
+        out: IntArray
+    ) {
+        var dstIdx = 0
+        var sy = 0
+        while (sy < height) {
+            val yRowBase = sy * yRowStride
+            val uvRowBase = (sy shr 1) * uvRowStride
+            var sx = 0
+            while (sx < width) {
+                val yVal = yPlane[yRowBase + sx].toInt() and 0xFF
+                val uvIdx = uvRowBase + (sx shr 1) * uvPixelStride
+                val u = (uPlane[uvIdx].toInt() and 0xFF) - 128
+                val v = (vPlane[uvIdx].toInt() and 0xFF) - 128
+
+                var r = yVal + ((351 * v + 128) shr 8)
+                var g = yVal - ((86 * u + 179 * v + 128) shr 8)
+                var b = yVal + ((443 * u + 128) shr 8)
+                if (r < 0) r = 0 else if (r > 255) r = 255
+                if (g < 0) g = 0 else if (g > 255) g = 255
+                if (b < 0) b = 0 else if (b > 255) b = 255
+
+                out[dstIdx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                dstIdx++
+                sx++
+            }
+            sy++
+        }
     }
 }

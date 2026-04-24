@@ -477,10 +477,13 @@ class CameraFrameService {
     if (frame == null || !Platform.isAndroid) return null;
 
     try {
+      // Pass plane bytes directly — MethodChannel serialization copies them once
+      // into a Kotlin ByteArray. The extra Uint8List.fromList() call used to
+      // copy them a second time (~1.4MB/frame at 720p) for no benefit.
       return (
-        yPlane: Uint8List.fromList(frame.planes[0].bytes),
-        uPlane: Uint8List.fromList(frame.planes[1].bytes),
-        vPlane: Uint8List.fromList(frame.planes[2].bytes),
+        yPlane: frame.planes[0].bytes,
+        uPlane: frame.planes[1].bytes,
+        vPlane: frame.planes[2].bytes,
         width: frame.width,
         height: frame.height,
         yRowStride: frame.planes[0].bytesPerRow,

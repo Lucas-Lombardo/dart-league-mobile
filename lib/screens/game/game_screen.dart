@@ -454,6 +454,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       opponentScore: game.opponentScore,
                       opponentName: widget.opponentUsername,
                       myName: auth.currentUser?.username ?? 'You',
+                      iAmPlayer2: game.iAmPlayer2,
                       dartsThrown: dartsThrown,
                       agoraEngine: agoraEngine,
                       localCameraPreview: cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
@@ -509,6 +510,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                               myName: auth.currentUser?.username ?? 'You',
                               opponentName: widget.opponentUsername,
                               isMyTurn: false,
+                              iAmPlayer2: game.iAmPlayer2,
                               myAverage: game.myAveragePerRound,
                               opponentAverage: game.opponentAveragePerRound,
                             ),

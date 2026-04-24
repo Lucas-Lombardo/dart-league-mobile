@@ -13,6 +13,9 @@ class TvScoreboard extends StatelessWidget {
   final int startingScore;
   final double? myAverage;
   final double? opponentAverage;
+  // When true, the current user is player 2 (second to throw) and should
+  // render on the right side. The opponent moves to the left.
+  final bool iAmPlayer2;
 
   const TvScoreboard({
     super.key,
@@ -24,12 +27,34 @@ class TvScoreboard extends StatelessWidget {
     this.startingScore = 501,
     this.myAverage,
     this.opponentAverage,
+    this.iAmPlayer2 = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final hint = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
     final opponentHint = (opponentScore >= 2 && opponentScore <= 170) ? checkoutHint(opponentScore) : null;
+
+    final mePanel = _PlayerScore(
+      name: myName,
+      score: myScore,
+      startingScore: startingScore,
+      isActive: isMyTurn,
+      color: AppTheme.primary,
+      hint: hint,
+      average: myAverage,
+      isMe: true,
+    );
+    final opponentPanel = _PlayerScore(
+      name: opponentName,
+      score: opponentScore,
+      startingScore: startingScore,
+      isActive: !isMyTurn,
+      color: AppTheme.error,
+      hint: opponentHint,
+      average: opponentAverage,
+      isMe: false,
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -53,18 +78,7 @@ class TvScoreboard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Left player (me)
-          Expanded(
-            child: _PlayerScore(
-              name: myName,
-              score: myScore,
-              startingScore: startingScore,
-              isActive: isMyTurn,
-              color: AppTheme.primary,
-              hint: hint,
-              average: myAverage,
-            ),
-          ),
+          Expanded(child: iAmPlayer2 ? opponentPanel : mePanel),
           // Center info
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -98,18 +112,7 @@ class TvScoreboard extends StatelessWidget {
               ],
             ),
           ),
-          // Right player (opponent)
-          Expanded(
-            child: _PlayerScore(
-              name: opponentName,
-              score: opponentScore,
-              startingScore: startingScore,
-              isActive: !isMyTurn,
-              color: AppTheme.error,
-              hint: opponentHint,
-              average: opponentAverage,
-            ),
-          ),
+          Expanded(child: iAmPlayer2 ? mePanel : opponentPanel),
         ],
       ),
     );
@@ -124,6 +127,7 @@ class _PlayerScore extends StatelessWidget {
   final Color color;
   final String? hint;
   final double? average;
+  final bool isMe;
 
   const _PlayerScore({
     required this.name,
@@ -133,6 +137,7 @@ class _PlayerScore extends StatelessWidget {
     required this.color,
     this.hint,
     this.average,
+    this.isMe = false,
   });
 
   @override
@@ -145,16 +150,25 @@ class _PlayerScore extends StatelessWidget {
         // Adaptive circle size: scale with screen width for visibility
         final circleSize = (screenWidth * 0.22).clamp(70.0, 110.0);
         final fontSize = circleSize * (score >= 100 ? 0.34 : 0.40);
+        final nameFontSize = (screenWidth * 0.032).clamp(11.0, 15.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // "YOU" pill above the current user's name for quick identification.
+            // Opacity reserves the same vertical space for the opponent panel
+            // so the two name rows stay vertically aligned.
+            Opacity(
+              opacity: isMe ? 1 : 0,
+              child: _YouBadge(fontSize: nameFontSize * 0.72, color: color),
+            ),
+            const SizedBox(height: 3),
             // Player name
             Text(
               name.toUpperCase(),
               style: TextStyle(
                 color: isActive ? Colors.white : AppTheme.textSecondary,
-                fontSize: (screenWidth * 0.032).clamp(11.0, 15.0),
+                fontSize: nameFontSize,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1,
               ),
@@ -222,6 +236,35 @@ class _PlayerScore extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _YouBadge extends StatelessWidget {
+  final double fontSize;
+  final Color color;
+
+  const _YouBadge({required this.fontSize, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
+      ),
+      child: Text(
+        'YOU',
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+          height: 1,
+        ),
+      ),
     );
   }
 }
