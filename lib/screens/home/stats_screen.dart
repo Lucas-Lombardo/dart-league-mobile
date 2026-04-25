@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
-import '../../services/user_service.dart';
 import '../../l10n/app_localizations.dart';
-import '../../utils/app_navigator.dart';
-import '../profile/match_history_screen.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/haptic_service.dart';
+import 'ranked_stats_tab.dart';
+import 'training_stats_tab.dart';
+
+enum StatsTab { ranked, training }
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -15,288 +15,107 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  bool _isLoading = true;
-  UserStats? _stats;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStats();
-  }
-
-  Future<void> _loadStats() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final authProvider = context.read<AuthProvider>();
-      final userId = authProvider.currentUser?.id;
-
-      if (userId != null) {
-        final stats = await UserService.getUserStats(userId);
-
-        if (!mounted) return;
-        setState(() {
-          _stats = stats;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
-    }
-  }
+  StatsTab _tab = StatsTab.ranked;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.primary,
-        ),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              style: const TextStyle(color: AppTheme.error),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadStats,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_stats == null) {
-      return const Center(
-        child: Text('No statistics available'),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadStats,
-      color: AppTheme.primary,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              l10n.performanceOverview,
-              style: AppTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 1.1,
-              children: [
-                _buildStatCard(
-                  l10n.winRate,
-                  '${_stats!.winRate.toStringAsFixed(1)}%',
-                  Icons.trending_up,
-                  AppTheme.success,
-                ),
-                _buildStatCard(
-                  l10n.totalMatches,
-                  _stats!.totalMatches.toString(),
-                  Icons.sports_esports,
-                  AppTheme.primary,
-                ),
-                _buildStatCard(
-                  l10n.avgScore,
-                  _stats!.averageScore.toStringAsFixed(1),
-                  Icons.calculate,
-                  AppTheme.accent,
-                ),
-                _buildStatCard(
-                  l10n.count180s,
-                  _stats!.count180s.toString(),
-                  Icons.emoji_events,
-                  const Color(0xFFFFD700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          l10n.wins.toUpperCase(),
-                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _stats!.wins.toString(),
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.success,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: AppTheme.surfaceLight,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          l10n.losses.toUpperCase(),
-                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _stats!.losses.toString(),
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.error,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: AppTheme.surfaceLight,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          l10n.streak,
-                          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _stats!.currentStreak.toString(),
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: _stats!.currentStreak > 0 ? const Color(0xFFFF6B35) : AppTheme.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                AppNavigator.toScreen(context, const MatchHistoryScreen());
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.surfaceLight,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-              ),
-              icon: const Icon(Icons.history_rounded),
-              label: Text(l10n.viewFullMatchHistory),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Row(
             children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              Expanded(
+                child: _TabButton(
+                  label: l10n.rankedStatsTab,
+                  icon: Icons.military_tech_outlined,
+                  selected: _tab == StatsTab.ranked,
+                  onTap: () => _selectTab(StatsTab.ranked),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: AppTheme.labelLarge.copyWith(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _TabButton(
+                  label: l10n.trainingStatsTab,
+                  icon: Icons.fitness_center,
+                  selected: _tab == StatsTab.training,
+                  onTap: () => _selectTab(StatsTab.training),
                 ),
               ),
             ],
           ),
-        ],
+        ),
+        Expanded(
+          child: _tab == StatsTab.ranked
+              ? const RankedStatsTab()
+              : const TrainingStatsTab(),
+        ),
+      ],
+    );
+  }
+
+  void _selectTab(StatsTab tab) {
+    if (tab == _tab) return;
+    HapticService.lightImpact();
+    setState(() => _tab = tab);
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TabButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.primary.withValues(alpha: 0.18)
+                : AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.primary
+                  : AppTheme.surfaceLight.withValues(alpha: 0.5),
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? AppTheme.primary : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppTheme.primary : AppTheme.textSecondary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1147,6 +1147,231 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get yourTournamentJourney => 'Your Journey';
 
+  // Trainings
+  @override
+  String get rankedStatsTab => 'Ranked';
+
+  @override
+  String get trainingStatsTab => 'Training';
+
+  @override
+  String get trainingStatsHeader => 'Training performance';
+
+  @override
+  String get trainingStartNewSession => 'Start a training';
+
+  @override
+  String get trainingNoSessionsYet => 'No training sessions yet';
+
+  @override
+  String get trainingCompleteSessionToTrack =>
+      'Finish a training to see your progress here.';
+
+  @override
+  String get trainingSelectTitle => 'Trainings';
+
+  @override
+  String get trainingAroundTheClock => 'Around the Clock';
+
+  @override
+  String get trainingAroundTheClockDescription =>
+      'Hit 1 through 20 in order, then bullseye. Single, double or triple mode.';
+
+  @override
+  String get trainingAroundTheClockDouble => 'Around the Clock (Doubles)';
+
+  @override
+  String get trainingAroundTheClockTriple => 'Around the Clock (Triples)';
+
+  @override
+  String get trainingAtcPickModeTitle => 'Pick a mode';
+
+  @override
+  String get trainingAtcSingle => 'Single';
+
+  @override
+  String get trainingAtcDouble => 'Double';
+
+  @override
+  String get trainingAtcTriple => 'Triple';
+
+  @override
+  String get trainingAtcSingleHint => 'Any hit on the target counts.';
+
+  @override
+  String get trainingAtcDoubleHint =>
+      'Only doubles count. Bull round needs the double bull.';
+
+  @override
+  String get trainingAtcTripleHint =>
+      'Only triples count. Bull round needs the double bull.';
+
+  @override
+  String get trainingBobs27 => "Bob's 27";
+
+  @override
+  String get trainingBobs27Description =>
+      'Start at 27. Three darts at each double from D1 to bull. Hit = +2N, miss = -2N.';
+
+  @override
+  String get trainingHighScore => 'High Score';
+
+  @override
+  String get trainingHighScoreDescription =>
+      '3 rounds of 3 darts. Score as many points as possible.';
+
+  @override
+  String get trainingCheckout50 => 'Checkout 50';
+
+  @override
+  String get trainingCheckout50Description =>
+      'Start at 50. 3 darts, doubles only, finish on zero. 10 attempts.';
+
+  @override
+  String get trainingCheckout81_121 => 'Checkout 81 / 121';
+
+  @override
+  String get trainingCheckout81_121Description =>
+      'Finish from 81 or 121 in 9 darts. Last dart must be a double.';
+
+  @override
+  String get trainingCheckoutPickScore => 'Starting score';
+
+  @override
+  String get trainingCheckout81Hint => 'Shorter finishes — drill the doubles.';
+
+  @override
+  String get trainingCheckout121Hint =>
+      'Full 9-dart checkout routine — tough.';
+
+  @override
+  String trainingCheckoutFromN(int startScore) => 'Checkout $startScore';
+
+  @override
+  String get trainingCheckouts => 'Checkouts';
+
+  @override
+  String trainingCheckoutsOutOf(int hits, int total) =>
+      '$hits of $total attempts';
+
+  @override
+  String trainingAttemptProgress(int current, int total) =>
+      'Attempt $current of $total';
+
+  @override
+  String get trainingRemaining => 'Remaining';
+
+  @override
+  String get trainingBusted => 'Busted';
+
+  @override
+  String get trainingBustBelowZero => 'Score dropped below zero.';
+
+  @override
+  String get trainingBustNotDouble =>
+      'Finished on zero without hitting a double.';
+
+  @override
+  String get trainingBustLeftOne => 'Left 1 remaining — no valid finish.';
+
+  @override
+  String get trainingBustOutOfDarts =>
+      'Ran out of darts before finishing.';
+
+  @override
+  String get trainingPlayCardTitle => 'Training';
+
+  @override
+  String get trainingPlayCardSubtitle =>
+      'Solo drills — around the clock, checkouts, Bob\'s 27 & more';
+
+  @override
+  String get trainingAiUnavailable =>
+      'AI scoring is not available on this device.';
+
+  @override
+  String get trainingCameraInfo => 'Camera stays on during the training';
+
+  @override
+  String get trainingStartButton => 'Start training';
+
+  @override
+  String get trainingConfirmVisit => 'Confirm visit';
+
+  @override
+  String get trainingEndRoundEarly => 'End round early';
+
+  @override
+  String get trainingComplete => 'Training complete';
+
+  @override
+  String get trainingIncomplete => 'Session ended early';
+
+  @override
+  String get trainingDartsThrown => 'Darts thrown';
+
+  @override
+  String get trainingDartsToFinish => 'Darts to finish';
+
+  @override
+  String get trainingFinalScore => 'Final score';
+
+  @override
+  String get trainingTotalScore => 'Total score';
+
+  @override
+  String get trainingScore => 'Score';
+
+  @override
+  String get trainingRoundLabel => 'Round';
+
+  @override
+  String trainingRoundProgress(int current, int total) =>
+      'Round $current of $total';
+
+  @override
+  String trainingHighestRound(int score) => 'Best round: $score';
+
+  @override
+  String get trainingNextTarget => 'Next target';
+
+  @override
+  String get trainingBullLabel => 'BULL';
+
+  @override
+  String get trainingBustedOut => 'Busted out — score hit zero.';
+
+  @override
+  String get trainingResultSaved => 'Result saved';
+
+  @override
+  String get trainingPlayAgain => 'Play again';
+
+  @override
+  String get trainingQuitTitle => 'Quit training?';
+
+  @override
+  String get trainingQuitMessage =>
+      'Progress in this session will be lost. Your result will not be recorded.';
+
+  @override
+  String get trainingBest => 'Best';
+
+  @override
+  String get trainingBestLow => 'Best';
+
+  @override
+  String get trainingAverage => 'Avg';
+
+  @override
+  String get trainingLast => 'Last';
+
+  @override
+  String get trainingAttempts => 'Runs';
+
+  @override
+  String get trainingNotYetPlayed => 'Not played yet.';
+
   // Content Creator
   @override
   String get contentCreator => 'Content Creator';

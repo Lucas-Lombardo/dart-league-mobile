@@ -15,6 +15,7 @@ import '../matchmaking/camera_setup_screen.dart';
 import '../placement/placement_hub_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
+import '../training/training_select_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   final ValueNotifier<int>? refreshNotifier;
@@ -889,6 +890,72 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ),
               ),
             ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: () {
+              HapticService.mediumImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TrainingSelectScreen(),
+                ),
+              );
+            },
+            child: Container(
+              height: 96,
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppTheme.accent.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.fitness_center,
+                      color: AppTheme.accent,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          l10n.trainingPlayCardTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          l10n.trainingPlayCardSubtitle,
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+                  const SizedBox(width: 12),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -1147,6 +1147,235 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get yourTournamentJourney => 'Votre Parcours';
 
+  // Trainings
+  @override
+  String get rankedStatsTab => 'Classé';
+
+  @override
+  String get trainingStatsTab => 'Entraînement';
+
+  @override
+  String get trainingStatsHeader => 'Performances en entraînement';
+
+  @override
+  String get trainingStartNewSession => 'Lancer un entraînement';
+
+  @override
+  String get trainingNoSessionsYet => 'Aucune séance pour l\'instant';
+
+  @override
+  String get trainingCompleteSessionToTrack =>
+      'Terminez un entraînement pour voir vos progrès ici.';
+
+  @override
+  String get trainingSelectTitle => 'Entraînements';
+
+  @override
+  String get trainingAroundTheClock => 'Around the Clock';
+
+  @override
+  String get trainingAroundTheClockDescription =>
+      'Touchez 1 à 20 dans l\'ordre puis le centre. Mode simple, double ou triple.';
+
+  @override
+  String get trainingAroundTheClockDouble => 'Around the Clock (Doubles)';
+
+  @override
+  String get trainingAroundTheClockTriple => 'Around the Clock (Triples)';
+
+  @override
+  String get trainingAtcPickModeTitle => 'Choisir un mode';
+
+  @override
+  String get trainingAtcSingle => 'Simple';
+
+  @override
+  String get trainingAtcDouble => 'Double';
+
+  @override
+  String get trainingAtcTriple => 'Triple';
+
+  @override
+  String get trainingAtcSingleHint =>
+      'N\'importe quelle touche sur la cible compte.';
+
+  @override
+  String get trainingAtcDoubleHint =>
+      'Seuls les doubles comptent. Le bull exige le double bull.';
+
+  @override
+  String get trainingAtcTripleHint =>
+      'Seuls les triples comptent. Le bull exige le double bull.';
+
+  @override
+  String get trainingBobs27 => 'Bob\'s 27';
+
+  @override
+  String get trainingBobs27Description =>
+      'Partez de 27. 3 fléchettes sur chaque double de D1 à bull. Touche = +2N, raté = -2N.';
+
+  @override
+  String get trainingHighScore => 'High Score';
+
+  @override
+  String get trainingHighScoreDescription =>
+      '3 volées de 3 fléchettes. Marquez le plus de points possible.';
+
+  @override
+  String get trainingCheckout50 => 'Checkout 50';
+
+  @override
+  String get trainingCheckout50Description =>
+      'Départ à 50. 3 fléchettes, uniquement doubles, finir exact. 10 essais.';
+
+  @override
+  String get trainingCheckout81_121 => 'Checkout 81 / 121';
+
+  @override
+  String get trainingCheckout81_121Description =>
+      'Finir à partir de 81 ou 121 en 9 fléchettes. Dernière fléchette sur un double.';
+
+  @override
+  String get trainingCheckoutPickScore => 'Score de départ';
+
+  @override
+  String get trainingCheckout81Hint =>
+      'Finitions courtes — travaillez les doubles.';
+
+  @override
+  String get trainingCheckout121Hint =>
+      'Routine complète sur 9 fléchettes — difficile.';
+
+  @override
+  String trainingCheckoutFromN(int startScore) => 'Checkout $startScore';
+
+  @override
+  String get trainingCheckouts => 'Checkouts';
+
+  @override
+  String trainingCheckoutsOutOf(int hits, int total) =>
+      '$hits sur $total essais';
+
+  @override
+  String trainingAttemptProgress(int current, int total) =>
+      'Essai $current sur $total';
+
+  @override
+  String get trainingRemaining => 'Reste';
+
+  @override
+  String get trainingBusted => 'Raté';
+
+  @override
+  String get trainingBustBelowZero => 'Le score est passé sous zéro.';
+
+  @override
+  String get trainingBustNotDouble =>
+      'Terminé à zéro sans avoir touché un double.';
+
+  @override
+  String get trainingBustLeftOne =>
+      'Il reste 1 — aucune finition possible.';
+
+  @override
+  String get trainingBustOutOfDarts =>
+      'Fléchettes épuisées avant la finition.';
+
+  @override
+  String get trainingPlayCardTitle => 'Entraînement';
+
+  @override
+  String get trainingPlayCardSubtitle =>
+      'Exercices en solo — around the clock, checkouts, Bob\'s 27 et plus';
+
+  @override
+  String get trainingAiUnavailable =>
+      'Le scoring IA n\'est pas disponible sur cet appareil.';
+
+  @override
+  String get trainingCameraInfo =>
+      'La caméra reste active pendant l\'entraînement';
+
+  @override
+  String get trainingStartButton => 'Lancer l\'entraînement';
+
+  @override
+  String get trainingConfirmVisit => 'Valider la volée';
+
+  @override
+  String get trainingEndRoundEarly => 'Terminer la volée';
+
+  @override
+  String get trainingComplete => 'Entraînement terminé';
+
+  @override
+  String get trainingIncomplete => 'Séance interrompue';
+
+  @override
+  String get trainingDartsThrown => 'Fléchettes lancées';
+
+  @override
+  String get trainingDartsToFinish => 'Fléchettes pour finir';
+
+  @override
+  String get trainingFinalScore => 'Score final';
+
+  @override
+  String get trainingTotalScore => 'Score total';
+
+  @override
+  String get trainingScore => 'Score';
+
+  @override
+  String get trainingRoundLabel => 'Volée';
+
+  @override
+  String trainingRoundProgress(int current, int total) =>
+      'Volée $current sur $total';
+
+  @override
+  String trainingHighestRound(int score) => 'Meilleure volée : $score';
+
+  @override
+  String get trainingNextTarget => 'Prochaine cible';
+
+  @override
+  String get trainingBullLabel => 'BULL';
+
+  @override
+  String get trainingBustedOut => 'Éliminé — le score est tombé à zéro.';
+
+  @override
+  String get trainingResultSaved => 'Résultat enregistré';
+
+  @override
+  String get trainingPlayAgain => 'Rejouer';
+
+  @override
+  String get trainingQuitTitle => 'Quitter l\'entraînement ?';
+
+  @override
+  String get trainingQuitMessage =>
+      'La progression de cette séance sera perdue et le résultat ne sera pas enregistré.';
+
+  @override
+  String get trainingBest => 'Meilleur';
+
+  @override
+  String get trainingBestLow => 'Meilleur';
+
+  @override
+  String get trainingAverage => 'Moy.';
+
+  @override
+  String get trainingLast => 'Dernier';
+
+  @override
+  String get trainingAttempts => 'Essais';
+
+  @override
+  String get trainingNotYetPlayed => 'Jamais joué.';
+
   // Content Creator
   @override
   String get contentCreator => 'Créateur de contenu';
