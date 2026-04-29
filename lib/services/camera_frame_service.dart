@@ -34,10 +34,13 @@ class CameraFrameService {
   CameraController? get controller => _controller;
   bool get isInitialized => _controller?.value.isInitialized ?? false;
 
-  /// Initialize the camera and start pushing frames to Agora.
+  /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
+  /// to the given custom video track. Pass nulls for solo modes (training,
+  /// placement) where the local camera preview is shown directly via the
+  /// exposed [controller] and only AI scoring needs the frame stream.
   Future<void> initialize({
-    required RtcEngine agoraEngine,
-    required int videoTrackId,
+    RtcEngine? agoraEngine,
+    int? videoTrackId,
   }) async {
     _agoraEngine = agoraEngine;
     _videoTrackId = videoTrackId;
@@ -103,6 +106,7 @@ class CameraFrameService {
   /// Push a camera frame to Agora as an external video frame.
   /// Mirrors DartsMind: uses imageProxy.getImageInfo().getRotationDegrees()
   /// and proper YUV format detection (I420 vs NV21).
+  /// No-op when running in solo mode without Agora.
   void _pushFrameToAgora(CameraImage image) {
     if (_agoraEngine == null || _videoTrackId == null) return;
 

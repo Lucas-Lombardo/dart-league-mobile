@@ -10,13 +10,13 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/game_provider.dart' show ScoreMultiplier;
 import '../../services/auto_scoring_service.dart';
+import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/score_converter.dart';
-import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/dartboard_edit_modal.dart';
 import 'logic/training_strategy.dart';
@@ -47,7 +47,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   TrainingResult? _finalResult;
 
   // Camera + AI.
-  CameraController? _camera;
+  CameraFrameService? _cameraService;
   AutoScoringService? _ai;
   bool _aiLoading = true;
   bool _aiManuallyDisabled = false;
@@ -72,8 +72,8 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     _ai?.stopCapture();
     _ai?.dispose();
     _ai = null;
-    _camera?.dispose();
-    _camera = null;
+    _cameraService?.dispose();
+    _cameraService = null;
     WakelockPlus.disable();
     super.dispose();
   }
@@ -108,8 +108,16 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         return;
       }
 
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      final cameraService = CameraFrameService();
+      // Solo mode: no Agora — the service runs the camera + image stream and
+      // caches the latest frame for AI scoring without pushing video anywhere.
+      await cameraService.initialize(agoraEngine: null, videoTrackId: null);
+      if (!mounted) {
+        await cameraService.dispose();
+        return;
+      }
+      if (!cameraService.isInitialized) {
+        await cameraService.dispose();
         if (!mounted) return;
         setState(() {
           _aiLoading = false;
@@ -117,21 +125,14 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         });
         return;
       }
-      final back = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-      _camera = CameraController(back, ResolutionPreset.high,
-          enableAudio: false);
-      await _camera!.initialize();
-      if (!mounted) return;
+      _cameraService = cameraService;
 
       try {
-        final minZoom = await _camera!.getMinZoomLevel();
-        final maxZoom = await _camera!.getMaxZoomLevel();
+        final minZoom = await cameraService.getMinZoomLevel();
+        final maxZoom = await cameraService.getMaxZoomLevel();
         final savedZoom = await StorageService.getCameraZoom();
         final clampedZoom = savedZoom.clamp(minZoom, maxZoom);
-        await _camera!.setZoomLevel(clampedZoom);
+        await cameraService.setZoomLevel(clampedZoom);
         if (!mounted) return;
         setState(() {
           _cameraMinZoom = minZoom;
@@ -153,27 +154,18 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     }
   }
 
-  Future<String?> _captureFrame() async {
-    if (_camera == null || !_camera!.value.isInitialized) return null;
-    try {
-      return await silentCapture(_camera!);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _cleanupFile(String path) async {
-    try {
-      await File(path).delete();
-    } catch (_) {}
-  }
-
   void _maybeStartCapture() {
     if (_ai == null || !_ai!.modelLoaded) return;
+    if (_cameraService == null) return;
     if (_aiManuallyDisabled || _aiPausedForEdit || _finished) return;
+    final camService = _cameraService!;
     _ai!.startCapture(
-      captureFrame: _captureFrame,
-      cleanupFile: _cleanupFile,
+      captureFrame: () => camService.captureFrame(),
+      captureRgba: () => camService.captureRgba(),
+      captureYuv: () => camService.captureYuvPlanes(),
+      cleanupFile: (path) async {
+        try { await File(path).delete(); } catch (_) {}
+      },
       onDartDetected: _onDartDetected,
       onAutoConfirm: _onAutoConfirm,
     );
@@ -245,19 +237,19 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   }
 
   Future<void> _zoomIn() async {
-    if (_camera == null) return;
+    if (_cameraService == null) return;
     final next = (_cameraZoom + 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
     try {
-      await _camera!.setZoomLevel(next);
+      await _cameraService!.setZoomLevel(next);
       if (mounted) setState(() => _cameraZoom = next);
     } catch (_) {}
   }
 
   Future<void> _zoomOut() async {
-    if (_camera == null) return;
+    if (_cameraService == null) return;
     final next = (_cameraZoom - 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
     try {
-      await _camera!.setZoomLevel(next);
+      await _cameraService!.setZoomLevel(next);
       if (mounted) setState(() => _cameraZoom = next);
     } catch (_) {}
   }
@@ -464,7 +456,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         Expanded(
           flex: 5,
           child: _CameraPanel(
-            camera: _camera,
+            camera: _cameraService?.controller,
             zoom: _cameraZoom,
             minZoom: _cameraMinZoom,
             maxZoom: _cameraMaxZoom,
