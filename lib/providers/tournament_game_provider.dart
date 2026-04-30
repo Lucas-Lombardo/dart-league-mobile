@@ -245,9 +245,15 @@ class TournamentGameProvider with ChangeNotifier {
     if (serverPlayer1Id != null) {
       _player1Id = serverPlayer1Id;
     } else {
-      // Fallback for first leg only — if server doesn't send player1Id,
-      // use myUserId as convention. Never overwrite on subsequent legs.
-      _player1Id ??= _myUserId;
+      // Why: the previous fallback (`_player1Id ??= _myUserId`) caused both
+      // clients to self-identify as player1, which made score mapping disagree
+      // between devices and surfaced as reversed scores in the scoreboard.
+      // currentPlayerId is the same value on both devices, so deriving from it
+      // keeps them in sync. Only valid for leg 1 (where the first thrower is
+      // player1); subsequent legs already have _player1Id set, so the ??= is a
+      // no-op. Server MUST send player1Id; this fallback is just defensive.
+      debugPrint('TOURNAMENT WARNING: game_started missing player1Id; falling back to currentPlayerId');
+      _player1Id ??= _currentPlayerId;
     }
     debugPrint('TOURNAMENT: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId, firstThrowerId=$_firstThrowerId');
 

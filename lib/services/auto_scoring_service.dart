@@ -19,17 +19,15 @@ import 'native_inference.dart';
 // d9 = 340 / (0.8 * bufferW) before mergeTips runs, so 1 dartboard unit
 // equals 0.8 / 340 ≈ 0.00235 of the normalised image side.
 //
-// Our tracker keeps tips in normalised image [0, 1] coords (we don't apply
-// the dartboard remap before mergeTips), so the threshold has to be scaled
-// into the same space.  An earlier port used `1.6 / 1024.0` ≈ 0.00156, which
-// reads as "1.6 image pixels" — the wrong unit.  At the dart detector's
-// natural noise floor (~0.003 between consecutive frames), that threshold
-// rejects same-dart matches roughly half the time, spawning duplicate
-// TipGroups that eventually become a second ShootGroup and get assigned to
-// the next free slot ("T1, S12, S12" duplication).
-const double _tipMergeThreshold = 1.6;
-const double _tipMergeThresholdNorm =
-    _tipMergeThreshold * 0.8 / 340.0; // ≈ 0.003765 in [0, 1] image coords
+// We keep tips in normalised image [0, 1] coords (no perspective remap before
+// mergeTips), so the threshold sits in the same space.  The detector's
+// per-dart noise between consecutive frames is ~0.003, and on some Android
+// devices it spikes to ~0.004 — when the threshold sits at the noise floor,
+// same-dart matches are rejected and we spawn duplicate TipGroups that turn
+// into a second ShootGroup and land in the next slot ("S12, S12" duplication).
+// We use a larger margin (~2× the noise floor) to absorb that variance while
+// still staying below the per-frame NMS distance for adjacent real darts.
+const double _tipMergeThresholdNorm = 0.006; // image-coord space, empirically tuned
 const int _maxTipHistory = 10;
 const double _minPixelDiff = 0.445;
 const double _maxPixelDiff = 8.0;
@@ -616,10 +614,15 @@ class AutoScoringService extends ChangeNotifier {
           best = (_tipGroups[g].id, i, dist);
         }
       }
-      // DartsMind tipMergeThreshold = 1.6 in dartboard 340-unit space; see the
-      // _tipMergeThresholdNorm definition for the conversion to image coords.
       if (best != null && best.$3 <= _tipMergeThresholdNorm) {
         matched.add(best);
+      } else if (best != null && best.$3 <= _tipMergeThresholdNorm * 2) {
+        // Near-miss: a tip just outside the merge zone usually means detector
+        // noise drifted further than expected. Log so we can tune the
+        // threshold if the duplicate-dart bug resurfaces.
+        debugPrint(
+            '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(5)} '
+            '(threshold=${_tipMergeThresholdNorm.toStringAsFixed(5)}) — new TipGroup will be created');
       }
     }
 

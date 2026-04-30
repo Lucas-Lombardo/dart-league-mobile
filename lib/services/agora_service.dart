@@ -40,11 +40,13 @@ class AgoraService {
       // control the same volume stream used by the app.
       await _engine!.setDefaultAudioRouteToSpeakerphone(true);
 
-      // Set video encoder configuration (960x720 like DartsMind for 2 players)
-      // DartsMind uses ORIENTATION_MODE_ADAPTIVE (not FIXED_PORTRAIT)
+      // Adaptive orientation: the encoder uses each frame's own rotation
+      // metadata instead of forcing a portrait rotation pass. fixedPortrait
+      // was stacking with the iOS SDK's per-frame rotation handling and
+      // making Android receivers see the iPhone stream rotated 90°.
       await _engine!.setVideoEncoderConfiguration(
         const VideoEncoderConfiguration(
-          dimensions: VideoDimensions(width: 960, height: 720),
+          dimensions: VideoDimensions(width: 720, height: 960),
           frameRate: 15,
           bitrate: 0,
           mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,

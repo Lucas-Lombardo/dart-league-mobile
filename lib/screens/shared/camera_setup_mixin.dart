@@ -300,7 +300,10 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         }
         final spread =
             (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
-        if (spread < 0.50) {
+        // Match the in-game scorer's tolerance (auto_scoring_service._updateZoomHint).
+        // Setup used to demand >= 0.50 spread, which forced users to zoom in
+        // past what the AI actually needs to score reliably (0.35).
+        if (spread < 0.35) {
           hint = l10n.zoomInBoardTooFar;
           detected = false;
         } else if (spread > 0.85) {

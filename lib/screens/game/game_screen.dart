@@ -458,7 +458,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       dartsThrown: dartsThrown,
                       agoraEngine: agoraEngine,
                       localCameraPreview: cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
-                          ? CameraPreview(cameraFrameService!.controller!)
+                          ? SizedBox.expand(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                child: SizedBox(
+                                  width: cameraFrameService!.controller!.value.previewSize!.height,
+                                  height: cameraFrameService!.controller!.value.previewSize!.width,
+                                  child: CameraPreview(cameraFrameService!.controller!),
+                                ),
+                              ),
+                            )
                           : null,
                       remoteUid: game.remoteUid,
                       isAudioMuted: isAudioMuted,

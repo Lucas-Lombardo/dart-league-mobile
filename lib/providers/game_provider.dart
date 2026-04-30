@@ -244,15 +244,20 @@ class GameProvider with ChangeNotifier {
 
     // Use server-provided player1Id for correct score mapping.
     // player1Id is NOT necessarily whoever goes first — the server assigns
-    // it based on join order and may alternate who starts between games.
+    // it based on join order and may alternate who starts between tournament legs.
     final serverPlayer1Id = data['player1Id'] as String?;
     if (serverPlayer1Id != null) {
       _player1Id = serverPlayer1Id;
     } else {
-      // Fallback: if server doesn't send player1Id, use the matchmaking-
-      // established convention where the first user passed to initGame is player1.
-      // _myUserId is always set before game_started fires (via initGame in match_found).
-      _player1Id ??= _myUserId;
+      // Why: the previous fallback (`_player1Id ??= _myUserId`) caused both
+      // clients to self-identify as player1, which made score mapping disagree
+      // between devices and surfaced as reversed scores in the scoreboard.
+      // currentPlayerId is the same value on both devices, so deriving from it
+      // keeps them in sync. It only matches player1Id for the first leg of a
+      // match — in alternating tournament legs this can still be wrong, so the
+      // server MUST send player1Id; this fallback is just defensive.
+      debugPrint('WARNING: game_started missing player1Id; falling back to currentPlayerId');
+      _player1Id ??= _currentPlayerId;
     }
     debugPrint('DEBUG: game_started - player1Id=$_player1Id, currentPlayerId=$_currentPlayerId, firstThrowerId=$_firstThrowerId');
 
