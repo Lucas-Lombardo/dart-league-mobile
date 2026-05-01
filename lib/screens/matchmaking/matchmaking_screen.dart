@@ -355,6 +355,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   Widget build(BuildContext context) {
     final matchmaking = context.watch<MatchmakingProvider>();
     final user = context.watch<AuthProvider>().currentUser;
+    final dailyLimitReached =
+        matchmaking.errorMessage?.contains('DAILY_MATCH_LIMIT_REACHED') ?? false;
 
     return PopScope(
       canPop: true,
@@ -385,7 +387,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
+              child: dailyLimitReached
+                  ? _buildDailyLimitErrorCard(context)
+                  : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
@@ -638,37 +642,34 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   ),
                   if (matchmaking.errorMessage != null) ...[
                     const SizedBox(height: 24),
-                    if (matchmaking.errorMessage!.contains('DAILY_MATCH_LIMIT_REACHED'))
-                      _buildDailyLimitErrorCard(context)
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.error,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: AppTheme.error,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                matchmaking.errorMessage!,
-                                style: const TextStyle(
-                                  color: AppTheme.error,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ],
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.error,
                         ),
                       ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: AppTheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              matchmaking.errorMessage!,
+                              style: const TextStyle(
+                                color: AppTheme.error,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ],
               ),
