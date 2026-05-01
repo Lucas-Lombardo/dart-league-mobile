@@ -20,14 +20,24 @@ import 'native_inference.dart';
 // equals 0.8 / 340 ≈ 0.00235 of the normalised image side.
 //
 // We keep tips in normalised image [0, 1] coords (no perspective remap before
-// mergeTips), so the threshold sits in the same space.  The detector's
-// per-dart noise between consecutive frames is ~0.003, and on some Android
-// devices it spikes to ~0.004 — when the threshold sits at the noise floor,
-// same-dart matches are rejected and we spawn duplicate TipGroups that turn
-// into a second ShootGroup and land in the next slot ("S12, S12" duplication).
-// We use a larger margin (~2× the noise floor) to absorb that variance while
-// still staying below the per-frame NMS distance for adjacent real darts.
-const double _tipMergeThresholdNorm = 0.006; // image-coord space, empirically tuned
+// mergeTips), so the threshold sits in the same space.  Trade-off:
+//
+//   • Detector NMS minimum (dart_detection_service.dart _dartNmsMinDist=0.004)
+//     prevents two same-frame detections within 0.004 of each other, so the
+//     minimum legitimate spacing between two real darts is ≈0.004.
+//   • Per-dart position noise between consecutive frames is ~0.003, spiking
+//     to ~0.004 on some Android devices. A threshold at the noise floor
+//     (DartsMind's original 0.00376) causes same-dart matches to be rejected
+//     and spawns duplicate TipGroups → "S12, S12" duplication.
+//   • A threshold ≥0.006 (~2× noise floor) reliably absorbs noise but also
+//     merges two physical darts that land 0.004–0.006 apart (e.g., a tight
+//     triple-20 cluster), so the second dart never registers.
+//
+// 0.005 sits in the middle — above typical noise + most Android spikes, but
+// below the spacing of two real darts ≥2 dartboard units apart (≈0.0047).
+// Tighter than 0.005 starts to bring the duplicate-dart bug back; looser
+// than 0.005 starts to drop the second dart in tight clusters.
+const double _tipMergeThresholdNorm = 0.005; // image-coord space, empirically tuned
 const int _maxTipHistory = 10;
 const double _minPixelDiff = 0.445;
 const double _maxPixelDiff = 8.0;

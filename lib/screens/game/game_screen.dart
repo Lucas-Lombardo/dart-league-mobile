@@ -528,7 +528,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                             flex: 55,
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                              child: buildOpponentTurnVideoLayout(game, channelId: widget.agoraChannelName ?? ''),
+                              child: buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? widget.agoraChannelName ?? ''),
                             ),
                           ),
                           Expanded(

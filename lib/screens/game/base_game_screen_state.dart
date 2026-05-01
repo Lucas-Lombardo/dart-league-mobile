@@ -66,6 +66,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool winDialogShowing = false;
   bool bustDialogShowing = false;
   bool forfeitDialogShowing = false;
+  // Why: iOS fires inactive → resumed for sub-second blips (screenshot,
+  // notification, control center). Reconnecting Agora on every blip resets
+  // the mic to muted (since joinChannel defaults to publishMicrophoneTrack:
+  // false). Track whether we actually backgrounded so we only re-sync after a
+  // real paused state.
+  bool _wasPausedSinceLastResume = false;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
   @override
@@ -105,11 +111,23 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused) {
+      cameraFrameService?.pause();
+      _wasPausedSinceLastResume = true;
+    } else if (state == AppLifecycleState.inactive) {
+      // Brief interruption (screenshot, notification banner, control center).
+      // Pause the camera but DO NOT mark as backgrounded — a resumed event
+      // immediately after an inactive-only blip should not trigger a full
+      // Agora reconnect, which would reset the mic to muted.
       cameraFrameService?.pause();
     } else if (state == AppLifecycleState.resumed && mounted) {
       cameraFrameService?.resume();
-      // App came back from background (e.g. phone call) — re-sync everything
+      if (!_wasPausedSinceLastResume) {
+        // Came back from a brief inactive blip — no socket/Agora work needed.
+        return;
+      }
+      _wasPausedSinceLastResume = false;
+      // App actually backgrounded — re-sync everything.
       SocketService.ensureConnected().then((_) {
         if (!mounted) return;
         final game = readGame();
@@ -331,6 +349,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (mounted) setState(() => autoScoringLoading = false);
       return;
     }
+    // Preserve the user's mic preference across the reconnect so a resumed-
+    // from-background or a screenshot-induced reconnect doesn't silently
+    // re-mute the mic.
+    final wasUnmuted = !isAudioMuted;
     try {
       // Tear down camera and Agora
       await cameraFrameService?.dispose();
@@ -367,13 +389,41 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           uid: 0,
           customVideoTrackId: customVideoTrackId,
         );
+        // Why: explicitly re-assert publishing flags after joinChannel.
+        // Without this, opponents intermittently fail to receive the rejoiner's
+        // video — joinChannel's options are sometimes not enough on rejoin.
+        try {
+          await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
+            publishCustomVideoTrack: true,
+            customVideoTrackId: customVideoTrackId,
+            publishCameraTrack: false,
+          ));
+        } catch (e) {
+          debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) error: $e');
+        }
         cameraZoomInitialized = false;
         await initCameraZoom();
         autoScoringService!.stopCapture();
         autoScoringService!.resetTurn();
         initAutoScoring();
       }
-      isAudioMuted = true;
+      // Restore mic state: if user had unmuted before the reconnect, re-publish
+      // the mic track. joinChannel always defaults to publishMicrophoneTrack:
+      // false, so without this the mic UI flips to muted on every reconnect.
+      if (wasUnmuted && agoraEngine != null) {
+        try {
+          await agoraEngine!.updateChannelMediaOptions(
+            const ChannelMediaOptions(publishMicrophoneTrack: true),
+          );
+          await agoraEngine!.muteLocalAudioStream(false);
+          isAudioMuted = false;
+        } catch (e) {
+          debugPrint('[BaseGameScreen] restore mic error: $e');
+          isAudioMuted = true;
+        }
+      } else {
+        isAudioMuted = true;
+      }
     } catch (_) {
       if (mounted) setState(() => autoScoringLoading = false);
     }

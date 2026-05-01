@@ -197,9 +197,14 @@ class AgoraService {
       try {
         await _engine!.leaveChannel();
         await _engine!.release();
+      } catch (e) {
+        debugPrint('[AgoraService] dispose error: $e');
+      } finally {
+        // Why: previously _engine = null lived inside the try block, so a
+        // throw from release() could leave the static singleton pointing at a
+        // dead engine. The next initializeEngine() would short-circuit and
+        // return that dead engine, silently breaking publish on rejoin.
         _engine = null;
-      } catch (_) {
-        // Dispose error
       }
     }
   }
