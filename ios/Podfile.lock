@@ -204,6 +204,8 @@ PODS:
     - TensorFlowLiteSwift (= 2.12.0)
     - TensorFlowLiteSwift/CoreML (= 2.12.0)
     - TensorFlowLiteSwift/Metal (= 2.12.0)
+  - url_launcher_ios (0.0.1):
+    - Flutter
   - wakelock_plus (0.0.1):
     - Flutter
 
@@ -221,6 +223,7 @@ DEPENDENCIES:
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - stripe_ios (from `.symlinks/plugins/stripe_ios/ios`)
   - tflite_flutter (from `.symlinks/plugins/tflite_flutter/ios`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
 
 SPEC REPOS:
@@ -275,6 +278,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/stripe_ios/ios"
   tflite_flutter:
     :path: ".symlinks/plugins/tflite_flutter/ios"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
   wakelock_plus:
     :path: ".symlinks/plugins/wakelock_plus/ios"
 
@@ -314,6 +319,7 @@ SPEC CHECKSUMS:
   TensorFlowLiteC: 20785a69299185a379ba9852b6625f00afd7984a
   TensorFlowLiteSwift: 3a4928286e9e35bdd3e17970f48e53c80d25e793
   tflite_flutter: 64b192e11352fe36943ab6656e1d49207f1a5595
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556
 
 PODFILE CHECKSUM: 0e0a309280699f3eeabb7358aad7b74e98f0c47e

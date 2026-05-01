@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../widgets/rank_badge.dart';
+import '../widgets/premium_badge.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
@@ -132,15 +134,26 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      user.username,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: Colors.white,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user.username,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        Selector<SubscriptionProvider, bool>(
+                          selector: (_, sub) => sub.isPremiumActive,
+                          builder: (_, isPremium, __) =>
+                              PremiumBadge(isPremium: isPremium, size: 16),
+                        ),
+                      ],
                     ),
                   ),
                   Row(

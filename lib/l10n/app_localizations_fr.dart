@@ -1403,4 +1403,102 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get submit => 'Valider';
+
+  // Premium / abonnement
+  @override
+  String get premium => 'Premium';
+
+  @override
+  String get upgradeToPremium => 'Passer à Premium';
+
+  @override
+  String get upgrade => 'Améliorer';
+
+  @override
+  String get premiumRenewsOn => 'Renouvellement le {date}';
+
+  @override
+  String get premiumFreeSubtitle => 'Matchs illimités · 4,99 €/mois';
+
+  @override
+  String get premiumActive => 'Premium actif';
+
+  @override
+  String get premiumActiveTitle => 'PREMIUM ACTIF';
+
+  @override
+  String get goPremiumTitle => 'PASSEZ PREMIUM';
+
+  @override
+  String get unlockUnlimitedMatches => 'Débloquez les matchs illimités';
+
+  @override
+  String get planYearly => 'Annuel';
+
+  @override
+  String get planMonthly => 'Mensuel';
+
+  @override
+  String get yearlySubtitle => 'Économisez 2 mois · 4,16 €/mois';
+
+  @override
+  String get monthlySubtitle => 'Annulez à tout moment';
+
+  @override
+  String get bestValue => 'MEILLEUR PRIX';
+
+  @override
+  String get whatYouGet => 'VOS AVANTAGES';
+
+  @override
+  String get benefitUnlimitedMatches => 'Matchs classés illimités';
+
+  @override
+  String get benefitPremiumBadge => 'Badge Premium à côté de votre nom';
+
+  @override
+  String get benefitSupportDev => 'Soutenez le développement';
+
+  @override
+  String get paywallFooter =>
+      'Les paiements sont traités de manière sécurisée par Stripe dans votre navigateur. Gérez ou annulez à tout moment depuis cet écran.';
+
+  @override
+  String get statusLabel => 'STATUT';
+
+  @override
+  String get nextRenewal => 'Prochain renouvellement : {date}';
+
+  @override
+  String get manageSubscription => 'Gérer l\'abonnement';
+
+  @override
+  String get manageFooter =>
+      'Ouvre le portail de facturation Stripe dans votre navigateur. Mettez à jour votre carte, consultez vos factures ou annulez à tout moment.';
+
+  @override
+  String get dailyLimitReached => 'LIMITE QUOTIDIENNE ATTEINTE';
+
+  @override
+  String get dailyLimitReachedShort => 'Limite quotidienne atteinte';
+
+  @override
+  String get goPremiumUnlimited => 'Passez Premium pour des matchs classés illimités';
+
+  @override
+  String get freeTierMatchAvailable =>
+      'Vous pouvez jouer 1 match classé aujourd\'hui avec l\'offre gratuite';
+
+  @override
+  String get freeTierMatchUsed => 'Vous avez utilisé votre match classé gratuit pour aujourd\'hui';
+
+  @override
+  String get tapToUpgradeForUnlimited => 'Appuyez pour passer à l\'offre illimitée';
+
+  @override
+  String get unrankedFreeTierHint =>
+      'Après le placement, les joueurs gratuits ont 1 match classé par jour';
+
+  @override
+  String get tapToLearnAboutPremium => 'Appuyez pour découvrir Premium · Matchs illimités';
 }

@@ -540,6 +540,39 @@ abstract class AppLocalizations {
   String get creatorCodeCleared;
   String get invalidCreatorCode;
   String get submit;
+
+  // Premium / subscription
+  String get premium;
+  String get upgradeToPremium;
+  String get upgrade;
+  String get premiumRenewsOn;
+  String get premiumFreeSubtitle;
+  String get premiumActive;
+  String get premiumActiveTitle;
+  String get goPremiumTitle;
+  String get unlockUnlimitedMatches;
+  String get planYearly;
+  String get planMonthly;
+  String get yearlySubtitle;
+  String get monthlySubtitle;
+  String get bestValue;
+  String get whatYouGet;
+  String get benefitUnlimitedMatches;
+  String get benefitPremiumBadge;
+  String get benefitSupportDev;
+  String get paywallFooter;
+  String get statusLabel;
+  String get nextRenewal;
+  String get manageSubscription;
+  String get manageFooter;
+  String get dailyLimitReached;
+  String get dailyLimitReachedShort;
+  String get goPremiumUnlimited;
+  String get freeTierMatchAvailable;
+  String get freeTierMatchUsed;
+  String get tapToUpgradeForUnlimited;
+  String get unrankedFreeTierHint;
+  String get tapToLearnAboutPremium;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

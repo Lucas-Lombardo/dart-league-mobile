@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../services/push_notification_service.dart';
 import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
@@ -61,7 +64,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         // Register push notification token for returning users
         await PushNotificationService.initialize();
         await PushNotificationService.registerToken();
-        AppNavigator.toAuth(context, '/home');
+        // Load subscription state for the authenticated user
+        if (mounted) {
+          unawaited(context.read<SubscriptionProvider>().refresh());
+        }
+        if (mounted) AppNavigator.toAuth(context, '/home');
       } else {
         AppNavigator.toAuth(context, '/login');
       }

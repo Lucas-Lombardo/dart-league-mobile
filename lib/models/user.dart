@@ -21,6 +21,8 @@ class User {
   final DateTime? createdAt;
   final String language;
   final bool isEmailVerified;
+  final bool isPremium;
+  final DateTime? premiumExpiresAt;
 
   User({
     required this.id,
@@ -36,7 +38,16 @@ class User {
     this.createdAt,
     this.language = 'en',
     this.isEmailVerified = false,
+    this.isPremium = false,
+    this.premiumExpiresAt,
   });
+
+  /// Whether premium is currently active (true and not expired).
+  bool get isPremiumActive {
+    if (!isPremium) return false;
+    if (premiumExpiresAt == null) return true;
+    return premiumExpiresAt!.isAfter(DateTime.now());
+  }
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
@@ -53,6 +64,8 @@ class User {
       createdAt: _tryParseDateTime(json['createdAt'] as String?),
       language: json['language'] as String? ?? 'en',
       isEmailVerified: json['isEmailVerified'] as bool? ?? false,
+      isPremium: json['isPremium'] as bool? ?? false,
+      premiumExpiresAt: _tryParseDateTime(json['premiumExpiresAt'] as String?),
     );
   }
 
@@ -69,8 +82,11 @@ class User {
       'isBanned': isBanned,
       'language': language,
       'isEmailVerified': isEmailVerified,
+      'isPremium': isPremium,
       if (bannedUntil != null) 'bannedUntil': bannedUntil!.toIso8601String(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+      if (premiumExpiresAt != null)
+        'premiumExpiresAt': premiumExpiresAt!.toIso8601String(),
     };
   }
 

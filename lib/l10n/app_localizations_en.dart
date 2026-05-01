@@ -1399,4 +1399,100 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get submit => 'Submit';
+
+  // Premium / subscription
+  @override
+  String get premium => 'Premium';
+
+  @override
+  String get upgradeToPremium => 'Upgrade to Premium';
+
+  @override
+  String get upgrade => 'Upgrade';
+
+  @override
+  String get premiumRenewsOn => 'Renews on {date}';
+
+  @override
+  String get premiumFreeSubtitle => 'Unlimited matches · €4.99/mo';
+
+  @override
+  String get premiumActive => 'Premium active';
+
+  @override
+  String get premiumActiveTitle => 'PREMIUM ACTIVE';
+
+  @override
+  String get goPremiumTitle => 'GO PREMIUM';
+
+  @override
+  String get unlockUnlimitedMatches => 'Unlock unlimited matches';
+
+  @override
+  String get planYearly => 'Yearly';
+
+  @override
+  String get planMonthly => 'Monthly';
+
+  @override
+  String get yearlySubtitle => 'Save 2 months · €4.16/mo';
+
+  @override
+  String get monthlySubtitle => 'Cancel anytime';
+
+  @override
+  String get bestValue => 'BEST VALUE';
+
+  @override
+  String get whatYouGet => 'WHAT YOU GET';
+
+  @override
+  String get benefitUnlimitedMatches => 'Unlimited ranked matches';
+
+  @override
+  String get benefitPremiumBadge => 'Premium badge next to your name';
+
+  @override
+  String get benefitSupportDev => 'Support continued development';
+
+  @override
+  String get paywallFooter =>
+      'Payments are processed securely by Stripe in your browser. Manage or cancel anytime from this screen.';
+
+  @override
+  String get statusLabel => 'STATUS';
+
+  @override
+  String get nextRenewal => 'Next renewal: {date}';
+
+  @override
+  String get manageSubscription => 'Manage Subscription';
+
+  @override
+  String get manageFooter =>
+      'Opens the Stripe billing portal in your browser. Update your card, view invoices, or cancel anytime.';
+
+  @override
+  String get dailyLimitReached => 'DAILY LIMIT REACHED';
+
+  @override
+  String get dailyLimitReachedShort => 'Daily limit reached';
+
+  @override
+  String get goPremiumUnlimited => 'Go Premium for unlimited ranked matches';
+
+  @override
+  String get freeTierMatchAvailable => 'You can play 1 ranked match today on the free plan';
+
+  @override
+  String get freeTierMatchUsed => 'You have used your free ranked match for today';
+
+  @override
+  String get tapToUpgradeForUnlimited => 'Tap to upgrade for unlimited matches';
+
+  @override
+  String get unrankedFreeTierHint => 'After placement, free players get 1 ranked match per day';
+
+  @override
+  String get tapToLearnAboutPremium => 'Tap to learn about Premium · Unlimited matches';
 }

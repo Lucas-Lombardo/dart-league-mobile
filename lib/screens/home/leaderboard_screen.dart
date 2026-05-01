@@ -6,6 +6,7 @@ import '../../services/friends_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
+import '../../widgets/premium_badge.dart';
 import '../../utils/app_theme.dart';
 import '../profile/player_stats_screen.dart';
 
@@ -285,14 +286,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              entry.user.username,
-                              style: TextStyle(
-                                color: isCurrentUser ? AppTheme.primary : Colors.white,
-                                fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
-                                fontSize: 16,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    entry.user.username,
+                                    style: TextStyle(
+                                      color: isCurrentUser ? AppTheme.primary : Colors.white,
+                                      fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
+                                      fontSize: 16,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                PremiumBadge(isPremium: entry.user.isPremiumActive, size: 14),
+                              ],
                             ),
                           ),
                         ],

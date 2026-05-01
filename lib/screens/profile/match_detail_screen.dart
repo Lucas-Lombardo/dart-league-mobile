@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../models/match.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/premium_badge.dart';
 import '../../l10n/app_localizations.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -184,6 +185,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final myScore = match.getMyScore(userId);
     final opponentScore = match.getOpponentScore(userId);
     final opponentUsername = match.getOpponentUsername(userId);
+    final opponentIsPremium = !match.isPlacement && match.getOpponentIsPremium(userId);
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -217,25 +219,33 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             ),
           ),
           Expanded(
-            child: _buildPlayerInfo(opponentUsername, opponentScore, false),
+            child: _buildPlayerInfo(opponentUsername, opponentScore, false, isPremium: opponentIsPremium),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPlayerInfo(String name, int score, bool isMe) {
+  Widget _buildPlayerInfo(String name, int score, bool isMe, {bool isPremium = false}) {
     return Column(
       children: [
-        Text(
-          name,
-          style: TextStyle(
-            color: isMe ? AppTheme.primary : Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: isMe ? AppTheme.primary : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            PremiumBadge(isPremium: isPremium, size: 14),
+          ],
         ),
         const SizedBox(height: 12),
         Text(

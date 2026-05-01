@@ -13,6 +13,8 @@ class Match {
   final String player2Id;
   final String player1Username;
   final String player2Username;
+  final bool player1IsPremium;
+  final bool player2IsPremium;
   final int player1Score;
   final int player2Score;
   final String winnerId;
@@ -31,6 +33,8 @@ class Match {
     required this.player2Id,
     required this.player1Username,
     required this.player2Username,
+    this.player1IsPremium = false,
+    this.player2IsPremium = false,
     required this.player1Score,
     required this.player2Score,
     required this.winnerId,
@@ -54,6 +58,8 @@ class Match {
       player2Id: json['player2Id'] as String? ?? '',
       player1Username: json['player1Username'] as String? ?? 'Unknown',
       player2Username: json['player2Username'] as String? ?? 'Unknown',
+      player1IsPremium: json['player1IsPremium'] as bool? ?? false,
+      player2IsPremium: json['player2IsPremium'] as bool? ?? false,
       player1Score: json['player1Score'] as int? ?? 501,
       player2Score: json['player2Score'] as int? ?? 501,
       winnerId: json['winnerId'] as String? ?? '',
@@ -149,6 +155,10 @@ class Match {
 
   String getOpponentId(String userId) {
     return userId == player1Id ? player2Id : player1Id;
+  }
+
+  bool getOpponentIsPremium(String userId) {
+    return userId == player1Id ? player2IsPremium : player1IsPremium;
   }
 
   int getMyScore(String userId) {

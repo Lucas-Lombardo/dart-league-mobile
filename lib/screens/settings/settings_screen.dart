@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/locale_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
@@ -11,6 +13,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/rank_translation.dart';
 import '../../utils/storage_service.dart';
 import '../../services/content_creator_service.dart';
+import 'subscription_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -86,6 +89,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildAccountInfo(user?.username ?? l10n.accountInfoDefaultUsername, user?.email ?? l10n.accountInfoDefaultEmail),
           _buildAccountInfo(l10n.elo, '${user?.elo ?? 0}'),
           _buildAccountInfo(l10n.rank, user?.rank != null ? RankTranslation.translate(l10n, user!.rank) : 'Unranked'),
+
+          const SizedBox(height: 24),
+          _buildSection(l10n.premium.toUpperCase()),
+          _buildSubscriptionTile(l10n),
 
           const SizedBox(height: 24),
           _buildSection(l10n.contentCreator.toUpperCase()),
@@ -337,6 +344,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
             inactiveTrackColor: AppTheme.surfaceLight,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionTile(AppLocalizations l10n) {
+    final subscription = context.watch<SubscriptionProvider>();
+    final isPremium = subscription.isPremiumActive;
+    final expiresAt = subscription.premiumExpiresAt;
+    final locale = Localizations.localeOf(context).toString();
+    final dateFormatter = DateFormat.yMMMd(locale);
+
+    final title = isPremium ? l10n.premium : l10n.upgradeToPremium;
+    final subtitle = isPremium
+        ? (expiresAt != null
+            ? l10n.premiumRenewsOn.replaceAll('{date}', dateFormatter.format(expiresAt))
+            : l10n.premiumActive)
+        : l10n.premiumFreeSubtitle;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isPremium
+              ? const Color(0xFFEAB308).withValues(alpha: 0.5)
+              : AppTheme.surfaceLight.withValues(alpha: 0.3),
+          width: isPremium ? 1.5 : 1,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          HapticService.lightImpact();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAB308).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.workspace_premium,
+                  color: Color(0xFFEAB308),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
+          ),
+        ),
       ),
     );
   }

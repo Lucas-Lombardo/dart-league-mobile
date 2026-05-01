@@ -46,3 +46,6 @@ app.*.map.json
 
 # Signing credentials
 android/key.properties
+
+# Build-time env files — keep prod out of git, dev is committed
+env/prod.json

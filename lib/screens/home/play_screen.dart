@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
@@ -15,6 +16,7 @@ import '../matchmaking/camera_setup_screen.dart';
 import '../placement/placement_hub_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
+import '../settings/subscription_screen.dart';
 import '../training/training_select_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -56,6 +58,9 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkActiveMatch();
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshSubscription();
+    });
 
     widget.refreshNotifier?.addListener(_onRefresh);
   }
@@ -65,6 +70,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkActiveMatch();
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
+    _refreshSubscription();
+  }
+
+  Future<void> _refreshSubscription() async {
+    if (!mounted) return;
+    await context.read<SubscriptionProvider>().refresh();
   }
 
   Future<void> _checkActiveMatch() async {
@@ -166,7 +177,201 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       _checkActiveMatch();
       _checkPendingTournamentMatch();
       _checkActiveTournamentStatus();
+      _refreshSubscription();
     }
+  }
+
+  Widget _buildFreeTierHint(SubscriptionProvider subscription) {
+    final l10n = AppLocalizations.of(context);
+    final remaining = subscription.matchesRemainingToday ?? 0;
+    final mainLine = remaining > 0 ? l10n.freeTierMatchAvailable : l10n.freeTierMatchUsed;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        HapticService.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+        ).then((_) => _refreshSubscription());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAB308).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFEAB308).withValues(alpha: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.workspace_premium, color: Color(0xFFEAB308), size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    mainLine,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.tapToUpgradeForUnlimited,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFFEAB308)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnrankedFreeTierHint() {
+    final l10n = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        HapticService.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+        ).then((_) => _refreshSubscription());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAB308).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFEAB308).withValues(alpha: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFFEAB308), size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.unrankedFreeTierHint,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.tapToLearnAboutPremium,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFFEAB308)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailyLimitCta() {
+    return GestureDetector(
+      onTap: () {
+        HapticService.mediumImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+        ).then((_) => _refreshSubscription());
+      },
+      child: Container(
+        height: 180,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFC107), Color(0xFFEAB308)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFEAB308).withValues(alpha: 0.4),
+              blurRadius: 20,
+              spreadRadius: 2,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Icon(
+                Icons.workspace_premium,
+                size: 150,
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium,
+                      size: 40,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    AppLocalizations.of(context).dailyLimitReached,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      AppLocalizations.of(context).goPremiumUnlimited,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -251,6 +456,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
+    final subscription = context.watch<SubscriptionProvider>();
     final l10n = AppLocalizations.of(context);
 
     if (user == null) {
@@ -266,6 +472,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final progress = _getRankProgress(user.rank, user.elo);
 
     final isUnranked = user.rank.toLowerCase() == 'unranked';
+    final hasDailyLimit = subscription.hasReachedDailyLimit;
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -456,7 +663,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          if (isUnranked)
+          if (isUnranked) ...[
             // Placement Matches button
             ScaleTransition(
               scale: _pulseAnimation,
@@ -548,7 +755,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   ),
                 ),
               ),
-            )
+            ),
+            if (!subscription.isPremiumActive) ...[
+              const SizedBox(height: 12),
+              _buildUnrankedFreeTierHint(),
+            ],
+          ]
           else if (_pendingTournamentMatch != null)
             // Join Tournament Match button (highest priority after placement)
             ScaleTransition(
@@ -801,14 +1013,22 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ],
               ),
             )
-          else
+          else if (hasDailyLimit)
+            // Daily free-tier limit reached — paywall CTA
+            _buildDailyLimitCta()
+          else ...[
+            if (!subscription.isPremiumActive &&
+                subscription.matchesRemainingToday != null) ...[
+              _buildFreeTierHint(subscription),
+              const SizedBox(height: 12),
+            ],
             // Find Match button
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
                 onTap: () async {
                   HapticService.mediumImpact();
-                  
+
                   if (context.mounted) {
                     Navigator.of(context).push(
                       MaterialPageRoute(
@@ -819,6 +1039,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                       _checkActiveMatch();
                       _checkPendingTournamentMatch();
                       _checkActiveTournamentStatus();
+                      _refreshSubscription();
                     });
                   }
                 },
@@ -890,6 +1111,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ),
               ),
             ),
+          ],
           const SizedBox(height: 16),
           GestureDetector(
             onTap: () {

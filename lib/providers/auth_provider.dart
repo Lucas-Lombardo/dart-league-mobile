@@ -4,12 +4,14 @@ import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../utils/error_messages.dart';
 import 'locale_provider.dart';
+import 'subscription_provider.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
   LocaleProvider? _localeProvider;
+  SubscriptionProvider? _subscriptionProvider;
 
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
@@ -18,6 +20,10 @@ class AuthProvider extends ChangeNotifier {
 
   void setLocaleProvider(LocaleProvider localeProvider) {
     _localeProvider = localeProvider;
+  }
+
+  void setSubscriptionProvider(SubscriptionProvider provider) {
+    _subscriptionProvider = provider;
   }
 
   Future<void> checkAuthStatus() async {
@@ -64,6 +70,8 @@ class AuthProvider extends ChangeNotifier {
       // Register push notification token
       await PushNotificationService.initialize();
       await PushNotificationService.registerToken();
+      // Load subscription state for the new user (fire and forget)
+      _subscriptionProvider?.refresh();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -95,6 +103,8 @@ class AuthProvider extends ChangeNotifier {
       // Register push notification token
       await PushNotificationService.initialize();
       await PushNotificationService.registerToken();
+      // Load subscription state for the logged-in user (fire and forget)
+      _subscriptionProvider?.refresh();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -116,6 +126,7 @@ class AuthProvider extends ChangeNotifier {
       await AuthService.logout();
       _currentUser = null;
       _errorMessage = null;
+      _subscriptionProvider?.clear();
     } catch (e) {
       _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {

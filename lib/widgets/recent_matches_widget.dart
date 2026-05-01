@@ -4,6 +4,7 @@ import '../models/match.dart';
 import '../screens/profile/match_detail_screen.dart';
 import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
+import 'premium_badge.dart';
 
 class RecentMatchesWidget extends StatelessWidget {
   final List<Match> matches;
@@ -46,6 +47,7 @@ class RecentMatchesWidget extends StatelessWidget {
     final opponentUsername = isPlacement
         ? 'Bot (Avg: ${(match.botDifficulty ?? 1) * 10})'
         : match.getOpponentUsername(userId);
+    final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
     final myScore = match.getMyScore(userId);
     final opponentScore = match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d');
@@ -129,14 +131,21 @@ class RecentMatchesWidget extends StatelessWidget {
                           ],
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'vs $opponentUsername',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    'vs $opponentUsername',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                PremiumBadge(isPremium: opponentIsPremium, size: 14),
+                              ],
                             ),
                           ),
                         ],

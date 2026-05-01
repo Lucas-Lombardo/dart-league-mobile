@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../services/socket_service.dart';
 import '../game/game_screen.dart';
+import '../settings/subscription_screen.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/haptic_service.dart';
 import '../../l10n/app_localizations.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -269,6 +272,83 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     final minutes = seconds ~/ 60;
     final secs = seconds % 60;
     return '${minutes.toString().padLeft(1, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildDailyLimitErrorCard(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFC107), Color(0xFFEAB308)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFEAB308).withValues(alpha: 0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.workspace_premium, size: 36, color: Colors.white),
+          const SizedBox(height: 8),
+          Text(
+            l10n.dailyLimitReachedShort,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${l10n.goPremiumUnlimited}.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 13,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () async {
+                HapticService.mediumImpact();
+                final user = context.read<AuthProvider>().currentUser;
+                if (user?.id != null) {
+                  await context.read<MatchmakingProvider>().leaveQueue(user!.id);
+                }
+                if (!context.mounted) return;
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                ).then((_) {
+                  if (context.mounted) {
+                    context.read<SubscriptionProvider>().refresh();
+                  }
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFFEAB308),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(
+                l10n.upgradeToPremium,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -558,34 +638,37 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   ),
                   if (matchmaking.errorMessage != null) ...[
                     const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppTheme.error,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.error_outline,
+                    if (matchmaking.errorMessage!.contains('DAILY_MATCH_LIMIT_REACHED'))
+                      _buildDailyLimitErrorCard(context)
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
                             color: AppTheme.error,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              matchmaking.errorMessage!,
-                              style: const TextStyle(
-                                color: AppTheme.error,
-                                fontSize: 14,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: AppTheme.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                matchmaking.errorMessage!,
+                                style: const TextStyle(
+                                  color: AppTheme.error,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ],
               ),

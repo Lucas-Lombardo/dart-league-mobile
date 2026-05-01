@@ -5,6 +5,7 @@ import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
+import '../../widgets/premium_badge.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
@@ -439,9 +440,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
               size: 40,
               showLabel: false,
             ),
-            title: Text(
-              user.username,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    user.username,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                PremiumBadge(isPremium: user.isPremiumActive, size: 14),
+              ],
             ),
             subtitle: Text(
               'ELO: ${user.elo} • ${user.wins}W - ${user.losses}L',
@@ -560,9 +569,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           size: 40,
           showLabel: false,
         ),
-        title: Text(
-          request.user.username,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                request.user.username,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            PremiumBadge(isPremium: request.user.isPremiumActive, size: 14),
+          ],
         ),
         subtitle: Text(
           'ELO: ${request.user.elo} • ${request.user.wins}W - ${request.user.losses}L',
@@ -687,9 +704,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 size: 40,
                 showLabel: false,
               ),
-              title: Text(
-                friend.username,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              title: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      friend.username,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  PremiumBadge(isPremium: friend.isPremiumActive, size: 14),
+                ],
               ),
               subtitle: Text(
                 'ELO: ${friend.elo} • ${friend.wins}W - ${friend.losses}L',
