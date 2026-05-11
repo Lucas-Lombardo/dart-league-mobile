@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
+import '../l10n/app_localizations.dart';
 
 class CustomErrorWidget extends StatelessWidget {
   final String message;
@@ -27,9 +28,9 @@ class CustomErrorWidget extends StatelessWidget {
               color: AppTheme.error,
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Oops!',
-              style: TextStyle(
+            Text(
+              AppLocalizations.of(context).oops,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -60,9 +61,9 @@ class CustomErrorWidget extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.refresh),
-                label: const Text(
-                  'TRY AGAIN',
-                  style: TextStyle(
+                label: Text(
+                  AppLocalizations.of(context).tryAgainUpper,
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1,
@@ -85,7 +86,7 @@ class NetworkErrorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomErrorWidget(
-      message: 'Unable to connect to the server.\nPlease check your internet connection.',
+      message: AppLocalizations.of(context).unableToConnectMessage,
       icon: Icons.wifi_off,
       onRetry: onRetry,
     );

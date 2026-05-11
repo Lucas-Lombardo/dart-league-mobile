@@ -3,6 +3,7 @@ import '../providers/game_provider.dart' show ScoreMultiplier;
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../utils/dart_sound_service.dart';
+import '../l10n/app_localizations.dart';
 
 /// Number pad for dart score input, replacing the interactive dartboard.
 /// Much easier to use on small phones.
@@ -25,6 +26,7 @@ class _NumberPadInputState extends State<NumberPadInput> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         return Column(
@@ -35,24 +37,24 @@ class _NumberPadInputState extends State<NumberPadInput> {
               child: Row(
                 children: [
                   _MultiplierButton(
-                    label: 'SINGLE',
-                    shortLabel: 'S',
+                    label: l10n.singleUpper,
+                    shortLabel: l10n.singleShort,
                     isSelected: _selectedMultiplier == ScoreMultiplier.single,
                     color: AppTheme.textSecondary,
                     onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.single),
                   ),
                   const SizedBox(width: 6),
                   _MultiplierButton(
-                    label: 'DOUBLE',
-                    shortLabel: 'D',
+                    label: l10n.doubleUpper,
+                    shortLabel: l10n.doubleShort,
                     isSelected: _selectedMultiplier == ScoreMultiplier.double,
                     color: AppTheme.success,
                     onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.double),
                   ),
                   const SizedBox(width: 6),
                   _MultiplierButton(
-                    label: 'TRIPLE',
-                    shortLabel: 'T',
+                    label: l10n.tripleUpper,
+                    shortLabel: l10n.tripleShort,
                     isSelected: _selectedMultiplier == ScoreMultiplier.triple,
                     color: AppTheme.error,
                     onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.triple),
@@ -81,6 +83,7 @@ class _NumberPadInputState extends State<NumberPadInput> {
       [11, 12, 13, 14, 15],
       [16, 17, 18, 19, 20],
     ];
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       children: [
@@ -102,7 +105,7 @@ class _NumberPadInputState extends State<NumberPadInput> {
               Expanded(
                 flex: 3,
                 child: _SpecialButton(
-                  label: _selectedMultiplier == ScoreMultiplier.double ? 'BULL (50)' : 'BULL (25)',
+                  label: _selectedMultiplier == ScoreMultiplier.double ? l10n.bull50 : l10n.bull25,
                   color: _selectedMultiplier == ScoreMultiplier.double ? AppTheme.success : AppTheme.accent,
                   onTap: () => _submitBull(),
                 ),
@@ -111,7 +114,7 @@ class _NumberPadInputState extends State<NumberPadInput> {
               Expanded(
                 flex: 2,
                 child: _SpecialButton(
-                  label: 'MISS',
+                  label: l10n.missButton,
                   color: AppTheme.surfaceLight,
                   onTap: () => _submitMiss(),
                 ),

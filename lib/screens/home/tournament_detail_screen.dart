@@ -285,7 +285,7 @@ class _TournamentHeader extends StatelessWidget {
             const SizedBox(height: 8),
             _InfoRow(
               icon: Icons.emoji_events,
-              label: 'Prize',
+              label: l10n.prizeLabel,
               value: tournament.formattedPrize,
               valueColor: Colors.amber,
             ),
@@ -293,7 +293,7 @@ class _TournamentHeader extends StatelessWidget {
           const SizedBox(height: 8),
           _InfoRow(
             icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
-            label: 'Entry Fee',
+            label: l10n.entryFee,
             value: tournament.formattedPrice,
             valueColor: tournament.isFree ? AppTheme.success : AppTheme.primary,
           ),
@@ -477,30 +477,29 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
   }
 
   void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Email Not Verified'),
-        content: const Text(
-          'You must verify your email before joining a tournament. Check your inbox or resend the verification email.',
-        ),
+        title: Text(l10n.emailNotVerifiedTitle),
+        content: Text(l10n.emailVerificationRequired),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(l10n.close),
           ),
           ElevatedButton(
             onPressed: () async {
               await authProvider.resendVerification();
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Verification email sent!'),
+                SnackBar(
+                  content: Text(l10n.verificationEmailSent),
                   backgroundColor: AppTheme.success,
                 ),
               );
             },
-            child: const Text('Resend Email'),
+            child: Text(l10n.resendEmail),
           ),
         ],
       ),
@@ -527,7 +526,7 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
             Icon(Icons.schedule, size: 18, color: AppTheme.textSecondary.withValues(alpha: 0.8)),
             const SizedBox(width: 8),
             Text(
-              'Registration opens soon',
+              l10n.registrationOpensSoon,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,

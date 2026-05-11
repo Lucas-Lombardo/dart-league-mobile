@@ -6,6 +6,7 @@ import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../utils/score_converter.dart';
+import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
 import 'tv_scoreboard.dart';
 
@@ -38,6 +39,8 @@ class AutoScoreGameView extends StatelessWidget {
   final VoidCallback? onToggleAi;
   final bool aiEnabled;
   final bool iAmPlayer2;
+  final double? myAverage;
+  final double? opponentAverage;
 
   const AutoScoreGameView({
     super.key,
@@ -67,6 +70,8 @@ class AutoScoreGameView extends StatelessWidget {
     this.onToggleAi,
     this.aiEnabled = true,
     this.iAmPlayer2 = false,
+    this.myAverage,
+    this.opponentAverage,
   });
 
   @override
@@ -84,15 +89,20 @@ class AutoScoreGameView extends StatelessWidget {
 
         return Column(
           children: [
-            // ── Camera feed ──
+            // ── Camera feed + all overlay controls ──
+            // The native camera preview is a platform view that renders ABOVE
+            // sibling Flutter widgets earlier in the tree, so every control
+            // has to live inside this Stack (after the camera Container) to
+            // be visible. We overlay them at the top with semi-transparent
+            // backgrounds; they sit over the wall area above the dartboard
+            // rather than the board itself.
             Expanded(
-              flex: 55,
+              flex: 50,
               child: Stack(
                 children: [
-                  // Camera preview — Agora (ranked/tournament) → local (placement) → off
                   Container(
                     width: double.infinity,
-                    padding: EdgeInsets.only(top: safeTop),
+                    height: double.infinity,
                     color: Colors.black,
                     child: localCameraPreview != null
                         ? localCameraPreview!
@@ -112,10 +122,10 @@ class AutoScoreGameView extends StatelessWidget {
                               ),
                   ),
 
-                  // Zoom hint overlay (top, below status bar)
+                  // Zoom hint overlay
                   if (hint != null)
                     Positioned(
-                      top: MediaQuery.of(context).padding.top + 4,
+                      top: safeTop + 4,
                       left: 0,
                       right: 0,
                       child: Container(
@@ -147,13 +157,75 @@ class AutoScoreGameView extends StatelessWidget {
                       ),
                     ),
 
-                  // Zoom controls overlay (bottom-left)
-                  if ((agoraEngine != null || localCameraPreview != null) && onZoomIn != null && onZoomOut != null)
-                    Positioned(
-                      bottom: 12,
-                      left: 12,
-                      child: Row(
-                        children: [
+                  // ── Primary action pill (top-right, aligned with back) ──
+                  // Single contextual button. Label & icon shift with state:
+                  //  • no darts        → END ROUND EARLY (skip icon)
+                  //  • darts detected  → END TURN (check icon)
+                  //  • pending confirm → CONFIRM & END TURN (filled primary)
+                  Positioned(
+                    top: safeTop + 8,
+                    right: 12,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticService.heavyImpact();
+                        onConfirm();
+                      },
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: pendingConfirmation
+                              ? AppTheme.primary
+                              : Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(18),
+                          border: pendingConfirmation
+                              ? null
+                              : Border.all(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              noDartsDetected
+                                  ? Icons.skip_next
+                                  : Icons.check_circle_outline,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              noDartsDetected
+                                  ? AppLocalizations.of(context).endRoundEarlyUpper
+                                  : pendingConfirmation
+                                      ? AppLocalizations.of(context).confirmAndEndTurn
+                                      : AppLocalizations.of(context).endTurnUpper,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ── Camera controls (zoom / mic / cam switch) ──
+                  // Anchored to the bottom-right of the camera area so they
+                  // sit over the wall below the dartboard, well clear of the
+                  // top-right action pill. Each subgroup decides its own
+                  // visibility from its callbacks/state.
+                  Positioned(
+                    bottom: 12,
+                    right: 12,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (onZoomIn != null && onZoomOut != null) ...[
                           _ZoomButton(
                             icon: Icons.remove,
                             onTap: currentZoom > minZoom ? onZoomOut : null,
@@ -179,60 +251,45 @@ class AutoScoreGameView extends StatelessWidget {
                             icon: Icons.add,
                             onTap: currentZoom < maxZoom ? onZoomIn : null,
                           ),
+                          const SizedBox(width: 8),
                         ],
-                      ),
-                    ),
-
-                  // Camera controls overlay (bottom-right)
-                  if (agoraEngine != null || localCameraPreview != null)
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: Row(
-                        children: [
-                          if (onToggleAi != null) ...[
-                            _CameraControlButton(
-                              icon: aiEnabled ? Icons.smart_toy : Icons.smart_toy_outlined,
-                              isActive: aiEnabled,
-                              onTap: onToggleAi,
-                              inactiveColor: AppTheme.textSecondary,
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          if (agoraEngine != null) ...[
-                            _CameraControlButton(
-                              icon: isAudioMuted ? Icons.mic_off : Icons.mic,
-                              isActive: !isAudioMuted,
-                              onTap: onToggleAudio,
-                            ),
-                            const SizedBox(width: 8),
-                            _CameraControlButton(
-                              icon: Icons.cameraswitch,
-                              isActive: true,
-                              onTap: onSwitchCamera,
-                            ),
-                          ],
+                        if (agoraEngine != null) ...[
+                          _CameraControlButton(
+                            icon: isAudioMuted ? Icons.mic_off : Icons.mic,
+                            isActive: !isAudioMuted,
+                            onTap: onToggleAudio,
+                          ),
+                          const SizedBox(width: 8),
+                          _CameraControlButton(
+                            icon: Icons.cameraswitch,
+                            isActive: true,
+                            onTap: onSwitchCamera,
+                          ),
                         ],
-                      ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
 
             // ── Scoring panel ──
             Expanded(
-              flex: 45,
+              flex: 50,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final safeBottom = MediaQuery.of(context).padding.bottom;
                   final screenH = MediaQuery.of(context).size.height;
                   final isSmallScreen = screenH < 700;
                   final availableH = constraints.maxHeight;
-                  // Reserve space for button area
-                  final buttonH = 48.0 + 14.0 + safeBottom;
+                  // No bottom button anymore — the End-Turn / End-Round-Early
+                  // action lives in the top-right pill regardless of state,
+                  // freeing the bottom region for the score readout.
+                  final buttonH = safeBottom;
                   final contentH = availableH - buttonH;
-                  // Adaptive indicator height based on screen size
-                  final indicatorH = (contentH * 0.50).clamp(60.0, 100.0);
+                  // Even smaller indicator allotment so the scoreboard grows
+                  // substantially — readable from ~2m.
+                  final indicatorH = (contentH * 0.24).clamp(50.0, 72.0);
                   final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
                   final hintParts = hintStr?.split(' ') ?? [];
 
@@ -247,6 +304,14 @@ class AutoScoreGameView extends StatelessWidget {
                             padding: EdgeInsets.fromLTRB(12, isSmallScreen ? 2 : 4, 12, 0),
                             child: Row(
                               children: List.generate(3, (i) {
+                                // Place suggestions only under empty dart slots,
+                                // starting from the first empty slot.
+                                final suggestionIdx = i - (lastFilledIndex + 1);
+                                final suggestion = (slots[i] == null &&
+                                        suggestionIdx >= 0 &&
+                                        suggestionIdx < hintParts.length)
+                                    ? hintParts[suggestionIdx]
+                                    : '';
                                 return Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -258,7 +323,7 @@ class AutoScoreGameView extends StatelessWidget {
                                       onRemove: (onRemoveDart != null && i == lastFilledIndex)
                                           ? () => onRemoveDart!(i)
                                           : null,
-                                      suggestion: i < hintParts.length ? hintParts[i] : '',
+                                      suggestion: suggestion,
                                     ),
                                   ),
                                 );
@@ -283,7 +348,7 @@ class AutoScoreGameView extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'TURN: ',
+                                '${AppLocalizations.of(context).turnLabel} ',
                                 style: TextStyle(
                                   color: AppTheme.textSecondary.withValues(alpha: 0.6),
                                   fontSize: 11,
@@ -318,84 +383,17 @@ class AutoScoreGameView extends StatelessWidget {
                                   opponentName: opponentName,
                                   isMyTurn: true,
                                   iAmPlayer2: iAmPlayer2,
+                                  myAverage: myAverage,
+                                  opponentAverage: opponentAverage,
                                 ),
                               ),
                             ),
                           ),
                         ),
 
-                        // Button
-                        Container(
-                          padding: EdgeInsets.fromLTRB(12, 6, 12, 8 + safeBottom),
-                          color: AppTheme.surface,
-                          child: noDartsDetected && onEndRoundEarly != null
-                              ? SizedBox(
-                                  width: double.infinity,
-                                  height: 52,
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      HapticService.heavyImpact();
-                                      onEndRoundEarly!();
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.surfaceLight,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                    child: const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.skip_next, size: 20),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          'END ROUND EARLY',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                )
-                              : SizedBox(
-                                  width: double.infinity,
-                                  height: 52,
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      HapticService.heavyImpact();
-                                      onConfirm();
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: pendingConfirmation
-                                          ? AppTheme.primary
-                                          : AppTheme.primary.withValues(alpha: 0.5),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          pendingConfirmation ? 'CONFIRM & END TURN' : 'END TURN',
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Icon(Icons.check_circle_outline, size: 20),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                        ),
+                        // Only reserve the system safe-area at the bottom —
+                        // the action button now lives in the top-right pill.
+                        SizedBox(height: safeBottom),
                       ],
                     ),
                   );
@@ -554,7 +552,7 @@ class _DartIndicator extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                hasScore ? 'EDIT' : 'Dart ${index + 1}',
+                hasScore ? AppLocalizations.of(context).editLabel : AppLocalizations.of(context).dartNumber(index + 1),
                 style: TextStyle(
                   color: hasScore
                       ? AppTheme.primary.withValues(alpha: 0.7)
@@ -611,18 +609,16 @@ class _CameraControlButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final VoidCallback? onTap;
-  final Color? inactiveColor;
 
   const _CameraControlButton({
     required this.icon,
     required this.isActive,
     this.onTap,
-    this.inactiveColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final offColor = inactiveColor ?? AppTheme.error;
+    const offColor = AppTheme.error;
     return GestureDetector(
       onTap: onTap,
       child: Container(

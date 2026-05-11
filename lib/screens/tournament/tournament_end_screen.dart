@@ -390,7 +390,7 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
         didWin = fb.didWin;
       }
 
-      roundDisplay = _roundDisplay(rName);
+      roundDisplay = _roundDisplay(rName, l10n);
 
       final startFrac = math.min(0.65 + i * 0.06, 0.92);
       final endFrac = math.min(startFrac + 0.20, 1.0);
@@ -431,7 +431,7 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
                 ),
                 Expanded(
                   child: Text(
-                    'vs $oppName',
+                    '${l10n.vs} $oppName',
                     style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -460,14 +460,14 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     }).toList();
   }
 
-  String _roundDisplay(String roundName) {
+  String _roundDisplay(String roundName, AppLocalizations l10n) {
     switch (roundName) {
-      case 'final': return 'Final';
-      case 'semi_final': return 'Semi-Final';
-      case 'quarter_final': return 'Quarter-Final';
-      case 'round_of_16': return 'Round of 16';
-      case 'round_of_32': return 'Round of 32';
-      case 'round_of_64': return 'Round of 64';
+      case 'final': return l10n.roundFinal;
+      case 'semi_final': return l10n.roundSemiFinal;
+      case 'quarter_final': return l10n.roundQuarterFinal;
+      case 'round_of_16': return l10n.roundOf16;
+      case 'round_of_32': return l10n.roundOf32;
+      case 'round_of_64': return l10n.roundOf64;
       default: return roundName.replaceAll('_', ' ');
     }
   }

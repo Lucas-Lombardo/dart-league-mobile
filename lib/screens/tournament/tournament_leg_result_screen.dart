@@ -79,7 +79,7 @@ class TournamentLegResultScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Leg $currentLeg ${AppLocalizations.of(context).legComplete}',
+                '${AppLocalizations.of(context).legNumber(currentLeg)} ${AppLocalizations.of(context).legComplete}',
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 16,

@@ -485,6 +485,8 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
                       onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                       aiEnabled: !aiManuallyDisabled,
+                      myAverage: game.myAveragePerRound,
+                      opponentAverage: game.opponentAveragePerRound,
                     )
                   // Opponent's turn
                   : Container(
@@ -511,17 +513,31 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                                 ],
                               ),
                             ),
+                          // Bounded-height scoreboard so the bigger score
+                          // circles can't push the camera/waiting panels
+                          // off-screen on shorter phones — FittedBox scales
+                          // the natural size down to fit when needed.
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                            child: TvScoreboard(
-                              myScore: game.myScore,
-                              opponentScore: game.opponentScore,
-                              myName: auth.currentUser?.username ?? 'You',
-                              opponentName: widget.opponentUsername,
-                              isMyTurn: false,
-                              iAmPlayer2: game.iAmPlayer2,
-                              myAverage: game.myAveragePerRound,
-                              opponentAverage: game.opponentAveragePerRound,
+                            child: SizedBox(
+                              height: (MediaQuery.of(context).size.height * 0.28).clamp(190.0, 300.0),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  width: MediaQuery.of(context).size.width - 24,
+                                  child: TvScoreboard(
+                                    myScore: game.myScore,
+                                    opponentScore: game.opponentScore,
+                                    myName: auth.currentUser?.username ?? 'You',
+                                    opponentName: widget.opponentUsername,
+                                    isMyTurn: false,
+                                    iAmPlayer2: game.iAmPlayer2,
+                                    myAverage: game.myAveragePerRound,
+                                    opponentAverage: game.opponentAveragePerRound,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                           Expanded(
@@ -568,15 +584,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                   ),
                 ),
               ),
+
             ],
           ),
         ),
       );
     } catch (e, stackTrace) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Error')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).error)),
         body: Center(
-          child: Text('Error: $e\n$stackTrace'),
+          child: Text('${AppLocalizations.of(context).error}: $e\n$stackTrace'),
         ),
       );
     }

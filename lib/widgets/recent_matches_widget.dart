@@ -4,6 +4,7 @@ import '../models/match.dart';
 import '../screens/profile/match_detail_screen.dart';
 import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import 'premium_badge.dart';
 
 class RecentMatchesWidget extends StatelessWidget {
@@ -28,7 +29,7 @@ class RecentMatchesWidget extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            'No recent matches',
+            AppLocalizations.of(context).noRecentMatches,
             style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
           ),
         ),
@@ -41,11 +42,12 @@ class RecentMatchesWidget extends StatelessWidget {
   }
 
   Widget _buildMatchItem(BuildContext context, Match match) {
+    final l10n = AppLocalizations.of(context);
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
     final isPlacement = match.isPlacement;
     final opponentUsername = isPlacement
-        ? 'Bot (Avg: ${(match.botDifficulty ?? 1) * 10})'
+        ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
         : match.getOpponentUsername(userId);
     final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
     final myScore = match.getMyScore(userId);
@@ -103,7 +105,7 @@ class RecentMatchesWidget extends StatelessWidget {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              isWin ? 'WIN' : 'LOSS',
+                              isWin ? l10n.winUpper : l10n.lossUpper,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -119,9 +121,9 @@ class RecentMatchesWidget extends StatelessWidget {
                                 color: AppTheme.accent.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
-                                'PLACEMENT',
-                                style: TextStyle(
+                              child: Text(
+                                l10n.placementUpper,
+                                style: const TextStyle(
                                   color: AppTheme.accent,
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
@@ -135,7 +137,7 @@ class RecentMatchesWidget extends StatelessWidget {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    'vs $opponentUsername',
+                                    '${l10n.vs} $opponentUsername',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
@@ -181,9 +183,9 @@ class RecentMatchesWidget extends StatelessWidget {
                           color: AppTheme.accent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
-                          'Placement',
-                          style: TextStyle(
+                        child: Text(
+                          l10n.placementCapitalized,
+                          style: const TextStyle(
                             color: AppTheme.accent,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,

@@ -53,7 +53,8 @@ class NativeInference {
 
   /// Send RGBA frame to native for preprocess + inference.
   /// Returns a [ScoringResult] with detections and scores.
-  Future<ScoringResult> analyzeRgba(Uint8List rgba, int width, int height) async {
+  Future<ScoringResult> analyzeRgba(Uint8List rgba, int width, int height,
+      {bool isBgra = false}) async {
     if (!_loaded) {
       return _error('Model not loaded');
     }
@@ -64,6 +65,7 @@ class NativeInference {
         'rgba': rgba,
         'width': width,
         'height': height,
+        'isBgra': isBgra,
       });
       final channelMs = sw.elapsedMilliseconds;
 
@@ -83,7 +85,10 @@ class NativeInference {
         outputFloats, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
-      debugPrint('[NativeInference] Dart: channelRoundTrip=${channelMs}ms parse=${parseMs}ms rgbaSize=${rgba.length}');
+      if (kDebugMode) {
+        debugPrint(
+            '[NativeInference] Dart: channelRoundTrip=${channelMs}ms parse=${parseMs}ms rgbaSize=${rgba.length}');
+      }
       return result;
     } catch (e) {
       debugPrint('[NativeInference] analyzeRgba error: $e');
@@ -138,7 +143,10 @@ class NativeInference {
         outputFloats, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
-      debugPrint('[NativeInference] YUV: channelRoundTrip=${channelMs}ms parse=${parseMs}ms');
+      if (kDebugMode) {
+        debugPrint(
+            '[NativeInference] YUV: channelRoundTrip=${channelMs}ms parse=${parseMs}ms');
+      }
       return result;
     } catch (e) {
       debugPrint('[NativeInference] analyzeYuv error: $e');

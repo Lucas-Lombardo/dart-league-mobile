@@ -31,13 +31,18 @@ class NativeInferencePlugin: NSObject {
                 result(FlutterError(code: "INVALID_ARGS", message: "Missing rgba/width/height", details: nil))
                 return
             }
+            // Optional flag: true when the source bytes are in BGRA order
+            // (iOS camera native format). Lets us skip the BGRA→RGBA per-pixel
+            // loop on the Dart main isolate and do the channel swap here on
+            // the GCD background queue instead.
+            let isBgra = (args["isBgra"] as? Bool) ?? false
             guard !isBusy else {
                 result(FlutterError(code: "BUSY", message: "Inference in progress", details: nil))
                 return
             }
             isBusy = true
             inferenceQueue.async { [weak self] in
-                self?.analyze(rgba: rgbaData.data, width: width, height: height, result: result)
+                self?.analyze(rgba: rgbaData.data, width: width, height: height, isBgra: isBgra, result: result)
                 self?.isBusy = false
             }
         case "analyzeFile":
@@ -110,7 +115,7 @@ class NativeInferencePlugin: NSObject {
 
     // MARK: - Inference
 
-    private func analyze(rgba: Data, width: Int, height: Int, result: @escaping FlutterResult) {
+    private func analyze(rgba: Data, width: Int, height: Int, isBgra: Bool = false, result: @escaping FlutterResult) {
         guard let interpreter = interpreter else {
             result(FlutterError(code: "NOT_LOADED", message: "Model not loaded", details: nil))
             return
@@ -118,8 +123,8 @@ class NativeInferencePlugin: NSObject {
 
         let sw = CFAbsoluteTimeGetCurrent()
 
-        // 1. Preprocess RGBA → Float32 RGB [1024×1024×3]
-        let inputData = preprocess(rgba: rgba, origW: width, origH: height)
+        // 1. Preprocess RGBA/BGRA → Float32 RGB [1024×1024×3]
+        let inputData = preprocess(rgba: rgba, origW: width, origH: height, isBgra: isBgra)
         let preprocessMs = Int((CFAbsoluteTimeGetCurrent() - sw) * 1000)
         print("[NativeInference-iOS] preprocess detail: \(preprocessMs)ms for \(width)x\(height) rgba=\(rgba.count) bytes")
 
@@ -198,10 +203,12 @@ class NativeInferencePlugin: NSObject {
 
     // MARK: - Preprocessing (vImage resize + vDSP normalize)
 
-    /// Resize RGBA to fit 1024×1024 using vImage (hardware-accelerated),
+    /// Resize RGBA/BGRA to fit 1024×1024 using vImage (hardware-accelerated),
     /// strip alpha, normalize RGB to [0,1] Float32 using vDSP.
     /// Fast even in debug builds because vImage/vDSP are pre-compiled system libraries.
-    private func preprocess(rgba: Data, origW: Int, origH: Int) -> Data {
+    /// When `isBgra == true`, the input bytes are read as B,G,R,A and the
+    /// channel order is corrected here (no per-pixel work on the Flutter side).
+    private func preprocess(rgba: Data, origW: Int, origH: Int, isBgra: Bool = false) -> Data {
         let sz = modelInputSize
         let scale = min(Double(sz) / Double(origW), Double(sz) / Double(origH))
         let newW = Int(Double(origW) * scale + 0.5)
@@ -241,10 +248,14 @@ class NativeInferencePlugin: NSObject {
         var bF = [Float](repeating: 0, count: pixelCount)
         resizedRGBA.withUnsafeBufferPointer { buf in
             let base = buf.baseAddress!
-            // Convert strided UInt8 channels directly to Float32
-            vDSP_vfltu8(base,       4, &rF, 1, vDSP_Length(pixelCount))  // R (stride 4)
-            vDSP_vfltu8(base + 1,   4, &gF, 1, vDSP_Length(pixelCount))  // G
-            vDSP_vfltu8(base + 2,   4, &bF, 1, vDSP_Length(pixelCount))  // B
+            // Convert strided UInt8 channels directly to Float32.
+            // BGRA layout: byte 0 = B, byte 1 = G, byte 2 = R, byte 3 = A.
+            // RGBA layout: byte 0 = R, byte 1 = G, byte 2 = B, byte 3 = A.
+            let rOffset = isBgra ? 2 : 0
+            let bOffset = isBgra ? 0 : 2
+            vDSP_vfltu8(base + rOffset, 4, &rF, 1, vDSP_Length(pixelCount))
+            vDSP_vfltu8(base + 1,       4, &gF, 1, vDSP_Length(pixelCount))
+            vDSP_vfltu8(base + bOffset, 4, &bF, 1, vDSP_Length(pixelCount))
         }
         var div: Float = 255.0
         vDSP_vsdiv(rF, 1, &div, &rF, 1, vDSP_Length(pixelCount))

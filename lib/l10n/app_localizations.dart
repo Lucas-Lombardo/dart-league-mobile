@@ -573,6 +573,109 @@ abstract class AppLocalizations {
   String get tapToUpgradeForUnlimited;
   String get unrankedFreeTierHint;
   String get tapToLearnAboutPremium;
+
+  // Tournament & verification
+  String get history;
+  String get emailNotVerifiedTitle;
+  String get emailVerificationRequired;
+  String get close;
+  String get resendEmail;
+  String get prizeLabel;
+
+  // Game dialogs
+  String get stayInMatch;
+  String get leaveAndForfeit;
+  String youHitToFinish(String notation);
+  String get isThisCorrect;
+  String get editDarts;
+  String get confirmPassOrEdit;
+  String get confirmBustButton;
+  String get scoreBusted;
+  String get selectReasonReporting;
+  String get disputeSubmitted;
+  String get submitReport;
+  String get preparingMatch;
+  String get waitingUpper;
+  String get opponentTurnUpper;
+  String get pleaseWait;
+  String finishHint(String hint);
+  String get doNotPlayDuringOpponentTurn;
+
+  // Report reasons
+  String get reportReasonCheating;
+  String get reportReasonUnsportsmanlike;
+  String get reportReasonIncorrectScore;
+  String get reportReasonConnectionIssues;
+  String get reportReasonOther;
+
+  // Bust reasons
+  String get bustReasonBelowZero;
+  String get bustReasonMustDouble;
+  String get bustReasonOneRemaining;
+  String get bustReasonInvalid;
+
+  // Tournament Game
+  String legNumber(int number);
+
+  // Tournament End rounds
+  String get roundFinal;
+  String get roundSemiFinal;
+  String get roundQuarterFinal;
+  String get roundOf16;
+  String get roundOf32;
+  String get roundOf64;
+
+  // Camera Check
+  String failedToCheckPermissions(String error);
+
+  // Placement Game
+  String botName(int difficulty);
+  String botNameIsThrowing(int difficulty);
+  String get loadingAi;
+
+  // Training
+  String dartNumber(int number);
+  String get saving;
+
+  // Widgets - score input
+  String get endRoundEarlyUpper;
+  String get endTurnUpper;
+  String get turnLabel;
+  String get editLabel;
+  String editDartNumber(int number);
+  String get singleUpper;
+  String get doubleUpper;
+  String get tripleUpper;
+  String get singleShort;
+  String get doubleShort;
+  String get tripleShort;
+  String get singleBull;
+  String get doubleBull;
+  String get bull50;
+  String get bull25;
+
+  // Widgets - error / status
+  String get oops;
+  String get tryAgainUpper;
+  String get unableToConnectMessage;
+  String get noRecentMatches;
+  String botWithAvg(int avg);
+  String get winUpper;
+  String get lossUpper;
+  String get placementUpper;
+  String get placementCapitalized;
+  String get vsLabel;
+  String get youUpper;
+  String get avgLabel;
+  String get waitingForOpponentUpper;
+  String get opponentUpper;
+  String get premiumBadgeLabel;
+
+  // Connecting / loading
+  String get connecting;
+
+  // Bot turn match opponent (game)
+  String get botPlayer;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -101,7 +101,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadLeaderboard,
-                child: const Text('Retry'),
+                child: Text(l10n.retry),
               ),
             ],
           ),

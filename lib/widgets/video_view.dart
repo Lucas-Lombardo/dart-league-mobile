@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../utils/app_theme.dart';
+import '../l10n/app_localizations.dart';
 
 class RemoteVideoView extends StatelessWidget {
   final RtcEngine engine;
@@ -142,9 +143,9 @@ class LocalVideoView extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'YOU',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context).youUpper,
+                      style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -199,9 +200,9 @@ class WaitingForOpponentView extends StatelessWidget {
                   color: AppTheme.textSecondary,
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'WAITING FOR OPPONENT...',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context).waitingForOpponentUpper,
+                  style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -233,9 +234,9 @@ class WaitingForOpponentView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'OPPONENT',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).opponentUpper,
+                    style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,

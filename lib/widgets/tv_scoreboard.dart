@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 import '../utils/score_converter.dart';
+import '../l10n/app_localizations.dart';
 
 /// PDC TV-style scoreboard with circular score displays.
 class TvScoreboard extends StatelessWidget {
@@ -85,9 +86,9 @@ class TvScoreboard extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'VS',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context).vsUppercase,
+                  style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -147,10 +148,12 @@ class _PlayerScore extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final screenWidth = MediaQuery.of(context).size.width;
-        // Adaptive circle size: scale with screen width for visibility
-        final circleSize = (screenWidth * 0.22).clamp(70.0, 110.0);
-        final fontSize = circleSize * (score >= 100 ? 0.34 : 0.40);
-        final nameFontSize = (screenWidth * 0.032).clamp(11.0, 15.0);
+        // Adaptive circle size: scale aggressively so the score is readable
+        // from ~2m away. The parent wraps this in FittedBox.scaleDown, so on
+        // smaller phones it shrinks back to fit available height.
+        final circleSize = (screenWidth * 0.36).clamp(120.0, 200.0);
+        final fontSize = circleSize * (score >= 100 ? 0.46 : 0.54);
+        final nameFontSize = (screenWidth * 0.040).clamp(13.0, 19.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -219,20 +222,26 @@ class _PlayerScore extends StatelessWidget {
                     )
                   : null,
             ),
-            // Average score per round
-            if (average != null && average! > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
+            // Average score per round.
+            // Always reserve the same vertical space so the two player
+            // columns stay symmetric — otherwise an opponent with no rounds
+            // played yet would render shorter, and Row's center alignment
+            // would nudge the score circles out of horizontal alignment.
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Opacity(
+                opacity: (average != null && average! > 0) ? 1 : 0,
                 child: Text(
-                  'AVG ${average!.toStringAsFixed(1)}',
+                  '${AppLocalizations.of(context).avgLabel} ${(average ?? 0).toStringAsFixed(1)}',
                   style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: (screenWidth * 0.024).clamp(9.0, 11.0),
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
+                    color: isActive ? Colors.white : AppTheme.textSecondary,
+                    fontSize: (screenWidth * 0.040).clamp(14.0, 19.0),
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
                   ),
                 ),
               ),
+            ),
           ],
         );
       },
@@ -256,7 +265,7 @@ class _YouBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
       ),
       child: Text(
-        'YOU',
+        AppLocalizations.of(context).youUpper,
         style: TextStyle(
           color: color,
           fontSize: fontSize,

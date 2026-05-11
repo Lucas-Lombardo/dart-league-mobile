@@ -133,10 +133,10 @@ class TrainingEndScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 if (isSubmitting)
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SizedBox(
+                      const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
@@ -144,10 +144,10 @@ class TrainingEndScreen extends StatelessWidget {
                           color: AppTheme.primary,
                         ),
                       ),
-                      SizedBox(width: 10),
+                      const SizedBox(width: 10),
                       Text(
-                        'Saving…',
-                        style: TextStyle(color: AppTheme.textSecondary),
+                        AppLocalizations.of(context).saving,
+                        style: const TextStyle(color: AppTheme.textSecondary),
                       ),
                     ],
                   )

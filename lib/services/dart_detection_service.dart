@@ -3,7 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -438,33 +438,6 @@ class DartDetectionService {
     return (kept, logs);
   }
 
-  List<Detection> _filterDartsOutsideBoard(
-    List<Detection> darts,
-    List<Detection> calibs, {
-    double margin = 1.3,
-  }) {
-    if (calibs.length < 3 || darts.isEmpty) return darts;
-
-    final cx = calibs.fold(0.0, (s, d) => s + d.x) / calibs.length;
-    final cy = calibs.fold(0.0, (s, d) => s + d.y) / calibs.length;
-
-    double boardR = 0;
-    for (final c in calibs) {
-      final dist = sqrt(pow(c.x - cx, 2) + pow(c.y - cy, 2));
-      if (dist > boardR) boardR = dist;
-    }
-    final maxR = boardR * margin;
-
-    final kept = <Detection>[];
-    for (final d in darts) {
-      final dist = sqrt(pow(d.x - cx, 2) + pow(d.y - cy, 2));
-      if (dist <= maxR) {
-        kept.add(d);
-      }
-    }
-    return kept;
-  }
-
   // ---- Main analysis entry points -----------------------------------------
 
   /// Core analysis: preprocess → inference → parse → filter → score.
@@ -512,7 +485,6 @@ class DartDetectionService {
 
     final (filteredDarts, filterLogs) = _filterDarts(dartTips);
     dartTips = filteredDarts;
-    dartTips = _filterDartsOutsideBoard(dartTips, controlPoints);
     final filterMs = sw.elapsedMilliseconds;
 
     if (controlPoints.length < 4) {
@@ -548,19 +520,21 @@ class DartDetectionService {
       final scoreMs = sw.elapsedMilliseconds;
       final totalMs = preprocessMs + inferenceMs + parseMs + filterMs + scoreMs;
 
-      for (final line in filterLogs) {
-        debugPrint(line);
-      }
-      debugPrint('---------------------');
-      debugPrint(
-          '[Image] ${totalMs}ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
-      for (int i = 0; i < scores.length; i++) {
-        final d = dartTips[i];
-        final s = scores[i];
+      if (kDebugMode) {
+        for (final line in filterLogs) {
+          debugPrint(line);
+        }
+        debugPrint('---------------------');
         debugPrint(
-            '[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+            '[Image] ${totalMs}ms | preprocess=$preprocessMs inference=$inferenceMs parse=$parseMs filter=$filterMs score=$scoreMs');
+        for (int i = 0; i < scores.length; i++) {
+          final d = dartTips[i];
+          final s = scores[i];
+          debugPrint(
+              '[Dart $i] x=${d.x.toStringAsFixed(3)} y=${d.y.toStringAsFixed(3)} conf=${d.confidence.toStringAsFixed(2)} => ${s.formatted}');
+        }
+        debugPrint('---------------------');
       }
-      debugPrint('---------------------');
 
       final total = scores.fold<int>(0, (sum, s) => sum + s.score);
       return ScoringResult(
@@ -637,7 +611,9 @@ class DartDetectionService {
     _interpreter!.run(_inputBuffer!.buffer, _outputBytes!);
     final inferenceMs = sw.elapsedMilliseconds;
 
-    debugPrint('[Image] read=${readMs}ms decode=${decodeMs}ms');
+    if (kDebugMode) {
+      debugPrint('[Image] read=${readMs}ms decode=${decodeMs}ms');
+    }
 
     final outputFloats = _outputBytes!.buffer.asFloat32List();
     return _analyze(outputFloats, xScale, yScale, imgW, imgH,

@@ -1495,4 +1495,253 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tapToLearnAboutPremium => 'Tap to learn about Premium · Unlimited matches';
+
+  // Tournament & verification
+  @override
+  String get history => 'History';
+
+  @override
+  String get emailNotVerifiedTitle => 'Email Not Verified';
+
+  @override
+  String get emailVerificationRequired =>
+      'You must verify your email before joining a tournament. Check your inbox or resend the verification email.';
+
+  @override
+  String get close => 'Close';
+
+  @override
+  String get resendEmail => 'Resend Email';
+
+  @override
+  String get prizeLabel => 'Prize';
+
+  // Game dialogs
+  @override
+  String get stayInMatch => 'Stay in Match';
+
+  @override
+  String get leaveAndForfeit => 'Leave & Forfeit';
+
+  @override
+  String youHitToFinish(String notation) => 'You hit $notation to finish!';
+
+  @override
+  String get isThisCorrect => 'Is this correct?';
+
+  @override
+  String get editDarts => 'Edit Darts';
+
+  @override
+  String get confirmPassOrEdit => 'Confirm to pass turn or edit if incorrect';
+
+  @override
+  String get confirmBustButton => 'Confirm Bust';
+
+  @override
+  String get scoreBusted => 'Score busted!';
+
+  @override
+  String get selectReasonReporting => 'Select a reason for reporting:';
+
+  @override
+  String get disputeSubmitted => 'Dispute submitted';
+
+  @override
+  String get submitReport => 'SUBMIT REPORT';
+
+  @override
+  String get preparingMatch => 'PREPARING MATCH';
+
+  @override
+  String get waitingUpper => 'WAITING...';
+
+  @override
+  String get opponentTurnUpper => "OPPONENT'S TURN";
+
+  @override
+  String get pleaseWait => 'Please wait...';
+
+  @override
+  String finishHint(String hint) => 'Finish: $hint';
+
+  @override
+  String get doNotPlayDuringOpponentTurn =>
+      "Do not play during opponent's turn";
+
+  // Report reasons
+  @override
+  String get reportReasonCheating => 'Cheating';
+
+  @override
+  String get reportReasonUnsportsmanlike => 'Unsportsmanlike conduct';
+
+  @override
+  String get reportReasonIncorrectScore => 'Incorrect score';
+
+  @override
+  String get reportReasonConnectionIssues => 'Connection issues';
+
+  @override
+  String get reportReasonOther => 'Other';
+
+  // Bust reasons
+  @override
+  String get bustReasonBelowZero => 'Score went below zero';
+
+  @override
+  String get bustReasonMustDouble => 'Must finish on a double';
+
+  @override
+  String get bustReasonOneRemaining => 'Cannot finish from 1';
+
+  @override
+  String get bustReasonInvalid => 'Invalid throw';
+
+  // Tournament Game
+  @override
+  String legNumber(int number) => 'Leg $number';
+
+  // Tournament End rounds
+  @override
+  String get roundFinal => 'Final';
+
+  @override
+  String get roundSemiFinal => 'Semi-Final';
+
+  @override
+  String get roundQuarterFinal => 'Quarter-Final';
+
+  @override
+  String get roundOf16 => 'Round of 16';
+
+  @override
+  String get roundOf32 => 'Round of 32';
+
+  @override
+  String get roundOf64 => 'Round of 64';
+
+  // Camera Check
+  @override
+  String failedToCheckPermissions(String error) =>
+      'Failed to check permissions: $error';
+
+  // Placement Game
+  @override
+  String botName(int difficulty) => 'Bot #$difficulty';
+
+  @override
+  String botNameIsThrowing(int difficulty) =>
+      'Bot #$difficulty is throwing...';
+
+  @override
+  String get loadingAi => 'Loading AI…';
+
+  // Training
+  @override
+  String dartNumber(int number) => 'Dart $number';
+
+  @override
+  String get saving => 'Saving…';
+
+  // Widgets - score input
+  @override
+  String get endRoundEarlyUpper => 'END ROUND EARLY';
+
+  @override
+  String get endTurnUpper => 'END TURN';
+
+  @override
+  String get turnLabel => 'TURN:';
+
+  @override
+  String get editLabel => 'EDIT';
+
+  @override
+  String editDartNumber(int number) => 'Edit Dart $number';
+
+  @override
+  String get singleUpper => 'SINGLE';
+
+  @override
+  String get doubleUpper => 'DOUBLE';
+
+  @override
+  String get tripleUpper => 'TRIPLE';
+
+  @override
+  String get singleShort => 'S';
+
+  @override
+  String get doubleShort => 'D';
+
+  @override
+  String get tripleShort => 'T';
+
+  @override
+  String get singleBull => 'S-BULL';
+
+  @override
+  String get doubleBull => 'D-BULL';
+
+  @override
+  String get bull50 => 'BULL (50)';
+
+  @override
+  String get bull25 => 'BULL (25)';
+
+  // Widgets - error / status
+  @override
+  String get oops => 'Oops!';
+
+  @override
+  String get tryAgainUpper => 'TRY AGAIN';
+
+  @override
+  String get unableToConnectMessage =>
+      'Unable to connect to the server.\nPlease check your internet connection.';
+
+  @override
+  String get noRecentMatches => 'No recent matches';
+
+  @override
+  String botWithAvg(int avg) => 'Bot (Avg: $avg)';
+
+  @override
+  String get winUpper => 'WIN';
+
+  @override
+  String get lossUpper => 'LOSS';
+
+  @override
+  String get placementUpper => 'PLACEMENT';
+
+  @override
+  String get placementCapitalized => 'Placement';
+
+  @override
+  String get vsLabel => 'vs';
+
+  @override
+  String get youUpper => 'YOU';
+
+  @override
+  String get avgLabel => 'AVG';
+
+  @override
+  String get waitingForOpponentUpper => 'WAITING FOR OPPONENT...';
+
+  @override
+  String get opponentUpper => 'OPPONENT';
+
+  @override
+  String get premiumBadgeLabel => 'Premium';
+
+  // Connecting / loading
+  @override
+  String get connecting => 'Connecting...';
+
+  // Bot turn match opponent (game)
+  @override
+  String get botPlayer => 'Bot';
 }

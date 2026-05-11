@@ -301,6 +301,39 @@ class CameraFrameService {
     }
   }
 
+  /// iOS-only: capture the latest frame as raw BGRA bytes (camera native format).
+  /// Returns (bgraBytes, width, height) or null if unavailable / non-iOS.
+  ///
+  /// Skips the per-pixel BGRA→RGBA conversion that `captureRgba` does on the
+  /// main isolate. The native plugin does the channel swap on its background
+  /// queue (vDSP), so all the heavy work stays off the UI thread.
+  (Uint8List, int, int)? captureBgra() {
+    if (!Platform.isIOS) return null;
+    final frame = _latestFrame;
+    if (frame == null) return null;
+
+    try {
+      final bgra = frame.planes[0].bytes;
+      final w = frame.width;
+      final h = frame.height;
+      final stride = frame.planes[0].bytesPerRow;
+
+      // Zero-copy: row stride matches packed width.
+      if (stride == w * 4) return (bgra, w, h);
+
+      // Strip per-row padding only — single setRange per row, no per-pixel work.
+      final tight = Uint8List(w * h * 4);
+      final rowBytes = w * 4;
+      for (int y = 0; y < h; y++) {
+        tight.setRange(y * rowBytes, y * rowBytes + rowBytes, bgra, y * stride);
+      }
+      return (tight, w, h);
+    } catch (e) {
+      debugPrint('[CameraFrameService] captureBgra error: $e');
+      return null;
+    }
+  }
+
   /// Capture the latest frame as raw RGBA pixels directly — no file I/O.
   /// Returns (rgbaBytes, width, height) or null if no frame is available.
   /// This is the fast path matching DartsMind: camera buffer → model directly.

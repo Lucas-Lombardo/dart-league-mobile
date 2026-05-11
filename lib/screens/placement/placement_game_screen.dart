@@ -355,6 +355,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   void _showBustDialog() {
     if (_bustDialogShowing || !mounted) return;
     _bustDialogShowing = true;
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -367,12 +368,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         title: Row(children: [
           const Icon(Icons.warning, color: AppTheme.error, size: 32),
           const SizedBox(width: 12),
-          Text('BUST!', style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
+          Text(l10n.bust, style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
         ]),
-        content: const Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Score busted!', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16), textAlign: TextAlign.center),
-          SizedBox(height: 8),
-          Text('Confirm to pass turn or edit if incorrect', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(l10n.scoreBusted, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16), textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text(l10n.confirmPassOrEdit, style: const TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
         ]),
         actions: [
           OutlinedButton(
@@ -389,7 +390,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _autoScoringService?.stopCapture();
               for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
             },
-            child: const Text('Edit Darts'),
+            child: Text(l10n.editDarts),
           ),
           ElevatedButton(
             onPressed: () {
@@ -398,7 +399,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _confirmRound();
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: const Text('Confirm Bust'),
+            child: Text(l10n.confirmBustButton),
           ),
         ],
       ),
@@ -409,6 +410,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (_winDialogShowing || !mounted) return;
     final notation = _currentRoundThrows.isNotEmpty ? _currentRoundThrows.last.notation : '—';
     _winDialogShowing = true;
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -421,12 +423,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         title: Row(children: [
           const Icon(Icons.emoji_events, color: AppTheme.success, size: 32),
           const SizedBox(width: 12),
-          Text('CHECKOUT!', style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold)),
+          Text(l10n.checkout, style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('You hit $notation to finish!', style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
+          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
           const SizedBox(height: 8),
-          const Text('Is this correct?', style: TextStyle(color: AppTheme.textSecondary)),
+          Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
         ]),
         actions: [
           OutlinedButton(
@@ -443,7 +445,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _autoScoringService?.stopCapture();
               for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
             },
-            child: const Text('Edit Darts'),
+            child: Text(l10n.editDarts),
           ),
           ElevatedButton(
             onPressed: () {
@@ -454,7 +456,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _handleGameEnd(auth.currentUser?.id);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
-            child: const Text('Confirm Win'),
+            child: Text(l10n.confirmWin),
           ),
         ],
       ),
@@ -502,7 +504,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     final safeTop = MediaQuery.of(context).padding.top;
-    final botName = 'Bot #${placement.currentBotDifficulty ?? 1}';
+    final botName = AppLocalizations.of(context).botName(placement.currentBotDifficulty ?? 1);
 
     return PopScope(
       canPop: false,
@@ -662,7 +664,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               const Icon(Icons.smart_toy, color: AppTheme.accent, size: 32),
               const SizedBox(width: 12),
               Text(
-                'Bot #${placement.currentBotDifficulty ?? 1} is throwing...',
+                AppLocalizations.of(context).botNameIsThrowing(placement.currentBotDifficulty ?? 1),
                 style: const TextStyle(color: AppTheme.accent, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],

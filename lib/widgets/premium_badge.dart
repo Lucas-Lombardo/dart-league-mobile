@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 
 /// Small icon shown next to a username to indicate Premium membership.
 /// Renders nothing for non-premium users so callers can place it
@@ -24,7 +25,7 @@ class PremiumBadge extends StatelessWidget {
         Icons.workspace_premium,
         size: size,
         color: color ?? const Color(0xFFFFC107),
-        semanticLabel: 'Premium',
+        semanticLabel: AppLocalizations.of(context).premiumBadgeLabel,
       ),
     );
   }

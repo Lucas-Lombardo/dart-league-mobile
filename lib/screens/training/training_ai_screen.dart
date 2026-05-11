@@ -391,16 +391,16 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     return Column(
       children: [
         _buildTopBar(l10n),
-        const Expanded(
+        Expanded(
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(color: AppTheme.primary),
-                SizedBox(height: 16),
+                const CircularProgressIndicator(color: AppTheme.primary),
+                const SizedBox(height: 16),
                 Text(
-                  'Loading AI…',
-                  style: TextStyle(color: AppTheme.textSecondary),
+                  l10n.loadingAi,
+                  style: const TextStyle(color: AppTheme.textSecondary),
                 ),
               ],
             ),
@@ -861,7 +861,7 @@ class _DartSlot extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Dart ${index + 1}',
+                AppLocalizations.of(context).dartNumber(index + 1),
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 11,

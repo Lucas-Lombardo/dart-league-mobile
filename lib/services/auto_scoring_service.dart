@@ -59,6 +59,7 @@ const int _androidEveryXFrame = 2;
 // ---------------------------------------------------------------------------
 typedef CaptureFrameCallback = Future<String?> Function();
 typedef CaptureRgbaCallback = (Uint8List, int, int)? Function();
+typedef CaptureBgraCallback = (Uint8List, int, int)? Function();
 
 /// Android YUV capture callback — returns raw YUV planes for native processing.
 /// Matches DartsMind's ZLVideoCapture: raw ImageProxy → native dvExecutor.
@@ -202,13 +203,13 @@ double _nowSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
 // AutoScoringService
 // ---------------------------------------------------------------------------
 class AutoScoringService extends ChangeNotifier {
-  /// Direct inference on the calling thread. On iOS the CPU interpreter runs
-  /// at ~400ms which blocks the Dart event loop, but the camera preview is
-  /// rendered by the native platform layer and stays smooth. We yield to the
-  /// event loop between inference cycles so Flutter widgets can rebuild.
+  /// Dart-side fallback interpreter. Used only if the native plugin fails to
+  /// load. Inference here blocks the main Dart isolate (~400ms on iOS).
   final DartDetectionService _detector = DartDetectionService(useNativeDecode: false);
 
-  /// Android: native inference via platform channel (DartsMind-style YUV pipeline).
+  /// Native inference via platform channel — runs on a background thread
+  /// (GCD on iOS, ExecutorService on Android) so the Flutter UI thread stays
+  /// responsive even while AI is processing a frame.
   NativeInference? _nativeInference;
 
   // Capture state
@@ -254,6 +255,32 @@ class AutoScoringService extends ChangeNotifier {
   static const int _autoConfirmThreshold = 2;
   int _prevDartCount = 0;
 
+  // Last snapshot of UI-visible state used to suppress no-op rebuilds.
+  // notifyListeners() runs after every inference cycle, so without this the
+  // whole game UI rebuilds 5x per second even when nothing changed.
+  String _lastUiStateKey = '';
+
+  String _computeUiStateKey() {
+    final b = StringBuffer();
+    for (final s in _dartSlots) {
+      b.write(s?.formatted ?? '_');
+      b.write('|');
+    }
+    b.write(_turnTotal);
+    b.write('|');
+    b.write(_zoomHint ?? '');
+    b.write('|');
+    b.write(_dartsRemoved ? '1' : '0');
+    return b.toString();
+  }
+
+  void _notifyIfChanged() {
+    final key = _computeUiStateKey();
+    if (key == _lastUiStateKey) return;
+    _lastUiStateKey = key;
+    notifyListeners();
+  }
+
   // Getters
   bool get isCapturing => _capturing;
   bool get modelLoaded => _modelLoaded;
@@ -281,8 +308,19 @@ class AutoScoringService extends ChangeNotifier {
         _nativeInference = NativeInference();
         await _nativeInference!.loadModel();
       } else {
-        // iOS: load Dart-side interpreter (CPU only, works perfectly)
-        await _detector.loadModel();
+        // iOS: prefer the native plugin so inference runs on a GCD background
+        // queue instead of blocking the main Dart isolate. Fall back to the
+        // Dart-side interpreter only if the native plugin fails to load.
+        try {
+          _nativeInference = NativeInference();
+          await _nativeInference!.loadModel();
+        } catch (e) {
+          debugPrint(
+              '[AutoScoring] iOS native load failed, falling back to Dart: $e');
+          _nativeInference?.dispose();
+          _nativeInference = null;
+          await _detector.loadModel();
+        }
       }
       _modelLoaded = true;
       _initError = null;
@@ -299,6 +337,7 @@ class AutoScoringService extends ChangeNotifier {
   void startCapture({
     required CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureBgraCallback? captureBgra,
     CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
@@ -310,7 +349,8 @@ class AutoScoringService extends ChangeNotifier {
     _consecutiveEmptyBoardCount = 0;
     _frameCounter = 0;
     notifyListeners();
-    _captureLoop(captureFrame, captureRgba, captureYuv, cleanupFile, onDartDetected, onAutoConfirm);
+    _captureLoop(captureFrame, captureRgba, captureBgra, captureYuv, cleanupFile,
+        onDartDetected, onAutoConfirm);
   }
 
   void stopCapture() {
@@ -387,6 +427,7 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> _captureLoop(
     CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureBgraCallback? captureBgra,
     CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
@@ -400,8 +441,8 @@ class AutoScoringService extends ChangeNotifier {
 
       if (!_capturing) break;
 
-      await _fireCapture(
-          captureFrame, captureRgba, captureYuv, cleanupFile, onDartDetected, onAutoConfirm);
+      await _fireCapture(captureFrame, captureRgba, captureBgra, captureYuv,
+          cleanupFile, onDartDetected, onAutoConfirm);
 
       // Yield AFTER inference too, so the results (notifyListeners) can
       // trigger widget rebuilds before the next cycle starts.
@@ -412,6 +453,7 @@ class AutoScoringService extends ChangeNotifier {
   Future<void> _fireCapture(
     CaptureFrameCallback captureFrame,
     CaptureRgbaCallback? captureRgba,
+    CaptureBgraCallback? captureBgra,
     CaptureYuvCallback? captureYuv,
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
@@ -454,18 +496,33 @@ class AutoScoringService extends ChangeNotifier {
           rotation: yuvData.rotation,
         );
       } else {
-        // ── iOS path: unchanged RGBA pipeline (works perfectly) ──
-        final rgbaData = captureRgba?.call();
-        if (rgbaData != null) {
-          final (rgba, w, h) = rgbaData;
-          result = await _detector.analyzeRgba(rgba, w, h);
+        // ── iOS path: native plugin (GCD background queue) preferred ──
+        // Falls back to the Dart-side interpreter if native didn't load.
+        // Try BGRA fast-path first — it skips the per-pixel BGRA→RGBA loop
+        // that would otherwise run on the main isolate.
+        final bgraData =
+            (_nativeInference != null) ? captureBgra?.call() : null;
+        if (bgraData != null) {
+          final (bgra, w, h) = bgraData;
+          result =
+              await _nativeInference!.analyzeRgba(bgra, w, h, isBgra: true);
         } else {
-          imagePath = await captureFrame();
-          if (imagePath == null || seq != _captureSeq || !_capturing) {
-            await _maybeCleanup(imagePath, cleanupFile);
-            return;
+          final rgbaData = captureRgba?.call();
+          if (rgbaData != null) {
+            final (rgba, w, h) = rgbaData;
+            result = _nativeInference != null
+                ? await _nativeInference!.analyzeRgba(rgba, w, h)
+                : await _detector.analyzeRgba(rgba, w, h);
+          } else {
+            imagePath = await captureFrame();
+            if (imagePath == null || seq != _captureSeq || !_capturing) {
+              await _maybeCleanup(imagePath, cleanupFile);
+              return;
+            }
+            result = _nativeInference != null
+                ? await _nativeInference!.analyzeFile(imagePath)
+                : await _detector.analyzeImage(imagePath);
           }
-          result = await _detector.analyzeImage(imagePath);
         }
       }
       infSw.stop();
@@ -477,21 +534,23 @@ class AutoScoringService extends ChangeNotifier {
       }
 
       final dartCount = result.dartTips.length;
-      debugPrint(
-          '[AutoScoring] ── frame #$seq ── ${_lastInferenceMs}ms ── $dartCount dart(s), ${result.calibrationPoints.length} CP ──');
-      for (int i = 0; i < dartCount && i < result.scores.length; i++) {
-        final s = result.scores[i];
-        debugPrint('[AutoScoring]   dart[$i] => ${s.formatted}');
-      }
-      if (result.error != null) {
-        debugPrint('[AutoScoring]   error: ${result.error}');
+      if (kDebugMode) {
+        debugPrint(
+            '[AutoScoring] ── frame #$seq ── ${_lastInferenceMs}ms ── $dartCount dart(s), ${result.calibrationPoints.length} CP ──');
+        for (int i = 0; i < dartCount && i < result.scores.length; i++) {
+          final s = result.scores[i];
+          debugPrint('[AutoScoring]   dart[$i] => ${s.formatted}');
+        }
+        if (result.error != null) {
+          debugPrint('[AutoScoring]   error: ${result.error}');
+        }
       }
 
       _updateZoomHint(result);
 
       // Auto-confirm
-      final allDartsEmitted = _emittedSlots.every((e) => e);
-      if (allDartsEmitted &&
+      final anyDartEmitted = _emittedSlots.any((e) => e);
+      if (anyDartEmitted &&
           dartCount == 0 &&
           result.calibrationPoints.length >= 4) {
         _consecutiveEmptyBoardCount++;
@@ -511,7 +570,7 @@ class AutoScoringService extends ChangeNotifier {
         _prevDartCount = 0;
         _dartsRemoved = true;
         await _maybeCleanup(imagePath, cleanupFile);
-        notifyListeners();
+        _notifyIfChanged();
         return;
       }
       _prevDartCount = dartCount;
@@ -520,7 +579,7 @@ class AutoScoringService extends ChangeNotifier {
       _autoScore(result, onDartDetected);
 
       await _maybeCleanup(imagePath, cleanupFile);
-      notifyListeners();
+      _notifyIfChanged();
     } catch (e) {
       await _maybeCleanup(imagePath, cleanupFile);
       debugPrint('[AutoScoring] Capture error: $e');
@@ -572,7 +631,40 @@ class AutoScoringService extends ChangeNotifier {
       _mergeTips(tipCnfPoints);
     }
 
+    _pruneStaleGroups();
     _assignSlots(onDartDetected);
+  }
+
+  // Bound _tipGroups / _shootGroups so the per-frame inner loops in
+  // mergeTips/analyseTipGroups stay constant-time over a long match.
+  // Without this, noise-only TipGroups accumulate and the AI gets visibly
+  // slower the longer a match runs.
+  static const int _maxTipGroups = 30;
+  static const int _maxShootGroups = 30;
+  static const double _staleTipGroupSeconds = 3.0;
+
+  void _pruneStaleGroups() {
+    if (_tipGroups.isEmpty && _shootGroups.isEmpty) return;
+    final now = _nowSeconds();
+
+    // Drop tip groups that have gone invisible and haven't been seen for a while
+    // and were never confirmed (firstPassTime == null). These are detector noise.
+    _tipGroups.removeWhere((tg) =>
+        tg.visibility == TipVisibility.invisible &&
+        tg.firstPassTime == null &&
+        (now - tg.latestVisibleTime) > _staleTipGroupSeconds);
+
+    // Hard cap: keep the most recently created groups. Anything older is either
+    // long-confirmed (already mirrored in _shootGroups) or stale noise.
+    if (_tipGroups.length > _maxTipGroups) {
+      _tipGroups.sort((a, b) => b.createdTime.compareTo(a.createdTime));
+      _tipGroups = _tipGroups.take(_maxTipGroups).toList();
+    }
+
+    if (_shootGroups.length > _maxShootGroups) {
+      _shootGroups.sort((a, b) => b.createdTime.compareTo(a.createdTime));
+      _shootGroups = _shootGroups.take(_maxShootGroups).toList();
+    }
   }
 
   /// DartsMind: autoScore$noTips (exact port from line 259-287)
@@ -630,9 +722,11 @@ class AutoScoringService extends ChangeNotifier {
         // Near-miss: a tip just outside the merge zone usually means detector
         // noise drifted further than expected. Log so we can tune the
         // threshold if the duplicate-dart bug resurfaces.
-        debugPrint(
-            '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(5)} '
-            '(threshold=${_tipMergeThresholdNorm.toStringAsFixed(5)}) — new TipGroup will be created');
+        if (kDebugMode) {
+          debugPrint(
+              '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(5)} '
+              '(threshold=${_tipMergeThresholdNorm.toStringAsFixed(5)}) — new TipGroup will be created');
+        }
       }
     }
 

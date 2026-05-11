@@ -80,7 +80,7 @@ class _RankedStatsTabState extends State<RankedStatsTab> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadStats,
-              child: const Text('Retry'),
+              child: Text(l10n.retry),
             ),
           ],
         ),

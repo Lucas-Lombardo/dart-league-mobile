@@ -554,8 +554,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       );
     } catch (e, stackTrace) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Error')),
-        body: Center(child: Text('Error: $e\n$stackTrace')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).error)),
+        body: Center(child: Text('${AppLocalizations.of(context).error}: $e\n$stackTrace')),
       );
     }
   }
@@ -599,8 +599,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                 ),
               ),
               const SizedBox(height: 2),
-              Text('Leg ${game.currentLeg}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-              Text('Best of ${widget.bestOf}', style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 11)),
+              Text(AppLocalizations.of(context).legNumber(game.currentLeg), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+              Text('${AppLocalizations.of(context).bestOf} ${widget.bestOf}', style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 11)),
             ],
           ),
           // Opponent legs

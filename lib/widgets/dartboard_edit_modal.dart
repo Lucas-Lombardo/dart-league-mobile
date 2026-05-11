@@ -4,6 +4,7 @@ import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../utils/dart_sound_service.dart';
+import '../l10n/app_localizations.dart';
 
 /// Shows a modal bottom sheet for correcting a dart score.
 ///
@@ -107,7 +108,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
                   const Icon(Icons.edit, color: AppTheme.primary, size: 24),
                   const SizedBox(width: 10),
                   Text(
-                    'Edit Dart ${widget.dartIndex + 1}',
+                    AppLocalizations.of(context).editDartNumber(widget.dartIndex + 1),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -162,11 +163,12 @@ class _DartEditSheetState extends State<_DartEditSheet> {
   }
 
   Widget _buildSpecialRow() {
+    final l10n = AppLocalizations.of(context);
     return Row(
       children: [
         Expanded(
           child: _BigButton(
-            label: 'MISS',
+            label: l10n.missButton,
             color: AppTheme.error,
             onTap: _submitMiss,
           ),
@@ -174,7 +176,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
         const SizedBox(width: 8),
         Expanded(
           child: _BigButton(
-            label: 'S-BULL',
+            label: l10n.singleBull,
             subtitle: '25',
             color: AppTheme.accent,
             onTap: () => _submit(25, ScoreMultiplier.single),
@@ -183,7 +185,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
         const SizedBox(width: 8),
         Expanded(
           child: _BigButton(
-            label: 'D-BULL',
+            label: l10n.doubleBull,
             subtitle: '50',
             color: AppTheme.success,
             onTap: () => _submit(25, ScoreMultiplier.double),
@@ -194,6 +196,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
   }
 
   Widget _buildMultiplierSelector() {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -202,9 +205,9 @@ class _DartEditSheetState extends State<_DartEditSheet> {
       ),
       child: Row(
         children: [
-          _multiplierTab(ScoreMultiplier.single, 'SINGLE', '×1', Colors.white),
-          _multiplierTab(ScoreMultiplier.double, 'DOUBLE', '×2', AppTheme.success),
-          _multiplierTab(ScoreMultiplier.triple, 'TRIPLE', '×3', AppTheme.error),
+          _multiplierTab(ScoreMultiplier.single, l10n.singleUpper, '×1', Colors.white),
+          _multiplierTab(ScoreMultiplier.double, l10n.doubleUpper, '×2', AppTheme.success),
+          _multiplierTab(ScoreMultiplier.triple, l10n.tripleUpper, '×3', AppTheme.error),
         ],
       ),
     );

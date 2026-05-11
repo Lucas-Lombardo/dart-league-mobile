@@ -43,17 +43,18 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
       final micGranted = statuses[Permission.microphone]?.isGranted ?? false;
 
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
       setState(() {
         _permissionsGranted = cameraGranted && micGranted;
         _isLoading = false;
 
         if (!_permissionsGranted) {
           if (!cameraGranted && !micGranted) {
-            _errorMessage = 'Camera and microphone permissions are required to join a match';
+            _errorMessage = l10n.cameraAndMicPermissionRequired;
           } else if (!cameraGranted) {
-            _errorMessage = 'Camera permission is required to join a match';
+            _errorMessage = l10n.cameraPermissionRequired;
           } else {
-            _errorMessage = 'Microphone permission is required to join a match';
+            _errorMessage = l10n.micPermissionRequired;
           }
         }
       });
@@ -61,7 +62,7 @@ class _CameraCheckScreenState extends State<CameraCheckScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to check permissions: ${e.toString()}';
+        _errorMessage = AppLocalizations.of(context).failedToCheckPermissions(e.toString());
       });
     }
   }

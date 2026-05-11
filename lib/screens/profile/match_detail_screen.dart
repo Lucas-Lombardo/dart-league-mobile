@@ -72,7 +72,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     children: [
                       const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
                       const SizedBox(height: 16),
-                      Text('Error: $_error', style: const TextStyle(color: AppTheme.error)),
+                      Text(AppLocalizations.of(context).errorWithMessage.replaceAll('{message}', _error ?? ''), style: const TextStyle(color: AppTheme.error)),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadMatchDetail,
@@ -133,7 +133,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
-              isWin ? '🏆 VICTORY' : '💔 DEFEAT',
+              isWin ? AppLocalizations.of(context).victoryEmoji : AppLocalizations.of(context).defeatEmoji,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -385,7 +385,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       child: Column(
         children: [
           Text(
-            'ROUND $roundNumber',
+            AppLocalizations.of(context).roundLabel.replaceAll('{number}', roundNumber.toString()),
             style: const TextStyle(
               color: AppTheme.textSecondary,
               fontSize: 12,

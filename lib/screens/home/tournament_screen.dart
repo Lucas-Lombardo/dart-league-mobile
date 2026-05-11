@@ -94,7 +94,7 @@ class _TournamentScreenState extends State<TournamentScreen> with SingleTickerPr
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'History',
+                          l10n.history,
                           style: TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 14,
@@ -443,29 +443,30 @@ class _TournamentCardState extends State<_TournamentCard> {
   }
 
   void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.email_outlined, color: AppTheme.primary, size: 28),
-            SizedBox(width: 12),
+            const Icon(Icons.email_outlined, color: AppTheme.primary, size: 28),
+            const SizedBox(width: 12),
             Text(
-              'Email Not Verified',
-              style: TextStyle(color: AppTheme.textPrimary, fontSize: 20),
+              l10n.emailNotVerifiedTitle,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 20),
             ),
           ],
         ),
-        content: const Text(
-          'You must verify your email before joining a tournament. Check your inbox or resend the verification email.',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        content: Text(
+          l10n.emailVerificationRequired,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close', style: TextStyle(color: AppTheme.textSecondary)),
+            child: Text(l10n.close, style: const TextStyle(color: AppTheme.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -473,8 +474,8 @@ class _TournamentCardState extends State<_TournamentCard> {
               if (context.mounted) {
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Verification email sent!'),
+                  SnackBar(
+                    content: Text(l10n.verificationEmailSent),
                     backgroundColor: AppTheme.success,
                   ),
                 );
@@ -485,7 +486,7 @@ class _TournamentCardState extends State<_TournamentCard> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Resend Email'),
+            child: Text(l10n.resendEmail),
           ),
         ],
       ),
@@ -863,30 +864,29 @@ class _RegisterButtonState extends State<_RegisterButton> {
   }
 
   void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Email Not Verified'),
-        content: const Text(
-          'You must verify your email before joining a tournament. Check your inbox or resend the verification email.',
-        ),
+        title: Text(l10n.emailNotVerifiedTitle),
+        content: Text(l10n.emailVerificationRequired),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(l10n.close),
           ),
           ElevatedButton(
             onPressed: () async {
               await authProvider.resendVerification();
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Verification email sent!'),
+                SnackBar(
+                  content: Text(l10n.verificationEmailSent),
                   backgroundColor: AppTheme.success,
                 ),
               );
             },
-            child: const Text('Resend Email'),
+            child: Text(l10n.resendEmail),
           ),
         ],
       ),
