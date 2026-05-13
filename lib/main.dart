@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -5,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'services/iap_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/matchmaking_provider.dart';
 import 'providers/game_provider.dart';
@@ -47,6 +50,17 @@ void main() async {
     Stripe.publishableKey = stripeKey;
     Stripe.urlScheme = 'dartrivals';
     await Stripe.instance.applySettings();
+  }
+
+  // Initialize Apple In-App Purchase (iOS only). Failure here must not block
+  // app startup — the paywall will show fallback pricing if products
+  // don't load.
+  if (!kIsWeb && Platform.isIOS) {
+    try {
+      await IapService.instance.init();
+    } catch (e) {
+      debugPrint('⚠️ IapService init failed: $e');
+    }
   }
   
   // Lock orientation to portrait mode only

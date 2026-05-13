@@ -1473,6 +1473,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'Opens the Stripe billing portal in your browser. Update your card, view invoices, or cancel anytime.';
 
   @override
+  String get autoRenewDisclosure =>
+      'Subscription auto-renews unless cancelled at least 24 hours before the end of the current period. Manage in Settings.';
+
+  @override
+  String get termsOfUse => 'Terms of Use';
+
+  @override
+  String get privacyPolicy => 'Privacy Policy';
+
+  @override
+  String get restorePurchases => 'Restore Purchases';
+
+  @override
+  String get restoreSuccess => 'Purchases restored.';
+
+  @override
+  String get restoreFailed => 'Restore failed. Please try again.';
+
+  @override
+  String get restoreNothingToRestore => 'No purchases to restore.';
+
+  @override
   String get dailyLimitReached => 'DAILY LIMIT REACHED';
 
   @override

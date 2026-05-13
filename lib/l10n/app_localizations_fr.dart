@@ -1477,6 +1477,28 @@ class AppLocalizationsFr extends AppLocalizations {
       'Ouvre le portail de facturation Stripe dans votre navigateur. Mettez à jour votre carte, consultez vos factures ou annulez à tout moment.';
 
   @override
+  String get autoRenewDisclosure =>
+      'L\'abonnement se renouvelle automatiquement sauf annulation au moins 24 heures avant la fin de la période en cours. Gestion dans les Réglages.';
+
+  @override
+  String get termsOfUse => 'Conditions d\'utilisation';
+
+  @override
+  String get privacyPolicy => 'Politique de confidentialité';
+
+  @override
+  String get restorePurchases => 'Restaurer les achats';
+
+  @override
+  String get restoreSuccess => 'Achats restaurés.';
+
+  @override
+  String get restoreFailed => 'Échec de la restauration. Veuillez réessayer.';
+
+  @override
+  String get restoreNothingToRestore => 'Aucun achat à restaurer.';
+
+  @override
   String get dailyLimitReached => 'LIMITE QUOTIDIENNE ATTEINTE';
 
   @override

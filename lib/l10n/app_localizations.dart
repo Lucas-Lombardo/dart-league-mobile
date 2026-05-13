@@ -565,6 +565,13 @@ abstract class AppLocalizations {
   String get nextRenewal;
   String get manageSubscription;
   String get manageFooter;
+  String get autoRenewDisclosure;
+  String get termsOfUse;
+  String get privacyPolicy;
+  String get restorePurchases;
+  String get restoreSuccess;
+  String get restoreFailed;
+  String get restoreNothingToRestore;
   String get dailyLimitReached;
   String get dailyLimitReachedShort;
   String get goPremiumUnlimited;

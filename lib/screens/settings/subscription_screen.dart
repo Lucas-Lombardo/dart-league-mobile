@@ -1,9 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/subscription_provider.dart';
+import '../../services/iap_service.dart';
 import '../../services/subscription_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
@@ -16,7 +20,15 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBindingObserver {
+  static const String _termsOfUseUrl =
+      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+  static const String _privacyPolicyUrl = 'https://api.dart-rivals.com/privacy';
+
+  static const String _fallbackYearlyPrice = '€49.99';
+  static const String _fallbackMonthlyPrice = '€4.99';
+
   bool _isProcessing = false;
+  bool _isRestoring = false;
 
   @override
   void initState() {
@@ -76,6 +88,64 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
     }
   }
 
+  Future<void> _restore() async {
+    if (_isRestoring) return;
+    HapticService.mediumImpact();
+    setState(() => _isRestoring = true);
+    final provider = context.read<SubscriptionProvider>();
+    final outcome = await provider.restorePurchases();
+    if (!mounted) return;
+    setState(() => _isRestoring = false);
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    switch (outcome) {
+      case RestoreOutcome.restored:
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(l10n.restoreSuccess),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+        break;
+      case RestoreOutcome.nothingToRestore:
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.restoreNothingToRestore)),
+        );
+        break;
+      case RestoreOutcome.failed:
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(provider.errorMessage ?? l10n.restoreFailed),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+        break;
+      case RestoreOutcome.notSupported:
+        // Should never be reached — button is iOS-only.
+        break;
+    }
+  }
+
+  Future<void> _openExternal(String url) async {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  String _yearlyPrice() {
+    if (Platform.isIOS) {
+      return IapService.instance.priceFor(SubscriptionPlan.yearly) ??
+          _fallbackYearlyPrice;
+    }
+    return _fallbackYearlyPrice;
+  }
+
+  String _monthlyPrice() {
+    if (Platform.isIOS) {
+      return IapService.instance.priceFor(SubscriptionPlan.monthly) ??
+          _fallbackMonthlyPrice;
+    }
+    return _fallbackMonthlyPrice;
+  }
+
   @override
   Widget build(BuildContext context) {
     final subscription = context.watch<SubscriptionProvider>();
@@ -103,6 +173,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                     _buildManageSection(l10n, subscription.premiumExpiresAt)
                   else
                     _buildPaywallSection(l10n),
+                  const SizedBox(height: 16),
+                  _buildLegalFooter(l10n),
                 ],
               ),
             ),
@@ -169,7 +241,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
         _buildPlanCard(
           plan: SubscriptionPlan.yearly,
           title: l10n.planYearly,
-          price: '€49.99',
+          price: _yearlyPrice(),
           period: '/${_yearShort(l10n)}',
           subtitle: l10n.yearlySubtitle,
           highlight: true,
@@ -179,7 +251,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
         _buildPlanCard(
           plan: SubscriptionPlan.monthly,
           title: l10n.planMonthly,
-          price: '€4.99',
+          price: _monthlyPrice(),
           period: '/${_monthShort(l10n)}',
           subtitle: l10n.monthlySubtitle,
           highlight: false,
@@ -189,7 +261,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            l10n.paywallFooter,
+            Platform.isIOS ? l10n.autoRenewDisclosure : l10n.paywallFooter,
             textAlign: TextAlign.center,
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
@@ -454,11 +526,77 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            l10n.manageFooter,
+            Platform.isIOS ? l10n.autoRenewDisclosure : l10n.manageFooter,
             textAlign: TextAlign.center,
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
         ),
+      ],
+    );
+  }
+
+  /// Legal footer is shown on both paywall and manage screens so Apple
+  /// reviewers can always find Terms / Privacy / Restore.
+  Widget _buildLegalFooter(AppLocalizations l10n) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton(
+              onPressed: () => _openExternal(_termsOfUseUrl),
+              child: Text(
+                l10n.termsOfUse,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  decoration: TextDecoration.underline,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const Text(
+              '·',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+            TextButton(
+              onPressed: () => _openExternal(_privacyPolicyUrl),
+              child: Text(
+                l10n.privacyPolicy,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  decoration: TextDecoration.underline,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (Platform.isIOS)
+          TextButton.icon(
+            onPressed: _isRestoring ? null : _restore,
+            icon: _isRestoring
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.textSecondary),
+                    ),
+                  )
+                : const Icon(
+                    Icons.restore_rounded,
+                    color: AppTheme.textSecondary,
+                    size: 16,
+                  ),
+            label: Text(
+              l10n.restorePurchases,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ),
       ],
     );
   }
