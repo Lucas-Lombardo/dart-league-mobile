@@ -50,9 +50,12 @@ const double _defaultZeroProximity = 3.0;
 // We mirror this: small gap between cycles to yield to UI, but no artificial delay.
 const Duration _minCycleInterval = Duration(milliseconds: 50);
 
-// DartsMind Android: frame skipping (DVMind.java: everyXFrame = 2)
+// DartsMind frame skipping (DVMind.java: everyXFrame = 2)
 // Process every Nth frame to match DartsMind's frame rate control.
-const int _androidEveryXFrame = 2;
+// Applied on both Android and iOS: even with CoreML/GPU delegates inference
+// takes ~100–300ms, so processing every other frame keeps the UI responsive
+// without hurting detection latency (still ~5fps net).
+const int _everyXFrame = 2;
 
 // ---------------------------------------------------------------------------
 // Callbacks
@@ -466,13 +469,11 @@ class AutoScoringService extends ChangeNotifier {
     try {
       _inferenceInProgress = true;
 
-      // DartsMind Android: frame skipping (DVMind.java everyXFrame)
+      // DartsMind frame skipping (DVMind.java everyXFrame) — both platforms.
       final bool isAndroid = !kIsWeb && Platform.isAndroid;
-      if (isAndroid) {
-        _frameCounter++;
-        if (_frameCounter % _androidEveryXFrame != 0) {
-          return; // Skip this frame — matches DartsMind's frameFlag logic
-        }
+      _frameCounter++;
+      if (_frameCounter % _everyXFrame != 0) {
+        return; // Skip this frame — matches DartsMind's frameFlag logic
       }
 
       final infSw = Stopwatch()..start();

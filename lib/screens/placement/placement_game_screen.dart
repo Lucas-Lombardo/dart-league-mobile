@@ -9,12 +9,12 @@ import '../../providers/placement_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../services/auto_scoring_service.dart';
+import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/score_converter.dart';
-import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
@@ -44,7 +44,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   bool _winDialogShowing = false;
 
   // Auto-scoring (local camera)
-  CameraController? _cameraController;
+  CameraFrameService? _cameraService;
   AutoScoringService? _autoScoringService;
   bool _autoScoringEnabled = false;
   bool _autoScoringLoading = false;
@@ -71,8 +71,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _stopAiCapture();
     _autoScoringService?.dispose();
     _autoScoringService = null;
-    _cameraController?.dispose();
-    _cameraController = null;
+    _cameraService?.dispose();
+    _cameraService = null;
     WakelockPlus.disable();
     super.dispose();
   }
@@ -81,7 +81,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _stopAiCapture();
+      _cameraService?.pause();
     } else if (state == AppLifecycleState.resumed) {
+      _cameraService?.resume();
       if (_autoScoringEnabled && !_aiManuallyDisabled && !_gameEnded && !_botTurnInProgress) {
         _startAiCapture();
       }
@@ -113,22 +115,24 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     setState(() => _autoScoringLoading = true);
 
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty || !mounted) { setState(() => _autoScoringLoading = false); return; }
-      final back = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-      _cameraController = CameraController(back, ResolutionPreset.high, enableAudio: false);
-      await _cameraController!.initialize();
-      if (!mounted) { _cameraController?.dispose(); _cameraController = null; setState(() => _autoScoringLoading = false); return; }
+      final cameraService = CameraFrameService();
+      // Solo mode: no Agora. The service runs a continuous image stream and
+      // caches the latest frame for AI scoring — no per-cycle start/stop.
+      await cameraService.initialize(agoraEngine: null, videoTrackId: null);
+      if (!mounted) { await cameraService.dispose(); setState(() => _autoScoringLoading = false); return; }
+      if (!cameraService.isInitialized) {
+        await cameraService.dispose();
+        if (mounted) setState(() => _autoScoringLoading = false);
+        return;
+      }
+      _cameraService = cameraService;
 
       try {
-        final minZoom = await _cameraController!.getMinZoomLevel();
-        final maxZoom = await _cameraController!.getMaxZoomLevel();
+        final minZoom = await cameraService.getMinZoomLevel();
+        final maxZoom = await cameraService.getMaxZoomLevel();
         final savedZoom = await StorageService.getCameraZoom();
         final clampedZoom = savedZoom.clamp(minZoom, maxZoom);
-        await _cameraController!.setZoomLevel(clampedZoom);
+        await cameraService.setZoomLevel(clampedZoom);
         if (mounted) setState(() { _cameraMinZoom = minZoom; _cameraMaxZoom = maxZoom; _cameraZoom = clampedZoom; });
       } catch (e) {
         debugPrint('[PlacementGame] Zoom config failed: $e');
@@ -141,19 +145,6 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     } catch (e) {
       if (mounted) setState(() => _autoScoringLoading = false);
     }
-  }
-
-  Future<String?> _captureFrame() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return null;
-    try {
-      return await silentCapture(_cameraController!);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _cleanupFile(String path) async {
-    try { await File(path).delete(); } catch (_) {}
   }
 
   void _onDartDetected(int slotIndex, DartScore dartScore) {
@@ -182,10 +173,15 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   void _startAiCapture() {
-    if (_autoScoringService == null || _aiManuallyDisabled || _aiPausedForEdit) return;
+    if (_autoScoringService == null || _cameraService == null) return;
+    if (_aiManuallyDisabled || _aiPausedForEdit) return;
+    final camService = _cameraService!;
     _autoScoringService!.startCapture(
-      captureFrame: _captureFrame,
-      cleanupFile: _cleanupFile,
+      captureFrame: () => camService.captureFrame(),
+      captureRgba: () => camService.captureRgba(),
+      captureBgra: () => camService.captureBgra(),
+      captureYuv: () => camService.captureYuvPlanes(),
+      cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
       onDartDetected: _onDartDetected,
       onAutoConfirm: () { if (mounted) { HapticService.heavyImpact(); _confirmRound(); } },
     );
@@ -208,15 +204,15 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   Future<void> _zoomIn() async {
-    if (_cameraController == null) return;
+    if (_cameraService == null) return;
     final next = (_cameraZoom + 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
-    try { await _cameraController!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
+    try { await _cameraService!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
   }
 
   Future<void> _zoomOut() async {
-    if (_cameraController == null) return;
+    if (_cameraService == null) return;
     final next = (_cameraZoom - 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
-    try { await _cameraController!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
+    try { await _cameraService!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -548,14 +544,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     opponentName: botName,
                     myName: auth.currentUser?.username ?? 'You',
                     dartsThrown: _dartsThrown,
-                    localCameraPreview: _cameraController != null && _cameraController!.value.isInitialized
+                    localCameraPreview: _cameraService?.controller != null && _cameraService!.isInitialized
                         ? SizedBox.expand(
                             child: FittedBox(
                               fit: BoxFit.cover,
                               child: SizedBox(
-                                width: _cameraController!.value.previewSize!.height,
-                                height: _cameraController!.value.previewSize!.width,
-                                child: CameraPreview(_cameraController!),
+                                width: _cameraService!.controller!.value.previewSize!.height,
+                                height: _cameraService!.controller!.value.previewSize!.width,
+                                child: CameraPreview(_cameraService!.controller!),
                               ),
                             ),
                           )

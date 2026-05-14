@@ -226,6 +226,8 @@ DEPENDENCIES:
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - stripe_ios (from `.symlinks/plugins/stripe_ios/ios`)
+  - TensorFlowLiteC/CoreML (= 2.12.0)
+  - TensorFlowLiteC/Metal (= 2.12.0)
   - tflite_flutter (from `.symlinks/plugins/tflite_flutter/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
@@ -329,6 +331,6 @@ SPEC CHECKSUMS:
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556
 
-PODFILE CHECKSUM: 0e0a309280699f3eeabb7358aad7b74e98f0c47e
+PODFILE CHECKSUM: b67153234faf4b7eaf3935f5a02d853e246c08b6
 
 COCOAPODS: 1.16.2

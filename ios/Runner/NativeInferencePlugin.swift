@@ -6,16 +6,38 @@ import Accelerate
 /// Runs the full preprocess + inference pipeline on a high-priority GCD queue
 /// so the Flutter UI thread is never blocked.
 ///
+/// Delegate fallback: CoreML (Neural Engine) → Metal (GPU) → CPU 4 threads.
+/// Reuses preprocessing buffers across frames to avoid ~16MB of per-frame
+/// allocation that was causing iOS to lag behind Android's GPU-delegated path.
+///
 /// API:
 ///   loadModel()                      → bool
 ///   analyze(rgba, width, height)     → {output, xScale, yScale, imageWidth, imageHeight}
 class NativeInferencePlugin: NSObject {
 
+    private enum DelegateKind { case coreml, metal, cpu }
+
     private var interpreter: OpaquePointer?   // TfLiteInterpreter*
     private var model: OpaquePointer?         // TfLiteModel*
+    // TfLiteDelegate is a fully-defined struct (see common.h), so Swift maps
+    // pointers to it as UnsafeMutablePointer<TfLiteDelegate>, not OpaquePointer.
+    private var delegate: UnsafeMutablePointer<TfLiteDelegate>?
+    private var delegateKind: DelegateKind = .cpu
     private let inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite", qos: .userInitiated)
     private let modelInputSize = 1024
     private var isBusy = false
+
+    // MARK: - Reusable preprocessing buffers
+    // Sized lazily on first frame, reused after. Camera resolution is fixed
+    // during a session so allocation only happens once.
+    private var bufW: Int = 0
+    private var bufH: Int = 0
+    private var resizedRGBA: [UInt8] = []
+    private var rF: [Float] = []
+    private var gF: [Float] = []
+    private var bF: [Float] = []
+    // Fixed 1024×1024×3 input tensor canvas — always the same size.
+    private lazy var inputCanvas: [Float] = [Float](repeating: 0, count: modelInputSize * modelInputSize * 3)
 
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
@@ -79,13 +101,32 @@ class NativeInferencePlugin: NSObject {
         }
 
         let options = TfLiteInterpreterOptionsCreate()
+        // numThreads applies to any ops the delegate falls back on the CPU
+        // for, so it's still useful when a delegate is attached.
         TfLiteInterpreterOptionsSetNumThreads(options, 4)
+
+        // Try CoreML first (Neural Engine on A12+ → fastest path).
+        // Falls back to Metal (GPU), then CPU 4 threads.
+        if let coreml = createCoreMLDelegate() {
+            TfLiteInterpreterOptionsAddDelegate(options, coreml)
+            delegate = coreml
+            delegateKind = .coreml
+            print("[NativeInference-iOS] CoreML delegate enabled")
+        } else if let metal = createMetalDelegate() {
+            TfLiteInterpreterOptionsAddDelegate(options, metal)
+            delegate = metal
+            delegateKind = .metal
+            print("[NativeInference-iOS] Metal delegate enabled (CoreML unavailable)")
+        } else {
+            print("[NativeInference-iOS] No GPU/NE delegate — CPU 4 threads")
+        }
 
         interpreter = TfLiteInterpreterCreate(model, options)
         TfLiteInterpreterOptionsDelete(options)
 
         guard interpreter != nil else {
             TfLiteModelDelete(model); model = nil
+            deleteDelegateIfAny()
             result(FlutterError(code: "INTERPRETER_ERROR", message: "TfLiteInterpreterCreate failed", details: nil))
             return
         }
@@ -93,12 +134,50 @@ class NativeInferencePlugin: NSObject {
         guard TfLiteInterpreterAllocateTensors(interpreter) == kTfLiteOk else {
             TfLiteInterpreterDelete(interpreter); interpreter = nil
             TfLiteModelDelete(model); model = nil
+            deleteDelegateIfAny()
             result(FlutterError(code: "ALLOC_ERROR", message: "AllocateTensors failed", details: nil))
             return
         }
 
-        print("[NativeInference-iOS] Model loaded (CPU, 4 threads)")
+        print("[NativeInference-iOS] Model loaded (delegate=\(delegateKind))")
         result(true)
+    }
+
+    private func createCoreMLDelegate() -> UnsafeMutablePointer<TfLiteDelegate>? {
+        var opts = TfLiteCoreMlDelegateOptions(
+            // AllDevices: also use CoreML on devices without Neural Engine.
+            // The delegate transparently runs on CPU/GPU there. Switch to
+            // `DevicesWithNeuralEngine` if older-device perf regresses.
+            enabled_devices: TfLiteCoreMlDelegateAllDevices,
+            coreml_version: 3,
+            max_delegated_partitions: 0,
+            min_nodes_per_partition: 2
+        )
+        return TfLiteCoreMlDelegateCreate(&opts)
+    }
+
+    private func createMetalDelegate() -> UnsafeMutablePointer<TfLiteDelegate>? {
+        // TFLGpuDelegateOptionsDefault() is declared in metal_delegate.h but
+        // not exported from the TensorFlowLiteCMetal.framework binary in 2.12.0
+        // — calling it produces "Undefined symbol: _TFLGpuDelegateOptionsDefault"
+        // at link time. We replicate the documented defaults inline.
+        var opts = TFLGpuDelegateOptions(
+            allow_precision_loss: true,                      // FP16 (matches Android GPU options)
+            wait_type: TFLGpuDelegateWaitTypeActive,         // lowest latency
+            enable_quantization: true                         // header default
+        )
+        return TFLGpuDelegateCreate(&opts)
+    }
+
+    private func deleteDelegateIfAny() {
+        guard let d = delegate else { return }
+        switch delegateKind {
+        case .coreml: TfLiteCoreMlDelegateDelete(d)
+        case .metal:  TFLGpuDelegateDelete(d)
+        case .cpu:    break
+        }
+        delegate = nil
+        delegateKind = .cpu
     }
 
     private func findModelPath() -> String? {
@@ -123,14 +202,13 @@ class NativeInferencePlugin: NSObject {
 
         let sw = CFAbsoluteTimeGetCurrent()
 
-        // 1. Preprocess RGBA/BGRA → Float32 RGB [1024×1024×3]
-        let inputData = preprocess(rgba: rgba, origW: width, origH: height, isBgra: isBgra)
+        // 1. Preprocess RGBA/BGRA → Float32 RGB [1024×1024×3] (into reused inputCanvas)
+        preprocess(rgba: rgba, origW: width, origH: height, isBgra: isBgra)
         let preprocessMs = Int((CFAbsoluteTimeGetCurrent() - sw) * 1000)
-        print("[NativeInference-iOS] preprocess detail: \(preprocessMs)ms for \(width)x\(height) rgba=\(rgba.count) bytes")
 
-        // 2. Copy to input tensor + invoke
+        // 2. Copy reused canvas to input tensor + invoke
         let inputTensor = TfLiteInterpreterGetInputTensor(interpreter, 0)
-        inputData.withUnsafeBytes { buf in
+        inputCanvas.withUnsafeBytes { buf in
             TfLiteTensorCopyFromBuffer(inputTensor, buf.baseAddress!, buf.count)
         }
 
@@ -141,7 +219,8 @@ class NativeInferencePlugin: NSObject {
         }
         let inferenceMs = Int((CFAbsoluteTimeGetCurrent() - inferSw) * 1000)
 
-        // 3. Read output tensor
+        // 3. Read output tensor. Allocate fresh Data here so the bytes Flutter
+        // sends back aren't mutated by a concurrent next-frame inference.
         let outputTensor = TfLiteInterpreterGetOutputTensor(interpreter, 0)
         let outputByteSize = TfLiteTensorByteSize(outputTensor)
         var outputData = Data(count: outputByteSize)
@@ -168,7 +247,7 @@ class NativeInferencePlugin: NSObject {
     // MARK: - File-based Inference (for camera setup)
 
     private func analyzeFile(path: String, result: @escaping FlutterResult) {
-        guard let interpreter = interpreter else {
+        guard interpreter != nil else {
             result(FlutterError(code: "NOT_LOADED", message: "Model not loaded", details: nil))
             return
         }
@@ -204,18 +283,30 @@ class NativeInferencePlugin: NSObject {
     // MARK: - Preprocessing (vImage resize + vDSP normalize)
 
     /// Resize RGBA/BGRA to fit 1024×1024 using vImage (hardware-accelerated),
-    /// strip alpha, normalize RGB to [0,1] Float32 using vDSP.
-    /// Fast even in debug builds because vImage/vDSP are pre-compiled system libraries.
+    /// strip alpha, normalize RGB to [0,1] Float32 using vDSP, then interleave
+    /// into the reused `inputCanvas` Float32 buffer.
+    ///
     /// When `isBgra == true`, the input bytes are read as B,G,R,A and the
     /// channel order is corrected here (no per-pixel work on the Flutter side).
-    private func preprocess(rgba: Data, origW: Int, origH: Int, isBgra: Bool = false) -> Data {
+    private func preprocess(rgba: Data, origW: Int, origH: Int, isBgra: Bool = false) {
         let sz = modelInputSize
         let scale = min(Double(sz) / Double(origW), Double(sz) / Double(origH))
         let newW = Int(Double(origW) * scale + 0.5)
         let newH = Int(Double(origH) * scale + 0.5)
 
+        // Reallocate scratch buffers only when the camera resolution changes.
+        // In practice this happens once at session start.
+        if newW != bufW || newH != bufH {
+            bufW = newW
+            bufH = newH
+            resizedRGBA = [UInt8](repeating: 0, count: newW * newH * 4)
+            let pix = newW * newH
+            rF = [Float](repeating: 0, count: pix)
+            gF = [Float](repeating: 0, count: pix)
+            bF = [Float](repeating: 0, count: pix)
+        }
+
         // 1. vImage resize RGBA (hardware-accelerated, no manual loops)
-        var resizedRGBA = [UInt8](repeating: 0, count: newW * newH * 4)
         rgba.withUnsafeBytes { srcBuf in
             guard let srcPtr = srcBuf.baseAddress else { return }
             var srcBuffer = vImage_Buffer(
@@ -235,22 +326,12 @@ class NativeInferencePlugin: NSObject {
             }
         }
 
-        // 2. Strip alpha: RGBA → contiguous RGB UInt8
-        //    Use vDSP to convert to Float and normalize in one pass
+        // 2. Strided UInt8 → Float32 for each channel, normalize to [0, 1].
+        // BGRA layout: byte 0 = B, byte 1 = G, byte 2 = R, byte 3 = A.
+        // RGBA layout: byte 0 = R, byte 1 = G, byte 2 = B, byte 3 = A.
         let pixelCount = newW * newH
-        let rgbCount = pixelCount * 3
-        var rgbU8 = [UInt8](repeating: 0, count: rgbCount)
-
-        // Planar extraction (no per-pixel loop — just stride-copy via vDSP)
-        // RGBA layout: [R,G,B,A, R,G,B,A, ...] — extract R,G,B with stride 4
-        var rF = [Float](repeating: 0, count: pixelCount)
-        var gF = [Float](repeating: 0, count: pixelCount)
-        var bF = [Float](repeating: 0, count: pixelCount)
         resizedRGBA.withUnsafeBufferPointer { buf in
             let base = buf.baseAddress!
-            // Convert strided UInt8 channels directly to Float32.
-            // BGRA layout: byte 0 = B, byte 1 = G, byte 2 = R, byte 3 = A.
-            // RGBA layout: byte 0 = R, byte 1 = G, byte 2 = B, byte 3 = A.
             let rOffset = isBgra ? 2 : 0
             let bOffset = isBgra ? 0 : 2
             vDSP_vfltu8(base + rOffset, 4, &rF, 1, vDSP_Length(pixelCount))
@@ -262,27 +343,44 @@ class NativeInferencePlugin: NSObject {
         vDSP_vsdiv(gF, 1, &div, &gF, 1, vDSP_Length(pixelCount))
         vDSP_vsdiv(bF, 1, &div, &bF, 1, vDSP_Length(pixelCount))
 
-        // 3. Interleave R,G,B into 1024×1024×3 canvas (zero-padded)
-        let totalFloats = sz * sz * 3
-        var output = [Float](repeating: 0, count: totalFloats)
+        // 3. Interleave R,G,B into 1024×1024×3 canvas (zero-padded on right/bottom).
+        // Use raw pointers to skip Swift's bounds-checked subscripting per element.
+        let rowFloats = sz * 3
+        inputCanvas.withUnsafeMutableBufferPointer { outPtr in
+            // Zero pre-existing content only where this frame won't overwrite.
+            // Padding columns (x >= newW within first newH rows) and padding
+            // rows (y >= newH) need zeros. Simplest correct approach: zero the
+            // whole canvas before writing. memset on the underlying floats is
+            // ~1ms for 12MB on modern iPhones.
+            outPtr.baseAddress!.update(repeating: 0, count: sz * sz * 3)
 
-        for y in 0..<newH {
-            let srcOff = y * newW
-            let dstOff = y * sz * 3
-            for x in 0..<newW {
-                let si = srcOff + x
-                let di = dstOff + x * 3
-                output[di]     = rF[si]
-                output[di + 1] = gF[si]
-                output[di + 2] = bF[si]
+            rF.withUnsafeBufferPointer { rPtr in
+                gF.withUnsafeBufferPointer { gPtr in
+                    bF.withUnsafeBufferPointer { bPtr in
+                        let rBase = rPtr.baseAddress!
+                        let gBase = gPtr.baseAddress!
+                        let bBase = bPtr.baseAddress!
+                        let outBase = outPtr.baseAddress!
+                        for y in 0..<newH {
+                            let srcOff = y * newW
+                            var dst = outBase + y * rowFloats
+                            for x in 0..<newW {
+                                let s = srcOff + x
+                                dst[0] = rBase[s]
+                                dst[1] = gBase[s]
+                                dst[2] = bBase[s]
+                                dst += 3
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        return output.withUnsafeBufferPointer { Data(buffer: $0) }
     }
 
     deinit {
         if let i = interpreter { TfLiteInterpreterDelete(i) }
         if let m = model { TfLiteModelDelete(m) }
+        deleteDelegateIfAny()
     }
 }
