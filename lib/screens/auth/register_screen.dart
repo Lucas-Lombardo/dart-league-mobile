@@ -119,9 +119,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 if (value.length < 3) {
                                   return l10n.usernameTooShort;
                                 }
-                                if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-                                  return l10n.usernameInvalid;
-                                }
                                 return null;
                               },
                             ),
@@ -138,7 +135,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 if (value == null || value.isEmpty) {
                                   return l10n.emailRequired;
                                 }
-                                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
                                   return l10n.emailInvalid;
                                 }
                                 return null;
