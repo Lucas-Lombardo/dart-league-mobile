@@ -19,7 +19,9 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PlacementProvider>().loadStatus();
+      final provider = context.read<PlacementProvider>();
+      provider.loadStatus();
+      provider.loadActiveMatch();
     });
   }
 
@@ -56,31 +58,40 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     final provider = context.read<PlacementProvider>();
     final success = await provider.startMatch();
     if (success && mounted) {
-      final result = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute(
-          builder: (context) => const PlacementCameraSetupScreen(),
+      await _runMatchAndHandleResult(provider);
+    }
+  }
+
+  Future<void> _resumeActiveMatch() async {
+    final provider = context.read<PlacementProvider>();
+    final active = provider.activeMatch;
+    if (active == null) return;
+    provider.resumeFromActiveMatch(active);
+    await _runMatchAndHandleResult(provider);
+  }
+
+  Future<void> _runMatchAndHandleResult(PlacementProvider provider) async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (context) => const PlacementCameraSetupScreen(),
+      ),
+    );
+    if (!mounted) return;
+    await provider.loadStatus();
+    await provider.loadActiveMatch();
+    final isComplete = provider.status?.isComplete == true;
+    if (isComplete && mounted) {
+      final assignedRank = (result?['assignedRank'] as String?) ?? _rankForWins(provider.status?.wins ?? 0);
+      final assignedElo = result?['assignedElo'] as int? ?? _eloForWins(provider.status?.wins ?? 0);
+      AppNavigator.replaceWith(
+        context,
+        PlacementResultScreen(
+          assignedRank: assignedRank,
+          assignedElo: assignedElo,
+          wins: provider.status?.wins ?? 0,
+          totalMatches: 4,
         ),
       );
-      // Reload status after returning from game
-      if (mounted) {
-        await provider.loadStatus();
-        // If placement just completed, show result screen.
-        // Use provider.status.isComplete as authoritative check (covers win AND loss on last game).
-        final isComplete = provider.status?.isComplete == true;
-        if (isComplete && mounted) {
-          final assignedRank = (result?['assignedRank'] as String?) ?? _rankForWins(provider.status?.wins ?? 0);
-          final assignedElo = result?['assignedElo'] as int? ?? _eloForWins(provider.status?.wins ?? 0);
-          AppNavigator.replaceWith(
-            context,
-            PlacementResultScreen(
-              assignedRank: assignedRank,
-              assignedElo: assignedElo,
-              wins: provider.status?.wins ?? 0,
-              totalMatches: 4,
-            ),
-          );
-        }
-      }
     }
   }
 
@@ -216,7 +227,7 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
             ),
                 ),
               ),
-              // Sticky start button
+              // Sticky start / resume button
               if (!status.isComplete && status.nextMatchNumber != null)
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -227,9 +238,11 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                   child: SizedBox(
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: provider.isLoading ? null : _startNextMatch,
+                      onPressed: provider.isLoading
+                          ? null
+                          : (provider.activeMatch != null ? _resumeActiveMatch : _startNextMatch),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
+                        backgroundColor: provider.activeMatch != null ? AppTheme.accent : AppTheme.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -241,7 +254,9 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
                               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                             )
                           : Text(
-                              '${l10n.startMatch} vs ${status.nextBotName}',
+                              provider.activeMatch != null
+                                  ? 'Reprendre vs ${provider.activeMatch!.botName}'
+                                  : '${l10n.startMatch} vs ${status.nextBotName}',
                               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                     ),

@@ -50,6 +50,8 @@ class Match {
 
   bool get isPlacement => matchType == 'placement';
 
+  bool get isInProgress => status == 'in_progress';
+
   factory Match.fromJson(Map<String, dynamic> json, [String? currentUserId]) {
     // New format: player1/player2 (absolute)
     return Match(

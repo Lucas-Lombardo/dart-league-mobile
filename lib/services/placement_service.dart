@@ -13,6 +13,12 @@ class PlacementService {
     return <String, dynamic>{};
   }
 
+  static Future<Map<String, dynamic>> getActiveMatch() async {
+    final response = await ApiService.get('/placement/active');
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> triggerBotTurn(
     String matchId, {
     int? playerRoundScore,

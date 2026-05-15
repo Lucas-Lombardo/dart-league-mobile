@@ -9,6 +9,8 @@ import '../../models/match.dart';
 import '../../l10n/app_localizations.dart';
 import 'match_detail_screen.dart';
 import '../../utils/app_theme.dart';
+import '../matchmaking/camera_setup_screen.dart';
+import '../placement/placement_hub_screen.dart';
 
 class MatchHistoryScreen extends StatefulWidget {
   const MatchHistoryScreen({super.key});
@@ -142,14 +144,42 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     );
   }
 
+  void _rejoinMatch(Match match, String userId) {
+    if (match.isPlacement) {
+      AppNavigator.toScreen(context, const PlacementHubScreen());
+      return;
+    }
+    final opponentId = match.getOpponentId(userId);
+    final opponentUsername = match.getOpponentUsername(userId);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CameraSetupScreen(
+          rejoinMatchId: match.id,
+          rejoinOpponentId: opponentId,
+          rejoinOpponentUsername: opponentUsername,
+        ),
+      ),
+    ).then((_) => _loadMatches());
+  }
+
   Widget _buildMatchCard(Match match, String userId) {
     final l10n = AppLocalizations.of(context);
+    final isInProgress = match.isInProgress;
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
     final opponentUsername = match.getOpponentUsername(userId);
     final myScore = match.getMyScore(userId);
     final opponentScore = match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d, y • h:mm a');
+    final Color borderColor = isInProgress
+        ? AppTheme.accent
+        : (isWin ? AppTheme.success : AppTheme.error);
+    final Color badgeColor = isInProgress
+        ? AppTheme.accent
+        : (isWin ? AppTheme.success : AppTheme.error);
+    final String badgeLabel = isInProgress
+        ? 'IN PROGRESS'
+        : (isWin ? l10n.win.toUpperCase() : l10n.loss.toUpperCase());
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -157,9 +187,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isWin 
-              ? AppTheme.success.withValues(alpha: 0.3) 
-              : AppTheme.error.withValues(alpha: 0.3),
+          color: borderColor.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
@@ -173,7 +201,11 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
+            if (isInProgress) {
+              _rejoinMatch(match, userId);
+            } else {
+              AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
+            }
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
@@ -186,16 +218,14 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: isWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                        color: badgeColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isWin ? AppTheme.success : AppTheme.error,
-                        ),
+                        border: Border.all(color: badgeColor),
                       ),
                       child: Text(
-                        isWin ? l10n.win.toUpperCase() : l10n.loss.toUpperCase(),
+                        badgeLabel,
                         style: TextStyle(
-                          color: isWin ? AppTheme.success : AppTheme.error,
+                          color: badgeColor,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -213,21 +243,22 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${eloChange >= 0 ? '+' : ''}$eloChange',
-                        style: TextStyle(
-                          color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                    if (!isInProgress)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${eloChange >= 0 ? '+' : ''}$eloChange',
+                          style: TextStyle(
+                            color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

@@ -59,6 +59,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    final provider = context.read<PlacementProvider>();
+    _myScore = provider.player1Score;
+    _scoreBeforeRound = _myScore;
     _autoScoringService = AutoScoringService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initCameraAndAI();

@@ -88,8 +88,62 @@ class BotThrow {
   }
 }
 
+class ActivePlacementMatch {
+  final String matchId;
+  final int botDifficulty;
+  final String botName;
+  final int player1Score;
+  final int player2Score;
+  final List<int> player1Rounds;
+  final List<int> player2Rounds;
+  final List<List<String>> player1RoundThrows;
+  final List<List<String>> player2RoundThrows;
+
+  ActivePlacementMatch({
+    required this.matchId,
+    required this.botDifficulty,
+    required this.botName,
+    required this.player1Score,
+    required this.player2Score,
+    required this.player1Rounds,
+    required this.player2Rounds,
+    required this.player1RoundThrows,
+    required this.player2RoundThrows,
+  });
+
+  factory ActivePlacementMatch.fromJson(Map<String, dynamic> json) {
+    final gameState = json['gameState'] as Map<String, dynamic>? ?? {};
+    return ActivePlacementMatch(
+      matchId: json['matchId'] as String? ?? '',
+      botDifficulty: json['botDifficulty'] as int? ?? 1,
+      botName: json['botName'] as String? ?? 'Bot',
+      player1Score: gameState['player1Score'] as int? ?? 501,
+      player2Score: gameState['player2Score'] as int? ?? 501,
+      player1Rounds: (gameState['player1Rounds'] as List<dynamic>?)
+              ?.map((e) => e as int)
+              .toList() ??
+          [],
+      player2Rounds: (gameState['player2Rounds'] as List<dynamic>?)
+              ?.map((e) => e as int)
+              .toList() ??
+          [],
+      player1RoundThrows: (gameState['player1RoundThrows'] as List<dynamic>?)
+              ?.map((r) =>
+                  (r as List<dynamic>).map((e) => e.toString()).toList())
+              .toList() ??
+          [],
+      player2RoundThrows: (gameState['player2RoundThrows'] as List<dynamic>?)
+              ?.map((r) =>
+                  (r as List<dynamic>).map((e) => e.toString()).toList())
+              .toList() ??
+          [],
+    );
+  }
+}
+
 class PlacementProvider extends ChangeNotifier {
   PlacementStatus? _status;
+  ActivePlacementMatch? _activeMatch;
   bool _isLoading = false;
   String? _error;
 
@@ -104,6 +158,7 @@ class PlacementProvider extends ChangeNotifier {
   bool _botIsBust = false;
 
   PlacementStatus? get status => _status;
+  ActivePlacementMatch? get activeMatch => _activeMatch;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get currentMatchId => _currentMatchId;
@@ -129,6 +184,38 @@ class PlacementProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadActiveMatch() async {
+    try {
+      final response = await PlacementService.getActiveMatch();
+      if (response['active'] == true) {
+        _activeMatch = ActivePlacementMatch.fromJson(response);
+      } else {
+        _activeMatch = null;
+      }
+    } catch (e) {
+      _activeMatch = null;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  void clearActiveMatch() {
+    _activeMatch = null;
+    notifyListeners();
+  }
+
+  void resumeFromActiveMatch(ActivePlacementMatch match) {
+    _currentMatchId = match.matchId;
+    _currentBotDifficulty = match.botDifficulty;
+    _player1Score = match.player1Score;
+    _player2Score = match.player2Score;
+    _isPlayerTurn = true;
+    _lastBotThrows = [];
+    _botIsCheckout = false;
+    _botIsBust = false;
+    notifyListeners();
   }
 
   Future<bool> startMatch() async {
@@ -217,6 +304,7 @@ class PlacementProvider extends ChangeNotifier {
 
       _currentMatchId = null;
       _currentBotDifficulty = null;
+      _activeMatch = null;
 
       if (response['placementStatus'] != null) {
         _status = PlacementStatus.fromJson(
@@ -243,6 +331,7 @@ class PlacementProvider extends ChangeNotifier {
 
   void reset() {
     _status = null;
+    _activeMatch = null;
     _currentMatchId = null;
     _currentBotDifficulty = null;
     _player1Score = 501;
