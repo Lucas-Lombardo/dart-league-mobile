@@ -59,12 +59,12 @@ extension TrainingTypeX on TrainingType {
       case TrainingType.aroundTheClock:
       case TrainingType.aroundTheClockDouble:
       case TrainingType.aroundTheClockTriple:
-      case TrainingType.checkout81:
-      case TrainingType.checkout121:
         return false;
       case TrainingType.bobs27:
       case TrainingType.highScore:
       case TrainingType.checkout50:
+      case TrainingType.checkout81:
+      case TrainingType.checkout121:
         return true;
     }
   }

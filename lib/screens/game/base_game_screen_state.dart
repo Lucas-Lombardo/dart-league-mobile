@@ -268,6 +268,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     if (mounted) {
       setState(() => autoScoringLoading = false);
       if (autoScoringService!.modelLoaded) {
+        // Arm the one-shot "empty board" gate so practice darts thrown while
+        // the player was in the queue don't get counted in the new match.
+        // The gate clears itself once the camera sees an empty dartboard.
+        autoScoringService!.waitForEmptyBoardOnce();
         final game = readGame();
         if (game.isMyTurn) {
           autoScoringService!.startCapture(

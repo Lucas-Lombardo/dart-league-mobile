@@ -553,8 +553,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                               fit: BoxFit.cover,
                               child: SizedBox(
                                 width: _cameraService!.controller!.value.previewSize!.height,
-                                height: _cameraService!.controller!.value.previewSize!.width,
-                                child: CameraPreview(_cameraService!.controller!),
+                                height: _cameraService!.controller!.value.previewSize!.height * 4 / 3,
+                                child: ClipRect(
+                                  child: OverflowBox(
+                                    maxWidth: _cameraService!.controller!.value.previewSize!.height,
+                                    maxHeight: _cameraService!.controller!.value.previewSize!.width,
+                                    child: CameraPreview(_cameraService!.controller!),
+                                  ),
+                                ),
                               ),
                             ),
                           )

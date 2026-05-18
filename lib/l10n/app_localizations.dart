@@ -218,6 +218,7 @@ abstract class AppLocalizations {
   String get cameraOnDuringMatchInfo;
   String get aiWillScoreDartsInfo;
   String get makeSureDartboardVisibleInfo;
+  String get removeDartsFromBoardHint;
   String get cameraCheck;
   String get cameraSetup;
   String get checkingPermissions;
@@ -494,6 +495,7 @@ abstract class AppLocalizations {
   String trainingCheckoutsOutOf(int hits, int total);
   String trainingAttemptProgress(int current, int total);
   String get trainingRemaining;
+  String get trainingHighestReached;
   String get trainingBusted;
   String get trainingBustBelowZero;
   String get trainingBustNotDouble;

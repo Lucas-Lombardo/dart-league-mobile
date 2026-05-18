@@ -2,34 +2,38 @@ import '../../../l10n/app_localizations.dart';
 import '../../../models/training.dart';
 import 'training_strategy.dart';
 
-/// 81 / 121 checkout: up to 9 darts (3 visits) to finish exactly, last dart
-/// must be a double. X01 bust rules apply.
+/// Progressive 81 / 121 checkout. Each visit is one attempt to check out
+/// from the current target under standard X01 rules (last dart must be a
+/// double). A successful checkout advances the target by +1; a bust
+/// resets it to [startScore]. The session lasts a fixed number of attempts
+/// and the score is the highest target the player reached.
 class CheckoutFinishStrategy extends TrainingStrategy {
-  static const int _dartsAllowed = 9;
+  static const int _attemptsTotal = 10;
 
   final int startScore;
-  late int _score = startScore;
-  int _dartsThrown = 0;
-  bool _success = false;
-  String? _bustReason;
-  final List<String> _notations = [];
+  late int _target = startScore;
+  int _attemptIndex = 0;
+  int _successes = 0;
+  int _highestReached = 0;
+  int _totalDarts = 0;
+  final List<Map<String, Object>> _history = [];
 
   CheckoutFinishStrategy({required this.startScore})
       : assert(startScore == 81 || startScore == 121);
 
-  /// Project the current remaining score forward with [pending] darts applied
-  /// (without mutating committed state). Bust rules halt the projection.
+  /// Live remaining score within the current attempt after applying [pending]
+  /// under standard X01 rules. Returns the target if pending busts so the
+  /// displayed "remaining" doesn't lie about progress.
   int _liveRemaining(List<TrainingDart> pending) {
-    if (_success || _bustReason != null) return _score;
-    int remaining = _score;
+    int remaining = _target;
     for (final d in pending) {
       final v = d.points;
       final next = remaining - v;
-      if (next < 0) break; // bust preview
-      if (next == 0 && !d.isDouble) break;
-      if (next == 1) break;
+      if (next < 0) return _target;
+      if (next == 0 && !d.isDouble) return _target;
+      if (next == 1) return _target;
       remaining = next;
-      if (next == 0 && d.isDouble) break;
+      if (remaining == 0) break;
     }
     return remaining;
   }
@@ -46,94 +50,98 @@ class CheckoutFinishStrategy extends TrainingStrategy {
       '${_liveRemaining(pending)}';
 
   @override
-  String? secondaryLabel(AppLocalizations l10n) => l10n.trainingDartsThrown;
+  String? secondaryLabel(AppLocalizations l10n) => l10n.trainingHighestReached;
 
   @override
   String? secondaryValue(AppLocalizations l10n, List<TrainingDart> pending) =>
-      '${_dartsThrown + pending.length} / $_dartsAllowed';
+      '$_highestReached';
 
   @override
   double progress(List<TrainingDart> pending) =>
-      (_dartsThrown + pending.length) / _dartsAllowed;
+      _attemptIndex / _attemptsTotal;
 
   @override
   String? progressCaption(AppLocalizations l10n, List<TrainingDart> pending) =>
-      l10n.trainingCheckoutFromN(startScore);
+      l10n.trainingAttemptProgress(_attemptIndex + 1, _attemptsTotal);
 
   @override
   VisitOutcome submitVisit(List<TrainingDart> darts) {
+    final attemptTarget = _target;
+    int remaining = _target;
+    int dartsUsed = 0;
+    bool success = false;
+    String? bustReason;
+    final notations = <String>[];
+
     for (final d in darts) {
-      if (_success || _bustReason != null) break;
-      _dartsThrown++;
-      _notations.add(d.notation);
+      if (success || bustReason != null) break;
+      dartsUsed++;
+      notations.add(d.notation);
       final v = d.points;
-      final newScore = _score - v;
-      if (newScore < 0) {
-        _bustReason = 'below_zero';
-      } else if (newScore == 0 && !d.isDouble) {
-        _bustReason = 'not_double_finish';
-      } else if (newScore == 1) {
-        _bustReason = 'left_one';
+      final next = remaining - v;
+      if (next < 0) {
+        bustReason = 'below_zero';
+      } else if (next == 0 && !d.isDouble) {
+        bustReason = 'not_double_finish';
+      } else if (next == 1) {
+        bustReason = 'left_one';
       } else {
-        _score = newScore;
-        if (newScore == 0 && d.isDouble) {
-          _success = true;
-        }
+        remaining = next;
+        if (remaining == 0 && d.isDouble) success = true;
       }
     }
-    if (_success) {
-      return VisitOutcome(finished: true, completedSuccessfully: true);
-    }
-    if (_bustReason != null) {
-      return VisitOutcome(finished: true, completedSuccessfully: false);
-    }
-    if (_dartsThrown >= _dartsAllowed) {
-      _bustReason = 'out_of_darts';
-      return VisitOutcome(finished: true, completedSuccessfully: false);
-    }
-    return VisitOutcome(finished: false);
-  }
 
-  String _bustLabel(AppLocalizations l10n) {
-    switch (_bustReason) {
-      case 'below_zero':
-        return l10n.trainingBustBelowZero;
-      case 'not_double_finish':
-        return l10n.trainingBustNotDouble;
-      case 'left_one':
-        return l10n.trainingBustLeftOne;
-      case 'out_of_darts':
-        return l10n.trainingBustOutOfDarts;
+    _totalDarts += dartsUsed;
+    if (attemptTarget > _highestReached) _highestReached = attemptTarget;
+    if (success) {
+      _successes++;
+      _target = attemptTarget + 1;
+    } else {
+      _target = startScore;
     }
-    return l10n.trainingBustedOut;
+
+    _history.add({
+      'target': attemptTarget,
+      'darts': dartsUsed,
+      'success': success,
+      'bustReason': bustReason ?? '',
+      'throws': notations,
+    });
+    _attemptIndex++;
+
+    final finished = _attemptIndex >= _attemptsTotal;
+    return VisitOutcome(
+      finished: finished,
+      completedSuccessfully: finished,
+      bustReason: bustReason,
+    );
   }
 
   @override
   TrainingResult buildResult(AppLocalizations l10n) {
     return TrainingResult(
-      score: _success ? _dartsThrown : 0,
-      dartsThrown: _dartsThrown,
-      completed: _success,
-      scoreLabel: _success
-          ? l10n.trainingDartsToFinish
-          : l10n.trainingBusted,
-      subtitle: _success ? null : _bustLabel(l10n),
+      score: _highestReached,
+      dartsThrown: _totalDarts,
+      completed: _attemptIndex >= _attemptsTotal,
+      scoreLabel: l10n.trainingHighestReached,
+      subtitle: l10n.trainingCheckoutsOutOf(_successes, _attemptsTotal),
       details: {
         'startScore': startScore,
-        'success': _success,
-        'bustReason': _bustReason,
-        'throws': _notations,
-        'finalRemaining': _score,
+        'attempts': _attemptsTotal,
+        'successes': _successes,
+        'highestReached': _highestReached,
+        'history': _history,
       },
     );
   }
 
   @override
   void reset() {
-    _score = startScore;
-    _dartsThrown = 0;
-    _success = false;
-    _bustReason = null;
-    _notations.clear();
+    _target = startScore;
+    _attemptIndex = 0;
+    _successes = 0;
+    _highestReached = 0;
+    _totalDarts = 0;
+    _history.clear();
   }
 }

@@ -1,9 +1,11 @@
 import '../../../l10n/app_localizations.dart';
 import '../../../models/training.dart';
-import '../../../providers/game_provider.dart' show ScoreMultiplier;
 import 'training_strategy.dart';
 
-/// Checkout 50 — doubles-only finishing practice over 10 attempts.
+/// Checkout 50 — 10 attempts, 3 darts each. Standard X01 checkout rules:
+/// any combination of darts is allowed, but the final dart that brings the
+/// score to 0 must be a double (or double bull). 1 point per successful
+/// checkout.
 class Checkout50Strategy extends TrainingStrategy {
   static const int _attemptsTotal = 10;
   static const int _startScore = 50;
@@ -13,14 +15,18 @@ class Checkout50Strategy extends TrainingStrategy {
   int _totalDarts = 0;
   final List<Map<String, Object>> _history = [];
 
-  /// Remaining score within the current attempt after processing [pending].
+  /// Live remaining score within the current attempt after applying [pending]
+  /// under standard X01 rules. Returns 50 if pending busts so the displayed
+  /// "remaining" doesn't lie about progress.
   int _liveRemaining(List<TrainingDart> pending) {
     int remaining = _startScore;
     for (final d in pending) {
-      if (!d.isDouble) continue;
       final v = d.points;
-      if (v > remaining) continue;
-      remaining -= v;
+      final next = remaining - v;
+      if (next < 0) return _startScore; // bust
+      if (next == 0 && !d.isDouble) return _startScore; // bust: not on double
+      if (next == 1) return _startScore; // bust: cannot finish from 1
+      remaining = next;
       if (remaining == 0) break;
     }
     return remaining;
@@ -28,9 +34,6 @@ class Checkout50Strategy extends TrainingStrategy {
 
   @override
   TrainingType get trainingType => TrainingType.checkout50;
-
-  @override
-  ScoreMultiplier? get lockedMultiplier => ScoreMultiplier.double;
 
   @override
   String primaryLabel(AppLocalizations l10n) => l10n.trainingRemaining;
@@ -59,23 +62,47 @@ class Checkout50Strategy extends TrainingStrategy {
     int remaining = _startScore;
     int dartsUsed = 0;
     bool success = false;
+    String? bustReason;
+    final notations = <String>[];
+
     for (final d in darts) {
-      _totalDarts++;
+      // Stop processing further darts once the attempt is decided (either
+      // checkout or bust). The remaining "padded miss" darts in the visit
+      // array don't count toward darts thrown.
+      if (success || bustReason != null) break;
       dartsUsed++;
-      if (!d.isDouble) continue;
+      notations.add(d.notation);
       final v = d.points;
-      if (v > remaining) continue;
-      remaining -= v;
-      if (remaining == 0) {
-        success = true;
-        break;
+      final next = remaining - v;
+      if (next < 0) {
+        bustReason = 'below_zero';
+      } else if (next == 0 && !d.isDouble) {
+        bustReason = 'not_double_finish';
+      } else if (next == 1) {
+        bustReason = 'left_one';
+      } else {
+        remaining = next;
+        if (remaining == 0 && d.isDouble) success = true;
       }
     }
+
+    _totalDarts += dartsUsed;
     if (success) _successes++;
-    _history.add({'darts': dartsUsed, 'success': success});
+    _history.add({
+      'darts': dartsUsed,
+      'success': success,
+      'bustReason': bustReason ?? '',
+      'throws': notations,
+    });
     _attemptIndex++;
+
     final finished = _attemptIndex >= _attemptsTotal;
-    return VisitOutcome(finished: finished, completedSuccessfully: finished);
+    return VisitOutcome(
+      finished: finished,
+      // Only completed if all attempts ran their course.
+      completedSuccessfully: finished,
+      bustReason: bustReason,
+    );
   }
 
   @override
@@ -85,8 +112,7 @@ class Checkout50Strategy extends TrainingStrategy {
       dartsThrown: _totalDarts,
       completed: _attemptIndex >= _attemptsTotal,
       scoreLabel: l10n.trainingCheckouts,
-      subtitle:
-          l10n.trainingCheckoutsOutOf(_successes, _attemptsTotal),
+      subtitle: l10n.trainingCheckoutsOutOf(_successes, _attemptsTotal),
       details: {
         'startScore': _startScore,
         'attempts': _attemptsTotal,

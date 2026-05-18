@@ -586,6 +586,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get makeSureDartboardVisibleInfo => 'Make sure the dartboard is fully visible';
 
   @override
+  String get removeDartsFromBoardHint => 'Remove your darts from the board to start';
+
+  @override
   String get cameraSetupTitle => 'CAMERA SETUP';
 
   @override
@@ -1225,14 +1228,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingCheckout50Description =>
-      'Start at 50. 3 darts, doubles only, finish on zero. 10 attempts.';
+      'Start at 50. 3 darts to check out — any combination, finish on a double. 10 attempts, 1 point per checkout.';
 
   @override
   String get trainingCheckout81_121 => 'Checkout 81 / 121';
 
   @override
   String get trainingCheckout81_121Description =>
-      'Finish from 81 or 121 in 9 darts. Last dart must be a double.';
+      'Check out from 81 or 121. Win → next target +1. Bust → back to start. 10 attempts.';
 
   @override
   String get trainingCheckoutPickScore => 'Starting score';
@@ -1242,7 +1245,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingCheckout121Hint =>
-      'Full 9-dart checkout routine — tough.';
+      'Climb the ladder — each win bumps the target.';
 
   @override
   String trainingCheckoutFromN(int startScore) => 'Checkout $startScore';
@@ -1260,6 +1263,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingRemaining => 'Remaining';
+
+  @override
+  String get trainingHighestReached => 'Highest reached';
 
   @override
   String get trainingBusted => 'Busted';

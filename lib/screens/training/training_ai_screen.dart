@@ -45,6 +45,10 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   bool _submitting = false;
   String? _submitError;
   TrainingResult? _finalResult;
+  // Non-null for ~1.2s after a busted visit so the UI can flash "BUST!" before
+  // the next visit starts. Cleared by [_clearBustFlash]; ignored when the
+  // session is already finished (the end screen handles that).
+  String? _bustFlash;
 
   // Camera + AI.
   CameraFrameService? _cameraService;
@@ -275,9 +279,22 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       _ai?.stopCapture();
       _submitResult();
     } else {
-      setState(() {});
+      // Mid-session bust — flash the indicator briefly so the player knows
+      // their score reverted before the next visit starts.
+      if (outcome.bustReason != null) {
+        HapticService.heavyImpact();
+        setState(() => _bustFlash = outcome.bustReason);
+        Future.delayed(const Duration(milliseconds: 1200), _clearBustFlash);
+      } else {
+        setState(() {});
+      }
       _maybeStartCapture();
     }
+  }
+
+  void _clearBustFlash() {
+    if (!mounted) return;
+    setState(() => _bustFlash = null);
   }
 
   Future<void> _submitResult() async {
@@ -377,11 +394,72 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         body: SafeArea(
           top: true,
           bottom: true,
-          child: _aiLoading
-              ? _buildLoadingView(l10n)
-              : _initError != null
-                  ? _buildErrorView(l10n)
-                  : _buildPlayingView(l10n),
+          child: Stack(
+            children: [
+              _aiLoading
+                  ? _buildLoadingView(l10n)
+                  : _initError != null
+                      ? _buildErrorView(l10n)
+                      : _buildPlayingView(l10n),
+              if (_bustFlash != null) _buildBustOverlay(l10n, _bustFlash!),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBustOverlay(AppLocalizations l10n, String reason) {
+    final reasonText = switch (reason) {
+      'below_zero' => l10n.trainingBustBelowZero,
+      'not_double_finish' => l10n.trainingBustNotDouble,
+      'left_one' => l10n.trainingBustLeftOne,
+      _ => l10n.trainingBustedOut,
+    };
+    return IgnorePointer(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.6),
+        alignment: Alignment.center,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+          decoration: BoxDecoration(
+            color: AppTheme.error,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.error.withValues(alpha: 0.5),
+                blurRadius: 30,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_rounded, color: Colors.white, size: 48),
+              const SizedBox(height: 8),
+              Text(
+                l10n.trainingBusted.toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                reasonText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -598,8 +676,14 @@ class _CameraPanel extends StatelessWidget {
                         fit: BoxFit.cover,
                         child: SizedBox(
                           width: camera!.value.previewSize!.height,
-                          height: camera!.value.previewSize!.width,
-                          child: CameraPreview(camera!),
+                          height: camera!.value.previewSize!.height * 4 / 3,
+                          child: ClipRect(
+                            child: OverflowBox(
+                              maxWidth: camera!.value.previewSize!.height,
+                              maxHeight: camera!.value.previewSize!.width,
+                              child: CameraPreview(camera!),
+                            ),
+                          ),
                         ),
                       )
                     : const Center(

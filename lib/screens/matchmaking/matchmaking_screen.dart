@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../providers/matchmaking_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subscription_provider.dart';
@@ -31,6 +32,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Keep the screen awake while in queue — without this the phone goes
+    // to sleep if the user doesn't touch the screen and they miss the match.
+    WakelockPlus.enable();
 
     _rotationController = AnimationController(
       vsync: this,
@@ -265,6 +269,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();
+    WakelockPlus.disable();
     super.dispose();
   }
 

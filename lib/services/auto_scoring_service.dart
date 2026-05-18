@@ -255,8 +255,28 @@ class AutoScoringService extends ChangeNotifier {
   int? _lastInferenceMs;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
-  static const int _autoConfirmThreshold = 2;
+  // Turn auto-confirm fires only when the board is **fully empty** for this
+  // many consecutive frames. Two frames is too aggressive — model glitches
+  // and hand occlusion can briefly drop tips even while darts are still in
+  // the board, causing the turn to pass while the player has only retrieved
+  // some of their darts. Three frames gives the model a real chance to
+  // re-detect the remaining tips.
+  static const int _autoConfirmThreshold = 3;
   int _prevDartCount = 0;
+  // Require N consecutive empty frames after seeing darts before flagging
+  // the board as cleared. A single empty frame is unreliable — the model
+  // briefly loses tips when a hand obscures them, which used to trigger a
+  // false "darts removed" → premature next-turn.
+  int _consecutiveRemovalCount = 0;
+  static const int _removalConfirmThreshold = 3;
+
+  // One-shot "wait until the board is empty before scoring darts" gate.
+  // Used at match start so practice darts left in the board from the queue
+  // warm-up don't get counted as throws in the new match. The gate clears
+  // itself once we see [_emptyBoardCheckThreshold] consecutive empty frames.
+  bool _waitingForEmptyBoard = false;
+  int _emptyBoardCheckCount = 0;
+  static const int _emptyBoardCheckThreshold = 3;
 
   // Last snapshot of UI-visible state used to suppress no-op rebuilds.
   // notifyListeners() runs after every inference cycle, so without this the
@@ -274,6 +294,8 @@ class AutoScoringService extends ChangeNotifier {
     b.write(_zoomHint ?? '');
     b.write('|');
     b.write(_dartsRemoved ? '1' : '0');
+    b.write('|');
+    b.write(_waitingForEmptyBoard ? '1' : '0');
     return b.toString();
   }
 
@@ -293,8 +315,20 @@ class AutoScoringService extends ChangeNotifier {
   String? get zoomHint => _zoomHint;
   int? get lastInferenceMs => _lastInferenceMs;
   bool get dartsRemoved => _dartsRemoved;
+  bool get waitingForEmptyBoard => _waitingForEmptyBoard;
   int get detectedDartCount => _getValidShootDetectionThisRound();
   static bool get isSupported => !kIsWeb;
+
+  /// Arm a one-shot "wait until empty board" gate. While armed, the AI
+  /// continues running inference (so we can detect the empty state) but
+  /// won't emit dart detections or update the slot UI. Call this once at
+  /// match start so practice darts in the board from the queue warm-up
+  /// don't get attributed to the new match's first turn.
+  void waitForEmptyBoardOnce() {
+    _waitingForEmptyBoard = true;
+    _emptyBoardCheckCount = 0;
+    _notifyIfChanged();
+  }
 
   // ---- DartsMind: getValidShootDetectionThisRound -------------------------
   int _getValidShootDetectionThisRound() {
@@ -350,6 +384,7 @@ class AutoScoringService extends ChangeNotifier {
     _capturing = true;
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
+    _consecutiveRemovalCount = 0;
     _frameCounter = 0;
     notifyListeners();
     _captureLoop(captureFrame, captureRgba, captureBgra, captureYuv, cleanupFile,
@@ -379,6 +414,7 @@ class AutoScoringService extends ChangeNotifier {
     _prevDartCount = 0;
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
+    _consecutiveRemovalCount = 0;
     _frameCounter = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
@@ -549,6 +585,25 @@ class AutoScoringService extends ChangeNotifier {
 
       _updateZoomHint(result);
 
+      // One-shot "wait until empty board" gate (match-start practice cleanup).
+      // Don't process any dart logic until we see a clean board for several
+      // consecutive frames — otherwise leftover warm-up darts get counted.
+      if (_waitingForEmptyBoard) {
+        final boardVisible = result.calibrationPoints.length >= 4;
+        if (boardVisible && dartCount == 0) {
+          _emptyBoardCheckCount++;
+          if (_emptyBoardCheckCount >= _emptyBoardCheckThreshold) {
+            _waitingForEmptyBoard = false;
+            _emptyBoardCheckCount = 0;
+          }
+        } else if (dartCount > 0) {
+          _emptyBoardCheckCount = 0;
+        }
+        await _maybeCleanup(imagePath, cleanupFile);
+        _notifyIfChanged();
+        return;
+      }
+
       // Auto-confirm
       final anyDartEmitted = _emittedSlots.any((e) => e);
       if (anyDartEmitted &&
@@ -566,14 +621,26 @@ class AutoScoringService extends ChangeNotifier {
         _consecutiveEmptyBoardCount = 0;
       }
 
-      // Dart removal detection
+      // Dart removal detection — require N consecutive empty frames after
+      // seeing darts. A single empty frame is unreliable: the model can
+      // momentarily lose all tips when a hand or arm crosses the board.
       if (_prevDartCount > 0 && dartCount == 0) {
-        _prevDartCount = 0;
-        _dartsRemoved = true;
+        _consecutiveRemovalCount++;
+        if (_consecutiveRemovalCount >= _removalConfirmThreshold) {
+          _consecutiveRemovalCount = 0;
+          _prevDartCount = 0;
+          _dartsRemoved = true;
+          await _maybeCleanup(imagePath, cleanupFile);
+          _notifyIfChanged();
+          return;
+        }
+        // Don't update _prevDartCount yet — keep accumulating empty frames
+        // against the previous non-zero count.
         await _maybeCleanup(imagePath, cleanupFile);
         _notifyIfChanged();
         return;
       }
+      _consecutiveRemovalCount = 0;
       _prevDartCount = dartCount;
 
       // ---- DartsMind autoScore pipeline -----------------------------------

@@ -445,8 +445,14 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                                 fit: BoxFit.cover,
                                 child: SizedBox(
                                   width: cameraFrameService!.controller!.value.previewSize!.height,
-                                  height: cameraFrameService!.controller!.value.previewSize!.width,
-                                  child: CameraPreview(cameraFrameService!.controller!),
+                                  height: cameraFrameService!.controller!.value.previewSize!.height * 4 / 3,
+                                  child: ClipRect(
+                                    child: OverflowBox(
+                                      maxWidth: cameraFrameService!.controller!.value.previewSize!.height,
+                                      maxHeight: cameraFrameService!.controller!.value.previewSize!.width,
+                                      child: CameraPreview(cameraFrameService!.controller!),
+                                    ),
+                                  ),
                                 ),
                               ),
                             )

@@ -12,9 +12,17 @@ class VisitOutcome {
   /// set [finished] = true but [completedSuccessfully] = false.
   final bool completedSuccessfully;
 
+  /// Non-null when the visit that was just submitted busted (standard X01
+  /// rules: score below 0, score 0 without double-finish, or score 1 left).
+  /// The training screen uses this to flash a "BUST!" hint between visits.
+  /// Independent from [finished] — a bust may end the session (out of darts)
+  /// or just end the visit while the session continues.
+  final String? bustReason;
+
   VisitOutcome({
     required this.finished,
     this.completedSuccessfully = true,
+    this.bustReason,
   });
 }
 

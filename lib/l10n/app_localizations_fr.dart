@@ -586,6 +586,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get makeSureDartboardVisibleInfo => 'Assurez-vous que la cible est entièrement visible';
 
   @override
+  String get removeDartsFromBoardHint => 'Retirez vos fléchettes de la cible pour commencer';
+
+  @override
   String get cameraSetupTitle => 'CONFIGURATION CAMÉRA';
 
   @override
@@ -1226,14 +1229,14 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trainingCheckout50Description =>
-      'Départ à 50. 3 fléchettes, uniquement doubles, finir exact. 10 essais.';
+      'Départ à 50. 3 fléchettes pour terminer — n\'importe quelle combinaison, finir sur un double. 10 essais, 1 point par checkout.';
 
   @override
   String get trainingCheckout81_121 => 'Checkout 81 / 121';
 
   @override
   String get trainingCheckout81_121Description =>
-      'Finir à partir de 81 ou 121 en 9 fléchettes. Dernière fléchette sur un double.';
+      'Finir à partir de 81 ou 121. Réussi → cible +1. Raté → retour au départ. 10 essais.';
 
   @override
   String get trainingCheckoutPickScore => 'Score de départ';
@@ -1244,7 +1247,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trainingCheckout121Hint =>
-      'Routine complète sur 9 fléchettes — difficile.';
+      'Gravissez les paliers — chaque réussite augmente la cible.';
 
   @override
   String trainingCheckoutFromN(int startScore) => 'Checkout $startScore';
@@ -1262,6 +1265,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trainingRemaining => 'Reste';
+
+  @override
+  String get trainingHighestReached => 'Meilleur atteint';
 
   @override
   String get trainingBusted => 'Raté';

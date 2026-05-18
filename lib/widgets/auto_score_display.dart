@@ -82,6 +82,7 @@ class AutoScoreGameView extends StatelessWidget {
         final slots = scoringService.dartSlots;
         final turnTotal = scoringService.turnTotal;
         final hint = scoringService.zoomHint;
+        final waitingForEmptyBoard = scoringService.waitingForEmptyBoard;
         final noDartsDetected = slots.every((s) => s == null);
         final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
@@ -150,6 +151,47 @@ class AutoScoreGameView extends StatelessWidget {
                                 color: AppTheme.accent,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // "Remove your darts" hint — shown while the AI is waiting
+                  // for an empty board on match start (so practice darts from
+                  // the queue aren't counted as throws).
+                  if (waitingForEmptyBoard)
+                    Positioned(
+                      top: safeTop + (hint != null ? 48 : 12),
+                      left: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Colors.black87, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                AppLocalizations.of(context).removeDartsFromBoardHint,
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
@@ -287,9 +329,10 @@ class AutoScoreGameView extends StatelessWidget {
                   // freeing the bottom region for the score readout.
                   final buttonH = safeBottom;
                   final contentH = availableH - buttonH;
-                  // Even smaller indicator allotment so the scoreboard grows
-                  // substantially — readable from ~2m.
-                  final indicatorH = (contentH * 0.24).clamp(50.0, 72.0);
+                  // Bigger indicator allotment — the three dart slots are the
+                  // primary feedback during a turn, so they need to be large
+                  // enough to read at a glance from ~2m.
+                  final indicatorH = (contentH * 0.36).clamp(90.0, 150.0);
                   final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
                   final hintParts = hintStr?.split(' ') ?? [];
 
@@ -456,14 +499,14 @@ class _DartIndicator extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Always reserve the same space so all 3 circles are identical size
-          const reservedForText = 36.0;
-          final widthBased = constraints.maxWidth * 0.82;
+          const reservedForText = 32.0;
+          final widthBased = constraints.maxWidth * 0.92;
           final heightBased = constraints.maxHeight - reservedForText;
-          final size = min(widthBased, heightBased).clamp(44.0, 84.0);
-          final labelSize = (size * 0.32).clamp(14.0, 26.0);
-          final subSize = (size * 0.20).clamp(10.0, 15.0);
-          final iconSize = (size * 0.36).clamp(18.0, 28.0);
-          final badgeSize = (size * 0.30).clamp(18.0, 26.0);
+          final size = min(widthBased, heightBased).clamp(64.0, 120.0);
+          final labelSize = (size * 0.34).clamp(18.0, 34.0);
+          final subSize = (size * 0.20).clamp(12.0, 18.0);
+          final iconSize = (size * 0.36).clamp(22.0, 36.0);
+          final badgeSize = (size * 0.30).clamp(22.0, 32.0);
 
           return Column(
             mainAxisSize: MainAxisSize.min,
