@@ -10,6 +10,7 @@ import '../game/game_screen.dart';
 import '../settings/subscription_screen.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/orientation_utils.dart';
 import '../../l10n/app_localizations.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     // Keep the screen awake while in queue — without this the phone goes
     // to sleep if the user doesn't touch the screen and they miss the match.
     WakelockPlus.enable();
+    OrientationUtils.allowAll();
 
     _rotationController = AnimationController(
       vsync: this,
@@ -270,6 +272,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     _rotationController.dispose();
     _pulseController.dispose();
     WakelockPlus.disable();
+    OrientationUtils.portraitOnly();
     super.dispose();
   }
 

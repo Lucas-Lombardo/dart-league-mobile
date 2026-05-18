@@ -147,13 +147,16 @@ class _PlayerScore extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        // Adaptive circle size: scale aggressively so the score is readable
-        // from ~2m away. The parent wraps this in FittedBox.scaleDown, so on
-        // smaller phones it shrinks back to fit available height.
-        final circleSize = (screenWidth * 0.36).clamp(120.0, 200.0);
+        // Size to the actual slot the scoreboard lives in, not the screen
+        // width — otherwise in landscape (where the scoreboard lives in a
+        // narrow right column) the circle is computed against the full
+        // landscape width and either overflows or gets aggressively scaled
+        // down by an enclosing FittedBox. constraints.maxWidth here is the
+        // single-player slot width; the circle takes the bulk of it.
+        final slotWidth = constraints.maxWidth;
+        final circleSize = (slotWidth * 0.92).clamp(110.0, 220.0);
         final fontSize = circleSize * (score >= 100 ? 0.46 : 0.54);
-        final nameFontSize = (screenWidth * 0.040).clamp(13.0, 19.0);
+        final nameFontSize = (slotWidth * 0.085).clamp(13.0, 19.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -190,13 +193,22 @@ class _PlayerScore extends StatelessWidget {
                   isActive: isActive,
                 ),
                 child: Center(
-                  child: Text(
-                    '$score',
-                    style: TextStyle(
-                      color: isActive ? Colors.white : AppTheme.textSecondary,
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: circleSize * 0.12),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '$score',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                        style: TextStyle(
+                          color: isActive ? Colors.white : AppTheme.textSecondary,
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -213,7 +225,7 @@ class _PlayerScore extends StatelessWidget {
                         hint!,
                         style: TextStyle(
                           color: AppTheme.success,
-                          fontSize: (screenWidth * 0.028).clamp(10.0, 13.0),
+                          fontSize: (slotWidth * 0.060).clamp(10.0, 13.0),
                           fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
@@ -235,7 +247,7 @@ class _PlayerScore extends StatelessWidget {
                   '${AppLocalizations.of(context).avgLabel} ${(average ?? 0).toStringAsFixed(1)}',
                   style: TextStyle(
                     color: isActive ? Colors.white : AppTheme.textSecondary,
-                    fontSize: (screenWidth * 0.040).clamp(14.0, 19.0),
+                    fontSize: (slotWidth * 0.085).clamp(14.0, 19.0),
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1,
                   ),

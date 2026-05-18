@@ -87,19 +87,17 @@ class AutoScoreGameView extends StatelessWidget {
         final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
         final safeTop = MediaQuery.of(context).padding.top;
+        final isLandscape =
+            MediaQuery.of(context).orientation == Orientation.landscape;
 
-        return Column(
-          children: [
-            // ── Camera feed + all overlay controls ──
-            // The native camera preview is a platform view that renders ABOVE
-            // sibling Flutter widgets earlier in the tree, so every control
-            // has to live inside this Stack (after the camera Container) to
-            // be visible. We overlay them at the top with semi-transparent
-            // backgrounds; they sit over the wall area above the dartboard
-            // rather than the board itself.
-            Expanded(
-              flex: 50,
-              child: Stack(
+        // ── Camera feed + all overlay controls ──
+        // The native camera preview is a platform view that renders ABOVE
+        // sibling Flutter widgets earlier in the tree, so every control
+        // has to live inside this Stack (after the camera Container) to
+        // be visible. We overlay them at the top with semi-transparent
+        // backgrounds; they sit over the wall area above the dartboard
+        // rather than the board itself.
+        final cameraPanel = Stack(
                 children: [
                   Container(
                     width: double.infinity,
@@ -312,17 +310,14 @@ class AutoScoreGameView extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-            ),
+        );
 
-            // ── Scoring panel ──
-            Expanded(
-              flex: 50,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
+        // ── Scoring panel ──
+        final scoringPanel = LayoutBuilder(
+              builder: (context, constraints) {
                   final safeBottom = MediaQuery.of(context).padding.bottom;
                   final screenH = MediaQuery.of(context).size.height;
-                  final isSmallScreen = screenH < 700;
+                  final isSmallScreen = screenH < 700 || isLandscape;
                   final availableH = constraints.maxHeight;
                   // No bottom button anymore — the End-Turn / End-Round-Early
                   // action lives in the top-right pill regardless of state,
@@ -410,7 +405,12 @@ class AutoScoreGameView extends StatelessWidget {
                           ),
                         ),
 
-                        // TV Scoreboard — fills remaining space
+                        // TV Scoreboard — fills remaining space.
+                        // FittedBox.scaleDown lets it gracefully shrink if
+                        // the panel is unusually short, but its natural size
+                        // is already tuned to the column width via the
+                        // scoreboard's own LayoutBuilder, so it doesn't get
+                        // double-shrunk anymore.
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
@@ -441,8 +441,20 @@ class AutoScoreGameView extends StatelessWidget {
                     ),
                   );
                 },
-              ),
-            ),
+              );
+
+        if (isLandscape) {
+          return Row(
+            children: [
+              Expanded(child: cameraPanel),
+              Expanded(child: scoringPanel),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            Expanded(flex: 50, child: cameraPanel),
+            Expanded(flex: 50, child: scoringPanel),
           ],
         );
       },
@@ -498,8 +510,11 @@ class _DartIndicator extends StatelessWidget {
       onTap: onTap,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Always reserve the same space so all 3 circles are identical size
-          const reservedForText = 32.0;
+          // Always reserve the same space so all 3 circles are identical size.
+          // Needs to cover: 2 (gap) + label text (~14) + 1 (gap) + suggestion
+          // slot (~18) ≈ 35, plus a few px of slack to avoid 1-px rounding
+          // overflows that show as a "BOTTOM OVERFLOWED" stripe in landscape.
+          const reservedForText = 42.0;
           final widthBased = constraints.maxWidth * 0.92;
           final heightBased = constraints.maxHeight - reservedForText;
           final size = min(widthBased, heightBased).clamp(64.0, 120.0);

@@ -9,6 +9,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/native_inference.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/orientation_utils.dart';
 import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 
@@ -82,6 +83,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
 
   /// Call from initState to start camera and optional AI detection.
   void initCamera() {
+    OrientationUtils.allowAll();
     if (cameraSetupConfig.enableAiDetection && !kIsWeb) {
       _initAiDetection();
     }
@@ -93,6 +95,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     _nativeInference?.dispose();
     _nativeInference = null;
     cameraController?.dispose();
+    OrientationUtils.portraitOnly();
   }
 
   /// Handle app lifecycle changes for AI capture.
@@ -362,6 +365,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    // CameraController reports previewSize in the sensor's natural (landscape)
+    // orientation. In portrait we have to swap width/height so the FittedBox
+    // covers correctly; in landscape we use the natural values.
+    final previewW = isLandscape
+        ? cameraController!.value.previewSize!.width
+        : cameraController!.value.previewSize!.height;
+    final previewH = isLandscape
+        ? cameraController!.value.previewSize!.height
+        : cameraController!.value.previewSize!.width;
+
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -380,8 +395,8 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                 child: FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
-                    width: cameraController!.value.previewSize!.height,
-                    height: cameraController!.value.previewSize!.width,
+                    width: previewW,
+                    height: previewH,
                     child: CameraPreview(cameraController!),
                   ),
                 ),

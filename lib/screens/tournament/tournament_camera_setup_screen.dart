@@ -95,18 +95,41 @@ class _TournamentCameraSetupScreenState
       backgroundColor: AppTheme.background,
       appBar: buildCameraAppBar(l10n.cameraSetupTitle),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildMatchInfoBar(),
-            Expanded(
-              child: isLoading
-                  ? buildLoadingView()
-                  : errorMessage != null
-                      ? buildErrorView()
-                      : _buildCameraPreview(),
-            ),
-            _buildBottomSection(),
-          ],
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final body = isLoading
+                ? buildLoadingView()
+                : errorMessage != null
+                    ? buildErrorView()
+                    : _buildCameraPreview();
+            if (orientation == Orientation.landscape) {
+              return Column(
+                children: [
+                  _buildMatchInfoBar(),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(flex: 3, child: body),
+                        Expanded(
+                          flex: 2,
+                          child: SingleChildScrollView(
+                            child: _buildBottomSection(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                _buildMatchInfoBar(),
+                Expanded(child: body),
+                _buildBottomSection(),
+              ],
+            );
+          },
         ),
       ),
     );

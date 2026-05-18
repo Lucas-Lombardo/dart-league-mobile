@@ -76,7 +76,17 @@ class _DartEditSheetState extends State<_DartEditSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // Cap modal height so it never overflows in short viewports (landscape
+    // phones) — the scrollable body absorbs the difference instead of
+    // pushing the number grid off-screen. In landscape we let the modal use
+    // almost the full viewport since vertical space is already at a
+    // premium.
+    final mq = MediaQuery.of(context);
+    final isLandscape = mq.orientation == Orientation.landscape;
+    final maxHeight = mq.size.height * (isLandscape ? 0.97 : 0.92);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
       decoration: const BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.only(
@@ -144,25 +154,28 @@ class _DartEditSheetState extends State<_DartEditSheet> {
 
             const Divider(color: AppTheme.surfaceLight, height: 1),
 
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Column(
-                children: [
-                  _buildSpecialRow(),
-                  const SizedBox(height: 12),
-                  _buildMultiplierSelector(),
-                  const SizedBox(height: 12),
-                  _buildNumberGrid(),
-                ],
+            Flexible(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(12, isLandscape ? 8 : 12, 12, 8),
+                child: Column(
+                  children: [
+                    _buildSpecialRow(isLandscape: isLandscape),
+                    SizedBox(height: isLandscape ? 8 : 12),
+                    _buildMultiplierSelector(isLandscape: isLandscape),
+                    SizedBox(height: isLandscape ? 8 : 12),
+                    _buildNumberGrid(isLandscape: isLandscape),
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
+      ),
     );
   }
 
-  Widget _buildSpecialRow() {
+  Widget _buildSpecialRow({bool isLandscape = false}) {
     final l10n = AppLocalizations.of(context);
     return Row(
       children: [
@@ -171,6 +184,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
             label: l10n.missButton,
             color: AppTheme.error,
             onTap: _submitMiss,
+            compact: isLandscape,
           ),
         ),
         const SizedBox(width: 8),
@@ -180,6 +194,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
             subtitle: '25',
             color: AppTheme.accent,
             onTap: () => _submit(25, ScoreMultiplier.single),
+            compact: isLandscape,
           ),
         ),
         const SizedBox(width: 8),
@@ -189,13 +204,14 @@ class _DartEditSheetState extends State<_DartEditSheet> {
             subtitle: '50',
             color: AppTheme.success,
             onTap: () => _submit(25, ScoreMultiplier.double),
+            compact: isLandscape,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMultiplierSelector() {
+  Widget _buildMultiplierSelector({bool isLandscape = false}) {
     final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(4),
@@ -205,22 +221,22 @@ class _DartEditSheetState extends State<_DartEditSheet> {
       ),
       child: Row(
         children: [
-          _multiplierTab(ScoreMultiplier.single, l10n.singleUpper, '×1', Colors.white),
-          _multiplierTab(ScoreMultiplier.double, l10n.doubleUpper, '×2', AppTheme.success),
-          _multiplierTab(ScoreMultiplier.triple, l10n.tripleUpper, '×3', AppTheme.error),
+          _multiplierTab(ScoreMultiplier.single, l10n.singleUpper, '×1', Colors.white, compact: isLandscape),
+          _multiplierTab(ScoreMultiplier.double, l10n.doubleUpper, '×2', AppTheme.success, compact: isLandscape),
+          _multiplierTab(ScoreMultiplier.triple, l10n.tripleUpper, '×3', AppTheme.error, compact: isLandscape),
         ],
       ),
     );
   }
 
-  Widget _multiplierTab(ScoreMultiplier value, String label, String mult, Color color) {
+  Widget _multiplierTab(ScoreMultiplier value, String label, String mult, Color color, {bool compact = false}) {
     final selected = _multiplier == value;
     return Expanded(
       child: GestureDetector(
         onTap: () => _setMultiplier(value),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: EdgeInsets.symmetric(vertical: compact ? 8 : 14),
           decoration: BoxDecoration(
             color: selected ? color.withValues(alpha: 0.18) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -259,13 +275,20 @@ class _DartEditSheetState extends State<_DartEditSheet> {
     );
   }
 
-  Widget _buildNumberGrid() {
-    const numbers = [
-      [20, 19, 18, 17, 16],
-      [15, 14, 13, 12, 11],
-      [10, 9, 8, 7, 6],
-      [5, 4, 3, 2, 1],
-    ];
+  Widget _buildNumberGrid({bool isLandscape = false}) {
+    // Portrait stays 4×5 (tall, full-width buttons). Landscape uses 2×10 so
+    // every number is on screen without scrolling on short viewports.
+    final numbers = isLandscape
+        ? const [
+            [20, 19, 18, 17, 16, 15, 14, 13, 12, 11],
+            [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+          ]
+        : const [
+            [20, 19, 18, 17, 16],
+            [15, 14, 13, 12, 11],
+            [10, 9, 8, 7, 6],
+            [5, 4, 3, 2, 1],
+          ];
     final color = _multiplierColor;
     return Column(
       children: numbers
@@ -281,6 +304,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
                                 multiplier: _multiplier,
                                 color: color,
                                 onTap: () => _submit(n, _multiplier),
+                                compact: isLandscape,
                               ),
                             ),
                           ))
@@ -326,12 +350,14 @@ class _BigButton extends StatelessWidget {
   final String? subtitle;
   final Color color;
   final VoidCallback onTap;
+  final bool compact;
 
   const _BigButton({
     required this.label,
     this.subtitle,
     required this.color,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
@@ -342,7 +368,7 @@ class _BigButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 18),
+          padding: EdgeInsets.symmetric(vertical: compact ? 10 : 18),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(14),
@@ -356,7 +382,7 @@ class _BigButton extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: color,
-                    fontSize: 18,
+                    fontSize: compact ? 16 : 18,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
@@ -367,7 +393,7 @@ class _BigButton extends StatelessWidget {
                     subtitle!,
                     style: TextStyle(
                       color: color.withValues(alpha: 0.8),
-                      fontSize: 14,
+                      fontSize: compact ? 12 : 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -386,12 +412,14 @@ class _NumberButton extends StatelessWidget {
   final ScoreMultiplier multiplier;
   final Color color;
   final VoidCallback onTap;
+  final bool compact;
 
   const _NumberButton({
     required this.number,
     required this.multiplier,
     required this.color,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
@@ -408,7 +436,7 @@ class _NumberButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          height: 64,
+          height: compact ? 52 : 64,
           decoration: BoxDecoration(
             color: isSingle
                 ? AppTheme.surfaceLight.withValues(alpha: 0.4)
@@ -429,7 +457,7 @@ class _NumberButton extends StatelessWidget {
                   '$number',
                   style: TextStyle(
                     color: color,
-                    fontSize: 24,
+                    fontSize: compact ? 20 : 24,
                     fontWeight: FontWeight.bold,
                     height: 1,
                   ),

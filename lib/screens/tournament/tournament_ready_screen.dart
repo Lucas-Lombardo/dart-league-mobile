@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/orientation_utils.dart';
 import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
 import '../../providers/tournament_game_provider.dart';
@@ -47,6 +48,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   @override
   void initState() {
     super.initState();
+    OrientationUtils.allowAll();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -143,6 +145,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     _pulseController.dispose();
     SocketService.off('matchReadyUpdate');
     SocketService.off('tournamentMatchStart');
+    OrientationUtils.portraitOnly();
     super.dispose();
   }
 

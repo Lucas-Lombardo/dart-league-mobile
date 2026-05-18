@@ -13,6 +13,7 @@ import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../services/auto_scoring_service.dart';
@@ -81,6 +82,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    OrientationUtils.allowAll();
     autoScoringService = AutoScoringService();
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -103,6 +105,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     disposeScreenSpecific();
     scoreAnimationController.dispose();
     WakelockPlus.disable();
+    OrientationUtils.portraitOnly();
     autoScoringService?.dispose();
     autoScoringService = null;
     cameraFrameService?.dispose();

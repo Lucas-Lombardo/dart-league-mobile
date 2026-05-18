@@ -16,9 +16,11 @@ import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/dartboard_edit_modal.dart';
+import '../../widgets/local_camera_preview.dart';
 import 'logic/training_strategy.dart';
 import 'training_end_screen.dart';
 import 'training_select_screen.dart';
@@ -66,6 +68,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    OrientationUtils.allowAll();
     _ai = AutoScoringService();
     WidgetsBinding.instance.addPostFrameCallback((_) => _initCameraAndAi());
   }
@@ -79,6 +82,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     _cameraService?.dispose();
     _cameraService = null;
     WakelockPlus.disable();
+    OrientationUtils.portraitOnly();
     super.dispose();
   }
 
@@ -528,36 +532,60 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   }
 
   Widget _buildPlayingView(AppLocalizations l10n) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final cameraPanel = _CameraPanel(
+      camera: _cameraService?.controller,
+      zoom: _cameraZoom,
+      minZoom: _cameraMinZoom,
+      maxZoom: _cameraMaxZoom,
+      onZoomIn: _zoomIn,
+      onZoomOut: _zoomOut,
+      aiEnabled: !_aiManuallyDisabled,
+      onToggleAi: _ai?.modelLoaded == true ? _toggleAi : null,
+    );
+    final dartSlots = _DartSlotsRow(
+      ai: _ai!,
+      currentVisit: _currentVisit,
+      onEditSlot: _editDartSlot,
+      onRemoveLast: _removeLastDart,
+    );
+    final infoPanel = _InfoPanel(
+      strategy: _strategy,
+      l10n: l10n,
+      pending: _currentVisit,
+    );
+
+    if (isLandscape) {
+      return Column(
+        children: [
+          _buildTopBar(l10n),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(flex: 6, child: cameraPanel),
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    children: [
+                      dartSlots,
+                      Expanded(child: infoPanel),
+                      _buildActionButton(l10n),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       children: [
         _buildTopBar(l10n),
-        Expanded(
-          flex: 5,
-          child: _CameraPanel(
-            camera: _cameraService?.controller,
-            zoom: _cameraZoom,
-            minZoom: _cameraMinZoom,
-            maxZoom: _cameraMaxZoom,
-            onZoomIn: _zoomIn,
-            onZoomOut: _zoomOut,
-            aiEnabled: !_aiManuallyDisabled,
-            onToggleAi: _ai?.modelLoaded == true ? _toggleAi : null,
-          ),
-        ),
-        _DartSlotsRow(
-          ai: _ai!,
-          currentVisit: _currentVisit,
-          onEditSlot: _editDartSlot,
-          onRemoveLast: _removeLastDart,
-        ),
-        Expanded(
-          flex: 4,
-          child: _InfoPanel(
-            strategy: _strategy,
-            l10n: l10n,
-            pending: _currentVisit,
-          ),
-        ),
+        Expanded(flex: 5, child: cameraPanel),
+        dartSlots,
+        Expanded(flex: 4, child: infoPanel),
         _buildActionButton(l10n),
       ],
     );
@@ -672,20 +700,7 @@ class _CameraPanel extends StatelessWidget {
               child: Container(
                 color: Colors.black,
                 child: ready
-                    ? FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: camera!.value.previewSize!.height,
-                          height: camera!.value.previewSize!.height * 4 / 3,
-                          child: ClipRect(
-                            child: OverflowBox(
-                              maxWidth: camera!.value.previewSize!.height,
-                              maxHeight: camera!.value.previewSize!.width,
-                              child: CameraPreview(camera!),
-                            ),
-                          ),
-                        ),
-                      )
+                    ? LocalCameraPreview(controller: camera!)
                     : const Center(
                         child: Icon(Icons.videocam_off,
                             color: Colors.white24, size: 48),

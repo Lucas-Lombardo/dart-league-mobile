@@ -122,17 +122,33 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
       backgroundColor: AppTheme.background,
       appBar: buildCameraAppBar(l10n.cameraSetup),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: isLoading
-                  ? buildLoadingView()
-                  : errorMessage != null
-                      ? buildErrorView()
-                      : _buildCameraPreview(),
-            ),
-            _buildBottomSection(),
-          ],
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final body = isLoading
+                ? buildLoadingView()
+                : errorMessage != null
+                    ? buildErrorView()
+                    : _buildCameraPreview();
+            if (orientation == Orientation.landscape) {
+              return Row(
+                children: [
+                  Expanded(flex: 3, child: body),
+                  Expanded(
+                    flex: 2,
+                    child: SingleChildScrollView(
+                      child: _buildBottomSection(),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                Expanded(child: body),
+                _buildBottomSection(),
+              ],
+            );
+          },
         ),
       ),
     );

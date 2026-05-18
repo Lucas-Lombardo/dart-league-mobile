@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,10 +13,12 @@ import '../../services/dart_scoring_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../widgets/local_camera_preview.dart';
 import '../../widgets/tv_scoreboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
@@ -59,6 +60,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    OrientationUtils.allowAll();
     final provider = context.read<PlacementProvider>();
     _myScore = provider.player1Score;
     _scoreBeforeRound = _myScore;
@@ -77,6 +79,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _cameraService?.dispose();
     _cameraService = null;
     WakelockPlus.disable();
+    OrientationUtils.portraitOnly();
     super.dispose();
   }
 
@@ -548,22 +551,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     myName: auth.currentUser?.username ?? 'You',
                     dartsThrown: _dartsThrown,
                     localCameraPreview: _cameraService?.controller != null && _cameraService!.isInitialized
-                        ? SizedBox.expand(
-                            child: FittedBox(
-                              fit: BoxFit.cover,
-                              child: SizedBox(
-                                width: _cameraService!.controller!.value.previewSize!.height,
-                                height: _cameraService!.controller!.value.previewSize!.height * 4 / 3,
-                                child: ClipRect(
-                                  child: OverflowBox(
-                                    maxWidth: _cameraService!.controller!.value.previewSize!.height,
-                                    maxHeight: _cameraService!.controller!.value.previewSize!.width,
-                                    child: CameraPreview(_cameraService!.controller!),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
+                        ? LocalCameraPreview(controller: _cameraService!.controller!)
                         : null,
                     onZoomIn: _zoomIn,
                     onZoomOut: _zoomOut,
@@ -593,40 +581,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     aiEnabled: !_aiManuallyDisabled,
                   )
                 // Bot's turn
-                : Container(
-                    color: AppTheme.background,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(height: safeTop),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                          child: TvScoreboard(
-                            myScore: _myScore,
-                            opponentScore: placement.player2Score,
-                            myName: auth.currentUser?.username ?? 'You',
-                            opponentName: botName,
-                            isMyTurn: false,
-                          ),
-                        ),
-                        Expanded(
-                          flex: 55,
-                          child: _buildBotTurnDisplay(placement),
-                        ),
-                        Expanded(
-                          flex: 38,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-                              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
-                            ),
-                            child: _buildWaitingForBot(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                : _buildBotTurnScreen(placement, auth, botName, safeTop),
 
             // Floating back button
             Positioned(
@@ -652,6 +607,97 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBotTurnScreen(
+    PlacementProvider placement,
+    AuthProvider auth,
+    String botName,
+    double safeTop,
+  ) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    final scoreboard = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: LayoutBuilder(
+        builder: (context, c) => FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: c.maxWidth,
+            child: TvScoreboard(
+              myScore: _myScore,
+              opponentScore: placement.player2Score,
+              myName: auth.currentUser?.username ?? 'You',
+              opponentName: botName,
+              isMyTurn: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    final botDisplay = _buildBotTurnDisplay(placement);
+    final waitingPanel = Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
+      ),
+      child: _buildWaitingForBot(),
+    );
+
+    if (isLandscape) {
+      return Container(
+        color: AppTheme.background,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: safeTop),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                      child: botDisplay,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      children: [
+                        scoreboard,
+                        Expanded(child: waitingPanel),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      color: AppTheme.background,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: safeTop),
+          scoreboard,
+          Expanded(
+            flex: 55,
+            child: botDisplay,
+          ),
+          Expanded(
+            flex: 38,
+            child: waitingPanel,
+          ),
+        ],
       ),
     );
   }
