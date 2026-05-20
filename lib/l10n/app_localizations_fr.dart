@@ -230,6 +230,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get rankedCompetitive => 'Compétition classée';
 
   @override
+  String playersOnline(int count) =>
+      count <= 1 ? '$count joueur en ligne' : '$count joueurs en ligne';
+
+  @override
   String get refresh => 'Actualiser';
 
   @override

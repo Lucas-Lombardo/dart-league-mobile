@@ -59,6 +59,23 @@ class PushNotificationService {
         debugPrint('🔔 Notification tapped: ${message.data}');
       });
 
+      // On iOS, FCM cannot mint a token until APNs has delivered one.
+      // Poll briefly so getToken() doesn't return null on a cold start.
+      if (!kIsWeb && Platform.isIOS) {
+        String? apnsToken;
+        for (int i = 0; i < 10 && apnsToken == null; i++) {
+          apnsToken = await _messaging.getAPNSToken();
+          if (apnsToken == null) {
+            await Future.delayed(const Duration(seconds: 1));
+          }
+        }
+        if (apnsToken == null) {
+          debugPrint('⚠️ APNs token unavailable after 10s — FCM token will not be obtained');
+          return;
+        }
+        debugPrint('🔔 APNs token acquired');
+      }
+
       // Get the FCM token
       _fcmToken = await _messaging.getToken();
       debugPrint('🔔 FCM Token: $_fcmToken');

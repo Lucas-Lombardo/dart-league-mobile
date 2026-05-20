@@ -16,6 +16,7 @@ import 'providers/locale_provider.dart';
 import 'providers/tournament_provider.dart';
 import 'providers/placement_provider.dart';
 import 'providers/tournament_game_provider.dart';
+import 'providers/presence_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/splash_screen.dart';
@@ -91,7 +92,8 @@ class DartLegendsApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
-        ChangeNotifierProxyProvider2<LocaleProvider, SubscriptionProvider, AuthProvider>(
+        ChangeNotifierProvider(create: (_) => PresenceProvider()),
+        ChangeNotifierProxyProvider3<LocaleProvider, SubscriptionProvider, PresenceProvider, AuthProvider>(
           create: (context) {
             final authProvider = AuthProvider();
             authProvider.setLocaleProvider(
@@ -100,11 +102,15 @@ class DartLegendsApp extends StatelessWidget {
             authProvider.setSubscriptionProvider(
               Provider.of<SubscriptionProvider>(context, listen: false),
             );
+            authProvider.setPresenceProvider(
+              Provider.of<PresenceProvider>(context, listen: false),
+            );
             return authProvider;
           },
-          update: (context, localeProvider, subscriptionProvider, authProvider) {
+          update: (context, localeProvider, subscriptionProvider, presenceProvider, authProvider) {
             authProvider!.setLocaleProvider(localeProvider);
             authProvider.setSubscriptionProvider(subscriptionProvider);
+            authProvider.setPresenceProvider(presenceProvider);
             return authProvider;
           },
         ),

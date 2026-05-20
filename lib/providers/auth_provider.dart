@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../utils/error_messages.dart';
 import 'locale_provider.dart';
+import 'presence_provider.dart';
 import 'subscription_provider.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -12,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   String? _errorMessage;
   LocaleProvider? _localeProvider;
   SubscriptionProvider? _subscriptionProvider;
+  PresenceProvider? _presenceProvider;
 
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
@@ -26,6 +28,13 @@ class AuthProvider extends ChangeNotifier {
     _subscriptionProvider = provider;
   }
 
+  void setPresenceProvider(PresenceProvider provider) {
+    _presenceProvider = provider;
+    if (_currentUser != null) {
+      _presenceProvider?.start();
+    }
+  }
+
   Future<void> checkAuthStatus() async {
     _isLoading = true;
     _errorMessage = null;
@@ -37,8 +46,14 @@ class AuthProvider extends ChangeNotifier {
       if (user != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(user.language);
       }
+      if (user != null) {
+        _presenceProvider?.start();
+      } else {
+        _presenceProvider?.stop();
+      }
     } catch (e) {
       _currentUser = null;
+      _presenceProvider?.stop();
       _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {
       _isLoading = false;
@@ -70,6 +85,7 @@ class AuthProvider extends ChangeNotifier {
       // Register push notification token
       await PushNotificationService.initialize();
       await PushNotificationService.registerToken();
+      _presenceProvider?.start();
       // Load subscription state for the new user (fire and forget)
       _subscriptionProvider?.refresh();
       _isLoading = false;
@@ -103,6 +119,7 @@ class AuthProvider extends ChangeNotifier {
       // Register push notification token
       await PushNotificationService.initialize();
       await PushNotificationService.registerToken();
+      _presenceProvider?.start();
       // Load subscription state for the logged-in user (fire and forget)
       _subscriptionProvider?.refresh();
       _isLoading = false;
@@ -127,6 +144,7 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = null;
       _errorMessage = null;
       _subscriptionProvider?.clear();
+      _presenceProvider?.stop();
     } catch (e) {
       _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {

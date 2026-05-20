@@ -13,31 +13,16 @@ import 'native_inference.dart';
 // ---------------------------------------------------------------------------
 // DartsMind constants  (DVMind.java fields)
 // ---------------------------------------------------------------------------
-// DartsMind's tipMergeThreshold = 1.6 lives in *dartboard* space (340-unit
-// square, board edge radius = 170, scoring coord centred at (170, 170)).
-// DVMind.autoScore transforms each tip via the perspective matrix and
-// d9 = 340 / (0.8 * bufferW) before mergeTips runs, so 1 dartboard unit
-// equals 0.8 / 340 ≈ 0.00235 of the normalised image side.
+// Tips are transformed into DartsMind's dartboard space (340-unit square,
+// centre at (170, 170), board edge radius 170) via the per-frame perspective
+// matrix before mergeTips runs — see _autoScore. This makes a dart's CnfPoint
+// position stable across frames even when the camera or board shift, which is
+// what prevents the "same dart counted twice after board moves" duplicate.
 //
-// We keep tips in normalised image [0, 1] coords (no perspective remap before
-// mergeTips), so the threshold sits in the same space.  Trade-off:
-//
-//   • Detector NMS minimum (dart_detection_service.dart _dartNmsMinDist=0.004)
-//     prevents two same-frame detections within 0.004 of each other, so the
-//     minimum legitimate spacing between two real darts is ≈0.004.
-//   • Per-dart position noise between consecutive frames is ~0.003, spiking
-//     to ~0.004 on some Android devices. A threshold at the noise floor
-//     (DartsMind's original 0.00376) causes same-dart matches to be rejected
-//     and spawns duplicate TipGroups → "S12, S12" duplication.
-//   • A threshold ≥0.006 (~2× noise floor) reliably absorbs noise but also
-//     merges two physical darts that land 0.004–0.006 apart (e.g., a tight
-//     triple-20 cluster), so the second dart never registers.
-//
-// 0.005 sits in the middle — above typical noise + most Android spikes, but
-// below the spacing of two real darts ≥2 dartboard units apart (≈0.0047).
-// Tighter than 0.005 starts to bring the duplicate-dart bug back; looser
-// than 0.005 starts to drop the second dart in tight clusters.
-const double _tipMergeThresholdNorm = 0.005; // image-coord space, empirically tuned
+// _tipMergeThresholdBoard is therefore the DartsMind value 1.6, in board
+// units (≈0.94% of board radius). Tighter than this drops the second dart in
+// tight triple-20 clusters; looser merges two physically distinct darts.
+const double _tipMergeThresholdBoard = 1.6;
 const int _maxTipHistory = 10;
 const double _minPixelDiff = 0.445;
 const double _maxPixelDiff = 8.0;
@@ -677,19 +662,45 @@ class AutoScoringService extends ChangeNotifier {
       _addShiftValue(null);
     }
 
-    // Convert detected tips to CnfPoints
-    final tipCnfPoints = <CnfPoint>[];
-    for (int i = 0; i < result.dartTips.length; i++) {
-      final d = result.dartTips[i];
-      tipCnfPoints.add(CnfPoint(d.x, d.y, d.confidence));
+    // Build a per-frame perspective transform from the 4 calibration points
+    // so tips can be remapped into DartsMind's dartboard space (170-centred,
+    // 340-side) before mergeTips. Without this, a small board shift between
+    // frames would make the same physical dart land at a different normalised
+    // image position and create a duplicate TipGroup.
+    DartScoringService? scorer;
+    if (result.calibrationPoints.length >= 4) {
+      try {
+        final calibData = result.calibrationPoints
+            .take(4)
+            .map((c) => [c.x, c.y, c.flag.toDouble()])
+            .toList();
+        scorer = DartScoringService(calibData);
+      } catch (_) {
+        scorer = null;
+      }
     }
 
-    // Store scores indexed by tip position for later lookup
+    // Convert detected tips to CnfPoints in board space (DartsMind parity).
+    // If no scorer is available this frame, skip the mergeTips pipeline —
+    // we can't score without calibration anyway, so adding image-space tips
+    // would just pollute the group state with non-comparable coordinates.
+    final tipCnfPoints = <CnfPoint>[];
     _latestScores = {};
-    for (int i = 0; i < result.dartTips.length && i < result.scores.length; i++) {
-      final d = result.dartTips[i];
-      _latestScores['${d.x.toStringAsFixed(4)},${d.y.toStringAsFixed(4)}'] =
-          result.scores[i];
+    if (scorer != null) {
+      for (int i = 0; i < result.dartTips.length; i++) {
+        final d = result.dartTips[i];
+        final board = scorer.toBoard(d.x, d.y);
+        tipCnfPoints.add(CnfPoint(board[0], board[1], d.confidence));
+        if (i < result.scores.length) {
+          // Key by *normalised* board coords (board / boardR) so it shares the
+          // same space as Shoot.actualPoint, which is what _lookupScore uses.
+          final nbx = board[0] / kBoardR;
+          final nby = board[1] / kBoardR;
+          _latestScores[
+                  '${nbx.toStringAsFixed(4)},${nby.toStringAsFixed(4)}'] =
+              result.scores[i];
+        }
+      }
     }
 
     if (tipCnfPoints.isEmpty) {
@@ -784,16 +795,16 @@ class AutoScoringService extends ChangeNotifier {
           best = (_tipGroups[g].id, i, dist);
         }
       }
-      if (best != null && best.$3 <= _tipMergeThresholdNorm) {
+      if (best != null && best.$3 <= _tipMergeThresholdBoard) {
         matched.add(best);
-      } else if (best != null && best.$3 <= _tipMergeThresholdNorm * 2) {
+      } else if (best != null && best.$3 <= _tipMergeThresholdBoard * 2) {
         // Near-miss: a tip just outside the merge zone usually means detector
         // noise drifted further than expected. Log so we can tune the
         // threshold if the duplicate-dart bug resurfaces.
         if (kDebugMode) {
           debugPrint(
-              '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(5)} '
-              '(threshold=${_tipMergeThresholdNorm.toStringAsFixed(5)}) — new TipGroup will be created');
+              '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(2)} '
+              '(threshold=${_tipMergeThresholdBoard.toStringAsFixed(2)}) — new TipGroup will be created');
         }
       }
     }
@@ -1078,7 +1089,7 @@ class AutoScoringService extends ChangeNotifier {
           }
         }
 
-        if (bestDist <= _tipMergeThresholdNorm && bestMerge != null) {
+        if (bestDist <= _tipMergeThresholdBoard && bestMerge != null) {
           // Merge: combine tips, re-average, update existing group
           final exIdx =
               _tipGroups.indexWhere((tg) => tg.id == bestMerge!.$2);
@@ -1114,7 +1125,7 @@ class AutoScoringService extends ChangeNotifier {
           final b = newGroups[j].tips.firstOrNull;
           if (a == null || b == null) continue;
           if (_distanceOf2Points(a.x, a.y, b.x, b.y) <=
-              _tipMergeThresholdNorm) {
+              _tipMergeThresholdBoard) {
             // Merge j into i in the main tipGroups
             final iIdx =
                 _tipGroups.indexWhere((tg) => tg.id == newGroups[j].id);
@@ -1163,10 +1174,11 @@ class AutoScoringService extends ChangeNotifier {
             tg.firstPassTime != null)
         .toList()
       ..sort((a, b) => b.createdTime.compareTo(a.createdTime));
-    // Phase 8: Convert visible groups to Shoots via dartTipToShoot
-    // (In DartsMind: dartTipToShoot(170.0f, tipPosition))
-    // In our architecture, scoring happens in the detection service,
-    // so we pass tip group info through to _assignSlots via shoot groups.
+    // Phase 8: Convert visible groups to Shoots via dartTipToShoot.
+    // DartsMind: dartTipToShoot(170.0f, tipPosition) — divides board-space
+    // (170-centred) by boardR to get normalised board coords centred at (1, 1).
+    // _hasNearbyInvisibleShoots compares actualPoint against the 0.0588 (1/17)
+    // threshold in that same normalised space.
     final shoots = <Shoot>[];
     for (final tg in visibleGroups) {
       final tip = tg.tips.firstOrNull;
@@ -1175,7 +1187,7 @@ class AutoScoringService extends ChangeNotifier {
       final shoot = Shoot(0, 0); // placeholder, score comes from detection
       shoot.visionId = tg.id;
       shoot.cnf = tip.cnf.toDouble();
-      shoot.actualPoint = [tip.x.toDouble(), tip.y.toDouble()];
+      shoot.actualPoint = [tip.x / kBoardR, tip.y / kBoardR];
       shoots.add(shoot);
     }
     _mergeShoots(shoots);
@@ -1329,29 +1341,12 @@ class AutoScoringService extends ChangeNotifier {
   }
 
   void _assignSlots(OnDartDetectedCallback? onDartDetected) {
-    // Update existing slot scores from their shoot groups
-    for (int s = 0; s < 3; s++) {
-      final sgId = _slotShootGroupIds[s];
-      if (sgId == null) continue;
-      if (_manualOverrideSlots[s]) continue;
-      if (_removedSlots[s]) continue;
-
-      final sg = _shootGroups.where((g) => g.id == sgId).firstOrNull;
-      if (sg == null) continue;
-
-      final newScore = _lookupScore(sg);
-      if (newScore != null) {
-        final changed = _dartSlots[s]?.formatted != newScore.formatted;
-        _dartSlots[s] = newScore;
-        // Store dartScore on latest shoot for future lookups
-        final latest = sg.shoots.reversed.whereType<Shoot>().firstOrNull;
-        if (latest != null) latest.dartScore = newScore;
-
-        if (changed && _emittedSlots[s]) {
-          onDartDetected?.call(s, newScore);
-        }
-      }
-    }
+    // Intentionally do NOT re-score already-emitted slots. Once the AI has
+    // committed to a score for a slot, we stick with it for the rest of the
+    // turn. Detected tip positions wobble frame-to-frame, and on darts that
+    // land near a segment boundary (e.g. between 1 and 20) the score would
+    // otherwise flicker on the UI. Only overrideDart() — invoked by manual
+    // user edits — can change a slot's score after it has been emitted.
 
     // Assign unassigned shoot groups to empty slots
     for (final sg in _shootGroups) {

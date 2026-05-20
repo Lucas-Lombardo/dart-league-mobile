@@ -18,6 +18,7 @@ class DartSoundService {
   static const _bust = 'sounds/bust.wav';
   static const _win = 'sounds/win.wav';
   static const _lose = 'sounds/lose.wav';
+  static const _matchFound = 'sounds/match_sound.mp3';
 
   static const _allAssets = <String>[
     _dartHit,
@@ -26,6 +27,7 @@ class DartSoundService {
     _bust,
     _win,
     _lose,
+    _matchFound,
   ];
 
   static final Map<String, AudioPlayer> _players = {};
@@ -80,6 +82,7 @@ class DartSoundService {
   static Future<void> playBust() => _play(_bust);
   static Future<void> playWin() => _play(_win);
   static Future<void> playLose() => _play(_lose);
+  static Future<void> playMatchFound() => _play(_matchFound);
 
   static Future<void> dispose() async {
     for (final player in _players.values) {

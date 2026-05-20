@@ -72,6 +72,11 @@ const double _c = 170.0;
 const double _calibR = 170.0;
 const double _boardR = 170.0;
 
+/// Public alias for [_boardR] — exposed so other services (e.g. AutoScoring's
+/// mergeTips port) can convert between absolute board space (170-centred) and
+/// the normalised board space DartsMind uses for `actualPoint`.
+const double kBoardR = _boardR;
+
 // Pre-computed flag → destination coordinate on canonical dartboard.
 // Flags 1-8 correspond to 8 control points around the board at distance
 // _calibR from centre.  The DartsMind source names these sin025/cos025 and
@@ -287,6 +292,11 @@ class DartScoringService {
   }
 
   // ---- Coordinate transform & scoring ------------------------------------
+
+  /// Map normalised image coords to absolute dartboard space (340-unit square,
+  /// centre at (170, 170), board edge radius 170). Same space DartsMind's
+  /// CnfPoint and mergeTips operate in.
+  List<double> toBoard(double x, double y) => _toBoard(x, y);
 
   List<double> _toBoard(double x, double y) {
     final w = _h[2][0] * x + _h[2][1] * y + _h[2][2];

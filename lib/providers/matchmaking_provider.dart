@@ -5,6 +5,7 @@ import '../services/matchmaking_service.dart';
 import '../services/match_service.dart';
 import '../services/socket_service.dart';
 import '../utils/haptic_service.dart';
+import '../utils/dart_sound_service.dart';
 import 'game_provider.dart';
 
 class MatchmakingProvider with ChangeNotifier {
@@ -187,7 +188,8 @@ class MatchmakingProvider with ChangeNotifier {
     debugPrint('QUEUE DEBUG: gameProvider state at match_found - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}');
     
     HapticService.heavyImpact();
-    
+    DartSoundService.playMatchFound();
+
     _stopSearchTimer();
     _matchFound = true;
     _matchId = data['matchId'] as String?;

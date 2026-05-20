@@ -75,6 +75,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // false). Track whether we actually backgrounded so we only re-sync after a
   // real paused state.
   bool _wasPausedSinceLastResume = false;
+  // Why: debounce remote-video recovery. onRemoteVideoStateChanged can fire
+  // repeatedly during a single freeze; we only want one mute/unmute toggle in
+  // flight at a time.
+  bool _remoteVideoRecoveryInFlight = false;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
   @override
@@ -159,6 +163,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         } else {
           DartSoundService.playLose();
         }
+      }
+      // Why: tear down Agora/camera as soon as the match ends instead of waiting
+      // for the user to navigate away from the end screen. Otherwise the call
+      // keeps burning Agora minutes, battery and bandwidth while the user reads
+      // their ELO result. dispose() in the widget lifecycle remains as a safety
+      // net for the back-arrow / app-kill paths.
+      if (game.gameEnded && !wasGameEnded) {
+        _endAgoraCall();
       }
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
@@ -442,12 +454,65 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
+  Future<void> _endAgoraCall() async {
+    try {
+      autoScoringService?.stopCapture();
+      await cameraFrameService?.dispose();
+      cameraFrameService = null;
+      customVideoTrackId = null;
+      if (agoraEngine != null) {
+        await AgoraService.leaveChannel(agoraEngine!);
+        await AgoraService.dispose();
+        agoraEngine = null;
+      }
+    } catch (e) {
+      debugPrint('[BaseGameScreen] _endAgoraCall error: $e');
+    }
+  }
+
   void _registerAgoraHandlers() {
     agoraEngine!.registerEventHandler(RtcEngineEventHandler(
       onJoinChannelSuccess: (_, _) { if (!mounted) return; readGame().setLocalUserJoined(true); },
       onUserJoined: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(uid); },
       onUserOffline: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(null); },
+      // Why: when the opponent's stream freezes/fails, force a re-subscribe by
+      // toggling muteRemoteVideoStream. Without this, the local viewer sees a
+      // frozen frame indefinitely — there is no other code path that detects
+      // a remote freeze, since onUserOffline only fires on a real disconnect.
+      onRemoteVideoStateChanged: (_, uid, state, reason, _) {
+        if (!mounted) return;
+        if (state != RemoteVideoState.remoteVideoStateFrozen &&
+            state != RemoteVideoState.remoteVideoStateFailed) return;
+        debugPrint('[Agora] remote video $uid → $state (reason=$reason); recovering');
+        _recoverRemoteVideo(uid);
+      },
+      // Why: detect when the SDK has given up reconnecting on its own and
+      // proactively ask the server for a fresh token + re-join. Without this
+      // we only reconnect on AppLifecycleState.resumed, so a connection drop
+      // that happens while the app is foreground stays broken.
+      onConnectionStateChanged: (_, state, reason) {
+        debugPrint('[Agora] connection state → $state (reason=$reason)');
+        if (!mounted) return;
+        if (state == ConnectionStateType.connectionStateFailed) {
+          try { readGame().reconnectToMatch(); } catch (_) {}
+        }
+      },
     ));
+  }
+
+  Future<void> _recoverRemoteVideo(int uid) async {
+    if (_remoteVideoRecoveryInFlight) return;
+    _remoteVideoRecoveryInFlight = true;
+    try {
+      await agoraEngine?.muteRemoteVideoStream(uid: uid, mute: true);
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      await agoraEngine?.muteRemoteVideoStream(uid: uid, mute: false);
+    } catch (e) {
+      debugPrint('[Agora] _recoverRemoteVideo error: $e');
+    } finally {
+      _remoteVideoRecoveryInFlight = false;
+    }
   }
 
   Future<void> initCameraZoom({int attempt = 0}) async {

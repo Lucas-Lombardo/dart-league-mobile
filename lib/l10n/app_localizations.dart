@@ -93,6 +93,7 @@ abstract class AppLocalizations {
   // Play Screen
   String get dartRivals;
   String get rankedCompetitive;
+  String playersOnline(int count);
   String get refresh;
   String get loss;
   String get win;

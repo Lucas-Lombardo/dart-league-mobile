@@ -230,6 +230,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rankedCompetitive => 'Ranked Competitive';
 
   @override
+  String playersOnline(int count) =>
+      count <= 1 ? '$count player online' : '$count players online';
+
+  @override
   String get refresh => 'Refresh';
 
   @override

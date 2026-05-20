@@ -271,7 +271,14 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();
-    WakelockPlus.disable();
+    // Why: WakelockPlus is a global toggle, not refcounted. When we push
+    // GameScreen via pushAndRemoveUntil, GameScreen.initState enables the
+    // wakelock *before* this dispose runs — calling disable() here would turn
+    // it back off for the whole match and let the phone sleep. GameScreen
+    // owns its own wakelock lifecycle, so only release ours on a real exit.
+    if (!_isNavigating) {
+      WakelockPlus.disable();
+    }
     OrientationUtils.portraitOnly();
     super.dispose();
   }
