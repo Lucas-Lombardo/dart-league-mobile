@@ -57,7 +57,10 @@ class TournamentGameProvider with ChangeNotifier {
   // Agora video calling
   String? _agoraAppId;
   String? _agoraToken;
+  String? _agoraTokenStrict;
   String? _agoraChannelName;
+  int? _agoraUid;
+  int? _opponentAgoraUid;
   int? _remoteUid;
   bool _localUserJoined = false;
   bool _needsAgoraReconnect = false;
@@ -121,10 +124,16 @@ class TournamentGameProvider with ChangeNotifier {
   // Getters — Agora
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
+  String? get agoraTokenStrict => _agoraTokenStrict;
   String? get agoraChannelName => _agoraChannelName;
+  int? get agoraUid => _agoraUid;
+  int? get opponentAgoraUid => _opponentAgoraUid;
   int? get remoteUid => _remoteUid;
   bool get localUserJoined => _localUserJoined;
   bool get needsAgoraReconnect => _needsAgoraReconnect;
+
+  bool get hasStrictAgoraCredentials =>
+      _agoraTokenStrict != null && _agoraTokenStrict!.isNotEmpty && _agoraUid != null && _agoraUid != 0;
 
   int get currentRoundScore {
     int score = 0;
@@ -157,7 +166,10 @@ class TournamentGameProvider with ChangeNotifier {
     required String roundName,
     String? agoraAppId,
     String? agoraToken,
+    String? agoraTokenStrict,
     String? agoraChannelName,
+    int? agoraUid,
+    int? opponentAgoraUid,
   }) {
     _tournamentMatchId = tournamentMatchId;
     _currentGameMatchId = gameMatchId;
@@ -178,7 +190,17 @@ class TournamentGameProvider with ChangeNotifier {
 
     if (agoraAppId != null) _agoraAppId = agoraAppId;
     if (agoraToken != null) _agoraToken = agoraToken;
+    if (agoraTokenStrict != null) _agoraTokenStrict = agoraTokenStrict;
     if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
+    if (agoraUid != null) _agoraUid = agoraUid;
+    if (opponentAgoraUid != null) {
+      _opponentAgoraUid = opponentAgoraUid;
+      // Pre-seed remote view only when we'll join via the strict path
+      // (same reasoning as GameProvider.initGame).
+      if (agoraTokenStrict != null && agoraTokenStrict.isNotEmpty && agoraUid != null && agoraUid != 0) {
+        _remoteUid = opponentAgoraUid;
+      }
+    }
 
     _resetLegState();
     notifyListeners();
@@ -264,6 +286,14 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleScoreUpdated(dynamic data) {
+    // Why: auto-resync the turn when round_complete was missed (e.g. brief
+    // socket disconnect that left the client out of the room). The server
+    // always includes currentPlayerId in score_updated payloads.
+    final serverCurrentPlayerId = data['currentPlayerId'] as String?;
+    if (serverCurrentPlayerId != null && serverCurrentPlayerId != _currentPlayerId) {
+      _currentPlayerId = serverCurrentPlayerId;
+    }
+
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
@@ -431,7 +461,13 @@ class TournamentGameProvider with ChangeNotifier {
     if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
     if (dartsThrown != null) _dartsThrown = dartsThrown;
     if (currentRoundThrows != null) {
-      _currentRoundThrows = currentRoundThrows.map((t) => t.toString()).toList();
+      // Why: see GameProvider._handleGameStateSync. Don't wipe locally-detected
+      // darts when our throw_dart is still in flight to the server.
+      final serverThrows = currentRoundThrows.map((t) => t.toString()).toList();
+      if (!isMyTurn || serverThrows.length >= _currentRoundThrows.length) {
+        _currentRoundThrows = serverThrows;
+        _dartsEmittedThisRound = _currentRoundThrows.length;
+      }
     }
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
@@ -439,7 +475,10 @@ class TournamentGameProvider with ChangeNotifier {
 
     final newAgoraAppId = data['agoraAppId'] as String?;
     final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
     final newAgoraChannelName = data['agoraChannelName'] as String?;
+    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
+    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
     if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
         newAgoraToken != null && newAgoraToken.isNotEmpty &&
         newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
@@ -447,6 +486,16 @@ class TournamentGameProvider with ChangeNotifier {
       _agoraToken = newAgoraToken;
       _agoraChannelName = newAgoraChannelName;
       _needsAgoraReconnect = true;
+    }
+    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
+      _agoraTokenStrict = newAgoraTokenStrict;
+    }
+    if (newAgoraUid != null) _agoraUid = newAgoraUid;
+    if (newOpponentAgoraUid != null) {
+      _opponentAgoraUid = newOpponentAgoraUid;
+      if (hasStrictAgoraCredentials) {
+        _remoteUid = newOpponentAgoraUid;
+      }
     }
 
     _gameStarted = true;
@@ -503,7 +552,10 @@ class TournamentGameProvider with ChangeNotifier {
     // Update Agora tokens for next leg video call
     final newAgoraAppId = data['agoraAppId'] as String?;
     final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
     final newAgoraChannelName = data['agoraChannelName'] as String?;
+    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
+    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
     if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
         newAgoraToken != null && newAgoraToken.isNotEmpty &&
         newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
@@ -511,6 +563,16 @@ class TournamentGameProvider with ChangeNotifier {
       _agoraToken = newAgoraToken;
       _agoraChannelName = newAgoraChannelName;
       _needsAgoraReconnect = true;
+    }
+    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
+      _agoraTokenStrict = newAgoraTokenStrict;
+    }
+    if (newAgoraUid != null) _agoraUid = newAgoraUid;
+    if (newOpponentAgoraUid != null) {
+      _opponentAgoraUid = newOpponentAgoraUid;
+      if (hasStrictAgoraCredentials) {
+        _remoteUid = newOpponentAgoraUid;
+      }
     }
 
     // Reset leg state for next leg
@@ -798,7 +860,10 @@ class TournamentGameProvider with ChangeNotifier {
     _tournamentState = TournamentGameState.waiting;
     _agoraAppId = null;
     _agoraToken = null;
+    _agoraTokenStrict = null;
     _agoraChannelName = null;
+    _agoraUid = null;
+    _opponentAgoraUid = null;
     _remoteUid = null;
     _localUserJoined = false;
     _needsAgoraReconnect = false;

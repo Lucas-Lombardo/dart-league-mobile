@@ -88,7 +88,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           gameMatchId,
           agoraAppId: data['agoraAppId'] as String?,
           agoraToken: data['agoraToken'] as String?,
+          agoraTokenStrict: data['agoraTokenStrict'] as String?,
           agoraChannelName: data['agoraChannelName'] as String?,
+          agoraUid: (data['agoraUid'] as num?)?.toInt(),
+          opponentAgoraUid: (data['opponentAgoraUid'] as num?)?.toInt(),
         );
       }
     });
@@ -101,7 +104,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     }
   }
 
-  void _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraChannelName}) {
+  void _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid}) {
     if (!mounted) return;
 
     HapticService.heavyImpact();
@@ -122,7 +125,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       roundName: widget.roundName,
       agoraAppId: agoraAppId,
       agoraToken: agoraToken,
+      agoraTokenStrict: agoraTokenStrict,
       agoraChannelName: agoraChannelName,
+      agoraUid: agoraUid,
+      opponentAgoraUid: opponentAgoraUid,
     );
 
     AppNavigator.replaceWith(

@@ -25,9 +25,13 @@ class MatchmakingProvider with ChangeNotifier {
   // Agora video credentials
   String? _agoraAppId;
   String? _agoraToken;
+  String? _agoraTokenStrict;
   String? _agoraChannelName;
+  int? _agoraUid;
+  int? _opponentAgoraUid;
   GameProvider? _gameProvider;
   String? _errorMessage;
+  bool _queueTimedOut = false;
   String? _currentUserId; // Store userId for initGame call
 
   @override
@@ -46,8 +50,12 @@ class MatchmakingProvider with ChangeNotifier {
   int? get playerElo => _playerElo;
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
+  String? get agoraTokenStrict => _agoraTokenStrict;
   String? get agoraChannelName => _agoraChannelName;
+  int? get agoraUid => _agoraUid;
+  int? get opponentAgoraUid => _opponentAgoraUid;
   String? get errorMessage => _errorMessage;
+  bool get queueTimedOut => _queueTimedOut;
 
   void setGameProvider(GameProvider provider) {
     _gameProvider = provider;
@@ -68,6 +76,7 @@ class MatchmakingProvider with ChangeNotifier {
       _agoraToken = null;
       _agoraChannelName = null;
       _errorMessage = null;
+      _queueTimedOut = false;
       _currentUserId = userId;
       
       // Reset game provider if it still has stale state from previous match
@@ -109,7 +118,10 @@ class MatchmakingProvider with ChangeNotifier {
         _opponentElo = null;
         _agoraAppId = null;
         _agoraToken = null;
+        _agoraTokenStrict = null;
         _agoraChannelName = null;
+        _agoraUid = null;
+        _opponentAgoraUid = null;
       }
       
       notifyListeners();
@@ -134,6 +146,10 @@ class MatchmakingProvider with ChangeNotifier {
 
     SocketService.on('queue_error', (data) {
       _handleQueueError(data);
+    });
+
+    SocketService.on('queue_timeout', (data) {
+      _handleQueueTimeout(data);
     });
 
   }
@@ -202,13 +218,21 @@ class MatchmakingProvider with ChangeNotifier {
     // This prevents HTTP responses from overwriting socket credentials with null
     final newAgoraAppId = data['agoraAppId'] as String?;
     final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
     final newAgoraChannelName = data['agoraChannelName'] as String?;
-    
+    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
+    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
+
     if (newAgoraAppId != null && newAgoraToken != null && newAgoraChannelName != null) {
       _agoraAppId = newAgoraAppId;
       _agoraToken = newAgoraToken;
       _agoraChannelName = newAgoraChannelName;
     }
+    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
+      _agoraTokenStrict = newAgoraTokenStrict;
+    }
+    if (newAgoraUid != null) _agoraUid = newAgoraUid;
+    if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
     
     _isSearching = false;
     
@@ -224,7 +248,10 @@ class MatchmakingProvider with ChangeNotifier {
         _opponentId!,
         agoraAppId: _agoraAppId,
         agoraToken: _agoraToken,
+        agoraTokenStrict: _agoraTokenStrict,
         agoraChannelName: _agoraChannelName,
+        agoraUid: _agoraUid,
+        opponentAgoraUid: _opponentAgoraUid,
       );
     } else {
       debugPrint('DEBUG: initGame SKIPPED - gameProvider=$_gameProvider, userId=$_currentUserId, matchId=$_matchId, opponentId=$_opponentId');
@@ -243,8 +270,15 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _handleQueueError(dynamic data) {
-    
+
     _errorMessage = data['message'] as String? ?? 'Queue error occurred';
+    _isSearching = false;
+    _stopSearchTimer();
+    notifyListeners();
+  }
+
+  void _handleQueueTimeout(dynamic data) {
+    _queueTimedOut = true;
     _isSearching = false;
     _stopSearchTimer();
     notifyListeners();
@@ -268,8 +302,12 @@ class MatchmakingProvider with ChangeNotifier {
       _playerElo = null;
       _agoraAppId = null;
       _agoraToken = null;
+      _agoraTokenStrict = null;
       _agoraChannelName = null;
+      _agoraUid = null;
+      _opponentAgoraUid = null;
       _errorMessage = null;
+      _queueTimedOut = false;
       notifyListeners();
     } catch (_) {
       // Leave queue failed
@@ -280,6 +318,7 @@ class MatchmakingProvider with ChangeNotifier {
     SocketService.off('match_found');
     SocketService.off('searching_expanded');
     SocketService.off('queue_error');
+    SocketService.off('queue_timeout');
   }
 
   void resetMatch() {

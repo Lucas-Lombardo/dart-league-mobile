@@ -424,6 +424,7 @@ abstract class AppLocalizations {
   String get loadingAutoScoring;
   String get opponentDisconnected;
   String get timeLeftToReconnect;
+  String get matchNoLongerInProgress;
   String get yourScoreLabel;
   String get missButton;
   String get scoreLabel;
@@ -439,6 +440,11 @@ abstract class AppLocalizations {
 
   // Matchmaking - ELO range expansion hint
   String get eloRangeExpandingHint;
+
+  // Matchmaking - queue timeout (no opponent found after 15 min)
+  String get queueTimeoutTitle;
+  String get queueTimeoutMessage;
+  String get queueTimeoutBackButton;
 
   // Tournament Game - end screen titles (parameterized)
   String get matchWonTitle;

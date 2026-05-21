@@ -27,6 +27,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   late Animation<double> _pulseAnimation;
   MatchmakingProvider? _matchmakingProvider;
   bool _isNavigating = false;
+  bool _timeoutDialogShown = false;
   String? _userId;
 
   @override
@@ -84,7 +85,89 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     final matchmaking = context.read<MatchmakingProvider>();
     if (matchmaking.matchFound && mounted && !_isNavigating) {
       _showMatchFoundDialog();
+    } else if (matchmaking.queueTimedOut && mounted && !_timeoutDialogShown) {
+      _showQueueTimeoutDialog();
     }
+  }
+
+  void _showQueueTimeoutDialog() {
+    if (_timeoutDialogShown) return;
+    _timeoutDialogShown = true;
+
+    HapticService.mediumImpact();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5), width: 2),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.sentiment_dissatisfied,
+                color: AppTheme.textSecondary,
+                size: 72,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                AppLocalizations.of(dialogContext).queueTimeoutTitle,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppLocalizations.of(dialogContext).queueTimeoutMessage,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    AppLocalizations.of(dialogContext).queueTimeoutBackButton,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showMatchFoundDialog() {
@@ -217,7 +300,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                 opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
                 agoraAppId: matchmaking.agoraAppId,
                 agoraToken: matchmaking.agoraToken,
+                agoraTokenStrict: matchmaking.agoraTokenStrict,
                 agoraChannelName: matchmaking.agoraChannelName,
+                agoraUid: matchmaking.agoraUid,
+                opponentAgoraUid: matchmaking.opponentAgoraUid,
               ),
             ),
             (route) => route.isFirst,
@@ -244,7 +330,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                 opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
                 agoraAppId: matchmaking.agoraAppId,
                 agoraToken: matchmaking.agoraToken,
+                agoraTokenStrict: matchmaking.agoraTokenStrict,
                 agoraChannelName: matchmaking.agoraChannelName,
+                agoraUid: matchmaking.agoraUid,
+                opponentAgoraUid: matchmaking.opponentAgoraUid,
               ),
             ),
             (route) => route.isFirst,

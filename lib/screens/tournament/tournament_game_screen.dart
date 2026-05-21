@@ -106,10 +106,16 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     updateLoadingMessage('Joining match...');
     if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
       updateLoadingMessage('Starting camera...');
+      // Prefer the strict (uid-bound) token if the backend provided one;
+      // otherwise fall back to legacy uid=0 + legacy token.
+      final useStrict = game.hasStrictAgoraCredentials;
       await initializeAgora(
         appId: game.agoraAppId!,
-        token: game.agoraToken ?? '',
+        token: useStrict
+            ? (game.agoraTokenStrict ?? '')
+            : (game.agoraToken ?? ''),
         channelName: game.agoraChannelName ?? '',
+        uid: useStrict ? game.agoraUid : 0,
       );
     }
     game.addListener(handleSharedStateChange);

@@ -1064,6 +1064,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get timeLeftToReconnect => '{time} left to reconnect';
 
   @override
+  String get matchNoLongerInProgress => 'Match no longer in progress';
+
+  @override
   String get yourScoreLabel => 'YOUR SCORE:';
 
   @override
@@ -1100,6 +1103,16 @@ class AppLocalizationsEn extends AppLocalizations {
   // Matchmaking - ELO range expansion hint
   @override
   String get eloRangeExpandingHint => 'expanding as you wait';
+
+  @override
+  String get queueTimeoutTitle => 'No one is online';
+
+  @override
+  String get queueTimeoutMessage =>
+      "Sorry, we couldn't find an opponent for you. Please come back later.";
+
+  @override
+  String get queueTimeoutBackButton => 'BACK';
 
   // Tournament Game - end screen titles
   @override

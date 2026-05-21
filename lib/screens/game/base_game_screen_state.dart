@@ -79,6 +79,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // repeatedly during a single freeze; we only want one mute/unmute toggle in
   // flight at a time.
   bool _remoteVideoRecoveryInFlight = false;
+  // Watchdog: if we haven't seen onUserJoined for the opponent within this
+  // window, force a mute/unmute cycle on the opponent's deterministic UID to
+  // wake up the remote subscription. Without this, the player can sit on a
+  // black "Waiting..." tile forever if the event was missed.
+  Timer? _remoteJoinedWatchdog;
+  static const Duration _remoteJoinedWatchdogDelay = Duration(seconds: 8);
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
   @override
@@ -106,6 +112,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _remoteJoinedWatchdog?.cancel();
+    _remoteJoinedWatchdog = null;
     disposeScreenSpecific();
     scoreAnimationController.dispose();
     WakelockPlus.disable();
@@ -214,6 +222,26 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           if (mounted && context.mounted && !forfeitDialogShowing) showForfeitDialog(game);
         });
       }
+      // Why: server emits reconnect_failed when a player rejoins after the
+      // match has already ended. Without this, the player gets stuck on the
+      // game screen with no way to learn the outcome.
+      try {
+        if (game.reconnectFailed == true) {
+          game.clearReconnectFailedFlag();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && context.mounted) {
+              final l10n = AppLocalizations.of(context);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(l10n.matchNoLongerInProgress),
+                backgroundColor: AppTheme.error,
+                duration: const Duration(seconds: 3),
+              ));
+              try { game.reset(); } catch (_) {}
+              Navigator.of(context).popUntil((r) => r.isFirst);
+            }
+          });
+        }
+      } catch (_) {}
       onScreenSpecificStateChange(game);
     } catch (_) {}
   }
@@ -306,7 +334,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   void submitAutoScoredDarts(dynamic game) { aiPausedForEdit = false; autoScoringService?.stopCapture(); game.confirmRound(); }
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
-  Future<void> initializeAgora({required String appId, required String token, required String channelName}) async {
+  Future<void> initializeAgora({required String appId, required String token, required String channelName, int? uid}) async {
     if (!kIsWeb) {
       permissionsGranted = await AgoraService.requestPermissions();
       if (!permissionsGranted) {
@@ -316,6 +344,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } else {
       permissionsGranted = true;
     }
+    final agoraUid = uid ?? 0;
     try {
       if (kIsWeb) {
         // Web: use default Agora camera capture (custom video track not supported)
@@ -325,7 +354,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           engine: agoraEngine!,
           token: token,
           channelName: channelName,
-          uid: 0,
+          uid: agoraUid,
           customVideoTrackId: null, // use default camera on web
         );
       } else {
@@ -351,7 +380,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           engine: agoraEngine!,
           token: token,
           channelName: channelName,
-          uid: 0,
+          uid: agoraUid,
           customVideoTrackId: customVideoTrackId,
         );
 
@@ -362,6 +391,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // autoScoringLoading flag drives the UI loading state.
         initAutoScoring();
       }
+      _armRemoteVideoWatchdog();
     } catch (e) {
       debugPrint('[BaseGameScreen] initializeAgora error: $e');
       if (mounted) setState(() => autoScoringLoading = false);
@@ -369,11 +399,40 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Future<void> reconnectAgora(dynamic game) async {
-    final appId = game.agoraAppId; final token = game.agoraToken; final channelName = game.agoraChannelName;
-    if (appId == null || appId.isEmpty || token == null || token.isEmpty || channelName == null || channelName.isEmpty) {
+    final appId = game.agoraAppId;
+    final channelName = game.agoraChannelName;
+    // Strict path (uid=hash(userId) + matching token) when available,
+    // legacy path (uid=0 + legacy token) otherwise. The strict path is what
+    // makes eager remote-view rendering work, but we never assume the
+    // backend has been upgraded — we look at what's actually in the provider.
+    final String? legacyToken = game.agoraToken as String?;
+    final String? strictToken = game.agoraTokenStrict as String?;
+    final int? providerUid = game.agoraUid as int?;
+    final bool useStrict = strictToken != null && strictToken.isNotEmpty && providerUid != null && providerUid != 0;
+    final String token = useStrict ? strictToken : (legacyToken ?? '');
+    final int agoraUid = useStrict ? providerUid : 0;
+    if (appId == null || appId.isEmpty || token.isEmpty || channelName == null || channelName.isEmpty) {
       if (mounted) setState(() => autoScoringLoading = false);
       return;
     }
+    // Why: show the loading state up-front so the UI doesn't briefly render
+    // an empty game while the camera and engine are being torn down. Without
+    // this preempt, the "Chargement de l'auto-scoreur" indicator only kicks
+    // in inside initAutoScoring() — too late, after the screen has already
+    // flashed empty.
+    if (mounted && autoScoringEnabled && AutoScoringService.isSupported && !kIsWeb) {
+      setState(() => autoScoringLoading = true);
+    }
+    // Why: with deterministic UIDs we keep the opponent UID across reconnect
+    // — but until the engine is rebuilt we want the AgoraVideoView to
+    // un-bind from the old engine reference. We re-set remoteUid below after
+    // joinChannel succeeds.
+    try {
+      if (game.setRemoteUser is Function) {
+        game.setRemoteUser(null);
+      }
+    } catch (_) {}
+    final int? opponentUidForRecovery = game.opponentAgoraUid as int?;
     // Preserve the user's mic preference across the reconnect so a resumed-
     // from-background or a screenshot-induced reconnect doesn't silently
     // re-mute the mic.
@@ -394,7 +453,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           engine: agoraEngine!,
           token: token,
           channelName: channelName,
-          uid: 0,
+          uid: agoraUid,
           customVideoTrackId: null,
         );
       } else {
@@ -411,20 +470,31 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           engine: agoraEngine!,
           token: token,
           channelName: channelName,
-          uid: 0,
+          uid: agoraUid,
           customVideoTrackId: customVideoTrackId,
         );
         // Why: explicitly re-assert publishing flags after joinChannel.
         // Without this, opponents intermittently fail to receive the rejoiner's
         // video — joinChannel's options are sometimes not enough on rejoin.
-        try {
-          await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
-            publishCustomVideoTrack: true,
-            customVideoTrackId: customVideoTrackId,
-            publishCameraTrack: false,
-          ));
-        } catch (e) {
-          debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) error: $e');
+        // Retry with exponential backoff: the first call sometimes races with
+        // Agora's internal state machine and silently no-ops, which is the
+        // "audio works but video is a black tile" symptom.
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
+              publishCustomVideoTrack: true,
+              customVideoTrackId: customVideoTrackId,
+              publishCameraTrack: false,
+            ));
+            break;
+          } catch (e) {
+            debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) attempt ${attempt + 1} error: $e');
+            if (attempt == 2) {
+              debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) gave up after 3 attempts');
+            } else {
+              await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+            }
+          }
         }
         cameraZoomInitialized = false;
         await initCameraZoom();
@@ -432,6 +502,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         autoScoringService!.resetTurn();
         initAutoScoring();
       }
+      // Re-seed remoteUid with the deterministic opponent UID so the remote
+      // AgoraVideoView re-binds to the new engine immediately, without
+      // waiting for the (potentially delayed) onUserJoined event.
+      if (opponentUidForRecovery != null && opponentUidForRecovery != 0) {
+        try { game.setRemoteUser(opponentUidForRecovery); } catch (_) {}
+      }
+      _armRemoteVideoWatchdog();
       // Restore mic state: if user had unmuted before the reconnect, re-publish
       // the mic track. joinChannel always defaults to publishMicrophoneTrack:
       // false, so without this the mic UI flips to muted on every reconnect.
@@ -473,8 +550,29 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   void _registerAgoraHandlers() {
     agoraEngine!.registerEventHandler(RtcEngineEventHandler(
       onJoinChannelSuccess: (_, _) { if (!mounted) return; readGame().setLocalUserJoined(true); },
-      onUserJoined: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(uid); },
-      onUserOffline: (_, uid, _) { if (!mounted) return; readGame().setRemoteUser(null); },
+      onUserJoined: (_, uid, _) {
+        if (!mounted) return;
+        readGame().setRemoteUser(uid);
+        _remoteJoinedWatchdog?.cancel();
+        _remoteJoinedWatchdog = null;
+      },
+      onUserOffline: (_, uid, _) {
+        if (!mounted) return;
+        // On the legacy path we don't know the opponent UID ahead of time,
+        // so any offline = clear. On the strict path we keep the view bound
+        // to the deterministic opponent UID so reconnects re-render
+        // immediately without going through a black-tile intermediate state.
+        final g = readGame();
+        final bool hasStrict = (g.hasStrictAgoraCredentials as bool?) ?? false;
+        if (!hasStrict) {
+          g.setRemoteUser(null);
+          return;
+        }
+        final opponentUid = (g.opponentAgoraUid as int?) ?? 0;
+        if (opponentUid == 0 || uid != opponentUid) {
+          g.setRemoteUser(null);
+        }
+      },
       // Why: when the opponent's stream freezes/fails, force a re-subscribe by
       // toggling muteRemoteVideoStream. Without this, the local viewer sees a
       // frozen frame indefinitely — there is no other code path that detects
@@ -513,6 +611,25 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } finally {
       _remoteVideoRecoveryInFlight = false;
     }
+  }
+
+  /// Watchdog that fires if onUserJoined has not arrived for the opponent
+  /// within [_remoteJoinedWatchdogDelay]. Only meaningful when both sides
+  /// are on the strict-UID path; on the legacy path the opponent's UID is
+  /// auto-assigned by Agora, so we can't pre-target a recovery.
+  void _armRemoteVideoWatchdog() {
+    _remoteJoinedWatchdog?.cancel();
+    final game = readGame();
+    final bool hasStrict = (game.hasStrictAgoraCredentials as bool?) ?? false;
+    if (!hasStrict) return;
+    _remoteJoinedWatchdog = Timer(_remoteJoinedWatchdogDelay, () async {
+      if (!mounted) return;
+      final g = readGame();
+      final int opponentUid = (g.opponentAgoraUid as int?) ?? 0;
+      if (opponentUid == 0 || agoraEngine == null) return;
+      debugPrint('[Agora] watchdog: forcing remote re-subscribe for uid=$opponentUid');
+      await _recoverRemoteVideo(opponentUid);
+    });
   }
 
   Future<void> initCameraZoom({int attempt = 0}) async {

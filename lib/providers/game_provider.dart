@@ -32,11 +32,16 @@ class GameProvider with ChangeNotifier {
   bool _opponentDisconnected = false;
   int _disconnectGraceSeconds = 0;
   Timer? _disconnectCountdownTimer;
+  bool _reconnectFailed = false;
+  String? _reconnectFailedReason;
   
   // Agora video calling
   String? _agoraAppId;
   String? _agoraToken;
+  String? _agoraTokenStrict;
   String? _agoraChannelName;
+  int? _agoraUid;
+  int? _opponentAgoraUid;
   int? _remoteUid;
   bool _localUserJoined = false;
   bool _needsAgoraReconnect = false;
@@ -82,14 +87,25 @@ class GameProvider with ChangeNotifier {
   Map<String, dynamic>? get pendingData => _pendingData;
   bool get opponentDisconnected => _opponentDisconnected;
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
+  bool get reconnectFailed => _reconnectFailed;
+  String? get reconnectFailedReason => _reconnectFailedReason;
   
   // Agora getters
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
+  String? get agoraTokenStrict => _agoraTokenStrict;
   String? get agoraChannelName => _agoraChannelName;
+  int? get agoraUid => _agoraUid;
+  int? get opponentAgoraUid => _opponentAgoraUid;
   int? get remoteUid => _remoteUid;
   bool get localUserJoined => _localUserJoined;
   bool get needsAgoraReconnect => _needsAgoraReconnect;
+
+  /// Whether we have everything needed to use the strict (uid-bound) token.
+  /// When false, callers should fall back to the legacy token + uid=0 so we
+  /// stay compatible with backends that don't yet emit agoraTokenStrict.
+  bool get hasStrictAgoraCredentials =>
+      _agoraTokenStrict != null && _agoraTokenStrict!.isNotEmpty && _agoraUid != null && _agoraUid != 0;
 
   bool get isMyTurn => _currentPlayerId == _myUserId;
   // True when this user was the second to throw in the match (captured from
@@ -126,22 +142,39 @@ class GameProvider with ChangeNotifier {
   void initGame(String matchId, String myUserId, String opponentUserId, {
     String? agoraAppId,
     String? agoraToken,
+    String? agoraTokenStrict,
     String? agoraChannelName,
+    int? agoraUid,
+    int? opponentAgoraUid,
   }) {
     debugPrint('GAME DEBUG: initGame called - matchId=$matchId, myUserId=$myUserId, currentMatchId=$_matchId');
-    
+
     // If this is a NEW match (different matchId), always do a full reset
     // Only preserve state if same matchId (reconnection scenario)
     final isNewMatch = _matchId != matchId;
-    
+
     _matchId = matchId;
     _myUserId = myUserId;
     _opponentUserId = opponentUserId;
-    
+
     // Store Agora credentials if provided
     if (agoraAppId != null) _agoraAppId = agoraAppId;
     if (agoraToken != null) _agoraToken = agoraToken;
+    if (agoraTokenStrict != null) _agoraTokenStrict = agoraTokenStrict;
     if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
+    if (agoraUid != null) _agoraUid = agoraUid;
+    if (opponentAgoraUid != null) {
+      _opponentAgoraUid = opponentAgoraUid;
+      // Pre-set remoteUid ONLY when we'll be joining with the strict
+      // (deterministic) UID ourselves. Otherwise we're on the legacy path
+      // (uid=0 → Agora-assigned uid) and the opponent's runtime uid will
+      // also be Agora-assigned, so pre-setting the deterministic value here
+      // would create a black tile until onUserJoined corrects it. We let
+      // onUserJoined drive it in that case.
+      if (agoraTokenStrict != null && agoraTokenStrict.isNotEmpty && agoraUid != null && agoraUid != 0) {
+        _remoteUid = opponentAgoraUid;
+      }
+    }
     
     if (isNewMatch || !_gameStarted) {
       debugPrint('GAME DEBUG: initGame - resetting scores (isNewMatch=$isNewMatch, gameStarted=$_gameStarted)');
@@ -231,6 +264,34 @@ class GameProvider with ChangeNotifier {
     SocketService.on('dart_undone', (data) {
       _handleDartUndone(data);
     });
+
+    SocketService.on('reconnect_failed', (data) {
+      _handleReconnectFailed(data);
+    });
+  }
+
+  void _handleReconnectFailed(dynamic data) {
+    // Why: previously the mobile had no handler for this server event, leaving
+    // the player stuck on the game screen if they reconnected after the match
+    // had already ended. We surface a flag so the screen can pop back to home
+    // and the user knows what happened.
+    final eventMatchId = data is Map ? data['matchId'] as String? : null;
+    if (eventMatchId != null && _matchId != null && eventMatchId != _matchId) {
+      return;
+    }
+    _reconnectFailed = true;
+    _reconnectFailedReason = data is Map
+        ? data['reason'] as String?
+        : null;
+    _gameEnded = true;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+    notifyListeners();
+  }
+
+  void clearReconnectFailedFlag() {
+    _reconnectFailed = false;
+    _reconnectFailedReason = null;
   }
 
   void _handleGameStarted(dynamic data) {
@@ -269,16 +330,25 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleScoreUpdated(dynamic data) {
-    
+
+    // Why: auto-resync the turn when round_complete was missed (e.g. brief
+    // socket disconnect that left the client out of the room). The server
+    // always includes currentPlayerId in score_updated payloads, so reading
+    // it here gives us a self-healing path back to the authoritative turn.
+    final serverCurrentPlayerId = data['currentPlayerId'] as String?;
+    if (serverCurrentPlayerId != null && serverCurrentPlayerId != _currentPlayerId) {
+      _currentPlayerId = serverCurrentPlayerId;
+    }
+
     // Backend sends player1Score and player2Score directly
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
-    
+
     // Map scores correctly based on whether I'm player1 or player2
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
-    
+
     _lastThrow = data['notation'] as String?;
     _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
     
@@ -358,13 +428,6 @@ class GameProvider with ChangeNotifier {
     }
   }
   
-  void cancelConfirmation() {
-    if (_pendingConfirmation) {
-      _pendingConfirmation = false;
-      notifyListeners();
-    }
-  }
-
   void confirmWin() {
     if (_pendingType != 'win') return;
     try {
@@ -577,7 +640,17 @@ class GameProvider with ChangeNotifier {
     if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
     if (dartsThrown != null) _dartsThrown = dartsThrown;
     if (currentRoundThrows != null) {
-      _currentRoundThrows = currentRoundThrows.map((t) => t.toString()).toList();
+      // Why: when it's my turn and the AI has already detected darts locally
+      // (added to _currentRoundThrows + emitted throw_dart to server), a
+      // game_state_sync arriving before the server processed those throws
+      // would wipe the local detections. We only accept the server version
+      // if it's not my turn, or if the server has at least as many darts as
+      // us (meaning our throws were processed).
+      final serverThrows = currentRoundThrows.map((t) => t.toString()).toList();
+      if (!isMyTurn || serverThrows.length >= _currentRoundThrows.length) {
+        _currentRoundThrows = serverThrows;
+        _dartsEmittedThisRound = _currentRoundThrows.length;
+      }
     }
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
@@ -588,7 +661,10 @@ class GameProvider with ChangeNotifier {
     // Update Agora credentials if provided (reconnection scenario)
     final newAgoraAppId = data['agoraAppId'] as String?;
     final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
     final newAgoraChannelName = data['agoraChannelName'] as String?;
+    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
+    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
     if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
         newAgoraToken != null && newAgoraToken.isNotEmpty &&
         newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
@@ -596,6 +672,18 @@ class GameProvider with ChangeNotifier {
       _agoraToken = newAgoraToken;
       _agoraChannelName = newAgoraChannelName;
       _needsAgoraReconnect = true;
+    }
+    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
+      _agoraTokenStrict = newAgoraTokenStrict;
+    }
+    if (newAgoraUid != null) _agoraUid = newAgoraUid;
+    if (newOpponentAgoraUid != null) {
+      _opponentAgoraUid = newOpponentAgoraUid;
+      // Only pre-render the remote view when we're on the strict path
+      // ourselves (same reasoning as initGame).
+      if (hasStrictAgoraCredentials) {
+        _remoteUid = newOpponentAgoraUid;
+      }
     }
 
     _gameStarted = true;
@@ -796,6 +884,7 @@ class GameProvider with ChangeNotifier {
     SocketService.off('opponent_disconnected');
     SocketService.off('opponent_reconnected');
     SocketService.off('game_state_sync');
+    SocketService.off('reconnect_failed');
   }
 
   void setRemoteUser(int? uid) {
@@ -837,10 +926,15 @@ class GameProvider with ChangeNotifier {
     _disconnectCountdownTimer = null;
     _agoraAppId = null;
     _agoraToken = null;
+    _agoraTokenStrict = null;
     _agoraChannelName = null;
+    _agoraUid = null;
+    _opponentAgoraUid = null;
     _remoteUid = null;
     _localUserJoined = false;
     _needsAgoraReconnect = false;
+    _reconnectFailed = false;
+    _reconnectFailedReason = null;
     debugPrint('GAME DEBUG: reset() done - gameStarted=$_gameStarted, gameEnded=$_gameEnded');
     notifyListeners();
   }

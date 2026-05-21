@@ -23,7 +23,10 @@ class GameScreen extends StatefulWidget {
   final String opponentUsername;
   final String? agoraAppId;
   final String? agoraToken;
+  final String? agoraTokenStrict;
   final String? agoraChannelName;
+  final int? agoraUid;
+  final int? opponentAgoraUid;
 
   const GameScreen({
     super.key,
@@ -32,7 +35,10 @@ class GameScreen extends StatefulWidget {
     required this.opponentUsername,
     this.agoraAppId,
     this.agoraToken,
+    this.agoraTokenStrict,
     this.agoraChannelName,
+    this.agoraUid,
+    this.opponentAgoraUid,
   });
 
   @override
@@ -84,16 +90,29 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       widget.opponentId,
       agoraAppId: widget.agoraAppId,
       agoraToken: widget.agoraToken,
+      agoraTokenStrict: widget.agoraTokenStrict,
       agoraChannelName: widget.agoraChannelName,
+      agoraUid: widget.agoraUid,
+      opponentAgoraUid: widget.opponentAgoraUid,
     );
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
     if (widget.agoraAppId != null && widget.agoraAppId!.isNotEmpty) {
       updateLoadingMessage('Starting camera...');
+      // Prefer the strict token (bound to a deterministic UID) when the
+      // backend provides it. Fall back to the legacy token + uid=0 so we
+      // remain compatible with backends that haven't been updated yet.
+      final useStrict = widget.agoraTokenStrict != null &&
+          widget.agoraTokenStrict!.isNotEmpty &&
+          widget.agoraUid != null &&
+          widget.agoraUid != 0;
       await initializeAgora(
         appId: widget.agoraAppId!,
-        token: widget.agoraToken ?? '',
+        token: useStrict
+            ? widget.agoraTokenStrict!
+            : (widget.agoraToken ?? ''),
         channelName: widget.agoraChannelName ?? '',
+        uid: useStrict ? widget.agoraUid : 0,
       );
     }
     game.addListener(handleSharedStateChange);
