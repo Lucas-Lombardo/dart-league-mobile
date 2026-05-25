@@ -4,12 +4,15 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../models/bot_rank.dart';
+import '../../models/training.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
+import '../../services/training_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
@@ -38,11 +41,22 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   // Local scoring state (no sockets)
   int _myScore = 501;
   int _dartsThrown = 0;
+  int _totalDartsThrown = 0;
   List<_DartThrow> _currentRoundThrows = [];
   int _scoreBeforeRound = 501;
   bool _isBust = false;
   bool _isWin = false;
   bool _winDialogShowing = false;
+
+  // Per-visit (3-dart) round scores for live & end-of-match averages.
+  final List<int> _myRoundScores = [];
+  final List<int> _botRoundScores = [];
+  int _lastBotScore = 501;
+
+  // Post-match stat screen state (bot-training only).
+  bool _statsLoading = false;
+  double? _overallBotAverage;
+  bool _endIsBotTraining = false;
 
   // Auto-scoring (local camera)
   CameraFrameService? _cameraService;
@@ -64,6 +78,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final provider = context.read<PlacementProvider>();
     _myScore = provider.player1Score;
     _scoreBeforeRound = _myScore;
+    _lastBotScore = provider.player2Score;
     _autoScoringService = AutoScoringService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initCameraAndAI();
@@ -94,6 +109,18 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         _startAiCapture();
       }
     }
+  }
+
+  double? get _myAverage {
+    if (_myRoundScores.isEmpty) return null;
+    final total = _myRoundScores.fold<int>(0, (a, b) => a + b);
+    return total / _myRoundScores.length;
+  }
+
+  double? get _botAverage {
+    if (_botRoundScores.isEmpty) return null;
+    final total = _botRoundScores.fold<int>(0, (a, b) => a + b);
+    return total / _botRoundScores.length;
   }
 
   int _dartScore(int baseScore, ScoreMultiplier multiplier) {
@@ -298,22 +325,27 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
 
     final int roundScore;
     final List<String> roundThrows = _currentRoundThrows.map((t) => t.notation).toList();
+    final int dartsThisRound = _currentRoundThrows.length;
 
     if (_isBust) {
       roundScore = 0;
       setState(() {
         _myScore = _scoreBeforeRound;
         _dartsThrown = 0;
+        _totalDartsThrown += dartsThisRound;
         _currentRoundThrows = [];
         _isBust = false;
         _scoreBeforeRound = _myScore;
+        _myRoundScores.add(0);
       });
     } else {
       roundScore = _scoreBeforeRound - _myScore;
       setState(() {
         _dartsThrown = 0;
+        _totalDartsThrown += dartsThisRound;
         _currentRoundThrows = [];
         _scoreBeforeRound = _myScore;
+        _myRoundScores.add(roundScore);
       });
     }
 
@@ -333,9 +365,22 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final success = await placement.triggerBotTurn(
       playerRoundScore: playerRoundScore,
       playerRoundThrows: playerRoundThrows,
+      playerScoreAfterRound: _myScore,
     );
 
     if (success && mounted) {
+      // Bot just played a visit: record its 3-dart score (0 on bust).
+      final botRoundScore =
+          placement.botIsBust ? 0 : (_lastBotScore - placement.player2Score);
+      if (botRoundScore >= 0) {
+        setState(() {
+          _botRoundScores.add(botRoundScore);
+          _lastBotScore = placement.player2Score;
+        });
+      } else {
+        _lastBotScore = placement.player2Score;
+      }
+
       await Future.delayed(const Duration(milliseconds: 1200));
 
       if (placement.botIsCheckout && placement.player2Score == 0) {
@@ -466,24 +511,88 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   void _handleGameEnd(String? winnerId) async {
+    // When the player wins mid-visit, _confirmRound is bypassed — fold the
+    // final (unconfirmed) round into our local rounds list so the match
+    // average reflects every dart actually thrown.
+    if (_currentRoundThrows.isNotEmpty) {
+      final roundScore = _scoreBeforeRound - _myScore;
+      if (!_isBust && roundScore >= 0) {
+        _myRoundScores.add(roundScore);
+      } else {
+        _myRoundScores.add(0);
+      }
+    }
+
+    final placement = context.read<PlacementProvider>();
+    final auth = context.read<AuthProvider>();
+    final wasPlacement = placement.mode == PlacementMode.placement;
+    final isBotTraining = placement.mode == PlacementMode.botTraining;
+
     setState(() {
       _gameEnded = true;
       _winnerId = winnerId;
+      _endIsBotTraining = isBotTraining;
+      _statsLoading = isBotTraining;
     });
 
     if (winnerId == null) {
       DartSoundService.playLose();
     }
+    // Include any darts in the current (unconfirmed) round — when the player
+    // wins mid-visit, _confirmRound is bypassed and those darts haven't been
+    // rolled into _totalDartsThrown yet.
+    final totalDarts = _totalDartsThrown + _currentRoundThrows.length;
+    final matchAverage = _myAverage;
+    final result = await placement.completeMatch(
+      winnerId,
+      player1Score: _myScore,
+      currentUserId: auth.currentUser?.id,
+      dartsThrown: totalDarts,
+      matchPlayerAverage: matchAverage,
+    );
 
-    final placement = context.read<PlacementProvider>();
-    final result = await placement.completeMatch(winnerId, player1Score: _myScore);
+    if (!mounted || result == null) return;
 
-    if (mounted && result != null) {
+    if (wasPlacement) {
       await context.read<AuthProvider>().checkAuthStatus();
-      if (mounted) {
-        Navigator.of(context).pop(result);
-      }
+      if (mounted) Navigator.of(context).pop(result);
+      return;
     }
+
+    if (isBotTraining) {
+      // Stay on the end screen and load the historical bot-training average
+      // so the player can see both this match's stat and their overall trend.
+      try {
+        final sessions = await TrainingService.listSessions(
+          type: TrainingType.botTraining,
+          limit: 50,
+        );
+        final averages = <double>[];
+        for (final s in sessions) {
+          final d = s.details;
+          if (d == null) continue;
+          final a = d['playerAverage'];
+          if (a is num && a > 0) averages.add(a.toDouble());
+        }
+        if (matchAverage != null && matchAverage > 0) {
+          averages.add(matchAverage);
+        }
+        final overall = averages.isEmpty
+            ? null
+            : averages.reduce((a, b) => a + b) / averages.length;
+        if (mounted) {
+          setState(() {
+            _overallBotAverage = overall;
+            _statsLoading = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _statsLoading = false);
+      }
+      return;
+    }
+
+    Navigator.of(context).pop(result);
   }
 
   @override
@@ -493,7 +602,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
 
     if (_gameEnded) {
       final didWin = _winnerId == auth.currentUser?.id;
-      return _buildGameEndScreen(didWin);
+      return _buildGameEndScreen(didWin, isBotTraining: _endIsBotTraining);
     }
 
     if (placement.currentMatchId == null) {
@@ -506,7 +615,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     final safeTop = MediaQuery.of(context).padding.top;
-    final botName = AppLocalizations.of(context).botName(placement.currentBotDifficulty ?? 1);
+    final botName = _botName(context, placement);
 
     return PopScope(
       canPop: false,
@@ -550,6 +659,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     opponentName: botName,
                     myName: auth.currentUser?.username ?? 'You',
                     dartsThrown: _dartsThrown,
+                    startingScore: placement.startingScore,
+                    myAverage: _myAverage,
+                    opponentAverage: _botAverage,
                     localCameraPreview: _cameraService?.controller != null && _cameraService!.isInitialized
                         ? LocalCameraPreview(controller: _cameraService!.controller!)
                         : null,
@@ -575,6 +687,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                       } else if (_isBust) {
                         _stopAiCapture();
                         WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
+                      } else {
+                        // Why: the dart edit modal stops capture so detections
+                        // don't overwrite the manual correction. In ranked,
+                        // capture restarts via the GameProvider listener; bot
+                        // training has no such listener, so restart explicitly
+                        // — otherwise removal detection can't auto-end the turn.
+                        _startAiCapture();
                       }
                     },
                     onToggleAi: _autoScoringService!.modelLoaded ? _toggleAi : null,
@@ -633,6 +752,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               myName: auth.currentUser?.username ?? 'You',
               opponentName: botName,
               isMyTurn: false,
+              startingScore: placement.startingScore,
+              myAverage: _myAverage,
+              opponentAverage: _botAverage,
             ),
           ),
         ),
@@ -715,7 +837,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               const Icon(Icons.smart_toy, color: AppTheme.accent, size: 32),
               const SizedBox(width: 12),
               Text(
-                AppLocalizations.of(context).botNameIsThrowing(placement.currentBotDifficulty ?? 1),
+                _botIsThrowingLabel(context, placement),
                 style: const TextStyle(color: AppTheme.accent, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
@@ -766,57 +888,110 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     );
   }
 
-  Widget _buildGameEndScreen(bool didWin) {
+  Widget _buildGameEndScreen(bool didWin, {bool isBotTraining = false}) {
+    final l10n = AppLocalizations.of(context);
+    final color = didWin ? AppTheme.success : AppTheme.error;
+    final match = _myAverage;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
         child: SafeArea(
           child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: didWin
-                        ? AppTheme.success.withValues(alpha: 0.1)
-                        : AppTheme.error.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: didWin ? AppTheme.success : AppTheme.error,
-                      width: 4,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: color, width: 4),
+                    ),
+                    child: Icon(
+                      didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+                      color: color,
+                      size: 80,
                     ),
                   ),
-                  child: Icon(
-                    didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-                    color: didWin ? AppTheme.success : AppTheme.error,
-                    size: 80,
+                  const SizedBox(height: 32),
+                  Text(
+                    didWin
+                        ? '${l10n.victory.toUpperCase()}!'
+                        : l10n.defeat.toUpperCase(),
+                    style: AppTheme.displayLarge.copyWith(
+                      color: color,
+                      fontSize: 48,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 32),
-                Text(
-                  didWin ? '${AppLocalizations.of(context).victory.toUpperCase()}!' : AppLocalizations.of(context).defeat.toUpperCase(),
-                  style: AppTheme.displayLarge.copyWith(
-                    color: didWin ? AppTheme.success : AppTheme.error,
-                    fontSize: 48,
+                  const SizedBox(height: 16),
+                  Text(
+                    didWin
+                        ? '${l10n.youWon.replaceAll('!', '')} — bot'
+                        : '${l10n.youLost} — bot',
+                    style: AppTheme.bodyLarge,
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  didWin
-                      ? '${AppLocalizations.of(context).youWon.replaceAll('!', '')} — bot'
-                      : '${AppLocalizations.of(context).youLost} — bot',
-                  style: AppTheme.bodyLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 48),
-                const CircularProgressIndicator(color: AppTheme.primary),
-                const SizedBox(height: 16),
-                Text(
-                  AppLocalizations.of(context).savingResult,
-                  style: const TextStyle(color: AppTheme.textSecondary),
-                ),
-              ],
+                  const SizedBox(height: 32),
+                  if (!isBotTraining) ...[
+                    const CircularProgressIndicator(color: AppTheme.primary),
+                    const SizedBox(height: 16),
+                    Text(
+                      l10n.savingResult,
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                  ] else ...[
+                    _StatRow(
+                      label: l10n.matchAverageLabel,
+                      value: match != null && match > 0
+                          ? l10n.matchAverageValue(match.toStringAsFixed(1))
+                          : '—',
+                      color: AppTheme.primary,
+                      icon: Icons.timeline,
+                    ),
+                    const SizedBox(height: 12),
+                    _StatRow(
+                      label: l10n.overallBotAverageLabel,
+                      value: _statsLoading
+                          ? '…'
+                          : (_overallBotAverage != null &&
+                                  _overallBotAverage! > 0
+                              ? l10n.overallBotAverageValue(
+                                  _overallBotAverage!.toStringAsFixed(1))
+                              : '—'),
+                      color: AppTheme.accent,
+                      icon: Icons.equalizer,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: _statsLoading
+                          ? null
+                          : () => Navigator.of(context).pop({
+                                'botTraining': true,
+                                'won': didWin,
+                              }),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 32, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        l10n.continueButton,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),
@@ -870,6 +1045,41 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 }
 
+String _botName(BuildContext context, PlacementProvider placement) {
+  final l10n = AppLocalizations.of(context);
+  if (placement.mode == PlacementMode.botTraining && placement.botRank != null) {
+    return l10n.botRankBotName(_rankLabel(l10n, placement.botRank!));
+  }
+  return l10n.botName(placement.currentBotDifficulty ?? 1);
+}
+
+String _botIsThrowingLabel(BuildContext context, PlacementProvider placement) {
+  final l10n = AppLocalizations.of(context);
+  if (placement.mode == PlacementMode.botTraining && placement.botRank != null) {
+    return l10n.botRankIsThrowing(_rankLabel(l10n, placement.botRank!));
+  }
+  return l10n.botNameIsThrowing(placement.currentBotDifficulty ?? 1);
+}
+
+String _rankLabel(AppLocalizations l10n, BotRank rank) {
+  switch (rank) {
+    case BotRank.bronze:
+      return l10n.rankBronze;
+    case BotRank.silver:
+      return l10n.rankSilver;
+    case BotRank.gold:
+      return l10n.rankGold;
+    case BotRank.platinum:
+      return l10n.rankPlatinum;
+    case BotRank.diamond:
+      return l10n.rankDiamond;
+    case BotRank.pro:
+      return l10n.rankPro;
+    case BotRank.master:
+      return l10n.rankMaster;
+  }
+}
+
 class _DartThrow {
   final int baseScore;
   final ScoreMultiplier multiplier;
@@ -885,5 +1095,56 @@ class _DartThrow {
       case ScoreMultiplier.triple:
         return 'T$baseScore';
     }
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+
+  const _StatRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

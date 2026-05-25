@@ -11,6 +11,7 @@ import '../training/logic/bobs_27_strategy.dart';
 import '../training/logic/checkout_50_strategy.dart';
 import '../training/logic/checkout_finish_strategy.dart';
 import '../training/logic/high_score_strategy.dart';
+import '../training/logic/jdc_challenge_strategy.dart';
 import '../training/logic/training_strategy.dart';
 import '../training/training_ai_screen.dart';
 import '../training/training_select_screen.dart';
@@ -148,6 +149,15 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
       case TrainingType.checkout121:
         strategy = CheckoutFinishStrategy(startScore: 121);
         break;
+      case TrainingType.botTraining:
+        // Bot training doesn't use the strategy/TrainingAiScreen flow — it
+        // reuses the placement game screens. Open the rank picker, which
+        // routes through the placement camera setup on selection.
+        openBotTrainingPicker(context).then((_) => _load());
+        return;
+      case TrainingType.jdcChallenge:
+        strategy = JdcChallengeStrategy();
+        break;
     }
     AppNavigator.toScreen(
       context,
@@ -196,11 +206,6 @@ class _TrainingStatCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final name = trainingDisplayName(l10n, stats.type);
     final hasData = stats.sessions > 0;
-    final best = stats.bestScore;
-    final avg = stats.averageScore;
-    final last = stats.lastScore;
-    final bestLabel =
-        stats.higherIsBetter ? l10n.trainingBest : l10n.trainingBestLow;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -239,46 +244,88 @@ class _TrainingStatCard extends StatelessWidget {
                     fontStyle: FontStyle.italic,
                   ),
                 )
+              else if (stats.type == TrainingType.botTraining)
+                _botTrainingRow(l10n)
               else
-                Row(
-                  children: [
-                    Expanded(
-                      child: _metric(
-                        label: bestLabel,
-                        value: _formatNum(best),
-                        color: AppTheme.success,
-                      ),
-                    ),
-                    _divider(),
-                    Expanded(
-                      child: _metric(
-                        label: l10n.trainingAverage,
-                        value: _formatNum(avg),
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                    _divider(),
-                    Expanded(
-                      child: _metric(
-                        label: l10n.trainingLast,
-                        value: _formatNum(last),
-                        color: AppTheme.accent,
-                      ),
-                    ),
-                    _divider(),
-                    Expanded(
-                      child: _metric(
-                        label: l10n.trainingAttempts,
-                        value: '${stats.sessions}',
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+                _defaultRow(l10n),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _defaultRow(AppLocalizations l10n) {
+    final bestLabel =
+        stats.higherIsBetter ? l10n.trainingBest : l10n.trainingBestLow;
+    return Row(
+      children: [
+        Expanded(
+          child: _metric(
+            label: bestLabel,
+            value: _formatNum(stats.bestScore),
+            color: AppTheme.success,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAverage,
+            value: _formatNum(stats.averageScore),
+            color: AppTheme.primary,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingLast,
+            value: _formatNum(stats.lastScore),
+            color: AppTheme.accent,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAttempts,
+            value: '${stats.sessions}',
+            color: AppTheme.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _botTrainingRow(AppLocalizations l10n) {
+    final winRate = stats.winRate;
+    final winValue = winRate == null
+        ? '—'
+        : '${(winRate * 100).round()}%';
+    return Row(
+      children: [
+        Expanded(
+          child: _metric(
+            label: l10n.trainingGames,
+            value: '${stats.sessions}',
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.avgScore,
+            value: _formatNum(stats.averageScore),
+            color: AppTheme.primary,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.winRate,
+            value: winValue,
+            color: AppTheme.success,
+          ),
+        ),
+      ],
     );
   }
 
@@ -338,6 +385,10 @@ class _TrainingStatCard extends StatelessWidget {
       case TrainingType.checkout81:
       case TrainingType.checkout121:
         return Icons.flag_outlined;
+      case TrainingType.botTraining:
+        return Icons.smart_toy;
+      case TrainingType.jdcChallenge:
+        return Icons.emoji_events;
     }
   }
 
@@ -359,6 +410,10 @@ class _TrainingStatCard extends StatelessWidget {
         return AppTheme.primary;
       case TrainingType.checkout121:
         return AppTheme.accent;
+      case TrainingType.botTraining:
+        return AppTheme.accent;
+      case TrainingType.jdcChallenge:
+        return const Color(0xFFEAB308);
     }
   }
 }

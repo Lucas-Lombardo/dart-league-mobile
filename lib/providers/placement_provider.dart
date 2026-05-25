@@ -1,5 +1,13 @@
 import 'package:flutter/foundation.dart';
+import '../models/bot_rank.dart';
+import '../models/training.dart';
+import '../services/bot_training_service.dart';
 import '../services/placement_service.dart';
+import '../services/training_service.dart';
+
+/// Distinguishes a placement match (counts toward ranking) from a bot-training
+/// match (no progression — submitted as a TrainingSession at the end).
+enum PlacementMode { placement, botTraining }
 
 class PlacementStatus {
   final int matchesPlayed;
@@ -148,8 +156,11 @@ class PlacementProvider extends ChangeNotifier {
   String? _error;
 
   // Active match state
+  PlacementMode _mode = PlacementMode.placement;
+  BotRank? _botRank;
   String? _currentMatchId;
   int? _currentBotDifficulty;
+  int _startingScore = 501;
   int _player1Score = 501;
   int _player2Score = 501;
   bool _isPlayerTurn = true;
@@ -161,8 +172,11 @@ class PlacementProvider extends ChangeNotifier {
   ActivePlacementMatch? get activeMatch => _activeMatch;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  PlacementMode get mode => _mode;
+  BotRank? get botRank => _botRank;
   String? get currentMatchId => _currentMatchId;
   int? get currentBotDifficulty => _currentBotDifficulty;
+  int get startingScore => _startingScore;
   int get player1Score => _player1Score;
   int get player2Score => _player2Score;
   bool get isPlayerTurn => _isPlayerTurn;
@@ -221,6 +235,9 @@ class PlacementProvider extends ChangeNotifier {
   Future<bool> startMatch() async {
     _isLoading = true;
     _error = null;
+    _mode = PlacementMode.placement;
+    _botRank = null;
+    _startingScore = 501;
     notifyListeners();
 
     try {
@@ -249,7 +266,30 @@ class PlacementProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> triggerBotTurn({int? playerRoundScore, List<String>? playerRoundThrows}) async {
+  /// Start a bot-training match (no backend match record — the result is
+  /// submitted as a TrainingSession when the game ends).
+  void startBotTrainingMatch(BotRank rank, {int startingScore = 501}) {
+    _mode = PlacementMode.botTraining;
+    _botRank = rank;
+    _currentMatchId = 'training-${DateTime.now().millisecondsSinceEpoch}';
+    _currentBotDifficulty = null;
+    _startingScore = startingScore;
+    _player1Score = startingScore;
+    _player2Score = startingScore;
+    _isPlayerTurn = true;
+    _lastBotThrows = [];
+    _botIsCheckout = false;
+    _botIsBust = false;
+    _error = null;
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<bool> triggerBotTurn({
+    int? playerRoundScore,
+    List<String>? playerRoundThrows,
+    int? playerScoreAfterRound,
+  }) async {
     if (_currentMatchId == null) return false;
 
     _isLoading = true;
@@ -257,6 +297,33 @@ class PlacementProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_mode == PlacementMode.botTraining) {
+        if (_botRank == null) {
+          _error = 'Missing bot rank for training match';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+        if (playerScoreAfterRound != null) {
+          _player1Score = playerScoreAfterRound;
+        }
+        final response = await BotTrainingService.botTurn(
+          rank: _botRank!,
+          botRemaining: _player2Score,
+        );
+        _lastBotThrows = (response['botThrows'] as List<dynamic>?)
+                ?.map((t) => BotThrow.fromJson(t as Map<String, dynamic>))
+                .toList() ??
+            [];
+        _botIsCheckout = response['isCheckout'] as bool? ?? false;
+        _botIsBust = response['isBust'] as bool? ?? false;
+        _player2Score = response['botNewScore'] as int? ?? _player2Score;
+        _isPlayerTurn = true;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+
       final response = await PlacementService.triggerBotTurn(
         _currentMatchId!,
         playerRoundScore: playerRoundScore,
@@ -288,7 +355,13 @@ class PlacementProvider extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>?> completeMatch(String? winnerId, {int? player1Score}) async {
+  Future<Map<String, dynamic>?> completeMatch(
+    String? winnerId, {
+    int? player1Score,
+    String? currentUserId,
+    int? dartsThrown,
+    double? matchPlayerAverage,
+  }) async {
     if (_currentMatchId == null) return null;
 
     _isLoading = true;
@@ -296,6 +369,37 @@ class PlacementProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_mode == PlacementMode.botTraining) {
+        final won = winnerId != null && winnerId == currentUserId;
+        final rank = _botRank;
+        await TrainingService.submit(
+          type: TrainingType.botTraining,
+          score: won ? 1 : 0,
+          dartsThrown: dartsThrown ?? 0,
+          details: {
+            'rank': rank?.apiValue,
+            'targetAverage': rank?.targetAverage,
+            'won': won,
+            'startingScore': _startingScore,
+            'player1RemainingAtEnd': player1Score ?? _player1Score,
+            'player2RemainingAtEnd': _player2Score,
+            if (matchPlayerAverage != null) 'playerAverage': matchPlayerAverage,
+          },
+        );
+        _currentMatchId = null;
+        _currentBotDifficulty = null;
+        _botRank = null;
+        _mode = PlacementMode.placement;
+        _activeMatch = null;
+        _isLoading = false;
+        notifyListeners();
+        return {
+          'botTraining': true,
+          'won': won,
+          'matchPlayerAverage': matchPlayerAverage,
+        };
+      }
+
       final response = await PlacementService.completeMatch(
         _currentMatchId!,
         winnerId,
@@ -334,6 +438,9 @@ class PlacementProvider extends ChangeNotifier {
     _activeMatch = null;
     _currentMatchId = null;
     _currentBotDifficulty = null;
+    _mode = PlacementMode.placement;
+    _botRank = null;
+    _startingScore = 501;
     _player1Score = 501;
     _player2Score = 501;
     _isPlayerTurn = true;

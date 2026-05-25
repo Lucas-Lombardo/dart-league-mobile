@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/presence_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
@@ -1103,37 +1102,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                               ),
-                            ),
-                            Consumer<PresenceProvider>(
-                              builder: (context, presence, _) {
-                                final count = presence.onlineCount;
-                                if (count == null) return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFF22C55E),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        l10n.playersOnline(count),
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.85),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
                             ),
                           ],
                         ),

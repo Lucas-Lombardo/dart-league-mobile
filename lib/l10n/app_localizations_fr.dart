@@ -1242,6 +1242,53 @@ class AppLocalizationsFr extends AppLocalizations {
       '3 volées de 3 fléchettes. Marquez le plus de points possible.';
 
   @override
+  String get trainingJdcChallenge => 'JDC Challenge';
+
+  @override
+  String get trainingJdcChallengeDescription =>
+      'Routine officielle JDC. 3 parties : Shanghai 10–15, Doubles 1–20 + Bull, Shanghai 15–20.';
+
+  @override
+  String get trainingJdcPart1Caption => 'Partie 1 — Shanghai 10–15';
+
+  @override
+  String get trainingJdcPart2Caption => 'Partie 2 — Doubles 1–20 + Bull';
+
+  @override
+  String get trainingJdcPart3Caption => 'Partie 3 — Shanghai 15–20';
+
+  @override
+  String get trainingRules => 'Règles';
+
+  @override
+  String get trainingRulesAroundTheClock =>
+      'Touchez chaque numéro de 1 à 20 dans l\'ordre, puis le bull. Choisissez le mode Simple (toute partie du secteur compte), Double (uniquement les doubles, finir au Double Bull) ou Triple (uniquement les triples, finir au Double Bull).\n\nBut : compléter la séquence en le moins de fléchettes possible — plus bas, c\'est mieux.';
+
+  @override
+  String get trainingRulesBobs27 =>
+      'Score de départ : 27. Lancez 3 fléchettes sur chaque double de D1 → D20, puis le Double Bull.\n\nPour chaque tour : +2×N par fléchette touchée, ou −2×N si vous ratez tout le tour. Si vous tombez à 0 ou en dessous, vous sortez.\n\nBut : finir avec le plus haut score après les 21 tours.';
+
+  @override
+  String get trainingRulesHighScore =>
+      '3 volées de 3 fléchettes. Marquez le plus de points possible — valeur × multiplicateur, sans cible imposée.\n\nMaximum théorique : 540 (trois 180).';
+
+  @override
+  String get trainingRulesCheckout50 =>
+      'Départ à 50. 3 fléchettes pour terminer — toute combinaison, mais la dernière doit toucher un double (règle de finition X01).\n\n10 essais. 1 point par checkout réussi.';
+
+  @override
+  String get trainingRulesCheckout81_121 =>
+      'Terminez à partir de 81 ou 121. 3 fléchettes par essai, finir sur un double.\n\n• Réussi → score de départ +1\n• Raté → retour au score initial\n\n10 essais au total, 1 point par checkout.';
+
+  @override
+  String get trainingRulesBotTraining =>
+      'Affrontez un adversaire IA au rang choisi (Bronze → Master) sur un match X01 complet.\n\nChoisissez votre score de départ (501 / 301 / 201). Règles standard avec double-out. Vos victoires/défaites et votre moyenne 3-fléchettes sont suivies.';
+
+  @override
+  String get trainingRulesJdcChallenge =>
+      'Routine officielle JDC — 3 parties, 57 fléchettes au total.\n\n• Partie 1 — Shanghai 10–15 : 3 fléchettes par numéro. Une fléchette marque (valeur × multiplicateur) uniquement si elle touche la cible. Toucher Simple + Double + Triple de la cible dans la même volée = +100 (bonus Shanghai).\n\n• Partie 2 — Doubles 1–20 + Bull : 1 fléchette par double (50 points par touche), dernière fléchette au bull (Double Bull = 100, sinon 0).\n\n• Partie 3 — Shanghai 15–20 : identique à la partie 1 pour 15–20.\n\nPlus haut = meilleur. Grade Noir = 850+.';
+
+  @override
   String get trainingCheckout50 => 'Checkout 50';
 
   @override
@@ -1279,6 +1326,10 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String trainingAttemptProgress(int current, int total) =>
       'Essai $current sur $total';
+
+  @override
+  String trainingVisitProgress(int current, int total) =>
+      'Volée $current sur $total';
 
   @override
   String get trainingRemaining => 'Reste';
@@ -1395,6 +1446,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trainingAttempts => 'Essais';
+
+  @override
+  String get trainingGames => 'Parties';
 
   @override
   String get trainingNotYetPlayed => 'Jamais joué.';
@@ -1683,6 +1737,70 @@ class AppLocalizationsFr extends AppLocalizations {
   // Placement Game
   @override
   String botName(int difficulty) => 'Bot n°$difficulty';
+
+  @override
+  String botRankBotName(String rank) => 'Bot $rank';
+
+  @override
+  String botRankIsThrowing(String rank) => 'Bot $rank lance...';
+
+  @override
+  String get rankBronze => 'Bronze';
+
+  @override
+  String get rankSilver => 'Argent';
+
+  @override
+  String get rankGold => 'Or';
+
+  @override
+  String get rankPlatinum => 'Platine';
+
+  @override
+  String get rankDiamond => 'Diamant';
+
+  @override
+  String get rankPro => 'Pro';
+
+  @override
+  String get rankMaster => 'Maître';
+
+  @override
+  String get trainingBotTraining => 'Entraînement contre Bot';
+
+  @override
+  String get trainingBotTrainingDescription =>
+      'Joue un 501, 301 ou 201 contre un bot classé — du Bronze au Maître.';
+
+  @override
+  String get trainingBotPickRank => 'Choisis un rang';
+
+  @override
+  String trainingBotAvg(int avg) => 'moy. $avg';
+
+  @override
+  String get trainingBotPickGameType => 'Choisis une partie';
+
+  @override
+  String get trainingBotGameTypeHint501 => 'Partie standard';
+
+  @override
+  String get trainingBotGameTypeHint301 => 'Partie plus courte';
+
+  @override
+  String get trainingBotGameTypeHint201 => 'Partie rapide';
+
+  @override
+  String get matchAverageLabel => 'Moyenne du match';
+
+  @override
+  String get overallBotAverageLabel => 'Moyenne globale vs bots';
+
+  @override
+  String matchAverageValue(String value) => '$value / 3 fléchettes';
+
+  @override
+  String overallBotAverageValue(String value) => '$value / 3 fléchettes';
 
   @override
   String botNameIsThrowing(int difficulty) => 'Bot n°$difficulty lance...';

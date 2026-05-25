@@ -7,6 +7,8 @@ enum TrainingType {
   checkout50,
   checkout81,
   checkout121,
+  botTraining,
+  jdcChallenge,
 }
 
 extension TrainingTypeX on TrainingType {
@@ -28,6 +30,10 @@ extension TrainingTypeX on TrainingType {
         return 'checkout_81';
       case TrainingType.checkout121:
         return 'checkout_121';
+      case TrainingType.botTraining:
+        return 'bot_training';
+      case TrainingType.jdcChallenge:
+        return 'jdc_challenge';
     }
   }
 
@@ -49,6 +55,10 @@ extension TrainingTypeX on TrainingType {
         return TrainingType.checkout81;
       case 'checkout_121':
         return TrainingType.checkout121;
+      case 'bot_training':
+        return TrainingType.botTraining;
+      case 'jdc_challenge':
+        return TrainingType.jdcChallenge;
     }
     throw ArgumentError('Unknown training type: $value');
   }
@@ -65,6 +75,8 @@ extension TrainingTypeX on TrainingType {
       case TrainingType.checkout50:
       case TrainingType.checkout81:
       case TrainingType.checkout121:
+      case TrainingType.botTraining:
+      case TrainingType.jdcChallenge:
         return true;
     }
   }
@@ -119,6 +131,7 @@ class TrainingTypeStats {
   final DateTime? lastPlayedAt;
   final int totalDarts;
   final bool higherIsBetter;
+  final num? winRate;
 
   TrainingTypeStats({
     required this.type,
@@ -129,6 +142,7 @@ class TrainingTypeStats {
     required this.lastPlayedAt,
     required this.totalDarts,
     required this.higherIsBetter,
+    this.winRate,
   });
 
   factory TrainingTypeStats.fromJson(Map<String, dynamic> json) {
@@ -143,6 +157,7 @@ class TrainingTypeStats {
           : null,
       totalDarts: (json['totalDarts'] as num?)?.toInt() ?? 0,
       higherIsBetter: json['higherIsBetter'] as bool? ?? true,
+      winRate: json['winRate'] as num?,
     );
   }
 
@@ -155,5 +170,6 @@ class TrainingTypeStats {
         lastPlayedAt: null,
         totalDarts: 0,
         higherIsBetter: type.higherIsBetter,
+        winRate: null,
       );
 }

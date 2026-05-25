@@ -1241,6 +1241,53 @@ class AppLocalizationsEn extends AppLocalizations {
       '3 rounds of 3 darts. Score as many points as possible.';
 
   @override
+  String get trainingJdcChallenge => 'JDC Challenge';
+
+  @override
+  String get trainingJdcChallengeDescription =>
+      'Official JDC routine. 3 parts: Shanghai 10–15, Doubles 1–20 + Bull, Shanghai 15–20.';
+
+  @override
+  String get trainingJdcPart1Caption => 'Part 1 — Shanghai 10–15';
+
+  @override
+  String get trainingJdcPart2Caption => 'Part 2 — Doubles 1–20 + Bull';
+
+  @override
+  String get trainingJdcPart3Caption => 'Part 3 — Shanghai 15–20';
+
+  @override
+  String get trainingRules => 'Rules';
+
+  @override
+  String get trainingRulesAroundTheClock =>
+      'Hit each number from 1 to 20 in order, then the bull. Pick Single mode (any segment counts), Double mode (doubles only, finish on Double Bull), or Triple mode (triples only, finish on Double Bull).\n\nGoal: complete the sequence in as few darts as possible — lower is better.';
+
+  @override
+  String get trainingRulesBobs27 =>
+      'Start with a score of 27. Throw 3 darts at each double from D1 → D20, then Double Bull.\n\nFor each round: +2×N for every hit dart, or −2×N if you miss the round entirely. Drop to 0 or below and you bust out.\n\nGoal: finish with the highest score after all 21 rounds.';
+
+  @override
+  String get trainingRulesHighScore =>
+      '3 rounds of 3 darts. Score as many points as possible — face × multiplier on every dart, no targets required.\n\nMaximum theoretical score: 540 (three 180s).';
+
+  @override
+  String get trainingRulesCheckout50 =>
+      'Start at 50. 3 darts to check out — any combination, but the final dart must land on a double (standard X01 finish).\n\n10 attempts. 1 point per successful checkout.';
+
+  @override
+  String get trainingRulesCheckout81_121 =>
+      'Check out from 81 or 121. 3 darts per attempt, must finish on a double.\n\n• Successful checkout → next start score +1\n• Bust → reset to the original start\n\n10 attempts total, 1 point per checkout.';
+
+  @override
+  String get trainingRulesBotTraining =>
+      'Play a full X01 match against an AI opponent at the rank you pick (Bronze → Master).\n\nChoose your starting score (501 / 301 / 201). Standard double-out rules apply. Your win/loss and 3-dart average are tracked.';
+
+  @override
+  String get trainingRulesJdcChallenge =>
+      'Official JDC routine — 3 parts, 57 darts total.\n\n• Part 1 — Shanghai 10–15: 3 darts at each number. A dart scores face × multiplier only when it hits the target. Hitting Single + Double + Triple of the target in the same visit = +100 Shanghai bonus.\n\n• Part 2 — Doubles 1–20 + Bull: 1 dart at each double (50 points per hit), final dart at the bull (Double Bull = 100, anything else = 0).\n\n• Part 3 — Shanghai 15–20: same as Part 1 for 15–20.\n\nHigher = better. Black grade = 850+.';
+
+  @override
   String get trainingCheckout50 => 'Checkout 50';
 
   @override
@@ -1277,6 +1324,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String trainingAttemptProgress(int current, int total) =>
       'Attempt $current of $total';
+
+  @override
+  String trainingVisitProgress(int current, int total) =>
+      'Visit $current of $total';
 
   @override
   String get trainingRemaining => 'Remaining';
@@ -1391,6 +1442,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingAttempts => 'Runs';
+
+  @override
+  String get trainingGames => 'Games';
 
   @override
   String get trainingNotYetPlayed => 'Not played yet.';
@@ -1678,6 +1732,70 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String botNameIsThrowing(int difficulty) =>
       'Bot #$difficulty is throwing...';
+
+  @override
+  String botRankBotName(String rank) => '$rank Bot';
+
+  @override
+  String botRankIsThrowing(String rank) => '$rank Bot is throwing...';
+
+  @override
+  String get rankBronze => 'Bronze';
+
+  @override
+  String get rankSilver => 'Silver';
+
+  @override
+  String get rankGold => 'Gold';
+
+  @override
+  String get rankPlatinum => 'Platinum';
+
+  @override
+  String get rankDiamond => 'Diamond';
+
+  @override
+  String get rankPro => 'Pro';
+
+  @override
+  String get rankMaster => 'Master';
+
+  @override
+  String get trainingBotTraining => 'Bot Training';
+
+  @override
+  String get trainingBotTrainingDescription =>
+      'Play 501, 301 or 201 against a ranked bot — pick a rank from Bronze to Master.';
+
+  @override
+  String get trainingBotPickRank => 'Pick a rank';
+
+  @override
+  String trainingBotAvg(int avg) => '$avg avg';
+
+  @override
+  String get trainingBotPickGameType => 'Pick a game';
+
+  @override
+  String get trainingBotGameTypeHint501 => 'Standard match';
+
+  @override
+  String get trainingBotGameTypeHint301 => 'Shorter match';
+
+  @override
+  String get trainingBotGameTypeHint201 => 'Quick match';
+
+  @override
+  String get matchAverageLabel => 'Match average';
+
+  @override
+  String get overallBotAverageLabel => 'Overall vs bots';
+
+  @override
+  String matchAverageValue(String value) => '$value / 3 darts';
+
+  @override
+  String overallBotAverageValue(String value) => '$value / 3 darts';
 
   @override
   String get loadingAi => 'Loading AI…';

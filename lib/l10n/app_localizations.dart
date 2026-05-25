@@ -490,6 +490,19 @@ abstract class AppLocalizations {
   String get trainingBobs27Description;
   String get trainingHighScore;
   String get trainingHighScoreDescription;
+  String get trainingJdcChallenge;
+  String get trainingJdcChallengeDescription;
+  String get trainingJdcPart1Caption;
+  String get trainingJdcPart2Caption;
+  String get trainingJdcPart3Caption;
+  String get trainingRules;
+  String get trainingRulesAroundTheClock;
+  String get trainingRulesBobs27;
+  String get trainingRulesHighScore;
+  String get trainingRulesCheckout50;
+  String get trainingRulesCheckout81_121;
+  String get trainingRulesBotTraining;
+  String get trainingRulesJdcChallenge;
   String get trainingCheckout50;
   String get trainingCheckout50Description;
   String get trainingCheckout81_121;
@@ -501,6 +514,7 @@ abstract class AppLocalizations {
   String get trainingCheckouts;
   String trainingCheckoutsOutOf(int hits, int total);
   String trainingAttemptProgress(int current, int total);
+  String trainingVisitProgress(int current, int total);
   String get trainingRemaining;
   String get trainingHighestReached;
   String get trainingBusted;
@@ -537,6 +551,7 @@ abstract class AppLocalizations {
   String get trainingAverage;
   String get trainingLast;
   String get trainingAttempts;
+  String get trainingGames;
   String get trainingNotYetPlayed;
 
   // Content Creator
@@ -647,6 +662,27 @@ abstract class AppLocalizations {
   // Placement Game
   String botName(int difficulty);
   String botNameIsThrowing(int difficulty);
+  String botRankBotName(String rank);
+  String botRankIsThrowing(String rank);
+  String get rankBronze;
+  String get rankSilver;
+  String get rankGold;
+  String get rankPlatinum;
+  String get rankDiamond;
+  String get rankPro;
+  String get rankMaster;
+  String get trainingBotTraining;
+  String get trainingBotTrainingDescription;
+  String get trainingBotPickRank;
+  String trainingBotAvg(int avg);
+  String get trainingBotPickGameType;
+  String get trainingBotGameTypeHint501;
+  String get trainingBotGameTypeHint301;
+  String get trainingBotGameTypeHint201;
+  String get matchAverageLabel;
+  String get overallBotAverageLabel;
+  String matchAverageValue(String value);
+  String overallBotAverageValue(String value);
   String get loadingAi;
 
   // Training

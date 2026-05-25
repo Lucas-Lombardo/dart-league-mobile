@@ -41,6 +41,7 @@ class AutoScoreGameView extends StatelessWidget {
   final bool iAmPlayer2;
   final double? myAverage;
   final double? opponentAverage;
+  final int startingScore;
 
   const AutoScoreGameView({
     super.key,
@@ -72,6 +73,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.iAmPlayer2 = false,
     this.myAverage,
     this.opponentAverage,
+    this.startingScore = 501,
   });
 
   @override
@@ -428,6 +430,7 @@ class AutoScoreGameView extends StatelessWidget {
                                   iAmPlayer2: iAmPlayer2,
                                   myAverage: myAverage,
                                   opponentAverage: opponentAverage,
+                                  startingScore: startingScore,
                                 ),
                               ),
                             ),
