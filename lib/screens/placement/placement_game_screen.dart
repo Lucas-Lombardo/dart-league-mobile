@@ -140,12 +140,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (kIsWeb) return;
     if (!AutoScoringService.isSupported) return;
 
-    final enabled = await StorageService.getAutoScoring();
     if (!mounted) return;
-    setState(() => _autoScoringEnabled = enabled);
-    if (!enabled) return;
-
-    setState(() => _autoScoringLoading = true);
+    setState(() {
+      _autoScoringEnabled = true;
+      _autoScoringLoading = true;
+    });
 
     try {
       final cameraService = CameraFrameService();

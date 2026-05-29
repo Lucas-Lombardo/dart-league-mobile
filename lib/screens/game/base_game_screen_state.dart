@@ -253,8 +253,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // ─── Auto-scoring ─────────────────────────────────────────────────────────────
   Future<void> loadAutoScoringPref() async {
     if (kIsWeb || !AutoScoringService.isSupported) { autoScoringEnabled = false; return; }
-    final enabled = await StorageService.getAutoScoring();
-    if (mounted) setState(() => autoScoringEnabled = enabled);
+    if (mounted) setState(() => autoScoringEnabled = true);
   }
 
   ScoreMultiplier dartScoreToMultiplier(DartScore dartScore) {
@@ -288,11 +287,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   Future<void> initAutoScoring() async {
     if (cameraFrameService == null || kIsWeb || !AutoScoringService.isSupported) return;
-    final enabled = await StorageService.getAutoScoring();
     if (!mounted) return;
-    setState(() => autoScoringEnabled = enabled);
-    if (!autoScoringEnabled) return;
-    setState(() => autoScoringLoading = true);
+    setState(() {
+      autoScoringEnabled = true;
+      autoScoringLoading = true;
+    });
     final camService = cameraFrameService!;
     _captureFrameCallback = () => camService.captureFrame();
     _captureRgbaCallback = () => camService.captureRgba();

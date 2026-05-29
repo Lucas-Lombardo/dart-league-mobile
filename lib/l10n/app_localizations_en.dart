@@ -779,18 +779,21 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get accountInfoDefaultEmail => 'No email';
 
-  // Haptic & Auto-scoring settings
+  // Profile edit
   @override
-  String get hapticFeedbackTitle => 'Haptic Feedback';
+  String get editUsername => 'Edit username';
 
   @override
-  String get hapticFeedbackSubtitle => 'Vibrate on button presses';
+  String get editEmail => 'Edit email';
 
   @override
-  String get autoScoringTitle => 'AI Auto-Scoring';
+  String get save => 'Save';
 
   @override
-  String get autoScoringSubtitle => 'Detect dart scores using camera AI';
+  String get profileUpdated => 'Profile updated';
+
+  @override
+  String get emailChangedVerifyHint => 'A verification email has been sent to your new address.';
 
   // Login
   @override

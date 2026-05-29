@@ -153,6 +153,28 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateProfile({String? username, String? email}) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final updated = await AuthService.updateProfile(
+        username: username,
+        email: email,
+      );
+      _currentUser = updated;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> deleteAccount() async {
     _isLoading = true;
     _errorMessage = null;

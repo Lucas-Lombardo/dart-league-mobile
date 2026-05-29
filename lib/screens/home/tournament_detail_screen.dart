@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../models/tournament.dart';
 import '../../services/tournament_service.dart';
 import '../../utils/app_theme.dart';
@@ -291,12 +292,7 @@ class _TournamentHeader extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          _InfoRow(
-            icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
-            label: l10n.entryFee,
-            value: tournament.formattedPrice,
-            valueColor: tournament.isFree ? AppTheme.success : AppTheme.primary,
-          ),
+          _PriceInfoRow(tournament: tournament, label: l10n.entryFee),
           if (tournament.isInProgress) ...[
             const SizedBox(height: 8),
             _InfoRow(
@@ -408,6 +404,82 @@ class _InfoRow extends StatelessWidget {
             color: valueColor ?? AppTheme.textPrimary,
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _PriceInfoRow extends StatelessWidget {
+  final Tournament tournament;
+  final String label;
+
+  const _PriceInfoRow({required this.tournament, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPremium = context.select<SubscriptionProvider, bool>(
+      (p) => p.isPremiumActive,
+    );
+    final showDiscount = tournament.hasPremiumDiscount(isPremium: isPremium);
+    final valueColor = tournament.isFree ? AppTheme.success : AppTheme.primary;
+    final icon = tournament.isFree ? Icons.card_giftcard : Icons.payment;
+
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppTheme.textSecondary),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        if (showDiscount) ...[
+          Text(
+            tournament.formattedPrice,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppTheme.textSecondary.withValues(alpha: 0.7),
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            tournament.formattedDiscountedPrice(isPremium: true),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
+            ),
+            child: const Text(
+              '-$kPremiumTournamentDiscountPercent% PREMIUM',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.accent,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ] else
+          Text(
+            tournament.formattedPrice,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+          ),
       ],
     );
   }

@@ -7,6 +7,8 @@ DateTime? _tryParseDateTime(String? value) {
   }
 }
 
+const int kPremiumTournamentDiscountPercent = 50;
+
 class Tournament {
   final String id;
   final String name;
@@ -92,9 +94,22 @@ class Tournament {
     return prizeDescription ?? 'Trophy';
   }
 
-  String get formattedPrice {
-    if (isFree) return 'Free';
-    final amount = entryFee / 100;
+  String get formattedPrice => _formatAmount(entryFee);
+
+  int discountedEntryFee({required bool isPremium}) {
+    if (!isPremium || entryFee <= 0) return entryFee;
+    return ((entryFee * (100 - kPremiumTournamentDiscountPercent)) / 100).round();
+  }
+
+  String formattedDiscountedPrice({required bool isPremium}) =>
+      _formatAmount(discountedEntryFee(isPremium: isPremium));
+
+  bool hasPremiumDiscount({required bool isPremium}) =>
+      isPremium && entryFee > 0;
+
+  String _formatAmount(int amountInCents) {
+    if (amountInCents <= 0) return 'Free';
+    final amount = amountInCents / 100;
     switch (currency.toLowerCase()) {
       case 'eur':
         return '€${amount.toStringAsFixed(2)}';

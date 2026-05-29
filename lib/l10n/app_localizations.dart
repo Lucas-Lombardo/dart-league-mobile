@@ -305,11 +305,12 @@ abstract class AppLocalizations {
   String get accountInfoDefaultUsername;
   String get accountInfoDefaultEmail;
 
-  // Haptic & Auto-scoring settings
-  String get hapticFeedbackTitle;
-  String get hapticFeedbackSubtitle;
-  String get autoScoringTitle;
-  String get autoScoringSubtitle;
+  // Profile edit
+  String get editUsername;
+  String get editEmail;
+  String get save;
+  String get profileUpdated;
+  String get emailChangedVerifyHint;
 
   // Login
   String get welcomeBackLegend;

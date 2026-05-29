@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../models/tournament.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
@@ -627,11 +628,7 @@ class _TournamentCardState extends State<_TournamentCard> {
                         color: AppTheme.accent,
                       ),
                       const SizedBox(width: 10),
-                      _InfoChip(
-                        icon: tournament.isFree ? Icons.card_giftcard : Icons.payment,
-                        label: tournament.formattedPrice,
-                        color: tournament.isFree ? AppTheme.success : AppTheme.primary,
-                      ),
+                      _PriceChip(tournament: tournament),
                       const Spacer(),
                       Icon(
                         Icons.arrow_forward_ios,
@@ -787,6 +784,83 @@ class _InfoChip extends StatelessWidget {
               maxLines: 1,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceChip extends StatelessWidget {
+  final Tournament tournament;
+
+  const _PriceChip({required this.tournament});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPremium = context.select<SubscriptionProvider, bool>(
+      (p) => p.isPremiumActive,
+    );
+    final showDiscount = tournament.hasPremiumDiscount(isPremium: isPremium);
+    final chipColor = tournament.isFree ? AppTheme.success : AppTheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: chipColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: showDiscount
+            ? Border.all(color: AppTheme.accent.withValues(alpha: 0.5))
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            tournament.isFree ? Icons.card_giftcard : Icons.payment,
+            size: 14,
+            color: chipColor,
+          ),
+          const SizedBox(width: 4),
+          if (showDiscount) ...[
+            Flexible(
+              child: Text(
+                tournament.formattedPrice,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: chipColor.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.lineThrough,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                tournament.formattedDiscountedPrice(isPremium: true),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: chipColor,
+                  fontWeight: FontWeight.w700,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ] else
+            Flexible(
+              child: Text(
+                tournament.formattedPrice,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: chipColor,
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
         ],
       ),
     );

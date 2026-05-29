@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -11,7 +10,6 @@ import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_translation.dart';
-import '../../utils/storage_service.dart';
 import '../../services/content_creator_service.dart';
 import 'subscription_screen.dart';
 
@@ -23,8 +21,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _hapticEnabled = true;
-  bool _autoScoringEnabled = true;
   String _appVersion = 'Loading...';
   String? _creatorCode;
   String? _creatorUsername;
@@ -33,17 +29,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _hapticEnabled = HapticService.isEnabled;
-    _loadAutoScoringPref();
     _loadAppVersion();
     _loadCreatorInfo();
-  }
-
-  Future<void> _loadAutoScoringPref() async {
-    final enabled = await StorageService.getAutoScoring();
-    if (mounted) {
-      setState(() => _autoScoringEnabled = enabled);
-    }
   }
 
   Future<void> _loadCreatorInfo() async {
@@ -86,7 +73,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
           _buildSection(l10n.profile.toUpperCase()),
-          _buildAccountInfo(user?.username ?? l10n.accountInfoDefaultUsername, user?.email ?? l10n.accountInfoDefaultEmail),
+          _buildEditableAccountInfo(
+            label: l10n.username,
+            value: user?.username ?? l10n.accountInfoDefaultUsername,
+            onTap: user == null ? null : () => _showEditUsernameDialog(context, user.username),
+          ),
+          _buildEditableAccountInfo(
+            label: l10n.email,
+            value: user?.email ?? l10n.accountInfoDefaultEmail,
+            onTap: user == null ? null : () => _showEditEmailDialog(context, user.email),
+          ),
           _buildAccountInfo(l10n.elo, '${user?.elo ?? 0}'),
           _buildAccountInfo(l10n.rank, user?.rank != null ? RankTranslation.translate(l10n, user!.rank) : 'Unranked'),
 
@@ -101,37 +97,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           _buildSection(l10n.preferences.toUpperCase()),
           _buildLanguageTile(l10n),
-          _buildSwitchTile(
-            l10n.hapticFeedbackTitle,
-            l10n.hapticFeedbackSubtitle,
-            Icons.vibration,
-            _hapticEnabled,
-            (value) {
-              setState(() {
-                _hapticEnabled = value;
-                HapticService.setEnabled(value);
-              });
-              if (value) {
-                HapticService.mediumImpact();
-              }
-            },
-          ),
-          if (!kIsWeb)
-            _buildSwitchTile(
-              l10n.autoScoringTitle,
-              l10n.autoScoringSubtitle,
-              Icons.auto_awesome,
-              _autoScoringEnabled,
-              (value) {
-                setState(() => _autoScoringEnabled = value);
-                StorageService.saveAutoScoring(value);
-              },
-            ),
-          
+
           const SizedBox(height: 24),
           _buildSection(l10n.about.toUpperCase()),
           _buildInfoTile(l10n.appVersion, _appVersion, Icons.info_outline),
-          _buildInfoTile(l10n.developer, 'Dart Legends Team', Icons.code),
+          _buildInfoTile(l10n.developer, 'Lucas Lombardo', Icons.code),
           
           const SizedBox(height: 32),
           Padding(
@@ -288,62 +258,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSwitchTile(
-    String title,
-    String subtitle,
-    IconData icon,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
+  Widget _buildEditableAccountInfo({
+    required String label,
+    required String value,
+    required VoidCallback? onTap,
+  }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppTheme.primary),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.edit, color: AppTheme.textSecondary, size: 18),
+            ],
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppTheme.primary,
-            activeTrackColor: AppTheme.primary.withValues(alpha: 0.3),
-            inactiveTrackColor: AppTheme.surfaceLight,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -595,6 +553,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditUsernameDialog(BuildContext context, String currentUsername) {
+    _showEditProfileFieldDialog(
+      context: context,
+      title: AppLocalizations.of(context).editUsername,
+      initialValue: currentUsername,
+      keyboardType: TextInputType.text,
+      autocorrect: false,
+      onSubmit: (value) =>
+          context.read<AuthProvider>().updateProfile(username: value),
+      successDetail: null,
+    );
+  }
+
+  void _showEditEmailDialog(BuildContext context, String currentEmail) {
+    final l10n = AppLocalizations.of(context);
+    _showEditProfileFieldDialog(
+      context: context,
+      title: l10n.editEmail,
+      initialValue: currentEmail,
+      keyboardType: TextInputType.emailAddress,
+      autocorrect: false,
+      onSubmit: (value) =>
+          context.read<AuthProvider>().updateProfile(email: value),
+      successDetail: l10n.emailChangedVerifyHint,
+    );
+  }
+
+  void _showEditProfileFieldDialog({
+    required BuildContext context,
+    required String title,
+    required String initialValue,
+    required TextInputType keyboardType,
+    required bool autocorrect,
+    required Future<bool> Function(String value) onSubmit,
+    required String? successDetail,
+  }) {
+    final controller = TextEditingController(text: initialValue);
+    final l10n = AppLocalizations.of(context);
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(title, style: const TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: keyboardType,
+            autocorrect: autocorrect,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.primary),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext),
+              child: Text(l10n.cancel, style: const TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final value = controller.text.trim();
+                      if (value.isEmpty || value == initialValue) {
+                        Navigator.pop(dialogContext);
+                        return;
+                      }
+
+                      setDialogState(() => isSubmitting = true);
+                      final success = await onSubmit(value);
+                      if (!context.mounted) return;
+
+                      if (success) {
+                        Navigator.pop(dialogContext);
+                        final message = successDetail != null
+                            ? '${l10n.profileUpdated}. $successDetail'
+                            : l10n.profileUpdated;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            backgroundColor: AppTheme.primary,
+                          ),
+                        );
+                      } else {
+                        setDialogState(() => isSubmitting = false);
+                        final error = context.read<AuthProvider>().errorMessage ?? l10n.errorOccurred;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(l10n.save),
+            ),
+          ],
         ),
       ),
     );

@@ -117,6 +117,17 @@ class AuthService {
     }
   }
 
+  static Future<User> updateProfile({
+    String? username,
+    String? email,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (username != null) payload['username'] = username;
+    if (email != null) payload['email'] = email;
+    final response = await ApiService.patch('/auth/profile', payload);
+    return User.fromJson(response);
+  }
+
   static Future<User?> getCurrentUser() async {
     try {
       debugPrint('🔍 Fetching current user profile...');

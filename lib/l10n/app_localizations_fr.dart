@@ -779,18 +779,21 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get accountInfoDefaultEmail => 'Pas d\'email';
 
-  // Haptic & Auto-scoring settings
+  // Profile edit
   @override
-  String get hapticFeedbackTitle => 'Retour haptique';
+  String get editUsername => 'Modifier le pseudo';
 
   @override
-  String get hapticFeedbackSubtitle => 'Vibrer lors des pressions sur les boutons';
+  String get editEmail => 'Modifier l\'email';
 
   @override
-  String get autoScoringTitle => 'Score auto IA';
+  String get save => 'Enregistrer';
 
   @override
-  String get autoScoringSubtitle => 'Détecter les scores de fléchettes avec l\'IA caméra';
+  String get profileUpdated => 'Profil mis à jour';
+
+  @override
+  String get emailChangedVerifyHint => 'Un email de vérification a été envoyé à votre nouvelle adresse.';
 
   // Login
   @override
