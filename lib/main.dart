@@ -26,6 +26,7 @@ import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
 import 'utils/app_theme.dart';
+import 'widgets/matchmaking_navigation_gate.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
@@ -138,6 +139,10 @@ class DartLegendsApp extends StatelessWidget {
             ],
             supportedLocales: AppLocalizations.supportedLocales,
             navigatorObservers: [routeObserver],
+            builder: (context, child) => MatchmakingNavigationGate(
+              navigatorKey: navigatorKey,
+              child: child ?? const SizedBox.shrink(),
+            ),
             initialRoute: '/',
             routes: {
               '/': (context) => const SplashScreen(),

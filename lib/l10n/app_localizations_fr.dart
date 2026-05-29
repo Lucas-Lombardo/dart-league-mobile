@@ -482,6 +482,12 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get cancelSearch => 'ANNULER LA RECHERCHE';
 
+  @override
+  String get trainWhileWaiting => 'S\'ENTRAÎNER EN ATTENDANT';
+  @override
+  String get trainWhileWaitingSubtitle =>
+      'Entraînez-vous maintenant — on vous bascule dans le match dès qu\'un adversaire est trouvé.';
+
   // Camera Check / Camera Setup
   @override
   String get cameraCheck => 'VÉRIFICATION CAMÉRA';

@@ -31,7 +31,6 @@ class MatchmakingProvider with ChangeNotifier {
   int? _opponentAgoraUid;
   GameProvider? _gameProvider;
   String? _errorMessage;
-  bool _queueTimedOut = false;
   String? _currentUserId; // Store userId for initGame call
 
   @override
@@ -55,7 +54,6 @@ class MatchmakingProvider with ChangeNotifier {
   int? get agoraUid => _agoraUid;
   int? get opponentAgoraUid => _opponentAgoraUid;
   String? get errorMessage => _errorMessage;
-  bool get queueTimedOut => _queueTimedOut;
 
   void setGameProvider(GameProvider provider) {
     _gameProvider = provider;
@@ -76,7 +74,6 @@ class MatchmakingProvider with ChangeNotifier {
       _agoraToken = null;
       _agoraChannelName = null;
       _errorMessage = null;
-      _queueTimedOut = false;
       _currentUserId = userId;
       
       // Reset game provider if it still has stale state from previous match
@@ -146,10 +143,6 @@ class MatchmakingProvider with ChangeNotifier {
 
     SocketService.on('queue_error', (data) {
       _handleQueueError(data);
-    });
-
-    SocketService.on('queue_timeout', (data) {
-      _handleQueueTimeout(data);
     });
 
   }
@@ -277,13 +270,6 @@ class MatchmakingProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void _handleQueueTimeout(dynamic data) {
-    _queueTimedOut = true;
-    _isSearching = false;
-    _stopSearchTimer();
-    notifyListeners();
-  }
-
   Future<void> leaveQueue(String userId) async {
     try {
       await MatchmakingService.leaveQueue(userId);
@@ -307,7 +293,6 @@ class MatchmakingProvider with ChangeNotifier {
       _agoraUid = null;
       _opponentAgoraUid = null;
       _errorMessage = null;
-      _queueTimedOut = false;
       notifyListeners();
     } catch (_) {
       // Leave queue failed

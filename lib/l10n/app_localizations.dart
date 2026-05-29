@@ -192,6 +192,8 @@ abstract class AppLocalizations {
   String get yourElo;
   String get eloRange;
   String get cancelSearch;
+  String get trainWhileWaiting;
+  String get trainWhileWaitingSubtitle;
 
   // Camera Check / Camera Setup
   String get cameraSetupTitle;

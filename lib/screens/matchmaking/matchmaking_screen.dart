@@ -6,8 +6,8 @@ import '../../providers/matchmaking_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/socket_service.dart';
-import '../game/game_screen.dart';
 import '../settings/subscription_screen.dart';
+import '../training/training_select_screen.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
@@ -26,9 +26,12 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   MatchmakingProvider? _matchmakingProvider;
-  bool _isNavigating = false;
-  bool _timeoutDialogShown = false;
   String? _userId;
+
+  /// True when another screen (a training launched via "Train while you wait")
+  /// is on top of this one. While that's the case we must NOT leave the queue or
+  /// pop on lifecycle/back events — the player is still queued, just elsewhere.
+  bool get _isCurrent => ModalRoute.of(context)?.isCurrent ?? true;
 
   @override
   void initState() {
@@ -62,17 +65,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     super.didChangeDependencies();
 
     _userId ??= context.read<AuthProvider>().currentUser?.id;
-
-    if (_matchmakingProvider == null) {
-      _matchmakingProvider = context.read<MatchmakingProvider>();
-      _matchmakingProvider!.addListener(_onMatchmakingUpdate);
-      _isNavigating = false; // Reset navigation flag for new session
-    }
+    _matchmakingProvider ??= context.read<MatchmakingProvider>();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && !_isNavigating) {
+    // Only react while this screen is on top. If a "Train while you wait"
+    // screen is above us, leaving the queue / popping here would wrongly cancel
+    // the search and pop the training screen.
+    if (state == AppLifecycleState.paused && _isCurrent) {
       final userId = _userId;
       if (userId != null) {
         _matchmakingProvider?.leaveQueue(userId);
@@ -81,293 +82,26 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     }
   }
 
-  void _onMatchmakingUpdate() {
-    final matchmaking = context.read<MatchmakingProvider>();
-    if (matchmaking.matchFound && mounted && !_isNavigating) {
-      _showMatchFoundDialog();
-    } else if (matchmaking.queueTimedOut && mounted && !_timeoutDialogShown) {
-      _showQueueTimeoutDialog();
-    }
-  }
-
-  void _showQueueTimeoutDialog() {
-    if (_timeoutDialogShown) return;
-    _timeoutDialogShown = true;
-
+  /// Opens the training menu without leaving the queue. Match-found navigation
+  /// is owned globally by [MatchmakingNavigationGate], so when an opponent is
+  /// found the player is pulled out of the training and into the match
+  /// automatically — regardless of which training screen they're on.
+  void _openTrainingWhileWaiting() {
     HapticService.mediumImpact();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5), width: 2),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.sentiment_dissatisfied,
-                color: AppTheme.textSecondary,
-                size: 72,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                AppLocalizations.of(dialogContext).queueTimeoutTitle,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                AppLocalizations.of(dialogContext).queueTimeoutMessage,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                    if (mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    AppLocalizations.of(dialogContext).queueTimeoutBackButton,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TrainingSelectScreen()),
     );
-  }
-
-  void _showMatchFoundDialog() {
-    if (_isNavigating) {
-      return;
-    }
-    
-    _isNavigating = true;
-    final matchmaking = context.read<MatchmakingProvider>();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.primary, width: 2),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.check_circle,
-                color: AppTheme.primary,
-                size: 80,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                AppLocalizations.of(context).matchFoundExclamation,
-                style: TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (matchmaking.opponentId != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.background,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        AppLocalizations.of(context).opponent,
-                        style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        matchmaking.opponentUsername ?? AppLocalizations.of(context).unknownPlayer,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        AppLocalizations.of(context).eloValue.replaceAll('{value}', '${matchmaking.opponentElo ?? '???'}'),
-                        style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 24),
-              Text(
-                AppLocalizations.of(context).startingGame,
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 14,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    _waitForAgoraCredentialsAndNavigate();
-  }
-
-  void _waitForAgoraCredentialsAndNavigate() {
-    // Check every 100ms for up to 5 seconds for Agora credentials
-    int attempts = 0;
-    const maxAttempts = 50; // 5 seconds
-    
-    void checkAndNavigate() {
-      if (!mounted) {
-        return;
-      }
-      
-      attempts++;
-      
-      // Re-read provider on each iteration to get latest state
-      final matchmaking = context.read<MatchmakingProvider>();
-      
-      
-      // Check if we have Agora credentials
-      if (matchmaking.agoraAppId != null && 
-          matchmaking.agoraToken != null && 
-          matchmaking.agoraChannelName != null) {
-        
-        if (matchmaking.matchId == null || matchmaking.opponentId == null) {
-          return;
-        }
-
-        try {
-          // Dismiss the dialog first
-          Navigator.of(context).pop();
-          // Then navigate to game screen
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => GameScreen(
-                matchId: matchmaking.matchId!,
-                opponentId: matchmaking.opponentId!,
-                opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
-                agoraAppId: matchmaking.agoraAppId,
-                agoraToken: matchmaking.agoraToken,
-                agoraTokenStrict: matchmaking.agoraTokenStrict,
-                agoraChannelName: matchmaking.agoraChannelName,
-                agoraUid: matchmaking.agoraUid,
-                opponentAgoraUid: matchmaking.opponentAgoraUid,
-              ),
-            ),
-            (route) => route.isFirst,
-          );
-          
-        } catch (e) {
-          debugPrint('[Matchmaking] Navigation error: $e');
-        }
-        return;
-      }
-
-      // If we've tried for 5 seconds, give up and navigate anyway
-      if (attempts >= maxAttempts) {
-
-        try {
-          // Dismiss the dialog first
-          Navigator.of(context).pop();
-          // Then navigate to game screen
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => GameScreen(
-                matchId: matchmaking.matchId!,
-                opponentId: matchmaking.opponentId!,
-                opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
-                agoraAppId: matchmaking.agoraAppId,
-                agoraToken: matchmaking.agoraToken,
-                agoraTokenStrict: matchmaking.agoraTokenStrict,
-                agoraChannelName: matchmaking.agoraChannelName,
-                agoraUid: matchmaking.agoraUid,
-                opponentAgoraUid: matchmaking.opponentAgoraUid,
-              ),
-            ),
-            (route) => route.isFirst,
-          );
-        } catch (e) {
-          debugPrint('[Matchmaking] Navigation error: $e');
-        }
-        return;
-      }
-      
-      // Try again in 100ms if still mounted
-      if (mounted) {
-        Future.delayed(const Duration(milliseconds: 100), checkAndNavigate);
-      }
-    }
-    
-    // Start checking after a brief delay
-    Future.delayed(const Duration(milliseconds: 500), checkAndNavigate);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _matchmakingProvider?.removeListener(_onMatchmakingUpdate);
     _rotationController.dispose();
     _pulseController.dispose();
-    // Why: WakelockPlus is a global toggle, not refcounted. When we push
-    // GameScreen via pushAndRemoveUntil, GameScreen.initState enables the
-    // wakelock *before* this dispose runs — calling disable() here would turn
-    // it back off for the whole match and let the phone sleep. GameScreen
-    // owns its own wakelock lifecycle, so only release ours on a real exit.
-    if (!_isNavigating) {
-      WakelockPlus.disable();
-    }
+    // Releasing the wakelock here is safe: when match-found navigation pushes
+    // GameScreen (which enables its own wakelock), the gate re-asserts the
+    // wakelock post-frame, so this disable can't leave the match able to sleep.
+    WakelockPlus.disable();
     OrientationUtils.portraitOnly();
     super.dispose();
   }
@@ -488,13 +222,13 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
           decoration: const BoxDecoration(
             gradient: AppTheme.surfaceGradient,
           ),
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
               child: dailyLimitReached
-                  ? _buildDailyLimitErrorCard(context)
+                  ? Center(child: _buildDailyLimitErrorCard(context))
                   : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -535,8 +269,12 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 40),
-                  AnimatedBuilder(
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: AnimatedBuilder(
                     animation: _rotationController,
                     builder: (context, child) {
                       return Transform.rotate(
@@ -617,7 +355,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 48),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
                   Text(
                     AppLocalizations.of(context).searchingForOpponentUpper,
                     style: TextStyle(
@@ -633,12 +374,80 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                     _formatTime(matchmaking.searchTime),
                     style: const TextStyle(
                       color: AppTheme.primary,
-                      fontSize: 48,
+                      fontSize: 44,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'monospace', // Monospaced font for timer
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 16),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _openTrainingWhileWaiting,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFF59E0B), Color(0xFFEAB308)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFEAB308).withValues(alpha: 0.4),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.sports_esports,
+                                  color: Colors.white, size: 26),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    AppLocalizations.of(context).trainWhileWaiting,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    AppLocalizations.of(context)
+                                        .trainWhileWaitingSubtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.92),
+                                      fontSize: 12.5,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right, color: Colors.white),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -713,7 +522,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     height: 56,

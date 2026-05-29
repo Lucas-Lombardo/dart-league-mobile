@@ -22,6 +22,7 @@ import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/local_camera_preview.dart';
+import '../../widgets/queue_searching_banner.dart';
 import '../../widgets/tv_scoreboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
@@ -722,6 +723,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                   child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
                 ),
               ),
+            ),
+
+            // "Still searching" pill when this bot training was launched while
+            // queued — the player is pulled into the match automatically when
+            // an opponent is found (see MatchmakingNavigationGate). Sits a row
+            // below the top controls (back button + END ROUND EARLY pill) so it
+            // never overlaps them, and uses a high-contrast gold style to stay
+            // readable over the camera feed.
+            Positioned(
+              top: safeTop + 52,
+              left: 0,
+              right: 0,
+              child: const Center(child: QueueSearchingBanner()),
             ),
           ],
         ),

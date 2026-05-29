@@ -61,16 +61,36 @@ class CameraFrameService {
         '[CameraFrameService] platform=${Platform.isIOS ? "iOS" : "Android"} '
         'camera=${backCamera.name} sensorOrientation=$_sensorOrientation');
 
-    _controller = CameraController(
-      backCamera,
-      ResolutionPreset.high, // 720p
-      enableAudio: false, // Agora handles audio — avoid iOS AVAudioSession conflict
-      imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.yuv420
-          : ImageFormatGroup.bgra8888,
-    );
+    CameraController buildController() => CameraController(
+          backCamera,
+          ResolutionPreset.high, // 720p
+          enableAudio: false, // Agora handles audio — avoid iOS AVAudioSession conflict
+          imageFormatGroup: Platform.isAndroid
+              ? ImageFormatGroup.yuv420
+              : ImageFormatGroup.bgra8888,
+        );
 
-    await _controller!.initialize();
+    // Initialize with one short retry. When a match is found mid-training, the
+    // previous screen releases the camera almost simultaneously with this init,
+    // which can surface a transient "camera already in use" error — a brief
+    // retry lets the OS finish releasing before we try again.
+    for (var attempt = 0; ; attempt++) {
+      if (_disposed) return;
+      _controller = buildController();
+      try {
+        await _controller!.initialize();
+        break;
+      } catch (e) {
+        await _controller?.dispose();
+        _controller = null;
+        if (attempt >= 1) {
+          debugPrint('[CameraFrameService] init failed after retry: $e');
+          return;
+        }
+        debugPrint('[CameraFrameService] init failed, retrying in 400ms: $e');
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    }
     final preview = _controller!.value.previewSize;
     debugPrint(
         '[CameraFrameService] previewSize=${preview?.width}x${preview?.height}');

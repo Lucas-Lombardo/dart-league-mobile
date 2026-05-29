@@ -21,6 +21,7 @@ import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/dartboard_edit_modal.dart';
 import '../../widgets/local_camera_preview.dart';
+import '../../widgets/queue_searching_banner.dart';
 import 'logic/training_strategy.dart';
 import 'training_end_screen.dart';
 import 'training_select_screen.dart';
@@ -621,6 +622,8 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
+          const QueueSearchingBanner(),
         ],
       ),
     );

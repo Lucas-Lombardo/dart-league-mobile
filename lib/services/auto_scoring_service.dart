@@ -809,6 +809,57 @@ class AutoScoringService extends ChangeNotifier {
       }
     }
 
+    // Step 2b: Split-blob reattach (duplicate-dart fix).
+    // A single blurry dart is sometimes detected as one tip at the centroid of
+    // what are really two darts. When the blob later resolves into two distinct
+    // tips, both land in the near-miss band (1.6–3.2 board units) straddling the
+    // original group: neither matches it (>1.6), so the original is orphaned and
+    // BOTH tips spawn new groups — leaving original + 2 new = three counted darts
+    // for two physical darts (the duplicate seen in the logs: slots 0/1/2 all S5).
+    //
+    // When an already-confirmed group would be orphaned this frame but two or
+    // more still-unmatched tips sit in its near-miss band, treat it as a split:
+    // reattach the orphaned group to its nearest near-miss tip so it absorbs one
+    // split product instead of leaving it to spawn a new group. The other tip(s)
+    // create new groups as usual. Net count stays correct.
+    //
+    // Guarded to confirmed groups (firstPassTime != null) only — an unconfirmed
+    // group that splits never inflated the count, so it needs no special case.
+    // Top-level only: orphaning is judged against the whole frame's tips.
+    if (!isFromInside) {
+      final reattachThreshold = _tipMergeThresholdBoard * 2;
+      final matchedTipSet = matched.map((m) => m.$2).toSet();
+      final matchedGroupSet = matched.map((m) => m.$1).toSet();
+      for (int g = 0; g < _tipGroups.length; g++) {
+        final tg = _tipGroups[g];
+        if (tg.firstPassTime == null) continue;
+        if (matchedGroupSet.contains(tg.id)) continue;
+        final avg = tg.avgCnfP();
+        if (avg == null) continue;
+        final nearby = <(int, double)>[];
+        for (int i = 0; i < size; i++) {
+          if (matchedTipSet.contains(i)) continue;
+          final dist = _distanceOf2Points(avg.x, avg.y, tips[i].x, tips[i].y);
+          if (dist > _tipMergeThresholdBoard && dist <= reattachThreshold) {
+            nearby.add((i, dist));
+          }
+        }
+        if (nearby.length >= 2) {
+          nearby.sort((a, b) => a.$2.compareTo(b.$2));
+          final closest = nearby.first;
+          matched.add((tg.id, closest.$1, closest.$2));
+          matchedTipSet.add(closest.$1);
+          matchedGroupSet.add(tg.id);
+          if (kDebugMode) {
+            debugPrint(
+                '[AutoScoring] split-blob reattach: confirmed group ${tg.id} '
+                'absorbed split tip at dist=${closest.$2.toStringAsFixed(2)} '
+                '(${nearby.length} near-miss tips) — prevents phantom dart');
+          }
+        }
+      }
+    }
+
     // Step 3: Add matched tips to their groups
     for (final m in matched) {
       final idx = _tipGroups.indexWhere((tg) => tg.id == m.$1);
