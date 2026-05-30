@@ -10,6 +10,15 @@ class UserStats {
   final int currentStreak;
   final int wins;
   final int losses;
+  // Checkout & finishing stats. "LastMonth" = rolling 30 days. Default 0 so older
+  // backends (without these fields) keep working.
+  final int biggestCheckout;
+  final int biggestCheckoutLastMonth;
+  final double averageCheckout;
+  final double averageCheckoutLastMonth;
+  final double averageThreeDartLastMonth;
+  final double finishingDoublePercentage;
+  final double finishingDoublePercentageLastMonth;
 
   UserStats({
     required this.totalMatches,
@@ -19,6 +28,13 @@ class UserStats {
     required this.currentStreak,
     required this.wins,
     required this.losses,
+    this.biggestCheckout = 0,
+    this.biggestCheckoutLastMonth = 0,
+    this.averageCheckout = 0.0,
+    this.averageCheckoutLastMonth = 0.0,
+    this.averageThreeDartLastMonth = 0.0,
+    this.finishingDoublePercentage = 0.0,
+    this.finishingDoublePercentageLastMonth = 0.0,
   });
 
   factory UserStats.fromJson(Map<String, dynamic> json) {
@@ -32,6 +48,13 @@ class UserStats {
       currentStreak: json['currentStreak'] as int? ?? 0,
       wins: json['wins'] as int? ?? 0,
       losses: json['losses'] as int? ?? 0,
+      biggestCheckout: json['biggestCheckout'] as int? ?? 0,
+      biggestCheckoutLastMonth: json['biggestCheckoutLastMonth'] as int? ?? 0,
+      averageCheckout: (json['averageCheckout'] as num?)?.toDouble() ?? 0.0,
+      averageCheckoutLastMonth: (json['averageCheckoutLastMonth'] as num?)?.toDouble() ?? 0.0,
+      averageThreeDartLastMonth: (json['averageThreeDartLastMonth'] as num?)?.toDouble() ?? 0.0,
+      finishingDoublePercentage: (json['finishingDoublePercentage'] as num?)?.toDouble() ?? 0.0,
+      finishingDoublePercentageLastMonth: (json['finishingDoublePercentageLastMonth'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

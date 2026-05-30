@@ -295,6 +295,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           _buildStatRow(AppLocalizations.of(context).highestRound, '${myStats.highest}', '${opponentStats.highest}'),
           const Divider(height: 24, color: AppTheme.surfaceLight),
           _buildStatRow(AppLocalizations.of(context).perfect180s, '${myStats.total180s}', '${opponentStats.total180s}'),
+          const Divider(height: 24, color: AppTheme.surfaceLight),
+          _buildStatRow(
+            AppLocalizations.of(context).bestCheckout,
+            myStats.checkout > 0 ? '${myStats.checkout}' : '—',
+            opponentStats.checkout > 0 ? '${opponentStats.checkout}' : '—',
+          ),
+          const Divider(height: 24, color: AppTheme.surfaceLight),
+          _buildStatRow(
+            AppLocalizations.of(context).finishingDoubles,
+            '${myStats.doublePercentage.toStringAsFixed(1)}%',
+            '${opponentStats.doublePercentage.toStringAsFixed(1)}%',
+          ),
         ],
       ),
     );

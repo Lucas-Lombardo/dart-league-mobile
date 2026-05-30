@@ -1924,4 +1924,26 @@ class AppLocalizationsFr extends AppLocalizations {
   // Bot turn match opponent (game)
   @override
   String get botPlayer => 'Bot';
+
+  // Checkout & finishing statistics
+  @override
+  String get checkoutAndFinishing => 'Checkout & finitions';
+
+  @override
+  String get statLast30Days => '30 derniers jours';
+
+  @override
+  String get statAllTime => 'Depuis toujours';
+
+  @override
+  String get bestCheckout => 'Meilleur checkout';
+
+  @override
+  String get avgCheckout => 'Checkout moyen';
+
+  @override
+  String get finishingDoubles => '% double gagnant';
+
+  @override
+  String get avgThreeDart => 'Moy. 3 fléchettes';
 }

@@ -268,6 +268,27 @@ class AutoScoringService extends ChangeNotifier {
   // whole game UI rebuilds 5x per second even when nothing changed.
   String _lastUiStateKey = '';
 
+  // ---- Diagnostic scoring trace ------------------------------------------
+  // When true, every analysed frame emits a full, self-contained block: raw
+  // tips, every TipGroup and ShootGroup with the fields that drive dedup
+  // (visibility, firstPassTime, priority, hasNearbyInvisibleShootsWhenCreated,
+  // history fill), the counted total, the slots, and every lifecycle EVENT
+  // (reattach / demote / assign / emit). Each line is prefixed "[AS f<frame>]"
+  // so it greps cleanly and stays correctly ordered. Lines go through
+  // debugPrintSynchronously so Flutter's debugPrint rate-limiter cannot drop
+  // them (that limiter is a common cause of gappy logs). Toggle off to silence.
+  static bool verboseScoringLog = true;
+  int _logFrameSeq = 0;
+
+  void _trace(String line) {
+    if (!verboseScoringLog) return;
+    debugPrintSynchronously('[AS f$_logFrameSeq] $line');
+  }
+
+  // Short, stable tail of a group id for readable logs (ids are long).
+  static String _sid(String id) =>
+      id.length <= 5 ? id : id.substring(id.length - 5);
+
   String _computeUiStateKey() {
     final b = StringBuffer();
     for (final s in _dartSlots) {
@@ -485,6 +506,7 @@ class AutoScoringService extends ChangeNotifier {
   ) async {
     if (_inferenceInProgress) return;
     final seq = ++_captureSeq;
+    _logFrameSeq = seq;
     String? imagePath;
 
     try {
@@ -556,12 +578,13 @@ class AutoScoringService extends ChangeNotifier {
       }
 
       final dartCount = result.dartTips.length;
-      if (kDebugMode) {
+      // Lightweight summary only when the full verbose trace is off — the
+      // verbose dump (_dumpScoringState, end of _autoScore) already covers this.
+      if (kDebugMode && !verboseScoringLog) {
         debugPrint(
             '[AutoScoring] ── frame #$seq ── ${_lastInferenceMs}ms ── $dartCount dart(s), ${result.calibrationPoints.length} CP ──');
         for (int i = 0; i < dartCount && i < result.scores.length; i++) {
-          final s = result.scores[i];
-          debugPrint('[AutoScoring]   dart[$i] => ${s.formatted}');
+          debugPrint('[AutoScoring]   dart[$i] => ${result.scores[i].formatted}');
         }
         if (result.error != null) {
           debugPrint('[AutoScoring]   error: ${result.error}');
@@ -584,6 +607,8 @@ class AutoScoringService extends ChangeNotifier {
         } else if (dartCount > 0) {
           _emptyBoardCheckCount = 0;
         }
+        _trace('GATE waitingForEmptyBoard tips=$dartCount cp=${result.calibrationPoints.length} '
+            'emptyCount=$_emptyBoardCheckCount/$_emptyBoardCheckThreshold (frame not scored)');
         await _maybeCleanup(imagePath, cleanupFile);
         _notifyIfChanged();
         return;
@@ -598,6 +623,7 @@ class AutoScoringService extends ChangeNotifier {
         if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
           _consecutiveEmptyBoardCount = 0;
           _prevDartCount = 0;
+          _trace('GATE auto-confirm (board empty $_autoConfirmThreshold frames) — submitting turn');
           await _maybeCleanup(imagePath, cleanupFile);
           onAutoConfirm?.call();
           return;
@@ -615,6 +641,7 @@ class AutoScoringService extends ChangeNotifier {
           _consecutiveRemovalCount = 0;
           _prevDartCount = 0;
           _dartsRemoved = true;
+          _trace('GATE darts removed (empty $_removalConfirmThreshold frames after darts)');
           await _maybeCleanup(imagePath, cleanupFile);
           _notifyIfChanged();
           return;
@@ -712,6 +739,52 @@ class AutoScoringService extends ChangeNotifier {
 
     _pruneStaleGroups();
     _assignSlots(onDartDetected);
+
+    _dumpScoringState(result, tipCnfPoints);
+  }
+
+  /// Full self-contained snapshot of one analysed frame — see [verboseScoringLog].
+  /// Emitted AFTER the pipeline runs so it reflects the resulting group/slot
+  /// state; lifecycle EVENT lines (reattach/demote/assign/emit) are logged
+  /// inline during the pipeline and appear just above this block for the frame.
+  void _dumpScoringState(ScoringResult result, List<CnfPoint> tipCnfPoints) {
+    if (!verboseScoringLog) return;
+    _trace(
+        '── ${_lastInferenceMs}ms | tips=${result.dartTips.length} cp=${result.calibrationPoints.length} '
+        'shaking=${_isShaking ? 1 : 0} wait=${_waitingForEmptyBoard ? 1 : 0} ──');
+    for (int i = 0; i < tipCnfPoints.length; i++) {
+      final t = tipCnfPoints[i];
+      final sc = (i < result.scores.length) ? result.scores[i].formatted : '?';
+      _trace('  tip[$i] board=(${t.x.toStringAsFixed(1)},${t.y.toStringAsFixed(1)}) '
+          'conf=${t.cnf.toStringAsFixed(2)} => $sc');
+    }
+    _trace('  TG count=${_tipGroups.length}');
+    for (final tg in _tipGroups) {
+      final a = tg.avgCnfP();
+      final fill = '${tg.tips.whereType<CnfPoint>().length}/${tg.tips.length}';
+      _trace('    TG ${_sid(tg.id)} '
+          'pos=(${a?.x.toStringAsFixed(1) ?? "-"},${a?.y.toStringAsFixed(1) ?? "-"}) '
+          'vis=${tg.visibility.name} fpt=${tg.firstPassTime != null ? 1 : 0} '
+          'prio=${tg.priority} fill=$fill');
+    }
+    final counted = _getValidShootDetectionThisRound();
+    _trace('  SG count=${_shootGroups.length} counted=$counted');
+    for (final sg in _shootGroups) {
+      final p = _shootGroupAvgPoint(sg);
+      final nn = sg.shoots.whereType<Shoot>().length;
+      final slot = _slotShootGroupIds.indexOf(sg.id);
+      final slotStr = slot < 0
+          ? '-'
+          : '$slot${_emittedSlots[slot] ? "E" : ""}';
+      _trace('    SG ${_sid(sg.id)} '
+          'pos=(${p?[0].toStringAsFixed(3) ?? "-"},${p?[1].toStringAsFixed(3) ?? "-"}) '
+          'size=${sg.shoots.length} nn=$nn '
+          'nearInv=${sg.hasNearbyInvisibleShootsWhenCreated ? 1 : 0} '
+          'prio=${sg.priority} slot=$slotStr');
+    }
+    final slots = _dartSlots.map((s) => s?.formatted ?? '-').join(',');
+    final emitted = _emittedSlots.map((e) => e ? 1 : 0).join('');
+    _trace('  slots=[$slots] total=$_turnTotal emitted=$emitted');
   }
 
   // Bound _tipGroups / _shootGroups so the per-frame inner loops in
@@ -801,11 +874,9 @@ class AutoScoringService extends ChangeNotifier {
         // Near-miss: a tip just outside the merge zone usually means detector
         // noise drifted further than expected. Log so we can tune the
         // threshold if the duplicate-dart bug resurfaces.
-        if (kDebugMode) {
-          debugPrint(
-              '[AutoScoring] tip near-miss: dist=${best.$3.toStringAsFixed(2)} '
-              '(threshold=${_tipMergeThresholdBoard.toStringAsFixed(2)}) — new TipGroup will be created');
-        }
+        _trace(
+            'EVENT near-miss dist=${best.$3.toStringAsFixed(2)} '
+            '(thr=${_tipMergeThresholdBoard.toStringAsFixed(2)}) — new TipGroup');
       }
     }
 
@@ -850,12 +921,10 @@ class AutoScoringService extends ChangeNotifier {
           matched.add((tg.id, closest.$1, closest.$2));
           matchedTipSet.add(closest.$1);
           matchedGroupSet.add(tg.id);
-          if (kDebugMode) {
-            debugPrint(
-                '[AutoScoring] split-blob reattach: confirmed group ${tg.id} '
-                'absorbed split tip at dist=${closest.$2.toStringAsFixed(2)} '
-                '(${nearby.length} near-miss tips) — prevents phantom dart');
-          }
+          _trace(
+              'EVENT reattach TG ${_sid(tg.id)} absorbed split tip '
+              'dist=${closest.$2.toStringAsFixed(2)} '
+              '(${nearby.length} near-miss tips) — prevents phantom dart');
         }
       }
     }
@@ -1293,17 +1362,95 @@ class AutoScoringService extends ChangeNotifier {
   // DartsMind: checkStabilityFurther — only runs for as2ndCam (dual camera).
   // Skipped: mobile app is single camera.
 
+  // Frames a suspect (born-near-invisible) shoot group must survive before it
+  // may be emitted — see _assignSlots. Must be strictly greater than the
+  // demotion checkpoint below (length >= 4) so the duplicate demotion always
+  // runs before a phantom could be committed (we cannot un-emit a dart).
+  static const int _phantomConfirmFrames = 5;
+
   // ========================================================================
-  // DartsMind: analyseShootGroups (dumped method — minimal stub)
+  // DartsMind: analyseShootGroups (faithful port of the duplicate-suppression
+  // pass — DVMind.java analyseShootGroups, verified against dartsmindv2 bytecode)
   // ========================================================================
   void _analyseShootGroups(int shootCount) {
-    // Remove shoot groups that have been all-null for too long
+    // Duplicate suppression only runs when ≥2 darts were confirmed within ~1s
+    // of each other (DartsMind: |last.createdTime - first.createdTime| < 1.0).
+    // That is the only window in which one physical dart can spawn a phantom
+    // second group; outside it, two darts that close in time are real.
+    final p0Count = _shootGroups.where((sg) => sg.priority == 0).length;
+    if (p0Count >= 2 &&
+        _shootGroups.isNotEmpty &&
+        (_shootGroups.last.createdTime - _shootGroups.first.createdTime).abs() <
+            1.0) {
+      for (final sg in _shootGroups) {
+        if (sg.priority != 0) continue;
+        // Suspect must be YOUNG (DartsMind: exactly 4 observations) — we use
+        // >=4 so a missed frame can't let a phantom slip past the checkpoint;
+        // priority=1 is sticky so re-checking later rounds is harmless.
+        if (sg.shoots.length < 4) continue;
+        // ...born next to a dart whose tip had just gone INVISIBLE (the split
+        // signature; a genuine tight second dart is born beside a VISIBLE dart),
+        if (!sg.hasNearbyInvisibleShootsWhenCreated) continue;
+        // ...and WEAKLY detected (≤2 real hits). This is the guard that keeps a
+        // real, solidly-tracked dart from ever being demoted.
+        if (sg.shoots.whereType<Shoot>().length > 2) continue;
+        final p = _shootGroupAvgPoint(sg);
+        if (p == null) continue;
+        // Is there a well-ESTABLISHED (≥7 frames) counted dart within 1/17
+        // board-radius? Then this young/weak group is that dart's phantom.
+        bool isDuplicate = false;
+        for (final other in _shootGroups) {
+          if (identical(other, sg)) continue;
+          if (other.priority != 0) continue;
+          if (other.shoots.length < 7) continue;
+          final op = _shootGroupAvgPoint(other);
+          if (op == null) continue;
+          // DartsMind: 0.058823529411764705 ≈ 1/17.
+          if (_distanceOf2Points(p[0], p[1], op[0], op[1]) <
+              0.058823529411764705) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        if (isDuplicate) {
+          sg.priority = 1;
+          final tg = _tipGroups.where((t) => t.id == sg.id).firstOrNull;
+          if (tg != null) tg.priority = 1;
+          _trace(
+              'EVENT demote SG ${_sid(sg.id)} (young size=${sg.shoots.length}, '
+              'weak nn=${sg.shoots.whereType<Shoot>().length}, within 1/17 of an '
+              'established dart) — not counted');
+        }
+      }
+    }
+
+    // Remove shoot groups that have been all-null for too long (noise cleanup).
     _shootGroups.removeWhere((sg) {
       if (sg.priority != 0) return false;
       final recentNonNull =
           sg.shoots.reversed.take(5).whereType<Shoot>().length;
       return sg.shoots.length >= 5 && recentNonNull == 0;
     });
+  }
+
+  /// Average normalised position (Shoot.actualPoint space, boardR == 1) of a
+  /// shoot group's non-null shoots — same averaging as _hasNearbyInvisibleShoots
+  /// so all 1/17 distance comparisons share one coordinate space.
+  List<double>? _shootGroupAvgPoint(ShootGroup sg) {
+    double sx = 0, sy = 0;
+    int n = 0;
+    for (final s in sg.shoots.whereType<Shoot>()) {
+      if (s.actualPoint != null && s.actualPoint!.length >= 2) {
+        sx += s.actualPoint![0];
+        sy += s.actualPoint![1];
+        n++;
+      }
+    }
+    if (n == 0) {
+      final fp = sg.firstShoot.actualPoint;
+      return (fp != null && fp.length >= 2) ? [fp[0], fp[1]] : null;
+    }
+    return [sx / n, sy / n];
   }
 
   // ========================================================================
@@ -1404,6 +1551,20 @@ class AutoScoringService extends ChangeNotifier {
       if (sg.priority != 0) continue;
       if (_slotShootGroupIds.contains(sg.id)) continue;
 
+      // Emission stability gate — the bridge between DartsMind's reactive count
+      // and our emit-once architecture. DartsMind shows a dart immediately, then
+      // demotes a phantom at its 4th frame (analyseShootGroups). We cannot
+      // un-emit, so for a SUSPECT group — one born next to a dart whose tip had
+      // just gone invisible (the split signature) — we WAIT until the demotion
+      // checkpoint has passed (length >= _phantomConfirmFrames) before emitting.
+      // By then a phantom is priority 1 (skipped above) and a real dart has
+      // survived. Normal darts (not born near an invisible shoot) are never
+      // delayed, so this adds no latency to ordinary scoring.
+      if (sg.hasNearbyInvisibleShootsWhenCreated &&
+          sg.shoots.length < _phantomConfirmFrames) {
+        continue;
+      }
+
       final score = _lookupScore(sg);
       if (score == null) continue;
 
@@ -1417,9 +1578,10 @@ class AutoScoringService extends ChangeNotifier {
             !_removedSlots[s]) {
           _slotShootGroupIds[s] = sg.id;
           _dartSlots[s] = score;
-          debugPrint(
-              '[AutoScoring] Dart assigned to slot $s: ${score.formatted}');
-          if (!_emittedSlots[s]) {
+          final firstEmit = !_emittedSlots[s];
+          _trace('EVENT ${firstEmit ? "EMIT" : "assign"} slot$s <- '
+              'SG ${_sid(sg.id)} ${score.formatted}');
+          if (firstEmit) {
             _emittedSlots[s] = true;
             onDartDetected?.call(s, score);
           }

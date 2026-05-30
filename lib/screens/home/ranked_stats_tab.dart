@@ -224,6 +224,8 @@ class _RankedStatsTabState extends State<RankedStatsTab> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            _buildCheckoutSection(l10n),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
@@ -240,6 +242,101 @@ class _RankedStatsTabState extends State<RankedStatsTab> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCheckoutSection(AppLocalizations l10n) {
+    final stats = _stats!;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.checkoutAndFinishing, style: AppTheme.titleLarge),
+          const SizedBox(height: 16),
+          // Header: label | last 30 days | all-time
+          Row(
+            children: [
+              const Expanded(flex: 3, child: SizedBox.shrink()),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  l10n.statLast30Days,
+                  style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  l10n.statAllTime,
+                  style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20, color: AppTheme.surfaceLight),
+          _buildFinishingRow(
+            l10n.bestCheckout,
+            stats.biggestCheckoutLastMonth > 0 ? '${stats.biggestCheckoutLastMonth}' : '—',
+            stats.biggestCheckout > 0 ? '${stats.biggestCheckout}' : '—',
+          ),
+          const Divider(height: 20, color: AppTheme.surfaceLight),
+          _buildFinishingRow(
+            l10n.avgCheckout,
+            stats.averageCheckoutLastMonth > 0 ? stats.averageCheckoutLastMonth.toStringAsFixed(1) : '—',
+            stats.averageCheckout > 0 ? stats.averageCheckout.toStringAsFixed(1) : '—',
+          ),
+          const Divider(height: 20, color: AppTheme.surfaceLight),
+          _buildFinishingRow(
+            l10n.finishingDoubles,
+            '${stats.finishingDoublePercentageLastMonth.toStringAsFixed(1)}%',
+            '${stats.finishingDoublePercentage.toStringAsFixed(1)}%',
+          ),
+          const Divider(height: 20, color: AppTheme.surfaceLight),
+          _buildFinishingRow(
+            l10n.avgThreeDart,
+            stats.averageThreeDartLastMonth > 0 ? stats.averageThreeDartLastMonth.toStringAsFixed(1) : '—',
+            '—',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinishingRow(String label, String last30, String allTime) {
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Text(
+            label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            last30,
+            style: const TextStyle(color: AppTheme.primary, fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            allTime,
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
     );
   }
 

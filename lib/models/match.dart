@@ -230,12 +230,18 @@ class PlayerStatistics {
   final double average;
   final int highest;
   final int total180s;
+  // Checkout value for this leg (0 if the player didn't win) and finishing-double
+  // percentage. Default 0 so older backends without these fields keep working.
+  final int checkout;
+  final double doublePercentage;
 
   PlayerStatistics({
     required this.rounds,
     required this.average,
     required this.highest,
     required this.total180s,
+    this.checkout = 0,
+    this.doublePercentage = 0.0,
   });
 
   factory PlayerStatistics.fromJson(Map<String, dynamic> json) {
@@ -244,6 +250,8 @@ class PlayerStatistics {
       average: (json['average'] as num?)?.toDouble() ?? 0.0,
       highest: json['highest'] as int? ?? 0,
       total180s: json['total180s'] as int? ?? 0,
+      checkout: json['checkout'] as int? ?? 0,
+      doublePercentage: (json['doublePercentage'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

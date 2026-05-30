@@ -40,9 +40,9 @@ class DetectionIsolate {
 
       // Write model asset to a temp file so the isolate can use
       // Interpreter.fromFile (memory-mapped, same speed as fromAsset).
-      final modelData = await rootBundle.load('assets/models/t201.tflite');
+      final modelData = await rootBundle.load('assets/models/t225.tflite');
       final tempDir = await getTemporaryDirectory();
-      final modelFile = File('${tempDir.path}/t201.tflite');
+      final modelFile = File('${tempDir.path}/t225.tflite');
       if (!modelFile.existsSync()) {
         await modelFile.writeAsBytes(modelData.buffer.asUint8List(), flush: true);
       }

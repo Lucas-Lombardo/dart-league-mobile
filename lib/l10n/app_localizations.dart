@@ -731,6 +731,15 @@ abstract class AppLocalizations {
 
   // Bot turn match opponent (game)
   String get botPlayer;
+
+  // Checkout & finishing statistics
+  String get checkoutAndFinishing;
+  String get statLast30Days;
+  String get statAllTime;
+  String get bestCheckout;
+  String get avgCheckout;
+  String get finishingDoubles;
+  String get avgThreeDart;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

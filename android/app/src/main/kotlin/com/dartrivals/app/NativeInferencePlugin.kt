@@ -202,9 +202,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/t201.tflite" doesn't work with
+            // pubspec key "assets/models/t225.tflite" doesn't work with
             // Android's AssetManager directly.
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/t201.tflite")
+            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/t225.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)
             android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")

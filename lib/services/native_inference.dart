@@ -27,9 +27,9 @@ class NativeInference {
         // Android: extract model to temp file via rootBundle (always works),
         // then pass the file path to native. This bypasses all Android
         // AssetManager path resolution and compression issues.
-        final modelData = await rootBundle.load('assets/models/t201.tflite');
+        final modelData = await rootBundle.load('assets/models/t225.tflite');
         final tempDir = await getTemporaryDirectory();
-        final modelFile = File('${tempDir.path}/t201.tflite');
+        final modelFile = File('${tempDir.path}/t225.tflite');
         if (!modelFile.existsSync()) {
           await modelFile.writeAsBytes(
             modelData.buffer.asUint8List(),
@@ -43,7 +43,7 @@ class NativeInference {
         final result = await _channel.invokeMethod('loadModel');
         _loaded = result == true;
       }
-      debugPrint('[NativeInference] loadModel: loaded=$_loaded');
+      debugPrint('[NativeInference] loadModel: model=t225.tflite loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
     } catch (e) {
       debugPrint('[NativeInference] loadModel error: $e');
       _loaded = false;
