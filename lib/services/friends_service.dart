@@ -67,6 +67,20 @@ class FriendsService {
     await ApiService.delete('/friends/$friendId');
   }
 
+  /// Ids of the current user's friends that are currently online. Returns an
+  /// empty set on any error so the UI simply shows everyone as offline.
+  static Future<Set<String>> getOnlineFriendIds() async {
+    try {
+      final response = await ApiService.get('/friends/online');
+      if (response is! Map<String, dynamic>) return <String>{};
+      final ids = response['onlineFriendIds'];
+      if (ids is! List) return <String>{};
+      return ids.whereType<String>().toSet();
+    } catch (e) {
+      return <String>{};
+    }
+  }
+
   static Future<String> getFriendshipStatus(String friendId) async {
     try {
       final response = await ApiService.get('/friends/status/$friendId');

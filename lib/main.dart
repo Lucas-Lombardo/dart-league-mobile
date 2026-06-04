@@ -18,6 +18,7 @@ import 'providers/placement_provider.dart';
 import 'providers/tournament_game_provider.dart';
 import 'providers/presence_provider.dart';
 import 'providers/subscription_provider.dart';
+import 'providers/match_invite_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
@@ -27,6 +28,7 @@ import 'screens/home_screen.dart';
 import 'services/api_service.dart';
 import 'utils/app_theme.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
+import 'widgets/friend_match_gate.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
@@ -121,6 +123,7 @@ class DartLegendsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TournamentProvider()),
         ChangeNotifierProvider(create: (_) => PlacementProvider()),
         ChangeNotifierProvider(create: (_) => TournamentGameProvider()),
+        ChangeNotifierProvider(create: (_) => MatchInviteProvider()),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
@@ -141,7 +144,10 @@ class DartLegendsApp extends StatelessWidget {
             navigatorObservers: [routeObserver],
             builder: (context, child) => MatchmakingNavigationGate(
               navigatorKey: navigatorKey,
-              child: child ?? const SizedBox.shrink(),
+              child: FriendMatchGate(
+                navigatorKey: navigatorKey,
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
             initialRoute: '/',
             routes: {

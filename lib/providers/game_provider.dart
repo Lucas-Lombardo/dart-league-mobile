@@ -34,6 +34,12 @@ class GameProvider with ChangeNotifier {
   Timer? _disconnectCountdownTimer;
   bool _reconnectFailed = false;
   String? _reconnectFailedReason;
+
+  // Friendly (friend-invite) match + "play again" rematch state.
+  bool _isFriendly = false;
+  bool _rematchWaiting = false;
+  bool _rematchDeclined = false;
+  bool _opponentWantsRematch = false;
   
   // Agora video calling
   String? _agoraAppId;
@@ -89,6 +95,12 @@ class GameProvider with ChangeNotifier {
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
   bool get reconnectFailed => _reconnectFailed;
   String? get reconnectFailedReason => _reconnectFailedReason;
+
+  // Friendly match + rematch getters.
+  bool get isFriendly => _isFriendly;
+  bool get rematchWaiting => _rematchWaiting;
+  bool get rematchDeclined => _rematchDeclined;
+  bool get opponentWantsRematch => _opponentWantsRematch;
   
   // Agora getters
   String? get agoraAppId => _agoraAppId;
@@ -195,6 +207,9 @@ class GameProvider with ChangeNotifier {
       _pendingData = null;
       _player1Id = null; // Reset so game_started sets it correctly for the new match
       _firstThrowerId = null; // Reset so the first thrower is captured anew for this match
+      _rematchWaiting = false;
+      _rematchDeclined = false;
+      _opponentWantsRematch = false;
       // Don't reset _gameStarted — game_started event may have already fired for this match
     } else {
       debugPrint('GAME DEBUG: initGame - preserving state (same match reconnection)');
@@ -268,6 +283,26 @@ class GameProvider with ChangeNotifier {
     SocketService.on('reconnect_failed', (data) {
       _handleReconnectFailed(data);
     });
+
+    SocketService.on('rematch_requested', (data) {
+      _handleRematchRequested(data);
+    });
+
+    SocketService.on('rematch_declined', (data) {
+      _handleRematchDeclined(data);
+    });
+  }
+
+  void _handleRematchRequested(dynamic data) {
+    // The opponent tapped "play again" first — nudge this player.
+    _opponentWantsRematch = true;
+    notifyListeners();
+  }
+
+  void _handleRematchDeclined(dynamic data) {
+    _rematchWaiting = false;
+    _rematchDeclined = true;
+    notifyListeners();
   }
 
   void _handleReconnectFailed(dynamic data) {
@@ -428,6 +463,32 @@ class GameProvider with ChangeNotifier {
     }
   }
   
+  /// Request a "play again" rematch for the just-finished friendly match.
+  /// When the opponent also requests, the server starts a new friendly match
+  /// (with the starter swapped) and a friendly_match_found event arrives.
+  void requestRematch() {
+    if (!_isFriendly || _matchId == null) return;
+    _rematchWaiting = true;
+    _rematchDeclined = false;
+    notifyListeners();
+    try {
+      SocketService.emit('rematch_request', {'matchId': _matchId});
+    } catch (e) {
+      debugPrint('GameProvider: requestRematch failed: $e');
+    }
+  }
+
+  /// Decline the rematch (releasing the opponent if they were waiting).
+  void declineRematch() {
+    if (_matchId == null) return;
+    _rematchWaiting = false;
+    try {
+      SocketService.emit('rematch_decline', {'matchId': _matchId});
+    } catch (e) {
+      debugPrint('GameProvider: declineRematch failed: $e');
+    }
+  }
+
   void confirmWin() {
     if (_pendingType != 'win') return;
     try {
@@ -475,10 +536,16 @@ class GameProvider with ChangeNotifier {
 
     _winnerId = data['winnerId'] as String?;
     _gameEnded = true;
+    // Friendly matches end with a "play again" prompt instead of the ranked
+    // accept-result / ELO flow.
+    _isFriendly = data is Map && data['isFriendly'] == true;
+    _rematchWaiting = false;
+    _rematchDeclined = false;
+    _opponentWantsRematch = false;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
 
-    debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId');
+    debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId, isFriendly=$_isFriendly');
     notifyListeners();
   }
 
@@ -885,6 +952,8 @@ class GameProvider with ChangeNotifier {
     SocketService.off('opponent_reconnected');
     SocketService.off('game_state_sync');
     SocketService.off('reconnect_failed');
+    SocketService.off('rematch_requested');
+    SocketService.off('rematch_declined');
   }
 
   void setRemoteUser(int? uid) {
@@ -935,6 +1004,10 @@ class GameProvider with ChangeNotifier {
     _needsAgoraReconnect = false;
     _reconnectFailed = false;
     _reconnectFailedReason = null;
+    _isFriendly = false;
+    _rematchWaiting = false;
+    _rematchDeclined = false;
+    _opponentWantsRematch = false;
     debugPrint('GAME DEBUG: reset() done - gameStarted=$_gameStarted, gameEnded=$_gameEnded');
     notifyListeners();
   }

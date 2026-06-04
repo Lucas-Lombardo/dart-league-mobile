@@ -9,6 +9,7 @@ class FriendsProvider with ChangeNotifier {
   int _pendingRequestsCount = 0;
   bool _isLoading = false;
   String? _error;
+  Set<String> _onlineFriendIds = {};
 
   List<User> get friends => _friends;
   List<FriendRequest> get pendingRequests => _pendingRequests;
@@ -16,6 +17,21 @@ class FriendsProvider with ChangeNotifier {
   int get pendingRequestsCount => _pendingRequestsCount;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// Whether the given friend is currently online (presence-backed).
+  bool isOnline(String userId) => _onlineFriendIds.contains(userId);
+
+  /// Refreshes the set of online friends. Cheap; polled while the friends
+  /// screen is visible. Only notifies listeners when the set actually changes.
+  Future<void> refreshOnlineFriends() async {
+    final ids = await FriendsService.getOnlineFriendIds();
+    final changed =
+        ids.length != _onlineFriendIds.length || !ids.containsAll(_onlineFriendIds);
+    if (changed) {
+      _onlineFriendIds = ids;
+      notifyListeners();
+    }
+  }
 
   Future<void> loadFriends() async {
     _isLoading = true;
@@ -99,6 +115,7 @@ class FriendsProvider with ChangeNotifier {
       loadPendingRequests(),
       loadSentRequests(),
       loadPendingRequestsCount(),
+      refreshOnlineFriends(),
     ]);
   }
 
@@ -135,6 +152,7 @@ class FriendsProvider with ChangeNotifier {
     _sentRequests = [];
     _pendingRequestsCount = 0;
     _error = null;
+    _onlineFriendIds = {};
     super.dispose();
   }
 }

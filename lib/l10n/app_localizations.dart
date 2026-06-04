@@ -740,6 +740,24 @@ abstract class AppLocalizations {
   String get avgCheckout;
   String get finishingDoubles;
   String get avgThreeDart;
+
+  // Friendly (friend-invite) matches + play-again
+  String get inviteToPlay;
+  String get friendlyMatchPremiumRequired;
+  String get friendNeedsPremium;
+  String get matchInviteTitle;
+  String get invitedYouToMatch;
+  String get waitingForFriend;
+  String get inviteDeclinedMsg;
+  String get inviteCancelledMsg;
+  String get declineInvite;
+  String get playAgainQuestion;
+  String get opponentWantsToPlayAgain;
+  String get opponentDeclinedRematch;
+  String get friendlyMatchLabel;
+  String get playerBusyMsg;
+  String get inviteFailedMsg;
+  String get online;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

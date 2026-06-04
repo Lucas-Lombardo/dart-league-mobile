@@ -1946,4 +1946,40 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get avgThreeDart => 'Moy. 3 fléchettes';
+
+  // Matchs amicaux (invitation d'amis) + rejouer
+  @override
+  String get inviteToPlay => 'Inviter à jouer';
+  @override
+  String get friendlyMatchPremiumRequired =>
+      'Les matchs amicaux sont une fonctionnalité Premium. Passez Premium pour inviter vos amis.';
+  @override
+  String get friendNeedsPremium =>
+      'Cet ami doit être Premium pour jouer des matchs amicaux.';
+  @override
+  String get matchInviteTitle => 'Invitation à un match';
+  @override
+  String get invitedYouToMatch => '{username} vous invite à un match amical';
+  @override
+  String get waitingForFriend => 'En attente de {username}…';
+  @override
+  String get inviteDeclinedMsg => 'Invitation refusée';
+  @override
+  String get inviteCancelledMsg => 'Invitation annulée';
+  @override
+  String get declineInvite => 'Refuser';
+  @override
+  String get playAgainQuestion => 'Rejouer ?';
+  @override
+  String get opponentWantsToPlayAgain => '{username} veut rejouer !';
+  @override
+  String get opponentDeclinedRematch => 'Votre adversaire a refusé de rejouer';
+  @override
+  String get friendlyMatchLabel => 'Match amical';
+  @override
+  String get playerBusyMsg => 'Ce joueur est déjà en match';
+  @override
+  String get inviteFailedMsg => "Impossible d'envoyer l'invitation";
+  @override
+  String get online => 'En ligne';
 }

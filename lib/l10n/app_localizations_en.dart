@@ -1938,4 +1938,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get avgThreeDart => 'Avg 3-Dart';
+
+  // Friendly (friend-invite) matches + play-again
+  @override
+  String get inviteToPlay => 'Invite to play';
+  @override
+  String get friendlyMatchPremiumRequired =>
+      'Friendly matches are a Premium feature. Upgrade to invite your friends to play.';
+  @override
+  String get friendNeedsPremium =>
+      'This friend needs Premium to play friendly matches.';
+  @override
+  String get matchInviteTitle => 'Match invitation';
+  @override
+  String get invitedYouToMatch => '{username} invited you to a friendly match';
+  @override
+  String get waitingForFriend => 'Waiting for {username} to accept…';
+  @override
+  String get inviteDeclinedMsg => 'Invitation declined';
+  @override
+  String get inviteCancelledMsg => 'Invitation cancelled';
+  @override
+  String get declineInvite => 'Decline';
+  @override
+  String get playAgainQuestion => 'Play again?';
+  @override
+  String get opponentWantsToPlayAgain => '{username} wants to play again!';
+  @override
+  String get opponentDeclinedRematch => 'Your opponent declined the rematch';
+  @override
+  String get friendlyMatchLabel => 'Friendly match';
+  @override
+  String get playerBusyMsg => 'This player is already in a match';
+  @override
+  String get inviteFailedMsg => 'Could not send the invitation';
+  @override
+  String get online => 'Online';
 }

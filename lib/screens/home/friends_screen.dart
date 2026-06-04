@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../providers/subscription_provider.dart';
+import '../../providers/match_invite_provider.dart';
 import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -10,6 +14,9 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../profile/player_stats_screen.dart';
+import '../matchmaking/camera_setup_screen.dart';
+import '../matchmaking/friend_match_waiting_screen.dart';
+import '../settings/subscription_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -24,6 +31,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   bool _isSearching = false;
   bool _showSearch = false;
   late TabController _tabController;
+  Timer? _onlineTimer;
 
   @override
   void initState() {
@@ -32,10 +40,15 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<FriendsProvider>().loadAll();
     });
+    // Keep the online indicators fresh while the friends screen is open.
+    _onlineTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) context.read<FriendsProvider>().refreshOnlineFriends();
+    });
   }
 
   @override
   void dispose() {
+    _onlineTimer?.cancel();
     _searchController.dispose();
     _tabController.dispose();
     super.dispose();
@@ -74,6 +87,89 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         );
       }
     }
+  }
+
+  /// Invite a friend to a (non-ranked) friendly match. Premium-gated on both
+  /// sides; the backend re-validates. Routes through the shared camera setup
+  /// (friendly matches use video like ranked) before the invite is sent.
+  Future<void> _inviteFriend(User friend) async {
+    final l10n = AppLocalizations.of(context);
+    HapticService.lightImpact();
+
+    final subscription = context.read<SubscriptionProvider>();
+    if (!subscription.isPremiumActive) {
+      _showPremiumRequiredDialog(l10n);
+      return;
+    }
+    if (!friend.isPremiumActive) {
+      _showInfoDialog(l10n.friendNeedsPremium);
+      return;
+    }
+
+    final inviteProvider = context.read<MatchInviteProvider>();
+    // Pass the same camera/permission gate as ranked, then send the invite and
+    // drop into the waiting room.
+    final ready = await AppNavigator.toScreen<bool>(
+      context,
+      CameraSetupScreen(actionLabel: l10n.inviteToPlay, confirmAndPop: true),
+    );
+    if (ready != true || !context.mounted) return;
+    inviteProvider.invite(friend.id, friendUsername: friend.username);
+    if (context.mounted) {
+      AppNavigator.toScreen(
+        context,
+        FriendMatchWaitingScreen(opponent: friend),
+      );
+    }
+  }
+
+  void _showPremiumRequiredDialog(AppLocalizations l10n) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(l10n.premium, style: const TextStyle(color: Colors.white)),
+        content: Text(l10n.friendlyMatchPremiumRequired,
+            style: const TextStyle(color: AppTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.cancel,
+                style: const TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              AppNavigator.toScreen(context, const SubscriptionScreen());
+            },
+            child: Text(l10n.upgrade),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInfoDialog(String message) {
+    final l10n = AppLocalizations.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        content: Text(message,
+            style: const TextStyle(color: AppTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child:
+                Text(l10n.close, style: const TextStyle(color: AppTheme.primary)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _sendFriendRequest(String friendId, String username) async {
@@ -699,10 +795,33 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
               border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
             ),
             child: ListTile(
-              leading: RankBadge(
-                rank: friend.rank,
-                size: 40,
-                showLabel: false,
+              leading: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  RankBadge(
+                    rank: friend.rank,
+                    size: 40,
+                    showLabel: false,
+                  ),
+                  if (provider.isOnline(friend.id))
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: Semantics(
+                        label: AppLocalizations.of(context).online,
+                        child: Container(
+                          width: 13,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            color: AppTheme.success,
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: AppTheme.surface, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               title: Row(
                 children: [
@@ -720,9 +839,20 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 'ELO: ${friend.elo} • ${friend.wins}W - ${friend.losses}L',
                 style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.person_remove, color: AppTheme.error),
-                onPressed: () => _removeFriend(friend.id, friend.username),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.sports_esports, color: AppTheme.primary),
+                    tooltip: AppLocalizations.of(context).inviteToPlay,
+                    onPressed: () => _inviteFriend(friend),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.person_remove, color: AppTheme.error),
+                    tooltip: AppLocalizations.of(context).removeFriendTitle,
+                    onPressed: () => _removeFriend(friend.id, friend.username),
+                  ),
+                ],
               ),
               onTap: () {
                 AppNavigator.toScreen(

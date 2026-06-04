@@ -403,6 +403,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       ]),
     );
 
+    // Friendly matches don't affect ELO — swap the accept/report panel for a
+    // "play again?" rematch panel.
+    final panel = game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
@@ -416,7 +420,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       const SizedBox(width: 20),
                       Expanded(
                         child: SingleChildScrollView(
-                          child: resultPanel,
+                          child: panel,
                         ),
                       ),
                     ],
@@ -429,7 +433,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       const SizedBox(height: 32),
                       headlineColumn,
                       const SizedBox(height: 32),
-                      resultPanel,
+                      panel,
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -439,6 +443,144 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     );
   }
 
+
+  void _leaveFriendlyToHome(GameProvider game) {
+    HapticService.lightImpact();
+    game.declineRematch();
+    AppNavigator.toHomeClearing(context);
+  }
+
+  /// End-of-match panel for friendly (non-ranked) matches: a "play again?"
+  /// rematch flow instead of the ranked accept-result / report panel.
+  Widget _buildFriendlyEndPanel(GameProvider game) {
+    final l10n = AppLocalizations.of(context);
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    Widget content;
+    if (game.rematchDeclined) {
+      content = Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.sentiment_dissatisfied,
+            color: AppTheme.textSecondary, size: 40),
+        const SizedBox(height: 12),
+        Text(
+          l10n.opponentDeclinedRematch,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: () {
+              HapticService.lightImpact();
+              AppNavigator.toHomeClearing(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(l10n.continueButton,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          ),
+        ),
+      ]);
+    } else if (game.rematchWaiting) {
+      content = Column(mainAxisSize: MainAxisSize.min, children: [
+        const CircularProgressIndicator(color: AppTheme.primary),
+        const SizedBox(height: 16),
+        Text(
+          l10n.waitingForOpponent,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => _leaveFriendlyToHome(game),
+          child: Text(l10n.cancel,
+              style: const TextStyle(color: AppTheme.textSecondary)),
+        ),
+      ]);
+    } else {
+      content = Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(
+          l10n.playAgainQuestion,
+          style: AppTheme.titleLarge
+              .copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
+        ),
+        if (game.opponentWantsRematch) ...[
+          const SizedBox(height: 8),
+          Text(
+            l10n.opponentWantsToPlayAgain
+                .replaceAll('{username}', widget.opponentUsername),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppTheme.success, fontSize: 13),
+          ),
+        ],
+        SizedBox(height: isLandscape ? 16 : 24),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              HapticService.mediumImpact();
+              game.requestRematch();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.success,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            icon: const Icon(Icons.replay),
+            label: Text(l10n.playAgain,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: OutlinedButton(
+            onPressed: () => _leaveFriendlyToHome(game),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              side: BorderSide(
+                  color: AppTheme.surfaceLight.withValues(alpha: 0.5), width: 2),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(l10n.no,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          ),
+        ),
+      ]);
+    }
+
+    return Container(
+      padding: EdgeInsets.all(isLandscape ? 16 : 24),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(
+          l10n.friendlyMatchLabel.toUpperCase(),
+          style: const TextStyle(
+              color: AppTheme.textSecondary, fontSize: 12, letterSpacing: 1.5),
+        ),
+        SizedBox(height: isLandscape ? 12 : 16),
+        content,
+      ]),
+    );
+  }
 
   Widget _buildOpponentTurnScreen(GameProvider game, AuthProvider auth, double safeTop) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;

@@ -17,11 +17,22 @@ class CameraSetupScreen extends StatefulWidget {
   final String? rejoinOpponentId;
   final String? rejoinOpponentUsername;
 
+  /// When true, the primary button just confirms the camera/permissions are
+  /// ready and pops with `true` (instead of joining the ranked queue). Used by
+  /// the friendly-match flow so the inviter/invitee pass the same camera gate as
+  /// ranked; the caller then sends/accepts the invite.
+  final bool confirmAndPop;
+
+  /// Optional override for the primary button label (e.g. "Invite", "Join").
+  final String? actionLabel;
+
   const CameraSetupScreen({
     super.key,
     this.rejoinMatchId,
     this.rejoinOpponentId,
     this.rejoinOpponentUsername,
+    this.confirmAndPop = false,
+    this.actionLabel,
   });
 
   bool get isRejoin => rejoinMatchId != null;
@@ -74,6 +85,16 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
         AppNavigator.replaceWith(context, const MatchmakingScreen());
       }
     }
+  }
+
+  Future<void> _confirmAndPop() async {
+    if (!cameraReady || !permissionsGranted) return;
+
+    HapticService.mediumImpact();
+    await prepareForNavigation();
+    // Pop with `true` so the caller knows the camera gate was cleared and can
+    // send/accept the friendly-match invite.
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   Future<void> _rejoinMatch() async {
@@ -193,7 +214,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
             width: double.infinity,
             child: ElevatedButton(
               onPressed: canPlay
-                  ? (widget.isRejoin ? _rejoinMatch : _joinQueue)
+                  ? (widget.confirmAndPop
+                      ? _confirmAndPop
+                      : (widget.isRejoin ? _rejoinMatch : _joinQueue))
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor:
@@ -205,7 +228,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
                 elevation: canPlay ? 4 : 0,
               ),
               child: Text(
-                getPlayButtonLabel(l10n),
+                widget.actionLabel ?? getPlayButtonLabel(l10n),
                 style: TextStyle(
                   color: canPlay ? Colors.white : AppTheme.textSecondary,
                   fontSize: 18,
