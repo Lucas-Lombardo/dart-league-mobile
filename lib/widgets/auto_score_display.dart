@@ -326,10 +326,10 @@ class AutoScoreGameView extends StatelessWidget {
                   // freeing the bottom region for the score readout.
                   final buttonH = safeBottom;
                   final contentH = availableH - buttonH;
-                  // Bigger indicator allotment — the three dart slots are the
-                  // primary feedback during a turn, so they need to be large
-                  // enough to read at a glance from ~2m.
-                  final indicatorH = (contentH * 0.36).clamp(90.0, 150.0);
+                  // The three dart slots are live feedback, but the running
+                  // score is the element that must read from ~2m, so the
+                  // scoreboard gets the larger share of the panel.
+                  final indicatorH = (contentH * 0.30).clamp(80.0, 128.0);
                   final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
                   final hintParts = hintStr?.split(' ') ?? [];
 
@@ -407,32 +407,24 @@ class AutoScoreGameView extends StatelessWidget {
                           ),
                         ),
 
-                        // TV Scoreboard — fills remaining space.
-                        // FittedBox.scaleDown lets it gracefully shrink if
-                        // the panel is unusually short, but its natural size
-                        // is already tuned to the column width via the
-                        // scoreboard's own LayoutBuilder, so it doesn't get
-                        // double-shrunk anymore.
+                        // TV Scoreboard — fills the remaining panel space. It
+                        // now receives a bounded height (from this Expanded) and
+                        // sizes its score rings to the available area, so the
+                        // whole card scales up to fill the space instead of
+                        // hugging a width-derived natural size.
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.center,
-                              child: SizedBox(
-                                width: constraints.maxWidth - 24,
-                                child: TvScoreboard(
-                                  myScore: myScore,
-                                  opponentScore: opponentScore,
-                                  myName: myName,
-                                  opponentName: opponentName,
-                                  isMyTurn: true,
-                                  iAmPlayer2: iAmPlayer2,
-                                  myAverage: myAverage,
-                                  opponentAverage: opponentAverage,
-                                  startingScore: startingScore,
-                                ),
-                              ),
+                            child: TvScoreboard(
+                              myScore: myScore,
+                              opponentScore: opponentScore,
+                              myName: myName,
+                              opponentName: opponentName,
+                              isMyTurn: true,
+                              iAmPlayer2: iAmPlayer2,
+                              myAverage: myAverage,
+                              opponentAverage: opponentAverage,
+                              startingScore: startingScore,
                             ),
                           ),
                         ),
