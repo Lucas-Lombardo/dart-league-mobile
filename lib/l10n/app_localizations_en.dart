@@ -1073,6 +1073,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get timeLeftToReconnect => '{time} left to reconnect';
 
   @override
+  String get connectionLostReconnecting => 'Connection lost — reconnecting…';
+
+  @override
   String get matchNoLongerInProgress => 'Match no longer in progress';
 
   @override
@@ -1938,6 +1941,65 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get avgThreeDart => 'Avg 3-Dart';
+
+  // Play-mode selector + friend selection
+  @override
+  String get chooseGameMode => 'How do you want to play?';
+  @override
+  String get competitiveModeTitle => 'Competitive';
+  @override
+  String get competitiveModeSubtitle =>
+      'Ranked match against a random opponent';
+  @override
+  String get friendModeTitle => 'Against a friend';
+  @override
+  String get friendModeSubtitle => 'Invite a friend for a friendly match';
+  @override
+  String get selectFriendTitle => 'Choose a friend';
+  @override
+  String get selectFriendSubtitle => 'Select a friend to invite';
+
+  // Local 1v1 (same-device hot-seat) match
+  @override
+  String get localModeTitle => 'Local match';
+  @override
+  String get localModeSubtitle => 'Two players on this phone, just for fun';
+  @override
+  String get localMatchBadge => 'LOCAL';
+  @override
+  String get localMatchSetupTitle => 'Match setup';
+  @override
+  String get playersLabel => 'Players';
+  @override
+  String get player1DefaultName => 'Player 1';
+  @override
+  String get player2DefaultName => 'Player 2';
+  @override
+  String get startingScoreLabel => 'Starting score';
+  @override
+  String get matchLengthLabel => 'Match length';
+  @override
+  String bestOfN(int n) => 'Best of $n';
+  @override
+  String get rulesLabel => 'Rules';
+  @override
+  String get doubleOutLabel => 'Double to finish';
+  @override
+  String get doubleOutHint => 'A leg must be finished on a double';
+  @override
+  String get startMatchButton => 'Start match';
+  @override
+  String get pointsLabel => 'points';
+  @override
+  String legsUnit(int n) => n <= 1 ? 'leg' : 'legs';
+  @override
+  String firstToNLegs(int n) => 'First to $n ${n <= 1 ? 'leg' : 'legs'}';
+  @override
+  String turnOf(String name) => "$name's turn";
+  @override
+  String localMatchWinner(String name) => '$name wins the match!';
+  @override
+  String get rematchButton => 'Play again';
 
   // Friendly (friend-invite) matches + play-again
   @override

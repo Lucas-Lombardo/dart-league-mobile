@@ -35,6 +35,15 @@ class GameProvider with ChangeNotifier {
   bool _reconnectFailed = false;
   String? _reconnectFailedReason;
 
+  // Our OWN connection state. Mirrors the server's 5-minute disconnect grace
+  // period so the player sees the same countdown their opponent sees instead
+  // of silently playing into a dead socket.
+  static const int _selfGracePeriodSeconds = 300;
+  bool _selfDisconnected = false;
+  int _selfDisconnectGraceSeconds = 0;
+  Timer? _selfDisconnectCountdownTimer;
+  bool _connectionListenersRegistered = false;
+
   // Friendly (friend-invite) match + "play again" rematch state.
   bool _isFriendly = false;
   bool _rematchWaiting = false;
@@ -93,6 +102,8 @@ class GameProvider with ChangeNotifier {
   Map<String, dynamic>? get pendingData => _pendingData;
   bool get opponentDisconnected => _opponentDisconnected;
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
+  bool get selfDisconnected => _selfDisconnected;
+  int get selfDisconnectGraceSeconds => _selfDisconnectGraceSeconds;
   bool get reconnectFailed => _reconnectFailed;
   String? get reconnectFailedReason => _reconnectFailedReason;
 
@@ -291,6 +302,49 @@ class GameProvider with ChangeNotifier {
     SocketService.on('rematch_declined', (data) {
       _handleRematchDeclined(data);
     });
+
+    // Observe our OWN connection so the player learns about a drop instead of
+    // throwing darts into a dead socket. Uses the additive listener API so
+    // matchmaking's single-slot reconnect handler is not clobbered.
+    if (!_connectionListenersRegistered) {
+      _connectionListenersRegistered = true;
+      SocketService.addDisconnectListener(_handleSelfDisconnected);
+      SocketService.addReconnectListener(_handleSelfReconnected);
+    }
+  }
+
+  void _handleSelfDisconnected() {
+    // Only meaningful mid-match; queue/lobby disconnects are handled elsewhere.
+    if (_matchId == null || !_gameStarted || _gameEnded) return;
+
+    _selfDisconnected = true;
+    _selfDisconnectGraceSeconds = _selfGracePeriodSeconds;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer =
+        Timer.periodic(const Duration(seconds: 1), (timer) {
+      _selfDisconnectGraceSeconds--;
+      if (_selfDisconnectGraceSeconds <= 0) {
+        timer.cancel();
+      }
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  void _handleSelfReconnected() {
+    final wasDisconnected = _selfDisconnected;
+    _selfDisconnected = false;
+    _selfDisconnectGraceSeconds = 0;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer = null;
+
+    if (wasDisconnected && _matchId != null && !_gameEnded) {
+      // Rejoin the match room and pull a fresh game_state_sync. The server
+      // also does this automatically for brand-new connections, but after an
+      // in-place socket.io reconnect this explicit message is what restores us.
+      reconnectToMatch();
+    }
+    notifyListeners();
   }
 
   void _handleRematchRequested(dynamic data) {
@@ -321,6 +375,7 @@ class GameProvider with ChangeNotifier {
     _gameEnded = true;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _cancelSelfDisconnectCountdown();
     notifyListeners();
   }
 
@@ -544,6 +599,7 @@ class GameProvider with ChangeNotifier {
     _opponentWantsRematch = false;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _cancelSelfDisconnectCountdown();
 
     debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId, isFriendly=$_isFriendly');
     notifyListeners();
@@ -560,8 +616,16 @@ class GameProvider with ChangeNotifier {
     _gameEnded = true;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _cancelSelfDisconnectCountdown();
 
     notifyListeners();
+  }
+
+  void _cancelSelfDisconnectCountdown() {
+    _selfDisconnected = false;
+    _selfDisconnectGraceSeconds = 0;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer = null;
   }
 
   void _handleInvalidThrow(dynamic data) {
@@ -646,7 +710,8 @@ class GameProvider with ChangeNotifier {
     _winnerId = winnerId;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
-    
+    _cancelSelfDisconnectCountdown();
+
     // Store forfeit data for UI
     _pendingType = 'forfeit';
     _pendingData = Map<String, dynamic>.from(data);
@@ -876,26 +941,30 @@ class GameProvider with ChangeNotifier {
     final isTriple = multiplier == ScoreMultiplier.triple;
     
     // If this slot was never thrown to the backend, emit throw_dart instead of edit_dart
-    if (index >= _dartsEmittedThisRound) {
-      _dartsEmittedThisRound = index + 1;
-      SocketService.emit('throw_dart', {
-        'matchId': _matchId,
-        'playerId': _myUserId,
-        'baseScore': baseScore,
-        'isDouble': isDouble,
-        'isTriple': isTriple,
-      });
-    } else {
-      SocketService.emit('edit_dart', {
-        'matchId': _matchId,
-        'playerId': _myUserId,
-        'dartIndex': index,
-        'baseScore': baseScore,
-        'isDouble': isDouble,
-        'isTriple': isTriple,
-      });
+    try {
+      if (index >= _dartsEmittedThisRound) {
+        _dartsEmittedThisRound = index + 1;
+        SocketService.emit('throw_dart', {
+          'matchId': _matchId,
+          'playerId': _myUserId,
+          'baseScore': baseScore,
+          'isDouble': isDouble,
+          'isTriple': isTriple,
+        });
+      } else {
+        SocketService.emit('edit_dart', {
+          'matchId': _matchId,
+          'playerId': _myUserId,
+          'dartIndex': index,
+          'baseScore': baseScore,
+          'isDouble': isDouble,
+          'isTriple': isTriple,
+        });
+      }
+    } catch (e) {
+      debugPrint('GameProvider: editDartThrow emit failed: $e');
     }
-    
+
     notifyListeners();
   }
 
@@ -936,6 +1005,11 @@ class GameProvider with ChangeNotifier {
   }
 
   void _cleanupSocketListeners() {
+    if (_connectionListenersRegistered) {
+      _connectionListenersRegistered = false;
+      SocketService.removeDisconnectListener(_handleSelfDisconnected);
+      SocketService.removeReconnectListener(_handleSelfReconnected);
+    }
     SocketService.off('game_started');
     SocketService.off('score_updated');
     SocketService.off('round_ready_confirm');
@@ -993,6 +1067,10 @@ class GameProvider with ChangeNotifier {
     _disconnectGraceSeconds = 0;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _selfDisconnected = false;
+    _selfDisconnectGraceSeconds = 0;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer = null;
     _agoraAppId = null;
     _agoraToken = null;
     _agoraTokenStrict = null;
@@ -1017,6 +1095,8 @@ class GameProvider with ChangeNotifier {
     _disposed = true;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer = null;
     _cleanupSocketListeners();
     super.dispose();
   }

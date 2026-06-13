@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
-import '../../providers/subscription_provider.dart';
-import '../../providers/match_invite_provider.dart';
 import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -12,11 +10,9 @@ import '../../widgets/rank_badge.dart';
 import '../../widgets/premium_badge.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/friendly_match_launcher.dart';
 import '../../utils/haptic_service.dart';
 import '../profile/player_stats_screen.dart';
-import '../matchmaking/camera_setup_screen.dart';
-import '../matchmaking/friend_match_waiting_screen.dart';
-import '../settings/subscription_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -87,89 +83,6 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         );
       }
     }
-  }
-
-  /// Invite a friend to a (non-ranked) friendly match. Premium-gated on both
-  /// sides; the backend re-validates. Routes through the shared camera setup
-  /// (friendly matches use video like ranked) before the invite is sent.
-  Future<void> _inviteFriend(User friend) async {
-    final l10n = AppLocalizations.of(context);
-    HapticService.lightImpact();
-
-    final subscription = context.read<SubscriptionProvider>();
-    if (!subscription.isPremiumActive) {
-      _showPremiumRequiredDialog(l10n);
-      return;
-    }
-    if (!friend.isPremiumActive) {
-      _showInfoDialog(l10n.friendNeedsPremium);
-      return;
-    }
-
-    final inviteProvider = context.read<MatchInviteProvider>();
-    // Pass the same camera/permission gate as ranked, then send the invite and
-    // drop into the waiting room.
-    final ready = await AppNavigator.toScreen<bool>(
-      context,
-      CameraSetupScreen(actionLabel: l10n.inviteToPlay, confirmAndPop: true),
-    );
-    if (ready != true || !context.mounted) return;
-    inviteProvider.invite(friend.id, friendUsername: friend.username);
-    if (context.mounted) {
-      AppNavigator.toScreen(
-        context,
-        FriendMatchWaitingScreen(opponent: friend),
-      );
-    }
-  }
-
-  void _showPremiumRequiredDialog(AppLocalizations l10n) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: Text(l10n.premium, style: const TextStyle(color: Colors.white)),
-        content: Text(l10n.friendlyMatchPremiumRequired,
-            style: const TextStyle(color: AppTheme.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(l10n.cancel,
-                style: const TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              AppNavigator.toScreen(context, const SubscriptionScreen());
-            },
-            child: Text(l10n.upgrade),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showInfoDialog(String message) {
-    final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        content: Text(message,
-            style: const TextStyle(color: AppTheme.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child:
-                Text(l10n.close, style: const TextStyle(color: AppTheme.primary)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _sendFriendRequest(String friendId, String username) async {
@@ -845,7 +758,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                   IconButton(
                     icon: const Icon(Icons.sports_esports, color: AppTheme.primary),
                     tooltip: AppLocalizations.of(context).inviteToPlay,
-                    onPressed: () => _inviteFriend(friend),
+                    onPressed: () => FriendlyMatchLauncher.invite(context, friend),
                   ),
                   IconButton(
                     icon: const Icon(Icons.person_remove, color: AppTheme.error),

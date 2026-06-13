@@ -427,6 +427,7 @@ abstract class AppLocalizations {
   String get loadingAutoScoring;
   String get opponentDisconnected;
   String get timeLeftToReconnect;
+  String get connectionLostReconnecting;
   String get matchNoLongerInProgress;
   String get yourScoreLabel;
   String get missButton;
@@ -740,6 +741,37 @@ abstract class AppLocalizations {
   String get avgCheckout;
   String get finishingDoubles;
   String get avgThreeDart;
+
+  // Play-mode selector + friend selection
+  String get chooseGameMode;
+  String get competitiveModeTitle;
+  String get competitiveModeSubtitle;
+  String get friendModeTitle;
+  String get friendModeSubtitle;
+  String get selectFriendTitle;
+  String get selectFriendSubtitle;
+
+  // Local 1v1 (hot-seat) match
+  String get localModeTitle;
+  String get localModeSubtitle;
+  String get localMatchBadge;
+  String get localMatchSetupTitle;
+  String get playersLabel;
+  String get player1DefaultName;
+  String get player2DefaultName;
+  String get startingScoreLabel;
+  String get matchLengthLabel;
+  String bestOfN(int n);
+  String get rulesLabel;
+  String get doubleOutLabel;
+  String get doubleOutHint;
+  String get startMatchButton;
+  String get pointsLabel;
+  String legsUnit(int n);
+  String firstToNLegs(int n);
+  String turnOf(String name);
+  String localMatchWinner(String name);
+  String get rematchButton;
 
   // Friendly (friend-invite) matches + play-again
   String get inviteToPlay;

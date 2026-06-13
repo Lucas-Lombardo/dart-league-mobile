@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../utils/api_config.dart';
@@ -13,8 +14,19 @@ class SocketService {
   static Function()? _onDisconnectHandler;
   static Function()? _onConnectFailedHandler;
 
+  // Multi-listener connection-state notifications. The legacy single-slot
+  // handlers above are kept for existing callers (matchmaking); these lists
+  // let other consumers (GameProvider) observe the connection without
+  // clobbering each other.
+  static final List<Function()> _disconnectListeners = [];
+  static final List<Function()> _reconnectListeners = [];
+  static final List<Function()> _connectFailedListeners = [];
+
   // Registered handlers keyed by event name — enables targeted removal
   static final Map<String, Function(dynamic)> _handlers = {};
+
+  static StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  static Timer? _reconnectRestartTimer;
 
   static bool get isConnected => _socket?.connected ?? false;
   static String? get socketId => _socket?.id;
@@ -24,6 +36,18 @@ class SocketService {
       return _connectCompleter!.future;
     }
     if (isConnected) return;
+
+    _startConnectivityMonitoring();
+
+    // Reuse the existing socket when we have one: it carries every handler
+    // registered via on(), and socket_io_client caches sockets per URL — a
+    // second io.io() call would hand back the same instance and our
+    // connection-callback registrations below would be added AGAIN, causing
+    // duplicate dispatches per event.
+    if (_socket != null) {
+      _socket!.connect();
+      return;
+    }
 
     _connectCompleter = Completer<void>();
 
@@ -42,8 +66,10 @@ class SocketService {
         io.OptionBuilder()
             .setTransports(['websocket', 'polling'])
             .enableAutoConnect()
+            // No reconnection-attempts cap: the old cap (20) gave up after
+            // ~3 minutes — inside the 5-minute match grace period — leaving
+            // the app permanently offline until a restart.
             .enableReconnection()
-            .setReconnectionAttempts(20)
             .setReconnectionDelay(2000)
             .setReconnectionDelayMax(10000)
             .setAuth({'token': token})
@@ -57,16 +83,31 @@ class SocketService {
       _socket!.onDisconnect((reason) {
         debugPrint('SocketService: Disconnected - reason: $reason');
         _onDisconnectHandler?.call();
+        for (final l in List.of(_disconnectListeners)) {
+          l();
+        }
       });
 
       _socket!.on('reconnect', (_) {
         debugPrint('SocketService: Reconnected');
         _onReconnectHandler?.call();
+        for (final l in List.of(_reconnectListeners)) {
+          l();
+        }
       });
 
       _socket!.on('reconnect_failed', (_) {
-        debugPrint('SocketService: Reconnection failed permanently');
+        debugPrint('SocketService: Reconnection cycle failed, restarting');
         _onConnectFailedHandler?.call();
+        for (final l in List.of(_connectFailedListeners)) {
+          l();
+        }
+        // Safety net: never stay permanently offline. With unbounded
+        // attempts this shouldn't fire, but if it does, kick off a new cycle.
+        _reconnectRestartTimer?.cancel();
+        _reconnectRestartTimer = Timer(const Duration(seconds: 5), () {
+          if (!isConnected) _socket?.connect();
+        });
       });
 
       _socket!.onConnectError((error) async {
@@ -98,7 +139,22 @@ class SocketService {
     }
   }
 
+  /// Reconnect immediately when the network comes back (wifi↔cellular switch,
+  /// airplane mode off, …) instead of waiting for the next backoff attempt.
+  static void _startConnectivityMonitoring() {
+    _connectivitySub ??= Connectivity().onConnectivityChanged.listen((results) {
+      final hasNetwork =
+          results.any((r) => r != ConnectivityResult.none);
+      if (hasNetwork && !isConnected && _socket != null) {
+        debugPrint('SocketService: Network available again, reconnecting now');
+        _socket!.connect();
+      }
+    });
+  }
+
   static void _disconnectInternal() {
+    _reconnectRestartTimer?.cancel();
+    _reconnectRestartTimer = null;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
@@ -180,5 +236,36 @@ class SocketService {
 
   static void clearConnectFailedHandler() {
     _onConnectFailedHandler = null;
+  }
+
+  // Additive listener API — multiple consumers can observe connection state.
+  static void addDisconnectListener(Function() listener) {
+    if (!_disconnectListeners.contains(listener)) {
+      _disconnectListeners.add(listener);
+    }
+  }
+
+  static void removeDisconnectListener(Function() listener) {
+    _disconnectListeners.remove(listener);
+  }
+
+  static void addReconnectListener(Function() listener) {
+    if (!_reconnectListeners.contains(listener)) {
+      _reconnectListeners.add(listener);
+    }
+  }
+
+  static void removeReconnectListener(Function() listener) {
+    _reconnectListeners.remove(listener);
+  }
+
+  static void addConnectFailedListener(Function() listener) {
+    if (!_connectFailedListeners.contains(listener)) {
+      _connectFailedListeners.add(listener);
+    }
+  }
+
+  static void removeConnectFailedListener(Function() listener) {
+    _connectFailedListeners.remove(listener);
   }
 }

@@ -800,6 +800,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                   // Opponent's turn
                   : _buildOpponentTurnScreen(game, auth, safeTop),
 
+              // Own-connection banner (shows when OUR socket is down)
+              if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
+                banner,
+
               // Floating back button
               Positioned(
                 top: safeTop + 8,

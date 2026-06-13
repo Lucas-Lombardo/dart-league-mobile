@@ -791,6 +791,49 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // ─── Shared widget builders ────────────────────────────────────────────────────
   String formatSeconds(int s) { final m = s ~/ 60; final r = s % 60; return '$m:${r.toString().padLeft(2, '0')}'; }
 
+  /// Banner overlay shown when OUR OWN socket is down mid-match. Without it
+  /// the player keeps "throwing" into a dead connection and only learns about
+  /// the problem when the forfeit arrives.
+  Widget? buildSelfDisconnectBanner(dynamic game, double safeTop) {
+    bool selfDisconnected = false;
+    int graceSeconds = 0;
+    try {
+      selfDisconnected = game.selfDisconnected == true;
+      graceSeconds = (game.selfDisconnectGraceSeconds as int?) ?? 0;
+    } catch (_) {
+      return null;
+    }
+    if (!selfDisconnected) return null;
+    final l10n = AppLocalizations.of(context);
+    return Positioned(
+      top: safeTop + 52,
+      left: 12,
+      right: 12,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.error.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${l10n.connectionLostReconnecting}\n${l10n.timeLeftToReconnect.replaceAll('{time}', formatSeconds(graceSeconds))}',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget buildLoadingScreen() {
     return PopScope(
       canPop: false,

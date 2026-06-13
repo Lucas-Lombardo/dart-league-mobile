@@ -1073,6 +1073,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get timeLeftToReconnect => '{time} restant pour se reconnecter';
 
   @override
+  String get connectionLostReconnecting => 'Connexion perdue — reconnexion…';
+
+  @override
   String get matchNoLongerInProgress => 'Le match n\'est plus en cours';
 
   @override
@@ -1946,6 +1949,68 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get avgThreeDart => 'Moy. 3 fléchettes';
+
+  // Sélecteur de mode de jeu + sélection d'ami
+  @override
+  String get chooseGameMode => 'Comment voulez-vous jouer ?';
+  @override
+  String get competitiveModeTitle => 'Compétitif';
+  @override
+  String get competitiveModeSubtitle =>
+      'Match classé contre un adversaire au hasard';
+  @override
+  String get friendModeTitle => 'Contre un ami';
+  @override
+  String get friendModeSubtitle => 'Invitez un ami pour un match amical';
+  @override
+  String get selectFriendTitle => 'Choisir un ami';
+  @override
+  String get selectFriendSubtitle => 'Sélectionnez un ami à inviter';
+
+  // Match local 1v1 (sur le même téléphone)
+  @override
+  String get localModeTitle => 'Match local';
+  @override
+  String get localModeSubtitle =>
+      'Deux joueurs sur ce téléphone, juste pour le fun';
+  @override
+  String get localMatchBadge => 'LOCAL';
+  @override
+  String get localMatchSetupTitle => 'Configurer le match';
+  @override
+  String get playersLabel => 'Joueurs';
+  @override
+  String get player1DefaultName => 'Joueur 1';
+  @override
+  String get player2DefaultName => 'Joueur 2';
+  @override
+  String get startingScoreLabel => 'Score de départ';
+  @override
+  String get matchLengthLabel => 'Durée du match';
+  @override
+  String bestOfN(int n) => 'Au meilleur de $n';
+  @override
+  String get rulesLabel => 'Règles';
+  @override
+  String get doubleOutLabel => 'Double pour finir';
+  @override
+  String get doubleOutHint =>
+      'La manche doit se terminer sur un double';
+  @override
+  String get startMatchButton => 'Commencer le match';
+  @override
+  String get pointsLabel => 'points';
+  @override
+  String legsUnit(int n) => n <= 1 ? 'manche' : 'manches';
+  @override
+  String firstToNLegs(int n) =>
+      'Premier à $n ${n <= 1 ? 'manche gagnante' : 'manches gagnantes'}';
+  @override
+  String turnOf(String name) => 'Au tour de $name';
+  @override
+  String localMatchWinner(String name) => '$name remporte le match !';
+  @override
+  String get rematchButton => 'Rejouer';
 
   // Matchs amicaux (invitation d'amis) + rejouer
   @override

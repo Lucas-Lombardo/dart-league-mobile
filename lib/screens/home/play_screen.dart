@@ -13,6 +13,9 @@ import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
 import '../matchmaking/camera_setup_screen.dart';
+import '../matchmaking/friend_select_screen.dart';
+import '../local_match/local_match_setup_screen.dart';
+import 'play_mode_sheet.dart';
 import '../placement/placement_hub_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
@@ -76,6 +79,96 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   Future<void> _refreshSubscription() async {
     if (!mounted) return;
     await context.read<SubscriptionProvider>().refresh();
+  }
+
+  /// Opens the play-mode selector, then routes to the ranked queue or the
+  /// friend picker depending on the choice.
+  Future<void> _onPlayTapped() async {
+    HapticService.mediumImpact();
+    final mode = await showPlayModeSheet(context);
+    if (mode == null || !mounted) return;
+    switch (mode) {
+      case PlayMode.competitive:
+        // Free users who've already used their daily ranked match are nudged
+        // to Premium instead of entering the queue.
+        if (context.read<SubscriptionProvider>().hasReachedDailyLimit) {
+          _showDailyLimitDialog();
+          return;
+        }
+        _startCompetitive();
+        break;
+      case PlayMode.friend:
+        // Friendly matches are premium-gated inside FriendlyMatchLauncher,
+        // which shows the upgrade popup for non-premium users on invite.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const FriendSelectScreen(),
+          ),
+        ).then((_) {
+          if (mounted) _refreshSubscription();
+        });
+        break;
+      case PlayMode.local:
+        // Hot-seat 1v1 — fully local, no stats, no backend. Free for everyone.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const LocalMatchSetupScreen(),
+          ),
+        );
+        break;
+    }
+  }
+
+  /// Ranked path — unchanged from before: camera gate, then matchmaking queue.
+  void _startCompetitive() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const CameraSetupScreen(),
+      ),
+    ).then((_) {
+      if (!mounted) return;
+      setState(() => _activeMatch = null);
+      _checkActiveMatch();
+      _checkPendingTournamentMatch();
+      _checkActiveTournamentStatus();
+      _refreshSubscription();
+    });
+  }
+
+  /// Shown when a free user who has used their daily ranked match tries to
+  /// start another competitive match. Offers an upgrade path to Premium.
+  void _showDailyLimitDialog() {
+    final l10n = AppLocalizations.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(l10n.dailyLimitReachedShort,
+            style: const TextStyle(color: Colors.white)),
+        content: Text(l10n.goPremiumUnlimited,
+            style: const TextStyle(color: AppTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.cancel,
+                style: const TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+              ).then((_) => _refreshSubscription());
+            },
+            child: Text(l10n.upgrade),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkActiveMatch() async {
@@ -289,91 +382,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildDailyLimitCta() {
-    return GestureDetector(
-      onTap: () {
-        HapticService.mediumImpact();
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-        ).then((_) => _refreshSubscription());
-      },
-      child: Container(
-        height: 180,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFC107), Color(0xFFEAB308)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFEAB308).withValues(alpha: 0.4),
-              blurRadius: 20,
-              spreadRadius: 2,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(
-                Icons.workspace_premium,
-                size: 150,
-                color: Colors.white.withValues(alpha: 0.15),
-              ),
-            ),
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.workspace_premium,
-                      size: 40,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    AppLocalizations.of(context).dailyLimitReached,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      AppLocalizations.of(context).goPremiumUnlimited,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     widget.refreshNotifier?.removeListener(_onRefresh);
@@ -472,7 +480,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final progress = _getRankProgress(user.rank, user.elo);
 
     final isUnranked = user.rank.toLowerCase() == 'unranked';
-    final hasDailyLimit = subscription.hasReachedDailyLimit;
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -1013,10 +1020,10 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ],
               ),
             )
-          else if (hasDailyLimit)
-            // Daily free-tier limit reached — paywall CTA
-            _buildDailyLimitCta()
           else ...[
+            // The play button is always shown for free users now; the
+            // daily-match hint stays visible (it reads "match used" once the
+            // free match is spent) and tapping Play surfaces the upgrade popup.
             if (!subscription.isPremiumActive &&
                 subscription.matchesRemainingToday != null) ...[
               _buildFreeTierHint(subscription),
@@ -1026,23 +1033,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
-                onTap: () async {
-                  HapticService.mediumImpact();
-
-                  if (context.mounted) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const CameraSetupScreen(),
-                      ),
-                    ).then((_) {
-                      setState(() => _activeMatch = null);
-                      _checkActiveMatch();
-                      _checkPendingTournamentMatch();
-                      _checkActiveTournamentStatus();
-                      _refreshSubscription();
-                    });
-                  }
-                },
+                onTap: _onPlayTapped,
                 child: Container(
                   height: 180,
                   decoration: BoxDecoration(
@@ -1092,15 +1083,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              l10n.rankedCompetitive,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],

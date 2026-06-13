@@ -44,6 +44,14 @@ class TournamentGameProvider with ChangeNotifier {
   int _disconnectGraceSeconds = 0;
   Timer? _disconnectCountdownTimer;
 
+  // Our OWN connection state — mirrors the server's 5-minute disconnect grace
+  // period (see GameProvider for rationale).
+  static const int _selfGracePeriodSeconds = 300;
+  bool _selfDisconnected = false;
+  int _selfDisconnectGraceSeconds = 0;
+  Timer? _selfDisconnectCountdownTimer;
+  bool _connectionListenersRegistered = false;
+
   // Tournament series state
   int _player1LegsWon = 0;
   int _player2LegsWon = 0;
@@ -101,6 +109,8 @@ class TournamentGameProvider with ChangeNotifier {
   Map<String, dynamic>? get pendingData => _pendingData;
   bool get opponentDisconnected => _opponentDisconnected;
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
+  bool get selfDisconnected => _selfDisconnected;
+  int get selfDisconnectGraceSeconds => _selfDisconnectGraceSeconds;
   bool get isMyTurn => _currentPlayerId == _myUserId;
   // True when this user was the second to throw in the match (captured from
   // the first game_started event). Used to render the current user on the
@@ -246,6 +256,46 @@ class TournamentGameProvider with ChangeNotifier {
     SocketService.on('tournament_leg_won', _handleTournamentLegWon);
     SocketService.on('tournament_next_leg', _handleTournamentNextLeg);
     SocketService.on('tournament_match_won', _handleTournamentMatchWon);
+
+    // Observe our OWN connection (see GameProvider for rationale).
+    if (!_connectionListenersRegistered) {
+      _connectionListenersRegistered = true;
+      SocketService.addDisconnectListener(_handleSelfDisconnected);
+      SocketService.addReconnectListener(_handleSelfReconnected);
+    }
+  }
+
+  void _handleSelfDisconnected() {
+    if (_currentGameMatchId == null || !_gameStarted || _gameEnded) return;
+
+    _selfDisconnected = true;
+    _selfDisconnectGraceSeconds = _selfGracePeriodSeconds;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer =
+        Timer.periodic(const Duration(seconds: 1), (timer) {
+      _selfDisconnectGraceSeconds--;
+      if (_selfDisconnectGraceSeconds <= 0) {
+        timer.cancel();
+      }
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  void _handleSelfReconnected() {
+    final wasDisconnected = _selfDisconnected;
+    _cancelSelfDisconnectCountdown();
+    if (wasDisconnected && _currentGameMatchId != null && !_gameEnded) {
+      reconnectToMatch();
+    }
+    notifyListeners();
+  }
+
+  void _cancelSelfDisconnectCountdown() {
+    _selfDisconnected = false;
+    _selfDisconnectGraceSeconds = 0;
+    _selfDisconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer = null;
   }
 
   // --- Standard game event handlers (same as GameProvider) ---
@@ -802,6 +852,11 @@ class TournamentGameProvider with ChangeNotifier {
   // --- Cleanup ---
 
   void _cleanupSocketListeners() {
+    if (_connectionListenersRegistered) {
+      _connectionListenersRegistered = false;
+      SocketService.removeDisconnectListener(_handleSelfDisconnected);
+      SocketService.removeReconnectListener(_handleSelfReconnected);
+    }
     SocketService.off('game_started');
     SocketService.off('score_updated');
     SocketService.off('round_ready_confirm');
@@ -850,6 +905,7 @@ class TournamentGameProvider with ChangeNotifier {
     _disconnectGraceSeconds = 0;
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
+    _cancelSelfDisconnectCountdown();
     _player1LegsWon = 0;
     _player2LegsWon = 0;
     _currentLeg = 1;
@@ -875,6 +931,7 @@ class TournamentGameProvider with ChangeNotifier {
     _disposed = true;
     _cleanupSocketListeners();
     _disconnectCountdownTimer?.cancel();
+    _selfDisconnectCountdownTimer?.cancel();
     super.dispose();
   }
 }
