@@ -28,6 +28,26 @@ class SocketService {
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   static Timer? _reconnectRestartTimer;
 
+  // True between a disconnect and the next successful (re)connect. Gates
+  // reconnect dispatch so it fires exactly once per drop, whichever event
+  // surfaces the recovery first.
+  static bool _wasDisconnected = false;
+
+  // Fire the reconnect handlers once, only if we were actually disconnected.
+  // Both onConnect and the manager 'reconnect' event funnel through here: on
+  // Android a recovered connection often surfaces as a fresh 'connect' rather
+  // than the manager 'reconnect' event, so keying recovery solely off
+  // 'reconnect' left the "connection lost" banner stuck. The flag makes the
+  // two paths idempotent (first one wins, the other is a no-op).
+  static void _dispatchReconnected() {
+    if (!_wasDisconnected) return;
+    _wasDisconnected = false;
+    _onReconnectHandler?.call();
+    for (final l in List.of(_reconnectListeners)) {
+      l();
+    }
+  }
+
   static bool get isConnected => _socket?.connected ?? false;
   static String? get socketId => _socket?.id;
 
@@ -78,10 +98,15 @@ class SocketService {
 
       _socket!.onConnect((_) {
         debugPrint('SocketService: Connected! socketId=${_socket?.id}');
+        // Recovery after a drop reliably surfaces here even when the manager
+        // 'reconnect' event does not (common on Android). Idempotent: a no-op
+        // on the very first connect since _wasDisconnected is false.
+        _dispatchReconnected();
       });
 
       _socket!.onDisconnect((reason) {
         debugPrint('SocketService: Disconnected - reason: $reason');
+        _wasDisconnected = true;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -90,10 +115,7 @@ class SocketService {
 
       _socket!.on('reconnect', (_) {
         debugPrint('SocketService: Reconnected');
-        _onReconnectHandler?.call();
-        for (final l in List.of(_reconnectListeners)) {
-          l();
-        }
+        _dispatchReconnected();
       });
 
       _socket!.on('reconnect_failed', (_) {

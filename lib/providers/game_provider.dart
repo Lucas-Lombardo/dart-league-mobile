@@ -724,6 +724,16 @@ class GameProvider with ChangeNotifier {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != _matchId) return;
 
+    // Ignore the event when it describes OUR OWN disconnection. The server
+    // broadcasts opponent_disconnected to the whole room; after a quick socket
+    // flap our reconnected socket has already rejoined the room and receives
+    // this event about ourselves. Without this guard the player wrongly sees
+    // "opponent disconnected" (alongside the self "connection lost" banner).
+    final disconnectedPlayerId = data['disconnectedPlayerId'] as String?;
+    if (disconnectedPlayerId != null && disconnectedPlayerId == _myUserId) {
+      return;
+    }
+
     _opponentDisconnected = true;
     
     // Start countdown timer from grace period

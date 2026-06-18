@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "WebSearch",
+      "WebFetch(domain:support.claude.com)",
+      "WebFetch(domain:claudelog.com)",
+      "Bash(python3 -c \"import struct, wave; print\\(''wav generation available''\\)\")",
+      "Bash(grep:*)",
+      "Bash(find /Users/lucasl/Projects/dartLeague/mobile -name pubspec.yaml -o -name *.pem -o -name .env*)",
+      "Read(//Users/lucasl/Projects/dartsmind/**)",
+      "Read(//Projects/**)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "postgres-toolbox",
+    "s3-preprod",
+    "s3-prod-erp",
+    "s3-local",
+    "s3-prod-ai",
+    "cloudwatch-prod-ai",
+    "excalidraw",
+    "cheap-ai2",
+    "chrome-devtools"
+  ]
+}

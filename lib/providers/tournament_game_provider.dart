@@ -475,6 +475,13 @@ class TournamentGameProvider with ChangeNotifier {
   void _handleOpponentDisconnected(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != _currentGameMatchId) return;
+    // Ignore the event when it describes OUR OWN disconnection (server
+    // broadcasts to the whole room; our reconnected socket receives it about
+    // ourselves after a flap). See game_provider for the full rationale.
+    final disconnectedPlayerId = data['disconnectedPlayerId'] as String?;
+    if (disconnectedPlayerId != null && disconnectedPlayerId == _myUserId) {
+      return;
+    }
     _opponentDisconnected = true;
     final gracePeriodMs = data['gracePeriodMs'] as int? ?? 300000;
     _disconnectGraceSeconds = (gracePeriodMs / 1000).round();
