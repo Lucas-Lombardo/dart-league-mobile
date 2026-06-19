@@ -712,6 +712,9 @@ class TournamentGameProvider with ChangeNotifier {
   Future<void> throwDart({
     required int baseScore,
     required ScoreMultiplier multiplier,
+    // 'ai' when proposed by on-device auto-scoring, 'manual' when typed. Feeds
+    // the backend trust factor. Optional field; old backends just ignore it.
+    String source = 'manual',
   }) async {
     if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) return;
 
@@ -727,6 +730,7 @@ class TournamentGameProvider with ChangeNotifier {
         'baseScore': baseScore,
         'isDouble': isDouble,
         'isTriple': isTriple,
+        'source': source,
       });
     } catch (_) {
       // Socket emit failed — roll back guard

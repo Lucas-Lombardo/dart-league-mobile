@@ -89,6 +89,19 @@ class NativeInferencePlugin: NSObject {
     // MARK: - Model Loading
 
     private func loadModel(result: @escaping FlutterResult) {
+        // Idempotent: this plugin is a singleton retained for the app's lifetime
+        // and the bundled model never changes, so an interpreter built earlier
+        // (e.g. by the camera-setup screen before queueing) is still valid. The
+        // app loads a fresh AutoScoringService per match, which used to rebuild
+        // the interpreter every time — re-running the multi-second CoreML
+        // delegate compilation on the match's "loading AI" screen (and leaking
+        // the previous interpreter/model/delegate). Reuse it instead so only the
+        // first load in a session pays the cost.
+        if interpreter != nil {
+            print("[NativeInference-iOS] model already loaded (delegate=\(delegateKind)) — reusing")
+            result(true)
+            return
+        }
         guard let modelPath = findModelPath() else {
             result(FlutterError(code: "MODEL_NOT_FOUND", message: "t225.tflite not found in bundle", details: nil))
             return

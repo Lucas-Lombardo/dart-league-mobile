@@ -181,9 +181,13 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
         ),
         (route) => route.isFirst,
       );
-      // The disposing screens (training/matchmaking) call WakelockPlus.disable()
-      // in their dispose(), which runs *after* GameScreen.initState enables it.
-      // Re-assert it post-frame so the match screen can't fall asleep.
+      // Early re-assert: the disposing screens (training/matchmaking) call
+      // WakelockPlus.disable() in their dispose(). NOTE this post-frame enable()
+      // is NOT sufficient on its own — Flutter defers disposing the screen
+      // beneath the still-animating GameScreen until the push transition
+      // completes (~300ms later), so that disable() lands after this re-assert.
+      // The authoritative re-assert lives in BaseGameScreenState, which re-fires
+      // enable() when its entry transition completes. This is just early cover.
       WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
     }
 

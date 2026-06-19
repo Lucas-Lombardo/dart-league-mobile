@@ -70,11 +70,18 @@ class CameraFrameService {
               : ImageFormatGroup.bgra8888,
         );
 
-    // Initialize with one short retry. When a match is found mid-training, the
-    // previous screen releases the camera almost simultaneously with this init,
-    // which can surface a transient "camera already in use" error — a brief
-    // retry lets the OS finish releasing before we try again.
-    for (var attempt = 0; ; attempt++) {
+    // Initialize with retries. When a match is found mid-training, the training
+    // screen still owns the camera and only releases it from its dispose() —
+    // which Flutter defers until *our* (the match screen's) push transition
+    // completes (~300ms), after which CameraController.dispose() frees the
+    // device asynchronously. So the camera can keep throwing "already in use"
+    // for up to ~1s after navigation. A single quick retry (the old behaviour)
+    // gave up long before then, leaving the match with dead video + AI until
+    // the app was restarted. Retry across the whole release window instead.
+    // The match screen shows its loading state until this returns, so the only
+    // visible effect is a slightly longer "Starting camera…".
+    const maxAttempts = 8;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
       if (_disposed) return;
       _controller = buildController();
       try {
@@ -83,14 +90,21 @@ class CameraFrameService {
       } catch (e) {
         await _controller?.dispose();
         _controller = null;
-        if (attempt >= 1) {
-          debugPrint('[CameraFrameService] init failed after retry: $e');
+        if (attempt == maxAttempts - 1) {
+          debugPrint('[CameraFrameService] init failed after $maxAttempts attempts: $e');
           return;
         }
-        debugPrint('[CameraFrameService] init failed, retrying in 400ms: $e');
+        debugPrint(
+            '[CameraFrameService] init failed (attempt ${attempt + 1}/$maxAttempts), '
+            'retrying in 400ms: $e');
         await Future.delayed(const Duration(milliseconds: 400));
       }
     }
+    // dispose() may have raced in during the (now longer) retry window. It sets
+    // _disposed first and owns tearing down the controller it saw, so bail here
+    // rather than dereference _controller! (which it may already have nulled) or
+    // start a stream on a controller that is being disposed.
+    if (_disposed) return;
     final preview = _controller!.value.previewSize;
     debugPrint(
         '[CameraFrameService] previewSize=${preview?.width}x${preview?.height}');

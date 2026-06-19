@@ -86,6 +86,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Timer? _remoteJoinedWatchdog;
   static const Duration _remoteJoinedWatchdogDelay = Duration(seconds: 8);
 
+  // ─── Wakelock re-assert ────────────────────────────────────────────────────────
+  // Why: we are pushed via pushAndRemoveUntil() over the matchmaking / training
+  // screen, and that screen calls WakelockPlus.disable() in its dispose().
+  // Flutter does NOT dispose a route *beneath* a still-animating pushed route
+  // until the push transition completes: in Navigator._flushHistoryUpdates a
+  // `removing` route only advances to `dispose` once the route above it is
+  // `idle`, and the `pushing` state never sets canRemoveOrAdd. So that disable()
+  // lands ~300ms AFTER our initState enable() (and after the gate's single
+  // post-frame re-assert) and WINS — clearing FLAG_KEEP_SCREEN_ON for the whole
+  // match, so the screen sleeps (most visibly during the opponent's turn). We
+  // re-assert the wakelock once our own entry transition has finished — i.e.
+  // exactly when that late dispose() runs — and again on every resume.
+  Animation<double>? _entryAnimation;
+  bool _entryWakelockReasserted = false;
+
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
   @override
   void initState() {
@@ -110,8 +125,45 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scheduleEntryWakelockReassert();
+  }
+
+  /// Re-assert the wakelock once our entry transition completes, defeating the
+  /// late WakelockPlus.disable() from the matchmaking/training screen disposed
+  /// beneath us. See the field docs above for why a single post-frame re-assert
+  /// (in initState / the navigation gate) is not enough.
+  void _scheduleEntryWakelockReassert() {
+    if (_entryWakelockReasserted || _entryAnimation != null) return;
+    final anim = ModalRoute.of(context)?.animation;
+    if (anim == null || anim.status == AnimationStatus.completed) {
+      // No (or already-finished) transition — re-assert next frame, after any
+      // synchronous route teardown has run.
+      _entryWakelockReasserted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) WakelockPlus.enable(); });
+      return;
+    }
+    _entryAnimation = anim;
+    anim.addStatusListener(_onEntryAnimationStatus);
+  }
+
+  void _onEntryAnimationStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    _entryAnimation?.removeStatusListener(_onEntryAnimationStatus);
+    _entryAnimation = null;
+    _entryWakelockReasserted = true;
+    // Post-frame: completing the transition is what triggers the Navigator to
+    // finally dispose the screen beneath us (which disables the wakelock).
+    // Deferring to the end of this frame guarantees we re-enable after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) WakelockPlus.enable(); });
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _entryAnimation?.removeStatusListener(_onEntryAnimationStatus);
+    _entryAnimation = null;
     _remoteJoinedWatchdog?.cancel();
     _remoteJoinedWatchdog = null;
     disposeScreenSpecific();
@@ -139,6 +191,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       cameraFrameService?.pause();
     } else if (state == AppLifecycleState.resumed && mounted) {
       cameraFrameService?.resume();
+      // Re-assert on every resume: a backgrounded/recreated activity can come
+      // back without FLAG_KEEP_SCREEN_ON. Cheap no-op if already set.
+      WakelockPlus.enable();
       if (!_wasPausedSinceLastResume) {
         // Came back from a brief inactive blip — no socket/Agora work needed.
         return;
@@ -304,7 +359,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final (base, mul) = dartScoreToBackend(dartScore);
       HapticService.mediumImpact();
       DartSoundService.playDartHit(base, mul);
-      g.throwDart(baseScore: base, multiplier: mul);
+      // Tag as AI-proposed so the backend can score the trust factor (accepted
+      // vs corrected). Manual entry/edits flow through the default 'manual'.
+      g.throwDart(baseScore: base, multiplier: mul, source: 'ai');
     };
     await autoScoringService!.loadModel();
     if (mounted) {

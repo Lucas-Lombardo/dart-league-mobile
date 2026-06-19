@@ -199,6 +199,15 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // ---- Model Loading (DartsMind: Detector.updateTensorData) ----
 
     private fun loadModel(result: MethodChannel.Result) {
+        // Idempotent — the interpreter persists for the engine's lifetime (only
+        // closed in onDetachedFromEngine), so reuse one built earlier (e.g. by
+        // the camera-setup screen) instead of rebuilding it per match, which
+        // re-inits the GPU delegate and leaked the old interpreter. See iOS note.
+        if (interpreter != null) {
+            android.util.Log.d("NativeInference", "Model already loaded — reusing")
+            mainHandler.post { result.success(true) }
+            return
+        }
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
@@ -258,6 +267,14 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     /// Load model from a file path (used on Android where Dart extracts the
     /// asset to a temp file to avoid AssetManager path issues).
     private fun loadModelFromFile(path: String, result: MethodChannel.Result) {
+        // Idempotent — see loadModel(). Reuse an interpreter built earlier
+        // instead of rebuilding it per match (the Dart side always uses this
+        // file path on Android).
+        if (interpreter != null) {
+            android.util.Log.d("NativeInference", "Model already loaded — reusing")
+            mainHandler.post { result.success(true) }
+            return
+        }
         try {
             val file = java.io.File(path)
             android.util.Log.d("NativeInference", "Loading model from file: $path (${file.length()} bytes)")
