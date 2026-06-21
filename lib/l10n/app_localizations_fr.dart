@@ -946,6 +946,46 @@ class AppLocalizationsFr extends AppLocalizations {
   String get registrationOpensSoon => 'L\'inscription ouvre bientôt';
 
   @override
+  String get tournamentRequirements => 'Conditions d\'accès';
+
+  @override
+  String get tournamentPremiumRequired => 'Réservé aux membres Premium';
+
+  @override
+  String get tournamentRankRequired => 'Rang';
+
+  @override
+  String get tournamentNotEligiblePremium =>
+      'Ce tournoi est réservé aux membres Premium.';
+
+  @override
+  String get tournamentNotEligibleRank =>
+      'Ton rang ne correspond pas aux conditions de ce tournoi.';
+
+  @override
+  String get tournamentHistoryTitle => 'Historique des tournois';
+
+  @override
+  String get noTournamentHistory => 'Aucun historique de tournoi';
+
+  @override
+  String get noTournamentHistoryHint =>
+      'Termine des tournois pour voir ton historique ici';
+
+  @override
+  String get players => 'joueurs';
+
+  @override
+  String get tournamentLoadError => 'Impossible de charger ce tournoi';
+
+  @override
+  String get matchWindowExpiredTitle => 'Temps écoulé';
+
+  @override
+  String get matchWindowExpiredHint =>
+      'Tu n\'as pas rejoint ton match à temps';
+
+  @override
   String get tbd => 'À déterminer';
 
   @override

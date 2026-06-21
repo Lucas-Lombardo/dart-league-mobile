@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -15,8 +14,34 @@ import 'dart_detection_service_stub.dart'
 class NativeInference {
   static const _channel = MethodChannel('com.dartrivals/native_inference');
 
+  /// Per-frame timing logs (channelRoundTrip/parse). Off by default — these
+  /// fire every frame and flood the log. Flip on only to profile inference.
+  static bool verboseTiming = false;
+
   bool _loaded = false;
   bool get isLoaded => _loaded;
+
+  // Reused buffer for the rare case where the channel bytes aren't 4-byte
+  // aligned. The common path returns a zero-copy Float32List VIEW over the
+  // channel bytes, so we avoid allocating a fresh ~1.1MB buffer every frame
+  // (which was a major source of the Android GC thrashing).
+  Uint8List? _alignScratch;
+
+  /// View the model-output channel bytes as Float32 without copying when
+  /// possible. MethodChannel byte arrays are normally 8-byte aligned at offset
+  /// 0, so the view is free; only a misaligned buffer falls back to a single
+  /// copy into a reused scratch (still no per-frame allocation).
+  Float32List _outputFloats(Uint8List bytes) {
+    if (bytes.offsetInBytes % 4 == 0) {
+      return bytes.buffer
+          .asFloat32List(bytes.offsetInBytes, bytes.lengthInBytes ~/ 4);
+    }
+    if (_alignScratch == null || _alignScratch!.length != bytes.lengthInBytes) {
+      _alignScratch = Uint8List(bytes.lengthInBytes);
+    }
+    _alignScratch!.setAll(0, bytes);
+    return _alignScratch!.buffer.asFloat32List();
+  }
 
   /// Parser instance — reuses calibration cache across frames.
   final DartDetectionService _parser = DartDetectionService(useNativeDecode: false);
@@ -27,9 +52,9 @@ class NativeInference {
         // Android: extract model to temp file via rootBundle (always works),
         // then pass the file path to native. This bypasses all Android
         // AssetManager path resolution and compression issues.
-        final modelData = await rootBundle.load('assets/models/t225.tflite');
+        final modelData = await rootBundle.load('assets/models/t223.tflite');
         final tempDir = await getTemporaryDirectory();
-        final modelFile = File('${tempDir.path}/t225.tflite');
+        final modelFile = File('${tempDir.path}/t223.tflite');
         if (!modelFile.existsSync()) {
           await modelFile.writeAsBytes(
             modelData.buffer.asUint8List(),
@@ -43,7 +68,7 @@ class NativeInference {
         final result = await _channel.invokeMethod('loadModel');
         _loaded = result == true;
       }
-      debugPrint('[NativeInference] loadModel: model=t225.tflite loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
+      debugPrint('[NativeInference] loadModel: model=t223.tflite loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
     } catch (e) {
       debugPrint('[NativeInference] loadModel error: $e');
       _loaded = false;
@@ -78,14 +103,13 @@ class NativeInference {
       final imageWidth = response['imageWidth'] as int;
       final imageHeight = response['imageHeight'] as int;
 
-      final aligned = Uint8List.fromList(outputBytes);
-      final outputFloats = aligned.buffer.asFloat32List();
+      final outputFloats = _outputFloats(outputBytes);
 
       final result = _parser.parseRawOutput(
         outputFloats, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
-      if (kDebugMode) {
+      if (verboseTiming) {
         debugPrint(
             '[NativeInference] Dart: channelRoundTrip=${channelMs}ms parse=${parseMs}ms rgbaSize=${rgba.length}');
       }
@@ -136,14 +160,13 @@ class NativeInference {
       final imageWidth = response['imageWidth'] as int;
       final imageHeight = response['imageHeight'] as int;
 
-      final aligned = Uint8List.fromList(outputBytes);
-      final outputFloats = aligned.buffer.asFloat32List();
+      final outputFloats = _outputFloats(outputBytes);
 
       final result = _parser.parseRawOutput(
         outputFloats, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
-      if (kDebugMode) {
+      if (verboseTiming) {
         debugPrint(
             '[NativeInference] YUV: channelRoundTrip=${channelMs}ms parse=${parseMs}ms');
       }

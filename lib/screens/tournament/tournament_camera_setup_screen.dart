@@ -78,6 +78,7 @@ class _TournamentCameraSetupScreenState
         player1Id: widget.player1Id,
         player2Id: widget.player2Id,
         bestOf: widget.bestOf,
+        inviteSentAt: widget.inviteSentAt,
       ),
     );
   }

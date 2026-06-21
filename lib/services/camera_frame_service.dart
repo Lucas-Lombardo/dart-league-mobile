@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
@@ -31,9 +32,98 @@ class CameraFrameService {
   CameraImage? _latestFrame;
   int? _sensorOrientation;
   bool _firstPushLogged = false;
+  DeviceOrientation? _lastLoggedOrientation;
 
   CameraController? get controller => _controller;
   bool get isInitialized => _controller?.value.isInitialized ?? false;
+
+  // --- Device-orientation-aware frame rotation (landscape support) ----------
+  // The detector loses calibration points when the board is sideways (90°/270°)
+  // but is fine upright/flipped (0°/180°). Raw camera frames arrive in fixed
+  // sensor coordinates, so a FIXED rotation only yields an upright board in
+  // portrait — in landscape it leaves the board sideways and calibration
+  // degrades. We compensate for the device's current physical orientation so
+  // the board is always fed to the model upright (0°), or flipped (180°, which
+  // the model handles equally well), but never sideways.
+
+  /// Physical device rotation away from portraitUp, in degrees. The two
+  /// landscape orientations map to {90, 270}; their exact assignment is not
+  /// critical — either way the resulting board lands at 0° or 180° (both of
+  /// which the model handles well), never the lossy 90°/270°.
+  int _deviceRotationDegrees() {
+    switch (_controller?.value.deviceOrientation) {
+      case DeviceOrientation.landscapeRight:
+        return 90;
+      case DeviceOrientation.portraitDown:
+        return 180;
+      case DeviceOrientation.landscapeLeft:
+        return 270;
+      case DeviceOrientation.portraitUp:
+      default:
+        return 0;
+    }
+  }
+
+  /// Clockwise rotation (degrees) to apply to the raw sensor frame so the board
+  /// is upright for the model. We ONLY compensate when the device reports an
+  /// explicit landscape orientation; for portrait (or any uncertainty / null)
+  /// we return the exact previously-shipped value (Android: sensor mount angle;
+  /// iOS: 0). This guarantees portrait scoring is byte-for-byte unchanged and
+  /// can never regress from this code — only landscape gets the new behaviour.
+  int _effectiveRotation() {
+    final baseline = Platform.isAndroid ? (_sensorOrientation ?? 0) : 0;
+    final o = _controller?.value.deviceOrientation;
+    int rot = baseline;
+    if (o == DeviceOrientation.landscapeLeft ||
+        o == DeviceOrientation.landscapeRight) {
+      // In landscape the board was coming out 180° upside-down (20 scored as
+      // 3), so we add 180 to land it upright. CRITICAL: only an upright (0°)
+      // frame scores correctly — 180° inverts the whole board — so this must
+      // resolve to upright. Both landscape orientations need the same +180
+      // here because they produce the same (inverted) frame.
+      rot = (baseline - _deviceRotationDegrees() + 180 + 360) % 360;
+    }
+    if (o != _lastLoggedOrientation) {
+      _lastLoggedOrientation = o;
+      debugPrint('[CameraFrameService] deviceOrientation=$o '
+          'sensor=$_sensorOrientation effectiveRotation=$rot');
+    }
+    return rot;
+  }
+
+  /// Rotate a packed RGBA buffer by [deg] (0/90/180/270) clockwise. Returns the
+  /// rotated buffer and its new dimensions. Used on the iOS capture path, where
+  /// rotation isn't fused into the colour conversion. Same 90°/270° pixel
+  /// mapping as the Android YUV→RGBA path so both stay consistent.
+  (Uint8List, int, int) _rotateRgba(Uint8List src, int w, int h, int deg) {
+    if (deg == 0) return (src, w, h);
+    final bool swap = deg == 90 || deg == 270;
+    final int outW = swap ? h : w;
+    final int outH = swap ? w : h;
+    final out = Uint8List(outW * outH * 4);
+    for (int sy = 0; sy < h; sy++) {
+      for (int sx = 0; sx < w; sx++) {
+        final si = (sy * w + sx) * 4;
+        final int dx, dy;
+        if (deg == 90) {
+          dx = h - 1 - sy;
+          dy = sx;
+        } else if (deg == 270) {
+          dx = sy;
+          dy = w - 1 - sx;
+        } else {
+          dx = w - 1 - sx; // 180
+          dy = h - 1 - sy;
+        }
+        final di = (dy * outW + dx) * 4;
+        out[di] = src[si];
+        out[di + 1] = src[si + 1];
+        out[di + 2] = src[si + 2];
+        out[di + 3] = src[si + 3];
+      }
+    }
+    return (out, outW, outH);
+  }
 
   /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
   /// to the given custom video track. Pass nulls for solo modes (training,
@@ -320,7 +410,7 @@ class CameraFrameService {
         width: frame.width,
         height: frame.height,
         formatIndex: frame.format.group.index,
-        sensorOrientation: Platform.isAndroid ? (_sensorOrientation ?? 0) : 0,
+        sensorOrientation: _effectiveRotation(),
       ));
 
       if (jpegBytes == null) return null;
@@ -345,6 +435,12 @@ class CameraFrameService {
     if (!Platform.isIOS) return null;
     final frame = _latestFrame;
     if (frame == null) return null;
+
+    // The BGRA fast path hands raw pixels straight to native, which does not
+    // rotate. When the device is rotated (landscape), fall back to captureRgba,
+    // which rotates the board upright for the model. In portrait the effective
+    // rotation is 0, so the fast path stays active and perf is unchanged.
+    if (_effectiveRotation() != 0) return null;
 
     try {
       final bgra = frame.planes[0].bytes;
@@ -399,7 +495,9 @@ class CameraFrameService {
             rgba[di + 3] = bgra[si + 3]; // A
           }
         }
-        return (rgba, w, h);
+        // Rotate the board upright for the model when the device is in
+        // landscape (no-op in portrait, where effective rotation is 0).
+        return _rotateRgba(rgba, w, h, _effectiveRotation());
       } else {
         // Android: YUV420 — convert to RGBA
         final yPlane = frame.planes[0];
@@ -411,10 +509,9 @@ class CameraFrameService {
         final uvRowStride = uPlane.bytesPerRow;
         final uvPixelStride = uPlane.bytesPerPixel ?? 1;
 
-        // DartsMind: apply rotation from imageInfo.getRotationDegrees() to
-        // ensure the image is portrait before sending to AI.
-        // On most Android phones, sensorOrientation is 90 (sensor is landscape).
-        final rotation = _sensorOrientation ?? 0;
+        // Rotate so the board is upright for the model in any device
+        // orientation (portrait OR landscape) — see _effectiveRotation.
+        final rotation = _effectiveRotation();
 
         if (rotation == 90) {
           // Rotate 90° CW: (x, y) → (h-1-y, x), output is h×w
@@ -523,7 +620,7 @@ class CameraFrameService {
         yRowStride: frame.planes[0].bytesPerRow,
         uvRowStride: frame.planes[1].bytesPerRow,
         uvPixelStride: frame.planes[1].bytesPerPixel ?? 1,
-        rotation: _sensorOrientation ?? 0,
+        rotation: _effectiveRotation(),
       );
     } catch (e) {
       debugPrint('[CameraFrameService] captureYuvPlanes error: $e');

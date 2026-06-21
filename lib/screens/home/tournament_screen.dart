@@ -241,8 +241,8 @@ class _PlayingTournamentsTab extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         l10n.registerForTournamentHint,
-                        style: TextStyle(
-                          color: AppTheme.textSecondary.withValues(alpha: 0.7),
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
                           fontSize: 14,
                         ),
                         textAlign: TextAlign.center,
@@ -410,6 +410,22 @@ class _TournamentCardState extends State<_TournamentCard> {
       if (!mounted) return;
       if (authProvider.currentUser?.isEmailVerified == false) {
         _showEmailVerificationDialog(context, authProvider);
+        return;
+      }
+      // Participation conditions gate (rank / premium). Backend enforces too.
+      final isPremium = context.read<SubscriptionProvider>().isPremiumActive;
+      final eligibility = widget.tournament.eligibilityFor(
+        userRank: authProvider.currentUser?.rank,
+        isPremium: isPremium,
+      );
+      if (eligibility != TournamentEligibility.eligible) {
+        final l10n = AppLocalizations.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(eligibility == TournamentEligibility.premiumRequired
+              ? l10n.tournamentNotEligiblePremium
+              : l10n.tournamentNotEligibleRank),
+          backgroundColor: AppTheme.error,
+        ));
         return;
       }
     }
@@ -637,22 +653,57 @@ class _TournamentCardState extends State<_TournamentCard> {
                       ),
                     ],
                   ),
+                  if (tournament.hasParticipationConditions) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        if (tournament.premiumRequired)
+                          _InfoChip(
+                            icon: Icons.workspace_premium,
+                            label: 'Premium',
+                            color: AppTheme.accent,
+                          ),
+                        if (tournament.hasRankRequirement)
+                          _InfoChip(
+                            icon: Icons.shield,
+                            label: tournament.rankRequirementLabel,
+                            color: AppTheme.primary,
+                          ),
+                      ],
+                    ),
+                  ],
                   if (tournament.hasPrize) ...[
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.15),
+                        color: AppTheme.accent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
                       ),
-                      child: Text(
-                        tournament.hasCashPrize ? '💰 Winner Prize: ${tournament.formattedPrize}' : '🏆 Winner Prize: ${tournament.formattedPrize}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.amber,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            tournament.hasCashPrize ? Icons.attach_money : Icons.emoji_events,
+                            size: 14,
+                            color: AppTheme.accent,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '${l10n.prizeLabel}: ${tournament.formattedPrize}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.accent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

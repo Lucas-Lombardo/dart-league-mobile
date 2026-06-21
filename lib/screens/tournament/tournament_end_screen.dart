@@ -97,6 +97,22 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     _loadBracket();
   }
 
+  bool _reducedMotionApplied = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respect the OS "reduce motion" setting: jump straight to the final
+    // state and stop the looping glow / confetti.
+    if (!_reducedMotionApplied && MediaQuery.of(context).disableAnimations) {
+      _reducedMotionApplied = true;
+      _mainCtrl.stop();
+      _mainCtrl.value = 1.0;
+      _glowCtrl.stop();
+      _confettiCtrl.stop();
+    }
+  }
+
   Future<void> _loadBracket() async {
     try {
       final matches = await TournamentService.getBracket(widget.tournamentId);
@@ -134,9 +150,9 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
   }
 
   Color get _medalColor {
-    if (_placement == 1) return const Color(0xFFFFD700);
-    if (_placement == 2) return const Color(0xFFC0C0C0);
-    if (_placement <= 4) return const Color(0xFFCD7F32);
+    if (_placement == 1) return AppTheme.gold;
+    if (_placement == 2) return AppTheme.silver;
+    if (_placement <= 4) return AppTheme.bronze;
     return AppTheme.error;
   }
 
@@ -176,7 +192,7 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
           decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
           child: Stack(
             children: [
-              if (_placement == 1)
+              if (_placement == 1 && !MediaQuery.of(context).disableAnimations)
                 AnimatedBuilder(
                   animation: _confettiCtrl,
                   builder: (_, __) => CustomPaint(

@@ -18,6 +18,12 @@ class AppTheme {
   static const Color success = Color(0xFF22C55E); // Green 500
   static const Color error = Color(0xFFEF4444); // Red 500
 
+  // Medal / placement colors (1st / 2nd / 3rd) — shared so gold/silver/bronze
+  // stay consistent across the history card and the end-of-tournament screen.
+  static const Color gold = Color(0xFFFFD700);
+  static const Color silver = Color(0xFFC0C0C0);
+  static const Color bronze = Color(0xFFCD7F32);
+
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primary, primaryDark],

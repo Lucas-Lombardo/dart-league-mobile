@@ -9,6 +9,7 @@ import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
 import '../providers/friends_provider.dart';
+import '../providers/tournament_provider.dart';
 import '../main.dart' show routeObserver;
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
@@ -27,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with RouteAware {
   int _currentIndex = 2; // Start at Play (now index 2)
   final _refreshNotifier = ValueNotifier<int>(0);
+  TournamentProvider? _tournamentProvider;
 
   final List<Widget> _fixedScreens = const [
     StatsScreen(),
@@ -34,6 +36,20 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     FriendsScreen(),
     LeaderboardScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Start tournament real-time once we're in the authenticated shell. This
+    // wires the socket listeners (previously never called) + the polling
+    // fallback so users actually learn when their match is ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tp = context.read<TournamentProvider>();
+      _tournamentProvider = tp;
+      tp.startRealtime();
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -44,6 +60,8 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    // Tear down on logout (HomeScreen is removed from the tree).
+    _tournamentProvider?.stopRealtime();
     _refreshNotifier.dispose();
     super.dispose();
   }
@@ -241,6 +259,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     final isPlayTab = index == 2; // Play is middle tab
     final showCircle = isSelected && isPlayTab;
     final isFriendsTab = index == 3;
+    final isTournamentTab = index == 1;
     
     return GestureDetector(
       onTap: () {
@@ -282,12 +301,36 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     ),
                   ),
                 ),
+                if (isTournamentTab)
+                  Consumer<TournamentProvider>(
+                    builder: (context, tournamentProvider, _) {
+                      if (!tournamentProvider.hasPendingInvite) {
+                        return const SizedBox.shrink();
+                      }
+                      return Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.error,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.background, width: 2),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 14,
+                            minHeight: 14,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 if (isFriendsTab)
                   Consumer<FriendsProvider>(
                     builder: (context, friendsProvider, _) {
                       final count = friendsProvider.pendingRequestsCount;
                       if (count == 0) return const SizedBox.shrink();
-                      
+
                       return Positioned(
                         right: -2,
                         top: -2,

@@ -383,6 +383,22 @@ abstract class AppLocalizations {
   String get unknown;
   String get eloReward;
 
+  // Tournament participation conditions
+  String get tournamentRequirements;
+  String get tournamentPremiumRequired;
+  String get tournamentRankRequired;
+  String get tournamentNotEligiblePremium;
+  String get tournamentNotEligibleRank;
+
+  // Tournament history / states
+  String get tournamentHistoryTitle;
+  String get noTournamentHistory;
+  String get noTournamentHistoryHint;
+  String get players;
+  String get tournamentLoadError;
+  String get matchWindowExpiredTitle;
+  String get matchWindowExpiredHint;
+
   // Tournament Game
   String get forfeitTournamentWarning;
   String get tournamentAppBarTitle;

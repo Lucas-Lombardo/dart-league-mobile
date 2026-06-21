@@ -186,8 +186,8 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       // is NOT sufficient on its own — Flutter defers disposing the screen
       // beneath the still-animating GameScreen until the push transition
       // completes (~300ms later), so that disable() lands after this re-assert.
-      // The authoritative re-assert lives in BaseGameScreenState, which re-fires
-      // enable() when its entry transition completes. This is just early cover.
+      // The authoritative re-assert lives in BaseGameScreenState, which keeps
+      // re-firing enable() on a short periodic timer. This is just early cover.
       WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
     }
 

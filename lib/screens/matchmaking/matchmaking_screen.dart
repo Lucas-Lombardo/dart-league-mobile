@@ -98,11 +98,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     WidgetsBinding.instance.removeObserver(this);
     _rotationController.dispose();
     _pulseController.dispose();
-    // Releasing the wakelock here is safe: this dispose() runs ~300ms after the
-    // match-found navigation (Flutter defers disposing the screen beneath the
-    // animating GameScreen until its push transition completes), and
-    // BaseGameScreenState re-asserts the wakelock exactly on that transition
-    // completion — so this disable can't leave the match able to sleep.
+    // Releasing the wakelock here is safe: BaseGameScreenState re-asserts the
+    // wakelock on a short periodic timer for the whole match, so this late
+    // disable() (it runs ~300ms after the match-found navigation, once the
+    // GameScreen push transition completes) is recovered within one tick and
+    // can't leave the match able to sleep.
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
     super.dispose();

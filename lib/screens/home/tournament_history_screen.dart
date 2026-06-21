@@ -5,6 +5,7 @@ import '../../models/tournament.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../l10n/app_localizations.dart';
 import 'tournament_detail_screen.dart';
 
 class TournamentHistoryScreen extends StatefulWidget {
@@ -28,14 +29,15 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.surface,
         elevation: 0,
-        title: const Text(
-          'Tournament History',
-          style: TextStyle(
+        title: Text(
+          l10n.tournamentHistoryTitle,
+          style: const TextStyle(
             color: AppTheme.textPrimary,
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -43,6 +45,7 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
           onPressed: () {
             HapticService.lightImpact();
             Navigator.pop(context);
@@ -73,18 +76,18 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
                           color: AppTheme.textSecondary.withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'No Tournament History',
-                          style: TextStyle(
+                        Text(
+                          l10n.noTournamentHistory,
+                          style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 16,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Complete tournaments to see your history here',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary.withValues(alpha: 0.7),
+                          l10n.noTournamentHistoryHint,
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
                             fontSize: 14,
                           ),
                           textAlign: TextAlign.center,
@@ -120,6 +123,7 @@ class _TournamentHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return GestureDetector(
       onTap: () {
         HapticService.lightImpact();
@@ -229,13 +233,26 @@ class _TournamentHistoryCard extends StatelessWidget {
                         color: _getPlacementColor(tournament.placement).withValues(alpha: 0.4),
                       ),
                     ),
-                    child: Text(
-                      tournament.placementDisplay,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: _getPlacementColor(tournament.placement),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (tournament.placement != null && tournament.placement! <= 3) ...[
+                          Icon(
+                            Icons.emoji_events,
+                            size: 14,
+                            color: _getPlacementColor(tournament.placement),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          tournament.placementDisplay,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: _getPlacementColor(tournament.placement),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -245,7 +262,7 @@ class _TournamentHistoryCard extends StatelessWidget {
                 children: [
                   _InfoChip(
                     icon: Icons.people,
-                    label: '${tournament.totalParticipants} players',
+                    label: '${tournament.totalParticipants} ${l10n.players}',
                   ),
                   const SizedBox(width: 10),
                   if (tournament.isWinner) ...[
@@ -289,7 +306,7 @@ class _TournamentHistoryCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Winner: ${tournament.winnerUsername}',
+                        '${l10n.winner}: ${tournament.winnerUsername}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppTheme.textSecondary,
@@ -309,9 +326,9 @@ class _TournamentHistoryCard extends StatelessWidget {
 
   Color _getPlacementColor(int? placement) {
     if (placement == null) return AppTheme.textSecondary;
-    if (placement == 1) return AppTheme.accent;
-    if (placement == 2) return const Color(0xFFC0C0C0);
-    if (placement == 3) return const Color(0xFFCD7F32);
+    if (placement == 1) return AppTheme.gold;
+    if (placement == 2) return AppTheme.silver;
+    if (placement == 3) return AppTheme.bronze;
     return AppTheme.textSecondary;
   }
 

@@ -103,7 +103,7 @@ class NativeInferencePlugin: NSObject {
             return
         }
         guard let modelPath = findModelPath() else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "t225.tflite not found in bundle", details: nil))
+            result(FlutterError(code: "MODEL_NOT_FOUND", message: "t223.tflite/t225.tflite not found in bundle", details: nil))
             return
         }
 
@@ -195,12 +195,15 @@ class NativeInferencePlugin: NSObject {
 
     private func findModelPath() -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/
-        for dir in [
-            "Frameworks/App.framework/flutter_assets/assets/models/t225",
-            "flutter_assets/assets/models/t225",
-            "t225"
-        ] {
-            if let p = Bundle.main.path(forResource: dir, ofType: "tflite") { return p }
+        // Prefer t223; fall back to t225 if absent.
+        for name in ["t223", "t225"] {
+            for dir in [
+                "Frameworks/App.framework/flutter_assets/assets/models/\(name)",
+                "flutter_assets/assets/models/\(name)",
+                name
+            ] {
+                if let p = Bundle.main.path(forResource: dir, ofType: "tflite") { return p }
+            }
         }
         return nil
     }

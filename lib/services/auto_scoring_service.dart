@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -29,12 +28,6 @@ const double _maxPixelDiff = 8.0;
 const double _maxShiftThreshold = 40.0;
 const int _maxShiftFrames = 2;
 const double _defaultZeroProximity = 3.0;
-// DartsMind: no fixed interval — runs inference back-to-back.
-// CameraX's STRATEGY_KEEP_ONLY_LATEST + detectInProgress flag means it
-// processes as fast as inference allows (~200-400ms per frame = 2.5-5 fps).
-// We mirror this: small gap between cycles to yield to UI, but no artificial delay.
-const Duration _minCycleInterval = Duration(milliseconds: 50);
-
 // DartsMind frame skipping (DVMind.java: everyXFrame = 2)
 // Process every Nth frame to match DartsMind's frame rate control.
 // Applied on both Android and iOS: even with CoreML/GPU delegates inference
@@ -91,8 +84,7 @@ class TipGroup {
   double createdTime; // seconds
   double latestVisibleTime; // seconds
   TipVisibility visibility;
-  int priority; // 0=normal, 1=low (maybeFake)
-  bool? maybeFake;
+  int priority; // 0=normal, 1=low (demoted phantom)
   CnfPoint? fixedAvgCnfP;
 
   TipGroup({required this.id, required List<CnfPoint?> initialTips})
@@ -218,7 +210,6 @@ class AutoScoringService extends ChangeNotifier {
   List<TipGroup> _tipGroups = [];
   List<ShootGroup> _shootGroups = [];
   List<bool> _emptyBoardFlags = [];
-  bool _shouldAutoSwitchWhenEmptyBoard = false;
 
   // Latest frame scores keyed by tip position for lookup
   Map<String, DartScore> _latestScores = {};
@@ -226,7 +217,7 @@ class AutoScoringService extends ChangeNotifier {
   // Shaking detection (DVMind.java: shiftValues, isShaking)
   List<double?> _shiftValues = [];
   bool _isShaking = false;
-  double _zeroProximity = _defaultZeroProximity;
+  final double _zeroProximity = _defaultZeroProximity;
   CnfPoint? _prevBoardCenter; // for shift computation
 
   // Slot assignment
@@ -409,7 +400,6 @@ class AutoScoringService extends ChangeNotifier {
     _tipGroups = [];
     _shootGroups = [];
     _emptyBoardFlags = [];
-    _shouldAutoSwitchWhenEmptyBoard = false;
     _shiftValues = [];
     _isShaking = false;
     _prevBoardCenter = null;
@@ -749,6 +739,15 @@ class AutoScoringService extends ChangeNotifier {
   /// inline during the pipeline and appear just above this block for the frame.
   void _dumpScoringState(ScoringResult result, List<CnfPoint> tipCnfPoints) {
     if (!verboseScoringLog) return;
+    // Only dump frames where something is happening — a tip was detected, or a
+    // group/dart is being tracked. Idle board-watching frames (no tips, no
+    // groups) carry no information and would otherwise flood the log, so we
+    // skip them. Lifecycle events (EMIT/demote/reattach) are logged separately
+    // and always shown.
+    final idle = tipCnfPoints.isEmpty &&
+        _tipGroups.isEmpty &&
+        _shootGroups.isEmpty;
+    if (idle) return;
     _trace(
         '── ${_lastInferenceMs}ms | tips=${result.dartTips.length} cp=${result.calibrationPoints.length} '
         'shaking=${_isShaking ? 1 : 0} wait=${_waitingForEmptyBoard ? 1 : 0} ──');
@@ -1011,7 +1010,6 @@ class AutoScoringService extends ChangeNotifier {
       for (final shoot in shoots) {
         _shootGroups.add(ShootGroup(shoot));
       }
-      _shouldAutoSwitchWhenEmptyBoard = true;
       _analyseShootGroups(shoots.length);
       return;
     }
@@ -1055,7 +1053,6 @@ class AutoScoringService extends ChangeNotifier {
             _hasNearbyInvisibleShoots(shoot);
         _shootGroups.add(sg);
       }
-      _shouldAutoSwitchWhenEmptyBoard = true;
     }
     _analyseShootGroups(shoots.length);
   }
@@ -1324,7 +1321,6 @@ class AutoScoringService extends ChangeNotifier {
     copy.latestVisibleTime = tg.latestVisibleTime;
     copy.visibility = tg.visibility;
     copy.priority = tg.priority;
-    copy.maybeFake = tg.maybeFake;
     return copy;
   }
 
@@ -1367,6 +1363,47 @@ class AutoScoringService extends ChangeNotifier {
   // demotion checkpoint below (length >= 4) so the duplicate demotion always
   // runs before a phantom could be committed (we cannot un-emit a dart).
   static const int _phantomConfirmFrames = 5;
+
+  // ---- Duplicate-suppression / safe-emit tuning --------------------------
+  // Duplicate radius in normalised board space (Shoot.actualPoint space,
+  // boardR == 1). DartsMind's 1/17 ≈ 0.0588 — the band where a re-detected
+  // phantom of the SAME physical dart lands: it escaped the 1.6-board-unit tip
+  // merge (so it spawned its own group) yet is still close to the real dart.
+  static const double _dupRadiusNorm = 0.058823529411764705;
+
+  // A counted shoot group must be detected in at least this many frames before
+  // it may be emitted. Filters brief detector flicker and very-fresh phantoms,
+  // neither of which has accumulated real hits yet. We never un-emit (a shown
+  // score must never change or vanish), so the first emit has to be trustworthy.
+  // A counted group needs only 1 detection to emit — it already had to pass
+  // the TipGroup clearVisible gate (≥2 detected tip frames) to become a Shoot,
+  // so this isn't raw noise. Kept at 1 so normal scoring emits as fast as the
+  // original pipeline; the contention wait below (which only triggers for a
+  // genuinely co-located competitor) is what guards against duplicates, so it
+  // adds latency ONLY in the rare contested case, never to ordinary darts.
+  // On slow-frame devices (Android) a larger value here translates directly to
+  // seconds of lag per dart, so it must stay small.
+  static const int _emitMinHits = 1;
+
+  // Generalised phantom suppression (revives DartsMind's maybeFake removal:
+  // "a more certain dart appeared, remove the previous one"). Two counted
+  // groups closer than _dupRadiusNorm are judged the same physical dart when
+  // one is clearly more consistently detected: its fill ratio must lead by at
+  // least _phantomFillRatioMargin AND it must have at least _phantomHitsMargin
+  // more non-null hits and be solidly established (_phantomStrongMinHits). Two
+  // genuinely distinct darts in a tight cluster are BOTH detected consistently
+  // (similar high fill), so neither is demoted.
+  static const double _phantomFillRatioMargin = 0.34;
+  static const int _phantomHitsMargin = 2;
+  static const int _phantomStrongMinHits = 4;
+
+  // While two co-located counted groups are still young and comparably
+  // detected we cannot yet tell "two real darts" from "one dart + its phantom",
+  // so we hold BOTH back from emitting until either one is demoted (phantom
+  // resolved) or the pair has lasted this many frames (both proven real → emit
+  // both). Holding rather than emit-then-correct is what keeps a shown dart
+  // from ever changing.
+  static const int _contentionResolveFrames = 3;
 
   // ========================================================================
   // DartsMind: analyseShootGroups (faithful port of the duplicate-suppression
@@ -1424,6 +1461,49 @@ class AutoScoringService extends ChangeNotifier {
       }
     }
 
+    // Generalised duplicate suppression — the primary defence against one
+    // physical dart being counted twice, and independent of the narrow rule
+    // above. For every pair of counted groups within the duplicate radius, if
+    // one is clearly more consistently detected than the other, the weaker one
+    // is the same dart re-detected at a jittered position — demote it. Fill
+    // ratio is age-invariant, so a real second dart thrown late (high fill, few
+    // frames) is NOT mistaken for a phantom, and two tight darts (both high
+    // fill) keep each other. Runs every frame and BEFORE _assignSlots, so a
+    // phantom leaves the count before it could ever be emitted.
+    for (final sg in _shootGroups) {
+      if (sg.priority != 0) continue;
+      // Never demote a dart that has already been shown to the user — its slot
+      // is locked (we never retract), so keep it counted to stay consistent.
+      final sgSlot = _slotShootGroupIds.indexOf(sg.id);
+      if (sgSlot >= 0 && _emittedSlots[sgSlot]) continue;
+      final p = _shootGroupAvgPoint(sg);
+      if (p == null) continue;
+      final sgFill = _sgFillRatio(sg);
+      final sgHits = _sgNonNull(sg);
+      for (final other in _shootGroups) {
+        if (identical(other, sg)) continue;
+        if (other.priority != 0) continue;
+        final op = _shootGroupAvgPoint(other);
+        if (op == null) continue;
+        if (_distanceOf2Points(p[0], p[1], op[0], op[1]) >= _dupRadiusNorm) {
+          continue;
+        }
+        // `other` clearly out-detects `sg` → `sg` is the phantom.
+        if (_sgNonNull(other) >= _phantomStrongMinHits &&
+            _sgNonNull(other) >= sgHits + _phantomHitsMargin &&
+            _sgFillRatio(other) - sgFill >= _phantomFillRatioMargin) {
+          sg.priority = 1;
+          final tg = _tipGroups.where((t) => t.id == sg.id).firstOrNull;
+          if (tg != null) tg.priority = 1;
+          _trace('EVENT demote SG ${_sid(sg.id)} '
+              '(phantom fill=${sgFill.toStringAsFixed(2)}/${sgHits}h vs '
+              'SG ${_sid(other.id)} fill=${_sgFillRatio(other).toStringAsFixed(2)}/'
+              '${_sgNonNull(other)}h within 1/17) — not counted');
+          break;
+        }
+      }
+    }
+
     // Remove shoot groups that have been all-null for too long (noise cleanup).
     _shootGroups.removeWhere((sg) {
       if (sg.priority != 0) return false;
@@ -1451,6 +1531,53 @@ class AutoScoringService extends ChangeNotifier {
       return (fp != null && fp.length >= 2) ? [fp[0], fp[1]] : null;
     }
     return [sx / n, sy / n];
+  }
+
+  /// Number of frames in which a shoot group was actually detected.
+  int _sgNonNull(ShootGroup sg) => sg.shoots.whereType<Shoot>().length;
+
+  /// Fraction of a shoot group's (capped) history in which it was detected.
+  /// Age-invariant: a real dart — even one thrown late in the turn — has a high
+  /// fill ratio because it is seen nearly every frame since it landed, whereas a
+  /// phantom is sporadic and its ratio stays low. This is the signal that tells
+  /// a phantom apart from a genuine second dart sitting in a tight cluster.
+  double _sgFillRatio(ShootGroup sg) {
+    if (sg.shoots.isEmpty) return 0.0;
+    return _sgNonNull(sg) / sg.shoots.length;
+  }
+
+  /// True while another counted, not-yet-committed group sits within the
+  /// duplicate radius and we cannot yet safely decide whether the two are two
+  /// real darts or one dart plus its phantom. We hold [sg] back until either the
+  /// phantom is demoted (drops out of the count) or the pair has lasted
+  /// [_contentionResolveFrames] (both proven real → both emit). This is what
+  /// lets us suppress duplicates without ever retracting a dart already shown.
+  bool _hasUnresolvedNearbyCompetitor(ShootGroup sg) {
+    final p = _shootGroupAvgPoint(sg);
+    if (p == null) return false;
+    for (final other in _shootGroups) {
+      if (identical(other, sg)) continue;
+      if (other.priority != 0) continue; // demoted → resolved
+      final oIdx = _slotShootGroupIds.indexOf(other.id);
+      if (oIdx >= 0 && _emittedSlots[oIdx]) continue; // already committed → resolved
+      final op = _shootGroupAvgPoint(other);
+      if (op == null) continue;
+      if (_distanceOf2Points(p[0], p[1], op[0], op[1]) >= _dupRadiusNorm) {
+        continue;
+      }
+      // Co-located, and `other` is neither demoted nor committed. While the
+      // pair is still young, wait — the demotion pass needs a few frames to
+      // expose a phantom's low fill ratio.
+      final pairFrames = max(sg.shoots.length, other.shoots.length);
+      if (pairFrames < _contentionResolveFrames) return true;
+      // Old enough but `other` still clearly out-detects us → we are the likely
+      // phantom; keep waiting (it will be demoted, or `other` emits first).
+      if (_sgNonNull(other) > _sgNonNull(sg) &&
+          _sgFillRatio(other) - _sgFillRatio(sg) >= _phantomFillRatioMargin) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // ========================================================================
@@ -1551,19 +1678,26 @@ class AutoScoringService extends ChangeNotifier {
       if (sg.priority != 0) continue;
       if (_slotShootGroupIds.contains(sg.id)) continue;
 
-      // Emission stability gate — the bridge between DartsMind's reactive count
-      // and our emit-once architecture. DartsMind shows a dart immediately, then
-      // demotes a phantom at its 4th frame (analyseShootGroups). We cannot
-      // un-emit, so for a SUSPECT group — one born next to a dart whose tip had
-      // just gone invisible (the split signature) — we WAIT until the demotion
-      // checkpoint has passed (length >= _phantomConfirmFrames) before emitting.
-      // By then a phantom is priority 1 (skipped above) and a real dart has
-      // survived. Normal darts (not born near an invisible shoot) are never
-      // delayed, so this adds no latency to ordinary scoring.
+      // Universal settle gate. We never un-emit (constraint: a shown dart's
+      // score must never change or vanish), so a dart is committed only once it
+      // is safe on three counts:
+      //  (a) it has been detected in at least _emitMinHits frames — filters
+      //      detector flicker and very-fresh phantoms;
+      //  (b) the legacy suspect delay still applies — a group born next to a
+      //      dart whose tip had just gone invisible (the split signature) waits
+      //      out the demotion checkpoint; and
+      //  (c) no unresolved co-located competitor remains — we cannot yet tell a
+      //      real second dart from this dart's phantom, so we hold until the
+      //      duplicate suppressor demotes the loser or both prove real.
+      // The common case — a clean, isolated dart — trips none of (b)/(c) and
+      // emits as soon as it has _emitMinHits hits, so ordinary scoring stays
+      // responsive.
+      if (_sgNonNull(sg) < _emitMinHits) continue;
       if (sg.hasNearbyInvisibleShootsWhenCreated &&
           sg.shoots.length < _phantomConfirmFrames) {
         continue;
       }
+      if (_hasUnresolvedNearbyCompetitor(sg)) continue;
 
       final score = _lookupScore(sg);
       if (score == null) continue;

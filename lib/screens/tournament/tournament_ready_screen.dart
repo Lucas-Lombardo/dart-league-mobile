@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
+import '../../utils/tournament_round.dart';
 import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
 import '../../providers/tournament_game_provider.dart';
@@ -21,6 +23,7 @@ class TournamentReadyScreen extends StatefulWidget {
   final String player1Id;
   final String player2Id;
   final int bestOf;
+  final DateTime? inviteSentAt;
 
   const TournamentReadyScreen({
     super.key,
@@ -33,6 +36,7 @@ class TournamentReadyScreen extends StatefulWidget {
     required this.player1Id,
     required this.player2Id,
     required this.bestOf,
+    this.inviteSentAt,
   });
 
   @override
@@ -45,6 +49,12 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   bool _opponentReady = false;
   late AnimationController _pulseController;
 
+  // 15-minute join window (mirrors the backend MATCH_INVITE_TIMEOUT).
+  static const Duration _joinWindow = Duration(minutes: 15);
+  Timer? _windowTimer;
+  Duration _remaining = Duration.zero;
+  bool _expired = false;
+
   @override
   void initState() {
     super.initState();
@@ -54,7 +64,37 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
+    _startWindowCountdown();
     _setupListeners();
+  }
+
+  void _startWindowCountdown() {
+    final sentAt = widget.inviteSentAt;
+    if (sentAt == null) return;
+    final deadline = sentAt.add(_joinWindow);
+
+    void tick() {
+      final remaining = deadline.difference(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        if (remaining <= Duration.zero) {
+          _remaining = Duration.zero;
+          _expired = true;
+          _windowTimer?.cancel();
+        } else {
+          _remaining = remaining;
+        }
+      });
+    }
+
+    tick();
+    _windowTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  String _formatRemaining(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Future<void> _setupListeners() async {
@@ -148,6 +188,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
   @override
   void dispose() {
+    _windowTimer?.cancel();
     _pulseController.dispose();
     SocketService.off('matchReadyUpdate');
     SocketService.off('tournamentMatchStart');
@@ -157,8 +198,9 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final user = context.read<AuthProvider>().currentUser;
-    final myUsername = user?.username ?? 'You';
+    final myUsername = user?.username ?? l10n.you;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -187,7 +229,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${widget.roundName.replaceAll('_', ' ').toUpperCase()} • ${AppLocalizations.of(context).bestOf} ${widget.bestOf}',
+                    '${localizedRoundName(widget.roundName, l10n).toUpperCase()} • ${l10n.bestOf} ${widget.bestOf}',
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 13,
@@ -205,11 +247,11 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
               child: Row(
                 children: [
                   Expanded(child: _buildPlayerCard(myUsername, _myReady, true)),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      'VS',
-                      style: TextStyle(
+                      l10n.vs.toUpperCase(),
+                      style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
@@ -224,38 +266,69 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
             const SizedBox(height: 48),
 
-            // Waiting indicator
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Opacity(
-                  opacity: 0.5 + (_pulseController.value * 0.5),
-                  child: child,
-                );
-              },
-              child: Column(
+            // Waiting indicator / expired state
+            if (_expired)
+              Column(
                 children: [
-                  const SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: CircularProgressIndicator(
-                      color: AppTheme.primary,
-                      strokeWidth: 3,
+                  const Icon(Icons.timer_off_outlined, size: 44, color: AppTheme.error),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.matchWindowExpiredTitle,
+                    style: const TextStyle(
+                      color: AppTheme.error,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _opponentReady
-                        ? AppLocalizations.of(context).startingMatch
-                        : AppLocalizations.of(context).waitingForOpponent,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 16,
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      l10n.matchWindowExpiredHint,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
                     ),
                   ),
                 ],
+              )
+            else
+              Column(
+                children: [
+                  AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Opacity(
+                        opacity: 0.5 + (_pulseController.value * 0.5),
+                        child: child,
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            color: AppTheme.primary,
+                            strokeWidth: 3,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _opponentReady ? l10n.startingMatch : l10n.waitingForOpponent,
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.inviteSentAt != null && !_opponentReady) ...[
+                    const SizedBox(height: 16),
+                    _buildCountdownPill(),
+                  ],
+                ],
               ),
-            ),
 
             const Spacer(),
 
@@ -278,6 +351,35 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCountdownPill() {
+    final low = _remaining.inSeconds <= 60;
+    final color = low ? AppTheme.error : AppTheme.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            _formatRemaining(_remaining),
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }

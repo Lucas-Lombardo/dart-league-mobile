@@ -4,6 +4,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/tournament_round.dart';
 import 'tournament_end_screen.dart';
 
 class TournamentMatchResultScreen extends StatelessWidget {
@@ -128,7 +129,7 @@ class TournamentMatchResultScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          roundName.replaceAll('_', ' ').toUpperCase(),
+                          localizedRoundName(roundName, AppLocalizations.of(context)).toUpperCase(),
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 12,

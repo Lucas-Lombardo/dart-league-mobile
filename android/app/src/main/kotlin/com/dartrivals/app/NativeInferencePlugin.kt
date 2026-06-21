@@ -43,6 +43,29 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var flutterAssets: FlutterPlugin.FlutterAssets
     private var interpreter: Interpreter? = null
 
+    // Per-frame timing logs fire every frame and flood logcat. Off by default;
+    // flip to true only to profile the native preprocess/inference breakdown.
+    private val verboseTiming = false
+
+    // Double-buffered transfer arrays for the ~1.1MB model output. Allocating a
+    // fresh ByteArray every frame was a major source of Android GC thrashing.
+    // Two buffers alternate: while one is being serialized to Dart on the main
+    // thread, the next frame fills the other. Safe because inference runs
+    // serially on dvExecutor and frames are hundreds of ms apart — far longer
+    // than channel serialization, so a buffer is never overwritten mid-send.
+    private val outputXfer = arrayOfNulls<ByteArray>(2)
+    private var outputXferIdx = 0
+
+    private fun nextOutputBuffer(size: Int): ByteArray {
+        outputXferIdx = outputXferIdx xor 1
+        var b = outputXfer[outputXferIdx]
+        if (b == null || b.size != size) {
+            b = ByteArray(size)
+            outputXfer[outputXferIdx] = b
+        }
+        return b
+    }
+
     // Handler for posting results back to the main/UI thread.
     // MethodChannel.Result must be called on the platform thread.
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -344,11 +367,11 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val inferenceMs = System.currentTimeMillis() - inferStart
 
             val totalMs = System.currentTimeMillis() - startTime
-            println("[NativeInference-Android] ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
+            if (verboseTiming) println("[NativeInference-Android] ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
 
             // 3. Extract output bytes
             outBuf.rewind()
-            val outputBytes = ByteArray(outBuf.remaining())
+            val outputBytes = nextOutputBuffer(outBuf.remaining())
             outBuf.get(outputBytes)
 
             // 4. Scale factors
@@ -484,10 +507,10 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val inferenceMs = System.currentTimeMillis() - inferStart
 
             val totalMs = System.currentTimeMillis() - startTime
-            println("[NativeInference-Android] YUV-Bitmap: ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
+            if (verboseTiming) println("[NativeInference-Android] YUV-Bitmap: ${totalMs}ms (preprocess=${preprocessMs} inference=${inferenceMs})")
 
             outBuf.rewind()
-            val outputBytes = ByteArray(outBuf.remaining())
+            val outputBytes = nextOutputBuffer(outBuf.remaining())
             outBuf.get(outputBytes)
 
             // Scale factors based on rotated dimensions (DartsMind: Detector.detectVideoBuffer)

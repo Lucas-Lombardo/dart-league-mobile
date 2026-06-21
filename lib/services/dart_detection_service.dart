@@ -50,7 +50,7 @@ class DartDetectionService {
     if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/t225.tflite',
+        'assets/models/t223.tflite',
         options: cpuOptions,
       );
       debugPrint('[DartDetection] Model loaded on web with CPU (4 threads)');

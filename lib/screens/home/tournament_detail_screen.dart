@@ -67,10 +67,35 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> with Si
 
           final tournament = provider.currentTournament;
           if (tournament == null) {
+            final hasError = provider.error != null;
             return Center(
-              child: Text(
-                l10n.tournamentNotFound,
-                style: const TextStyle(color: AppTheme.textSecondary),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      hasError ? Icons.cloud_off : Icons.search_off,
+                      size: 56,
+                      color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      hasError ? l10n.tournamentLoadError : l10n.tournamentNotFound,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        provider.clearError();
+                        _loadData();
+                      },
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(l10n.retry),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -288,11 +313,29 @@ class _TournamentHeader extends StatelessWidget {
               icon: Icons.emoji_events,
               label: l10n.prizeLabel,
               value: tournament.formattedPrize,
-              valueColor: Colors.amber,
+              valueColor: AppTheme.accent,
             ),
           ],
           const SizedBox(height: 8),
           _PriceInfoRow(tournament: tournament, label: l10n.entryFee),
+          if (tournament.premiumRequired) ...[
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.workspace_premium,
+              label: l10n.tournamentRequirements,
+              value: l10n.tournamentPremiumRequired,
+              valueColor: AppTheme.accent,
+            ),
+          ],
+          if (tournament.hasRankRequirement) ...[
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.shield,
+              label: l10n.tournamentRankRequired,
+              value: tournament.rankRequirementLabel,
+              valueColor: AppTheme.primary,
+            ),
+          ],
           if (tournament.isInProgress) ...[
             const SizedBox(height: 8),
             _InfoRow(
@@ -325,7 +368,7 @@ class _TournamentHeader extends StatelessWidget {
                   if (tournament.isCompleted && tournament.hasPrize) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Prize: ${tournament.formattedPrize}',
+                      '${l10n.prizeLabel}: ${tournament.formattedPrize}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppTheme.accent,
@@ -608,6 +651,45 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
           ],
         ),
       );
+    }
+
+    // Block registration when the user doesn't meet participation conditions.
+    // (The backend enforces this too — this is a clear, pre-emptive UX gate.)
+    if (!widget.isRegistered) {
+      final isPremium = context.select<SubscriptionProvider, bool>((p) => p.isPremiumActive);
+      final userRank = context.select<AuthProvider, String?>((p) => p.currentUser?.rank);
+      final eligibility = widget.tournament.eligibilityFor(userRank: userRank, isPremium: isPremium);
+      if (eligibility != TournamentEligibility.eligible) {
+        final isPremiumIssue = eligibility == TournamentEligibility.premiumRequired;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLight.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(isPremiumIssue ? Icons.workspace_premium : Icons.lock_outline,
+                  size: 18, color: AppTheme.accent),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  isPremiumIssue ? l10n.tournamentNotEligiblePremium : l10n.tournamentNotEligibleRank,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
     }
 
     return Container(

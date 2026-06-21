@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import '../models/tournament.dart';
@@ -17,6 +18,10 @@ class TournamentProvider extends ChangeNotifier {
   List<TournamentMatch> _currentBracket = [];
   bool _isLoading = false;
   String? _error;
+
+  bool _realtimeStarted = false;
+  Timer? _pollTimer;
+  static const Duration _pollInterval = Duration(seconds: 30);
 
   List<Tournament> get allTournaments => _allTournaments;
   List<Tournament> get upcomingTournaments => _upcomingTournaments;
@@ -223,6 +228,56 @@ class TournamentProvider extends ChangeNotifier {
     }
   }
 
+  /// Wire up real-time tournament events AND a polling fallback. Idempotent —
+  /// safe to call on every HomeScreen mount.
+  ///
+  /// Why a poll fallback: push-notification receiving is unreliable on this
+  /// app and websocket events only arrive while the socket is connected, so
+  /// without a periodic refresh a user could silently miss the 15-minute
+  /// window to join their tournament match (= automatic forfeit). The poll is
+  /// the safety net; the socket is the fast path.
+  Future<void> startRealtime() async {
+    if (_realtimeStarted) return;
+    _realtimeStarted = true;
+
+    // Re-bind listeners after a socket reconnect. Uses the additive listener
+    // API so we don't clobber matchmaking's single-slot reconnect handler.
+    SocketService.addReconnectListener(_handleReconnect);
+
+    try {
+      await SocketService.ensureConnected();
+      setupSocketListeners();
+    } catch (e) {
+      debugPrint('Tournament realtime: socket unavailable, relying on polling: $e');
+    }
+
+    await _pollOnce();
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _pollOnce());
+  }
+
+  void stopRealtime() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    SocketService.removeReconnectListener(_handleReconnect);
+    clearSocketListeners();
+    _realtimeStarted = false;
+  }
+
+  void _handleReconnect() {
+    // The socket may have been disposed/recreated (handlers cleared), so
+    // re-register and refresh to catch anything missed while offline.
+    setupSocketListeners();
+    _pollOnce();
+  }
+
+  // Lightweight refresh used by the poll + reconnect. Deliberately avoids
+  // loadMyTournaments() here because that toggles the loading spinner.
+  Future<void> _pollOnce() async {
+    await loadPendingMatches();
+    await loadActiveMatch();
+  }
+
   void setupSocketListeners() {
     clearSocketListeners();
     try {
@@ -301,7 +356,7 @@ class TournamentProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    clearSocketListeners();
+    stopRealtime();
     super.dispose();
   }
 }

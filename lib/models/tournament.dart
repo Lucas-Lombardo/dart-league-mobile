@@ -1,3 +1,5 @@
+import '../utils/rank_utils.dart';
+
 DateTime? _tryParseDateTime(String? value) {
   if (value == null) return null;
   try {
@@ -8,6 +10,9 @@ DateTime? _tryParseDateTime(String? value) {
 }
 
 const int kPremiumTournamentDiscountPercent = 50;
+
+/// Why a user can't register for a tournament (participation conditions).
+enum TournamentEligibility { eligible, premiumRequired, rankTooLow, rankTooHigh }
 
 class Tournament {
   final String id;
@@ -30,6 +35,9 @@ class Tournament {
   final int prizeAmount;
   final String prizeCurrency;
   final String? prizeDescription;
+  final bool premiumRequired;
+  final String? minRank;
+  final String? maxRank;
 
   Tournament({
     required this.id,
@@ -52,6 +60,9 @@ class Tournament {
     this.prizeAmount = 0,
     this.prizeCurrency = 'eur',
     this.prizeDescription,
+    this.premiumRequired = false,
+    this.minRank,
+    this.maxRank,
   });
 
   factory Tournament.fromJson(Map<String, dynamic> json) {
@@ -76,10 +87,47 @@ class Tournament {
       prizeAmount: json['prizeAmount'] as int? ?? 0,
       prizeCurrency: json['prizeCurrency'] as String? ?? 'eur',
       prizeDescription: json['prizeDescription'] as String?,
+      premiumRequired: json['premiumRequired'] as bool? ?? false,
+      minRank: json['minRank'] as String?,
+      maxRank: json['maxRank'] as String?,
     );
   }
 
   bool get isFree => entryFee == 0;
+
+  bool get hasRankRequirement => minRank != null || maxRank != null;
+  bool get hasParticipationConditions => premiumRequired || hasRankRequirement;
+
+  /// A short human label for the rank requirement, e.g. "Gold+",
+  /// "Up to Platinum", or "Silver – Diamond". Empty when unrestricted.
+  String get rankRequirementLabel {
+    if (minRank != null && maxRank != null) {
+      if (minRank == maxRank) return rankLabel(minRank);
+      return '${rankLabel(minRank)} – ${rankLabel(maxRank)}';
+    }
+    if (minRank != null) return '${rankLabel(minRank)}+';
+    if (maxRank != null) return '≤ ${rankLabel(maxRank)}';
+    return '';
+  }
+
+  /// Evaluate whether a user meets this tournament's participation conditions.
+  /// Mirrors the backend gate so the UI can warn before an attempt; the server
+  /// remains the source of truth.
+  TournamentEligibility eligibilityFor({
+    required String? userRank,
+    required bool isPremium,
+  }) {
+    if (premiumRequired && !isPremium) {
+      return TournamentEligibility.premiumRequired;
+    }
+    if (minRank != null && rankOrder(userRank) < rankOrder(minRank)) {
+      return TournamentEligibility.rankTooLow;
+    }
+    if (maxRank != null && rankOrder(userRank) > rankOrder(maxRank)) {
+      return TournamentEligibility.rankTooHigh;
+    }
+    return TournamentEligibility.eligible;
+  }
 
   bool get hasPrize => prizeType != 'none';
   bool get hasCashPrize => prizeType == 'cash';
@@ -397,9 +445,9 @@ class TournamentHistory {
   
   String get placementDisplay {
     if (placement == null) return 'N/A';
-    if (placement == 1) return '🏆 1st';
-    if (placement == 2) return '🥈 2nd';
-    if (placement == 3) return '🥉 3rd';
+    if (placement == 1) return '1st';
+    if (placement == 2) return '2nd';
+    if (placement == 3) return '3rd';
     return '${placement}th';
   }
 
