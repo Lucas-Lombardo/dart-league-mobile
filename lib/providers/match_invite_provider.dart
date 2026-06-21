@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../services/push_notification_service.dart';
 import '../services/socket_service.dart';
 import '../utils/haptic_service.dart';
 import 'game_provider.dart';
@@ -84,14 +85,38 @@ class MatchInviteProvider with ChangeNotifier {
       await SocketService.ensureConnected();
       _registerListeners();
       _started = true;
+      // Re-pull any invite that arrived while we were offline, both now (after
+      // the listeners are guaranteed attached) and on every reconnect. This is
+      // how an app opened from an invite push surfaces the popup.
+      SocketService.addReconnectListener(_onSocketReconnect);
+      PushNotificationService.onMessageOpened = _handlePushOpened;
+      _requestPendingInvite();
     } catch (e) {
       debugPrint('MatchInviteProvider.start failed: $e');
     }
   }
 
+  /// Ask the server to re-emit any still-pending incoming invite. Safe to call
+  /// repeatedly; the server only replays if one is still cached.
+  void _requestPendingInvite() {
+    if (!_started) return;
+    _safeEmit('get_pending_invite', <String, dynamic>{});
+  }
+
+  void _onSocketReconnect() => _requestPendingInvite();
+
+  /// A notification tap (background or cold start) brought the app forward —
+  /// if it was an invite, pull it now in case the socket stayed connected and
+  /// no reconnect fired.
+  void _handlePushOpened(Map<String, dynamic> data) {
+    if (data['type'] == 'match_invite') _requestPendingInvite();
+  }
+
   void stop() {
     if (!_started) return;
     _started = false;
+    SocketService.removeReconnectListener(_onSocketReconnect);
+    PushNotificationService.onMessageOpened = null;
     _cleanupListeners();
     _incoming = null;
     _outgoingInviteId = null;
@@ -293,6 +318,8 @@ class MatchInviteProvider with ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    SocketService.removeReconnectListener(_onSocketReconnect);
+    PushNotificationService.onMessageOpened = null;
     _cleanupListeners();
     super.dispose();
   }

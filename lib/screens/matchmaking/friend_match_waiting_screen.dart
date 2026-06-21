@@ -46,9 +46,11 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
       duration: const Duration(milliseconds: 2400),
     )..repeat();
 
-    // Backend invites expire after ~60s — surface that locally and release the
-    // server-side invite so we don't linger forever.
-    _timeout = Timer(const Duration(seconds: 65), () {
+    // Backend invites expire after ~150s (FRIEND_INVITE_TTL_MS) — long enough
+    // for an offline friend to open the app from the push and accept. Keep the
+    // local timeout just past that so we only show "expired" once the
+    // server-side invite is truly gone, then release it.
+    _timeout = Timer(const Duration(seconds: 155), () {
       if (!mounted) return;
       final p = context.read<MatchInviteProvider>();
       if (p.outgoingResolved == null && !_expired) {

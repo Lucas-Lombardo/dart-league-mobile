@@ -19,6 +19,33 @@ class PushNotificationService {
   static StreamSubscription<RemoteMessage>? _onMessageOpenedAppSub;
   static StreamSubscription<String>? _onTokenRefreshSub;
 
+  // Invoked when the app is opened by tapping a notification (background or
+  // terminated/cold start). Consumers (e.g. MatchInviteProvider) use the
+  // payload's `type` to react — e.g. pull a pending match invite. Set late?
+  // The most recent tap payload is buffered and flushed the moment a handler
+  // registers, so a cold-start tap that fires before the provider is wired up
+  // is not lost.
+  static void Function(Map<String, dynamic> data)? _onMessageOpened;
+  static Map<String, dynamic>? _bufferedOpenData;
+
+  static set onMessageOpened(void Function(Map<String, dynamic> data)? handler) {
+    _onMessageOpened = handler;
+    if (handler != null && _bufferedOpenData != null) {
+      final data = _bufferedOpenData!;
+      _bufferedOpenData = null;
+      handler(data);
+    }
+  }
+
+  static void _dispatchOpened(Map<String, dynamic> data) {
+    final handler = _onMessageOpened;
+    if (handler != null) {
+      handler(data);
+    } else {
+      _bufferedOpenData = data;
+    }
+  }
+
   static String? get fcmToken => _fcmToken;
 
   static Future<void> initialize() async {
@@ -56,8 +83,17 @@ class PushNotificationService {
       // Handle notification tap when app is in background
       _onMessageOpenedAppSub?.cancel();
       _onMessageOpenedAppSub = FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        debugPrint('🔔 Notification tapped: ${message.data}');
+        debugPrint('🔔 Notification tapped (background): ${message.data}');
+        _dispatchOpened(Map<String, dynamic>.from(message.data));
       });
+
+      // Handle a notification tap that cold-started the app from a terminated
+      // state. Buffered until a handler is registered (see _dispatchOpened).
+      final initialMessage = await _messaging.getInitialMessage();
+      if (initialMessage != null) {
+        debugPrint('🔔 App launched from notification: ${initialMessage.data}');
+        _dispatchOpened(Map<String, dynamic>.from(initialMessage.data));
+      }
 
       // On iOS, FCM cannot mint a token until APNs has delivered one.
       // Poll briefly so getToken() doesn't return null on a cold start.
@@ -131,6 +167,8 @@ class PushNotificationService {
     _onMessageOpenedAppSub = null;
     _onTokenRefreshSub?.cancel();
     _onTokenRefreshSub = null;
+    _onMessageOpened = null;
+    _bufferedOpenData = null;
     _initialized = false;
   }
 
