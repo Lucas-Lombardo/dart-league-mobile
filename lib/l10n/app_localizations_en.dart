@@ -2076,4 +2076,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inviteFailedMsg => 'Could not send the invitation';
   @override
   String get online => 'Online';
+  @override
+  String get updateAvailableTitle => 'Update available';
+  @override
+  String get updateAvailableBody => 'A new version of Dart Rivals is available.';
+  @override
+  String get updateNow => 'Update';
 }

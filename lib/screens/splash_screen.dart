@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../providers/app_update_provider.dart';
 import '../services/push_notification_service.dart';
 import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
@@ -54,6 +55,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _checkAuthAndNavigate() async {
+    // Fire-and-forget update check (non-blocking) so the home banner is ready
+    // by the time we navigate. Runs before any await to avoid context-across-gap.
+    unawaited(context.read<AppUpdateProvider>().check());
+
     final authProvider = context.read<AuthProvider>();
     await authProvider.checkAuthStatus();
 

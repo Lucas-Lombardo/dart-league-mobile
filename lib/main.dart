@@ -19,6 +19,7 @@ import 'providers/tournament_game_provider.dart';
 import 'providers/presence_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/match_invite_provider.dart';
+import 'providers/app_update_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
@@ -124,6 +125,7 @@ class DartLegendsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PlacementProvider()),
         ChangeNotifierProvider(create: (_) => TournamentGameProvider()),
         ChangeNotifierProvider(create: (_) => MatchInviteProvider()),
+        ChangeNotifierProvider(create: (_) => AppUpdateProvider()),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
