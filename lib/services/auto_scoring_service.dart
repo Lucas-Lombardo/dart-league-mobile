@@ -197,6 +197,7 @@ class AutoScoringService extends ChangeNotifier {
   bool _inferenceInProgress = false;
   int _captureSeq = 0;
   bool _modelLoaded = false;
+  bool _modelLoading = false;
   String? _initError;
 
   // DartsMind Android: frame counter for everyXFrame skip
@@ -306,6 +307,7 @@ class AutoScoringService extends ChangeNotifier {
   // Getters
   bool get isCapturing => _capturing;
   bool get modelLoaded => _modelLoaded;
+  bool get isModelLoading => _modelLoading;
   String? get initError => _initError;
   List<DartScore?> get dartSlots => List.unmodifiable(_dartSlots);
   int get turnTotal => _turnTotal;
@@ -335,35 +337,57 @@ class AutoScoringService extends ChangeNotifier {
   // ---- Model loading (DartsMind: Detector.setup → updateTensorData) ------
   Future<void> loadModel() async {
     if (!isSupported) return;
-    try {
-      if (!kIsWeb && Platform.isAndroid) {
-        // Android: load via native plugin ONLY (DartsMind-style GPU/CPU delegate).
-        // Do NOT also load _detector — having two GPU delegates causes conflicts.
-        _nativeInference = NativeInference();
-        await _nativeInference!.loadModel();
-      } else {
-        // iOS: prefer the native plugin so inference runs on a GCD background
-        // queue instead of blocking the main Dart isolate. Fall back to the
-        // Dart-side interpreter only if the native plugin fails to load.
-        try {
+    // Idempotent + non-reentrant: skip if already loaded or a load is running.
+    // The match screen calls this at init AND retries it mid-match when a prior
+    // load failed (self-heal) — both must share a single in-flight load.
+    if (_modelLoaded || _modelLoading) return;
+    _modelLoading = true;
+    // Retry transient native-plugin load failures (GPU/CoreML delegate init,
+    // Android model-file extraction race, momentary memory pressure). Before
+    // this, a single transient failure left _modelLoaded=false with no recovery,
+    // so the AI stayed dead for the whole match and the only fix was restarting
+    // the app.
+    const maxAttempts = 3;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        // Drop any half-initialized native instance from a failed attempt.
+        _nativeInference?.dispose();
+        _nativeInference = null;
+        if (!kIsWeb && Platform.isAndroid) {
+          // Android: load via native plugin ONLY (DartsMind-style GPU/CPU
+          // delegate). Do NOT also load _detector — two GPU delegates conflict.
           _nativeInference = NativeInference();
           await _nativeInference!.loadModel();
-        } catch (e) {
-          debugPrint(
-              '[AutoScoring] iOS native load failed, falling back to Dart: $e');
-          _nativeInference?.dispose();
-          _nativeInference = null;
-          await _detector.loadModel();
+        } else {
+          // iOS: prefer the native plugin so inference runs on a GCD background
+          // queue instead of blocking the main Dart isolate. Fall back to the
+          // Dart-side interpreter only if the native plugin fails to load.
+          try {
+            _nativeInference = NativeInference();
+            await _nativeInference!.loadModel();
+          } catch (e) {
+            debugPrint(
+                '[AutoScoring] iOS native load failed, falling back to Dart: $e');
+            _nativeInference?.dispose();
+            _nativeInference = null;
+            await _detector.loadModel();
+          }
+        }
+        _modelLoaded = true;
+        _initError = null;
+        break;
+      } catch (e, stack) {
+        _initError = 'Model loading failed: $e';
+        _modelLoaded = false;
+        debugPrint(
+            '[AutoScoring] *** MODEL LOAD FAILED (attempt ${attempt + 1}/$maxAttempts): $e');
+        debugPrint('[AutoScoring] $stack');
+        if (attempt < maxAttempts - 1) {
+          await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
         }
       }
-      _modelLoaded = true;
-      _initError = null;
-    } catch (e, stack) {
-      _initError = 'Model loading failed: $e';
-      _modelLoaded = false;
-      debugPrint('[AutoScoring] *** MODEL LOAD FAILED: $e');
-      debugPrint('[AutoScoring] $stack');
     }
+    _modelLoading = false;
     notifyListeners();
   }
 

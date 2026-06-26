@@ -37,19 +37,22 @@ class CameraFrameService {
   CameraController? get controller => _controller;
   bool get isInitialized => _controller?.value.isInitialized ?? false;
 
-  // --- Device-orientation-aware frame rotation (landscape support) ----------
-  // The detector loses calibration points when the board is sideways (90°/270°)
-  // but is fine upright/flipped (0°/180°). Raw camera frames arrive in fixed
-  // sensor coordinates, so a FIXED rotation only yields an upright board in
-  // portrait — in landscape it leaves the board sideways and calibration
-  // degrades. We compensate for the device's current physical orientation so
-  // the board is always fed to the model upright (0°), or flipped (180°, which
-  // the model handles equally well), but never sideways.
+  // --- ANDROID-ONLY device-orientation-aware frame rotation -----------------
+  // Android delivers image-stream frames in FIXED sensor coordinates that do
+  // NOT follow the device's physical rotation, so in landscape the board ends
+  // up sideways (90°/270°) and the detector loses calibration points. We
+  // compensate for the current physical orientation so the board is always fed
+  // to the model upright (0°) or flipped (180°) — both of which it handles —
+  // but never sideways.
+  //
+  // iOS uses NONE of this. Its camera plugin already delivers frames rotated to
+  // the active device orientation, so the board is upright at 0° in every
+  // orientation. The iOS capture paths pass a hard-coded 0 and are kept
+  // byte-for-byte identical to the pre-landscape behaviour — applying any
+  // rotation there would tip the already-upright board sideways (a 20 read as
+  // a 6).
 
-  /// Physical device rotation away from portraitUp, in degrees. The two
-  /// landscape orientations map to {90, 270}; their exact assignment is not
-  /// critical — either way the resulting board lands at 0° or 180° (both of
-  /// which the model handles well), never the lossy 90°/270°.
+  /// Physical device rotation away from portraitUp, in degrees (Android only).
   int _deviceRotationDegrees() {
     switch (_controller?.value.deviceOrientation) {
       case DeviceOrientation.landscapeRight:
@@ -64,14 +67,13 @@ class CameraFrameService {
     }
   }
 
-  /// Clockwise rotation (degrees) to apply to the raw sensor frame so the board
-  /// is upright for the model. We ONLY compensate when the device reports an
-  /// explicit landscape orientation; for portrait (or any uncertainty / null)
-  /// we return the exact previously-shipped value (Android: sensor mount angle;
-  /// iOS: 0). This guarantees portrait scoring is byte-for-byte unchanged and
-  /// can never regress from this code — only landscape gets the new behaviour.
+  /// ANDROID-ONLY clockwise rotation (degrees) for the raw sensor frame so the
+  /// board is upright for the model. Portrait returns the sensor mount angle
+  /// (the previously-shipped value); landscape compensates for the device's
+  /// physical rotation so the board lands upright/flipped, never sideways.
+  /// Must never be called on the iOS paths — those pass a literal 0.
   int _effectiveRotation() {
-    final baseline = Platform.isAndroid ? (_sensorOrientation ?? 0) : 0;
+    final baseline = _sensorOrientation ?? 0;
     final o = _controller?.value.deviceOrientation;
     int rot = baseline;
     if (o == DeviceOrientation.landscapeLeft ||
@@ -89,40 +91,6 @@ class CameraFrameService {
           'sensor=$_sensorOrientation effectiveRotation=$rot');
     }
     return rot;
-  }
-
-  /// Rotate a packed RGBA buffer by [deg] (0/90/180/270) clockwise. Returns the
-  /// rotated buffer and its new dimensions. Used on the iOS capture path, where
-  /// rotation isn't fused into the colour conversion. Same 90°/270° pixel
-  /// mapping as the Android YUV→RGBA path so both stay consistent.
-  (Uint8List, int, int) _rotateRgba(Uint8List src, int w, int h, int deg) {
-    if (deg == 0) return (src, w, h);
-    final bool swap = deg == 90 || deg == 270;
-    final int outW = swap ? h : w;
-    final int outH = swap ? w : h;
-    final out = Uint8List(outW * outH * 4);
-    for (int sy = 0; sy < h; sy++) {
-      for (int sx = 0; sx < w; sx++) {
-        final si = (sy * w + sx) * 4;
-        final int dx, dy;
-        if (deg == 90) {
-          dx = h - 1 - sy;
-          dy = sx;
-        } else if (deg == 270) {
-          dx = sy;
-          dy = w - 1 - sx;
-        } else {
-          dx = w - 1 - sx; // 180
-          dy = h - 1 - sy;
-        }
-        final di = (dy * outW + dx) * 4;
-        out[di] = src[si];
-        out[di + 1] = src[si + 1];
-        out[di + 2] = src[si + 2];
-        out[di + 3] = src[si + 3];
-      }
-    }
-    return (out, outW, outH);
   }
 
   /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
@@ -410,7 +378,9 @@ class CameraFrameService {
         width: frame.width,
         height: frame.height,
         formatIndex: frame.format.group.index,
-        sensorOrientation: _effectiveRotation(),
+        // Android compensates for device orientation; iOS frames already arrive
+        // upright, so it passes 0 — exactly as before the landscape change.
+        sensorOrientation: Platform.isAndroid ? _effectiveRotation() : 0,
       ));
 
       if (jpegBytes == null) return null;
@@ -435,12 +405,6 @@ class CameraFrameService {
     if (!Platform.isIOS) return null;
     final frame = _latestFrame;
     if (frame == null) return null;
-
-    // The BGRA fast path hands raw pixels straight to native, which does not
-    // rotate. When the device is rotated (landscape), fall back to captureRgba,
-    // which rotates the board upright for the model. In portrait the effective
-    // rotation is 0, so the fast path stays active and perf is unchanged.
-    if (_effectiveRotation() != 0) return null;
 
     try {
       final bgra = frame.planes[0].bytes;
@@ -495,9 +459,9 @@ class CameraFrameService {
             rgba[di + 3] = bgra[si + 3]; // A
           }
         }
-        // Rotate the board upright for the model when the device is in
-        // landscape (no-op in portrait, where effective rotation is 0).
-        return _rotateRgba(rgba, w, h, _effectiveRotation());
+        // iOS frames already arrive upright in every device orientation, so no
+        // rotation is applied here — identical to the pre-landscape behaviour.
+        return (rgba, w, h);
       } else {
         // Android: YUV420 — convert to RGBA
         final yPlane = frame.planes[0];

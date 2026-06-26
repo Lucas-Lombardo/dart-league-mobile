@@ -235,6 +235,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           autoScoringService!.stopCapture();
         }
       }
+      // Self-heal: a transient model-load failure at match start used to leave
+      // the AI dead for the whole match (only an app restart recovered it). If
+      // the model still isn't loaded when it becomes our turn, retry the load
+      // in the background and start capture on success — no restart needed.
+      // Guarded to one attempt per turn change; skipped while a load is running.
+      if (justBecameMyTurn &&
+          autoScoringEnabled &&
+          !aiManuallyDisabled &&
+          !kIsWeb &&
+          AutoScoringService.isSupported &&
+          _captureFrameCallback != null &&
+          !autoScoringService!.modelLoaded &&
+          !autoScoringService!.isModelLoading) {
+        recoverAutoScoring();
+      }
       lastKnownCurrentPlayer = game.currentPlayerId;
       if (game.pendingConfirmation && game.pendingType != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -357,6 +372,34 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         }
       }
     }
+  }
+
+  /// Retry a failed auto-scoring model load mid-match (self-heal). A transient
+  /// native load failure at match start used to leave the AI dead until the app
+  /// was restarted; this recovers it on a later turn instead. Silent — no
+  /// loading overlay — so the player keeps manual scoring while it retries, then
+  /// AI detections start flowing once the model loads.
+  Future<void> recoverAutoScoring() async {
+    final svc = autoScoringService;
+    if (svc == null || _captureFrameCallback == null) return;
+    await svc.loadModel();
+    if (!mounted) return;
+    // Rebuild so the AI toggle reflects the now-loaded model.
+    setState(() {});
+    if (!svc.modelLoaded) return;
+    final game = readGame();
+    if (!game.isMyTurn || svc.isCapturing || aiManuallyDisabled) return;
+    // Practice darts left in the board from the queue warm-up shouldn't count.
+    svc.waitForEmptyBoardOnce();
+    svc.startCapture(
+      captureFrame: _captureFrameCallback!,
+      captureRgba: _captureRgbaCallback,
+      captureBgra: _captureBgraCallback,
+      captureYuv: _captureYuvCallback,
+      cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
+      onDartDetected: _onDartDetectedCallback,
+      onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+    );
   }
 
   void submitAutoScoredDarts(dynamic game) { aiPausedForEdit = false; autoScoringService?.stopCapture(); game.confirmRound(); }
