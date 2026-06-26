@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subscription_provider.dart';
+import '../../providers/match_invite_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
@@ -382,6 +383,147 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
   }
 
+  /// The big action card when a friend invite is pending. Mirrors the tournament
+  /// "Join match" card; tapping it asks the player to accept or decline.
+  Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
+    return ScaleTransition(
+      scale: _pulseAnimation,
+      child: GestureDetector(
+        onTap: () => _onFriendInviteTapped(invite),
+        child: Container(
+          height: 180,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF10B981), Color(0xFF059669)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Icon(
+                  Icons.group,
+                  size: 150,
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
+              ),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.sports_esports,
+                        size: 48,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      l10n.joinMatch,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        l10n.invitedYouToMatch
+                            .replaceAll('{username}', invite.inviterUsername),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Accept/decline a friend invite. Accept routes through the same camera gate
+  /// as ranked/tournament, then sends accept_invite; the global FriendMatchGate
+  /// handles the friendly_match_found → GameScreen navigation.
+  Future<void> _onFriendInviteTapped(IncomingInvite invite) async {
+    HapticService.mediumImpact();
+    final l10n = AppLocalizations.of(context);
+    final inviteProvider = context.read<MatchInviteProvider>();
+    final navigator = Navigator.of(context);
+
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(l10n.matchInviteTitle,
+            style: const TextStyle(color: Colors.white)),
+        content: Text(
+          l10n.invitedYouToMatch
+              .replaceAll('{username}', invite.inviterUsername),
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.declineInvite,
+                style: const TextStyle(color: AppTheme.error)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.joinMatch),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (choice == true) {
+      final ready = await navigator.push<bool>(
+        MaterialPageRoute(
+          builder: (_) => CameraSetupScreen(
+            actionLabel: l10n.joinMatch,
+            confirmAndPop: true,
+          ),
+        ),
+      );
+      if (ready == true) inviteProvider.accept(invite.inviteId);
+    } else if (choice == false) {
+      inviteProvider.decline(invite.inviteId);
+    }
+    // choice == null (dismissed) → leave the invite pending; the button stays.
+  }
+
   @override
   void dispose() {
     widget.refreshNotifier?.removeListener(_onRefresh);
@@ -465,6 +607,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
     final subscription = context.watch<SubscriptionProvider>();
+    final matchInvite = context.watch<MatchInviteProvider>();
     final l10n = AppLocalizations.of(context);
 
     if (user == null) {
@@ -670,7 +813,13 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          if (isUnranked) ...[
+          if (matchInvite.incoming != null)
+            // Friend invite — the whole Play button becomes "Join the match".
+            // Highest priority: the inviter is actively waiting and the invite
+            // is short-lived. (The backend refuses to invite a busy player, so
+            // this can't collide with an active-match rejoin.)
+            _buildFriendInviteButton(matchInvite.incoming!, l10n)
+          else if (isUnranked) ...[
             // Placement Matches button
             ScaleTransition(
               scale: _pulseAnimation,
