@@ -806,6 +806,11 @@ abstract class AppLocalizations {
   String get playerBusyMsg;
   String get inviteFailedMsg;
   String get online;
+
+  // "Update your app" banner
+  String get updateAvailableTitle;
+  String get updateAvailableBody;
+  String get updateNow;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

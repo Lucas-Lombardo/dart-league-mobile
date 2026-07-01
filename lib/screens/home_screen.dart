@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/rank_badge.dart';
 import '../widgets/premium_badge.dart';
+import '../widgets/update_banner.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
@@ -199,6 +200,9 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                 ],
               ),
             ),
+          // "Update available" banner — self-gating (renders nothing unless an
+          // update is available and not dismissed).
+          const UpdateBanner(),
           Expanded(
             child: Container(
               decoration: const BoxDecoration(

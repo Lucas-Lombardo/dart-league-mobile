@@ -53,4 +53,16 @@ class StorageService {
     if (value == null) return 1.0;
     return double.tryParse(value) ?? 1.0;
   }
+
+  // The latest version for which the user dismissed the "update available"
+  // banner. A newer published version differs from this, so the banner returns.
+  static const String _dismissedUpdateVersionKey = 'dismissed_update_version';
+
+  static Future<void> saveDismissedUpdateVersion(String version) async {
+    await _storage.write(key: _dismissedUpdateVersionKey, value: version);
+  }
+
+  static Future<String?> getDismissedUpdateVersion() async {
+    return await _storage.read(key: _dismissedUpdateVersionKey);
+  }
 }
