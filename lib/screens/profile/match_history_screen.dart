@@ -6,6 +6,7 @@ import '../../providers/friends_provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
+import '../../models/inactivity_penalty.dart';
 import '../../l10n/app_localizations.dart';
 import 'match_detail_screen.dart';
 import '../../utils/app_theme.dart';
@@ -20,7 +21,7 @@ class MatchHistoryScreen extends StatefulWidget {
 }
 
 class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
-  List<Match> _matches = [];
+  List<_HistoryEntry> _entries = [];
   bool _isLoading = true;
   String? _error;
 
@@ -42,8 +43,23 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
 
       if (userId != null) {
         final matches = await UserService.getUserMatches(userId);
+
+        // Additive feature: an old backend has no such endpoint, so don't let
+        // it break the whole history — just show matches.
+        List<InactivityPenalty> penalties = [];
+        try {
+          penalties = await UserService.getInactivityPenalties(userId);
+        } catch (_) {
+          penalties = [];
+        }
+
+        final entries = <_HistoryEntry>[
+          ...matches.map((m) => _HistoryEntry.match(m)),
+          ...penalties.map((p) => _HistoryEntry.penalty(p)),
+        ]..sort((a, b) => b.date.compareTo(a.date));
+
         setState(() {
-          _matches = matches;
+          _entries = entries;
           _isLoading = false;
         });
       }
@@ -110,7 +126,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     ],
                   ),
                 )
-              : _matches.isEmpty
+              : _entries.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -134,10 +150,13 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                       color: AppTheme.primary,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _matches.length,
+                        itemCount: _entries.length,
                         itemBuilder: (context, index) {
-                          final match = _matches[index];
-                          return _buildMatchCard(match, userId);
+                          final entry = _entries[index];
+                          if (entry.penalty != null) {
+                            return _buildInactivityCard(entry.penalty!);
+                          }
+                          return _buildMatchCard(entry.match!, userId);
                         },
                       ),
                     ),
@@ -349,4 +368,128 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
       ],
     );
   }
+
+  Widget _buildInactivityCard(InactivityPenalty penalty) {
+    final l10n = AppLocalizations.of(context);
+    final dateFormat = DateFormat('MMM d, y • h:mm a');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.hourglass_empty,
+                    color: AppTheme.error,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.inactivityPenaltyTitle,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        l10n.inactivityPenaltyDescription,
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '-${penalty.amount}',
+                    style: const TextStyle(
+                      color: AppTheme.error,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  dateFormat.format(penalty.createdAt),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  '${penalty.eloBefore} → ${penalty.eloAfter}',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single row in the merged history timeline: either a [Match] or an
+/// [InactivityPenalty]. `date` is the sort key shared by both.
+class _HistoryEntry {
+  final DateTime date;
+  final Match? match;
+  final InactivityPenalty? penalty;
+
+  _HistoryEntry.match(Match m)
+      : match = m,
+        penalty = null,
+        date = m.createdAt;
+
+  _HistoryEntry.penalty(InactivityPenalty p)
+      : match = null,
+        penalty = p,
+        date = p.createdAt;
 }

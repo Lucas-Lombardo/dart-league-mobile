@@ -1,5 +1,6 @@
 import '../models/user.dart';
 import '../models/match.dart';
+import '../models/inactivity_penalty.dart';
 import 'api_service.dart';
 
 class UserStats {
@@ -131,6 +132,30 @@ class UserService {
     return data
         .whereType<Map<String, dynamic>>()
         .map((json) => Match.fromJson(json, userId))
+        .toList();
+  }
+
+  /// Weekly inactivity penalties (newest first) for a user's history. Returns
+  /// [] against older backends that don't have the endpoint yet.
+  static Future<List<InactivityPenalty>> getInactivityPenalties(
+    String userId, {
+    int limit = 50,
+  }) async {
+    final response =
+        await ApiService.get('/users/$userId/inactivity-penalties?limit=$limit');
+
+    final List<dynamic> data;
+    if (response is List) {
+      data = response;
+    } else if (response is Map && response['penalties'] != null) {
+      data = response['penalties'] as List<dynamic>;
+    } else {
+      return [];
+    }
+
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((json) => InactivityPenalty.fromJson(json))
         .toList();
   }
 

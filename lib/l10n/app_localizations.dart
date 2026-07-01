@@ -369,6 +369,8 @@ abstract class AppLocalizations {
 
   // Match History
   String get matchHistoryTitle;
+  String get inactivityPenaltyTitle;
+  String get inactivityPenaltyDescription;
   String get playGameToSeeHistory;
   String get youLabel;
   String get opponentLabel;

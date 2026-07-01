@@ -924,6 +924,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get matchHistoryTitle => 'Historique des matchs';
 
   @override
+  String get inactivityPenaltyTitle => 'Pénalité d\'inactivité';
+
+  @override
+  String get inactivityPenaltyDescription =>
+      '1 semaine sans match classé';
+
+  @override
   String get playGameToSeeHistory => 'Jouez une partie pour voir votre historique !';
 
   @override
