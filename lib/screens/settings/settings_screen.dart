@@ -9,6 +9,7 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/dart_caller_service.dart';
 import '../../utils/rank_translation.dart';
 import '../../services/content_creator_service.dart';
 import 'subscription_screen.dart';
@@ -25,6 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _creatorCode;
   String? _creatorUsername;
   bool _isLoadingCreator = true;
+  bool _callerEnabled = DartCallerService.enabled;
 
   @override
   void initState() {
@@ -97,6 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           _buildSection(l10n.preferences.toUpperCase()),
           _buildLanguageTile(l10n),
+          _buildCallerTile(l10n),
 
           const SizedBox(height: 24),
           _buildSection(l10n.about.toUpperCase()),
@@ -254,6 +257,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCallerTile(AppLocalizations l10n) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.record_voice_over, color: AppTheme.primary),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.voiceCaller,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  l10n.voiceCallerDescription,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _callerEnabled,
+            activeThumbColor: AppTheme.primary,
+            onChanged: (value) {
+              HapticService.selectionClick();
+              setState(() => _callerEnabled = value);
+              DartCallerService.setEnabled(value);
+            },
+          ),
+        ],
       ),
     );
   }

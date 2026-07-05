@@ -65,4 +65,17 @@ class StorageService {
   static Future<String?> getDismissedUpdateVersion() async {
     return await _storage.read(key: _dismissedUpdateVersionKey);
   }
+
+  // Whether the voice caller announces visit scores / checkouts. Defaults on.
+  static const String _callerEnabledKey = 'caller_enabled';
+
+  static Future<void> saveCallerEnabled(bool enabled) async {
+    await _storage.write(key: _callerEnabledKey, value: enabled.toString());
+  }
+
+  static Future<bool> getCallerEnabled() async {
+    final value = await _storage.read(key: _callerEnabledKey);
+    if (value == null) return true;
+    return value == 'true';
+  }
 }

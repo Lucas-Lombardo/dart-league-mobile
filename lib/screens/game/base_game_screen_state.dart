@@ -12,6 +12,7 @@ import '../../services/camera_frame_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/dart_sound_service.dart';
+import '../../utils/dart_caller_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
@@ -66,6 +67,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   CaptureYuvCallback? _captureYuvCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
+  // Signature of the visit the caller last announced, so a full 3-dart round is
+  // called exactly once even though handleSharedStateChange fires on every
+  // provider notify. Cleared at the start of each of our turns.
+  String? _lastCalledVisitSignature;
   bool winDialogShowing = false;
   bool bustDialogShowing = false;
   bool forfeitDialogShowing = false;
@@ -217,6 +222,34 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
       // Reset dart slots on turn change (always, even without AI capture)
       if (justBecameMyTurn) { aiManuallyDisabled = false; aiPausedForEdit = false; autoScoringService!.resetTurn(); }
+      // Caller: announce "you require <n>" when we come to the throw on a
+      // finish. Signature reset here so the next visit is called even if it
+      // repeats the previous visit's exact darts (no-op when caller disabled).
+      if (justBecameMyTurn) {
+        _lastCalledVisitSignature = null;
+        DartCallerService.callCheckout(game.myScore);
+      }
+      // Caller: announce the visit total once the server has accepted a full
+      // 3-dart round (pendingConfirmation) that did NOT bust. We can't decide
+      // this from the local darts alone: the throws hit 3 locally before the
+      // server rules, and on a bust the backend sends pending_bust with no
+      // score_updated. So we wait for the verdict — round_ready_confirm leaves
+      // pendingType null, pending_bust sets it to 'bust'. On a bust we stay
+      // silent (DartSoundService.playBust covers it) rather than read out a
+      // score that doesn't count. Guard against '' edit placeholders.
+      if (game.isMyTurn) {
+        final throws = game.currentRoundThrows as List<String>;
+        final visitComplete = throws.length == 3 && throws.every((t) => t.isNotEmpty);
+        if (visitComplete && game.pendingConfirmation && game.pendingType != 'bust') {
+          final sig = throws.join(',');
+          if (sig != _lastCalledVisitSignature) {
+            _lastCalledVisitSignature = sig;
+            DartCallerService.callScore(game.currentRoundScore as int);
+          }
+        } else if (throws.isEmpty) {
+          _lastCalledVisitSignature = null;
+        }
+      }
       // Start/stop AI capture when supported
       if (autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null && autoScoringService!.modelLoaded) {
         final pendingNeedsStop = game.pendingConfirmation && (game.pendingType == 'bust' || game.pendingType == 'win');

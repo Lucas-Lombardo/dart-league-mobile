@@ -13,6 +13,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../services/training_service.dart';
+import '../../utils/dart_caller_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
@@ -291,6 +292,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       setState(() => _isWin = true);
       return;
     }
+
+    // Caller: announce the visit total right after the third dart lands.
+    // Turns that end early (1–2 darts) are announced from _confirmRound instead.
+    if (_dartsThrown == 3) {
+      DartCallerService.callScore(_scoreBeforeRound - _myScore);
+    }
   }
 
   void _recalculateScore() {
@@ -347,6 +354,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         _scoreBeforeRound = _myScore;
         _myRoundScores.add(roundScore);
       });
+      // Caller: a full 3-dart visit is already announced by _throwDart when the
+      // third dart lands. Here we only cover turns ended early (1–2 darts) via
+      // "finish turn" or removing darts.
+      if (dartsThisRound >= 1 && dartsThisRound < 3) {
+        DartCallerService.callScore(roundScore);
+      }
     }
 
     DartSoundService.playTurnFinished();
@@ -394,6 +407,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       _autoScoringService?.resetTurn();
       _startAiCapture();
       DartSoundService.playYourTurn();
+      // Caller: announce "you require N" when the player comes to the throw on a
+      // finish (no-op otherwise), mirroring the online game screen.
+      DartCallerService.callCheckout(_myScore);
     }
   }
 

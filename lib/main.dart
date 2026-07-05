@@ -28,6 +28,7 @@ import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
 import 'utils/app_theme.dart';
+import 'utils/dart_caller_service.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
 import 'widgets/friend_match_gate.dart';
 
@@ -74,6 +75,9 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   
+  // Load the voice-caller on/off preference so it's ready before any match.
+  await DartCallerService.loadPreference();
+
   // Create GameProvider eagerly at app startup so listeners are ready
   final gameProvider = GameProvider();
 

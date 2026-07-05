@@ -290,6 +290,12 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get preferences => 'Préférences';
 
+  @override
+  String get voiceCaller => 'Annonceur vocal';
+
+  @override
+  String get voiceCallerDescription => 'Annonce les scores et les finitions à voix haute';
+
   // Friends Screen
   @override
   String get add => 'Ajouter';

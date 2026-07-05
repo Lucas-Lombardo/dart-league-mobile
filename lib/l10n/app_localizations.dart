@@ -118,6 +118,8 @@ abstract class AppLocalizations {
   String get appVersion;
   String get developer;
   String get preferences;
+  String get voiceCaller;
+  String get voiceCallerDescription;
 
   // Friends Screen
   String get add;

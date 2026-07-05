@@ -290,6 +290,12 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get preferences => 'Preferences';
 
+  @override
+  String get voiceCaller => 'Voice caller';
+
+  @override
+  String get voiceCallerDescription => 'Announce scores and checkouts aloud';
+
   // Friends Screen
   @override
   String get add => 'Add';
