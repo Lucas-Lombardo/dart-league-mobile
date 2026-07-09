@@ -179,14 +179,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         return;
       }
       _wasPausedSinceLastResume = false;
-      // App actually backgrounded — re-sync everything.
+      // App actually backgrounded — re-sync everything. A connect timeout used
+      // to surface as an unhandled future error, and reconnectToMatch never
+      // ran: recovery then depended entirely on the reconnect listener.
       SocketService.ensureConnected().then((_) {
         if (!mounted) return;
         final game = readGame();
+        // Re-register socket listeners FIRST: reconnect_to_match's reply
+        // (game_state_sync) is useless if nothing is listening for it.
+        game.ensureListenersSetup();
         // Tell the server we're back so opponent sees us as connected
         game.reconnectToMatch();
-        // Re-register socket listeners in case they were lost
-        game.ensureListenersSetup();
+      }).catchError((Object e) {
+        debugPrint('[BaseGameScreen] resume reconnect failed: $e');
       });
     }
   }
@@ -346,9 +351,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             }
           });
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[BaseGameScreen] reconnectFailed handling error: $e');
+      }
       onScreenSpecificStateChange(game);
-    } catch (_) {}
+    } catch (e, stack) {
+      // This handler drives turn changes, capture start/stop and the pending
+      // dialogs. Swallowing silently meant a single throw skipped everything
+      // after it with zero diagnostics.
+      debugPrint('[BaseGameScreen] handleSharedStateChange error: $e');
+      debugPrint('$stack');
+    }
   }
 
   void updateLoadingMessage(String msg) {
@@ -940,10 +953,30 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   void leaveMatch() {
     try {
       final matchId = matchIdForLeave;
-      if (matchId != null && storedPlayerId != null && gameStarted && !gameEnded) {
-        SocketService.emit('leave_match', {'matchId': matchId, 'playerId': storedPlayerId});
+      if (matchId == null || storedPlayerId == null || !gameStarted || gameEnded) {
+        return;
       }
-    } catch (_) {}
+      // The game providers are shared across matches, and Flutter defers a
+      // popped route's dispose() by ~300ms — long enough for the NEXT match
+      // (rematch, next tournament leg) to have started. gameStarted/gameEnded
+      // then describe the new match while matchId is the old one, so this
+      // emitted a leave_match for a match we already left, during live entry
+      // into its successor. Only forfeit the match the provider is still on.
+      try {
+        final currentMatchId = readGame().matchId as String?;
+        if (currentMatchId != null && currentMatchId != matchId) {
+          debugPrint('[BaseGameScreen] skipping leave_match for stale match $matchId '
+              '(provider now on $currentMatchId)');
+          return;
+        }
+      } catch (_) {
+        // Provider gone — fall through and emit; a leave for an ended match
+        // is ignored server-side.
+      }
+      SocketService.emit('leave_match', {'matchId': matchId, 'playerId': storedPlayerId});
+    } catch (e) {
+      debugPrint('[BaseGameScreen] leaveMatch failed: $e');
+    }
   }
 
   Future<bool> onWillPop() async {

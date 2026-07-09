@@ -357,7 +357,18 @@ class TournamentGameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// True when an event belongs to a different match (previous leg, other
+  /// match) than the leg currently being played.
+  bool _isForeignMatch(dynamic data) {
+    if (data is! Map) return false;
+    final eventMatchId = data['matchId'] as String?;
+    return eventMatchId != null &&
+        _currentGameMatchId != null &&
+        eventMatchId != _currentGameMatchId;
+  }
+
   void _handleScoreUpdated(dynamic data) {
+    if (_isForeignMatch(data)) return;
     // Why: auto-resync the turn when round_complete was missed (e.g. brief
     // socket disconnect that left the client out of the room). The server
     // always includes currentPlayerId in score_updated payloads.
@@ -450,19 +461,28 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleInvalidThrow(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
-    _currentPlayerId = data['currentPlayerId'] as String?;
-    _dartsThrown = data['dartsThrown'] as int? ?? 0;
-    _currentRoundThrows = [];
-    _dartsEmittedThisRound = 0;
+    // Bare invalid_throw ({message}) carries no state — don't null the turn
+    // out from under the UI (see GameProvider).
+    final serverCurrentPlayerId = data['currentPlayerId'] as String?;
+    if (serverCurrentPlayerId != null) _currentPlayerId = serverCurrentPlayerId;
+    final serverDartsThrown = data['dartsThrown'] as int?;
+    if (serverDartsThrown != null) {
+      _dartsThrown = serverDartsThrown;
+      _currentRoundThrows = [];
+      _dartsEmittedThisRound = 0;
+      _ackedDartsThisRound = 0;
+    }
     notifyListeners();
   }
 
   void _handleMustFinishDouble(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
@@ -644,6 +664,7 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleDartUndone(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {

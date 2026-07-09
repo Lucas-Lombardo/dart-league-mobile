@@ -449,7 +449,17 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// True when an event belongs to a different match than the one we're in.
+  /// Leg transitions and rematches reuse this provider, so a late event from
+  /// the previous match would otherwise mutate the new match's scores/turn.
+  bool _isForeignMatch(dynamic data) {
+    if (data is! Map) return false;
+    final eventMatchId = data['matchId'] as String?;
+    return eventMatchId != null && _matchId != null && eventMatchId != _matchId;
+  }
+
   void _handleScoreUpdated(dynamic data) {
+    if (_isForeignMatch(data)) return;
 
     // Why: auto-resync the turn when round_complete was missed (e.g. brief
     // socket disconnect that left the client out of the room). The server
@@ -698,25 +708,35 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleInvalidThrow(dynamic data) {
-    
+    if (_isForeignMatch(data)) return;
+
     // Update scores and state
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
-    
-    _currentPlayerId = data['currentPlayerId'] as String?;
-    _dartsThrown = data['dartsThrown'] as int? ?? 0;
-    _currentRoundThrows = [];
-    _dartsEmittedThisRound = 0;
-    
-    
+
+    // The server also sends a bare invalid_throw ({message}) when the throw
+    // wasn't ours to make. Blindly assigning the absent fields nulled
+    // currentPlayerId (isMyTurn → false) and wiped the round until the
+    // corrective game_state_sync landed. Only apply what's present.
+    final serverCurrentPlayerId = data['currentPlayerId'] as String?;
+    if (serverCurrentPlayerId != null) _currentPlayerId = serverCurrentPlayerId;
+    final serverDartsThrown = data['dartsThrown'] as int?;
+    if (serverDartsThrown != null) {
+      _dartsThrown = serverDartsThrown;
+      _currentRoundThrows = [];
+      _dartsEmittedThisRound = 0;
+      _ackedDartsThisRound = 0;
+    }
+
     notifyListeners();
   }
 
   void _handleMustFinishDouble(dynamic data) {
-    
+    if (_isForeignMatch(data)) return;
+
     // Update scores and state
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
@@ -734,7 +754,8 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handlePendingWin(dynamic data) {
-    
+    if (_isForeignMatch(data)) return;
+
     // Only show dialog if this is MY pending win, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
@@ -749,7 +770,8 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handlePendingBust(dynamic data) {
-    
+    if (_isForeignMatch(data)) return;
+
     // Only show dialog if this is MY pending bust, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
@@ -839,6 +861,10 @@ class GameProvider with ChangeNotifier {
   void _handleGameStateSync(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != _matchId && _matchId != null) return;
+    // A reset provider (_matchId == null) must not adopt a foreign match's
+    // state: that let another provider's sync populate this one and take over
+    // its event handlers.
+    if (_matchId == null) return;
 
     final player1Id = data['player1Id'] as String?;
     final player1Score = data['player1Score'] as int?;
@@ -964,6 +990,7 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleDartUndone(dynamic data) {
+    if (_isForeignMatch(data)) return;
     // Update scores
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
