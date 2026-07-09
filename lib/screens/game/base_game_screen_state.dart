@@ -942,7 +942,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Shared dialogs ───────────────────────────────────────────────────────────
   void showPendingWinDialog(dynamic game) {
-    final notation = (game.pendingData?['finalDart'])?['notation'] ?? 'Unknown';
+    // Null when the pending win was recovered from a sync whose round was
+    // empty. Never substitute a placeholder here: "You hit Unknown to finish!"
+    // reads as a bug. Drop the sentence and keep the question instead.
+    final notation = (game.pendingData?['finalDart'])?['notation'] as String?;
     final l10n = AppLocalizations.of(context);
     winDialogShowing = true;
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
@@ -950,8 +953,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.success, width: 2)),
       title: Row(children: [const Icon(Icons.emoji_events, color: AppTheme.success, size: 32), const SizedBox(width: 12), Text(l10n.checkout, style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold))]),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-        const SizedBox(height: 8), Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
+        if (notation != null && notation.isNotEmpty) ...[
+          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+        ],
+        Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
       ]),
       actions: [
         OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: Text(l10n.editDarts)),

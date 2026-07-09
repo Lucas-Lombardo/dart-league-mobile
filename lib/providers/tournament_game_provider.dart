@@ -624,7 +624,7 @@ class TournamentGameProvider with ChangeNotifier {
         _pendingConfirmation = true;
         _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
         _pendingReason = data['pendingReason'] as String?;
-        _pendingData ??= <String, dynamic>{};
+        _pendingData = _restoredPendingData(pendingState);
       } else if (pendingState == null &&
           isMyTurn &&
           _dartsThrown >= 3 &&
@@ -1086,6 +1086,29 @@ class TournamentGameProvider with ChangeNotifier {
     _pendingReason = null;
     _pendingData = null;
     notifyListeners();
+  }
+
+  /// See GameProvider._restoredPendingData. A checkout never switches the turn,
+  /// so the finishing dart is the last throw of the round the server just sent.
+  Map<String, dynamic> _restoredPendingData(String pendingState) {
+    final restored = <String, dynamic>{
+      'matchId': _currentGameMatchId,
+      'playerId': _myUserId,
+      'reason': _pendingReason,
+      'restoredFromSync': true,
+    };
+    if (pendingState == 'pending_win') {
+      String? finishingDart;
+      for (final notation in _currentRoundThrows) {
+        if (notation.isNotEmpty) finishingDart = notation;
+      }
+      if (finishingDart != null) {
+        restored['finalDart'] = {'notation': finishingDart};
+      }
+    }
+    final existing = _pendingData?['finalDart'];
+    if (existing != null) restored['finalDart'] = existing;
+    return restored;
   }
 
   void reconnectToMatch() {

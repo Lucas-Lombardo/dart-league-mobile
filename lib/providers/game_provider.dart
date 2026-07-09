@@ -936,7 +936,7 @@ class GameProvider with ChangeNotifier {
         _pendingConfirmation = true;
         _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
         _pendingReason = data['pendingReason'] as String?;
-        _pendingData ??= <String, dynamic>{};
+        _pendingData = _restoredPendingData(pendingState);
       } else if (pendingState == null &&
           isMyTurn &&
           _dartsThrown >= 3 &&
@@ -977,6 +977,37 @@ class GameProvider with ChangeNotifier {
 
     _gameStarted = true;
     notifyListeners();
+  }
+
+  /// Rebuild the [pendingData] the win/bust dialogs read, for a pending state
+  /// recovered from game_state_sync rather than from the original
+  /// pending_win/pending_bust event.
+  ///
+  /// The checkout dialog shows which dart finished the leg. A checkout never
+  /// switches the turn, so the finishing dart is simply the last throw of the
+  /// round the server just sent us — no extra field needed from the backend.
+  /// Without this the dialog rendered "You hit Unknown to finish!".
+  Map<String, dynamic> _restoredPendingData(String pendingState) {
+    final restored = <String, dynamic>{
+      'matchId': _matchId,
+      'playerId': _myUserId,
+      'reason': _pendingReason,
+      'restoredFromSync': true,
+    };
+    if (pendingState == 'pending_win') {
+      String? finishingDart;
+      for (final notation in _currentRoundThrows) {
+        if (notation.isNotEmpty) finishingDart = notation;
+      }
+      if (finishingDart != null) {
+        restored['finalDart'] = {'notation': finishingDart};
+      }
+    }
+    // Keep a finalDart we already had from the live pending_win event: it is
+    // first-hand, this one is reconstructed.
+    final existing = _pendingData?['finalDart'];
+    if (existing != null) restored['finalDart'] = existing;
+    return restored;
   }
 
   void reconnectToMatch() {

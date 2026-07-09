@@ -263,6 +263,68 @@ void main() {
       expect(game.pendingType, 'win');
     });
 
+    test('the restored checkout knows which dart finished the leg', () async {
+      SocketService.debugDispatch('game_state_sync', {
+        'matchId': matchId,
+        'player1Id': p1,
+        'player1Score': 0,
+        'player2Score': 200,
+        'currentPlayerId': p1,
+        'dartsThrown': 2,
+        'currentRoundThrows': ['S20', 'D20'],
+        'pendingState': 'pending_win',
+        'pendingPlayerId': p1,
+        'pendingReason': 'checkout',
+      });
+
+      // A checkout never switches the turn, so the finishing dart is the last
+      // throw of the round. Without it the dialog said "You hit Unknown to
+      // finish!".
+      expect(game.pendingData?['finalDart']?['notation'], 'D20');
+    });
+
+    test('a restored checkout with no throws exposes no finishing dart', () async {
+      SocketService.debugDispatch('game_state_sync', {
+        'matchId': matchId,
+        'player1Id': p1,
+        'player1Score': 0,
+        'player2Score': 200,
+        'currentPlayerId': p1,
+        'dartsThrown': 0,
+        'currentRoundThrows': <String>[],
+        'pendingState': 'pending_win',
+        'pendingPlayerId': p1,
+        'pendingReason': 'checkout',
+      });
+
+      // The dialog drops the sentence rather than inventing a dart.
+      expect(game.pendingType, 'win');
+      expect(game.pendingData?['finalDart'], isNull);
+    });
+
+    test('a live pending_win keeps its first-hand dart over a later sync', () async {
+      SocketService.debugDispatch('pending_win', {
+        'matchId': matchId,
+        'playerId': p1,
+        'finalDart': {'notation': 'D20'},
+      });
+      // A heal arrives afterwards with a round the server already cleared.
+      SocketService.debugDispatch('game_state_sync', {
+        'matchId': matchId,
+        'player1Id': p1,
+        'player1Score': 0,
+        'player2Score': 200,
+        'currentPlayerId': p1,
+        'dartsThrown': 0,
+        'currentRoundThrows': <String>[],
+        'pendingState': 'pending_win',
+        'pendingPlayerId': p1,
+        'pendingReason': 'checkout',
+      });
+
+      expect(game.pendingData?['finalDart']?['notation'], 'D20');
+    });
+
     test('a pending bust for the OPPONENT never opens our dialog', () async {
       SocketService.debugDispatch('game_state_sync', {
         'matchId': matchId,
