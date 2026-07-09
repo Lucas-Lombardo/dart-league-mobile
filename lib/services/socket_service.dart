@@ -254,7 +254,34 @@ class SocketService {
     _disconnectInternal();
   }
 
+  /// Test seam: when set, [emit] routes here instead of touching a real socket,
+  /// and [debugDispatch] feeds server events back to the registered handlers.
+  /// Never set in production code.
+  @visibleForTesting
+  static void Function(String event, dynamic data)? debugEmitOverride;
+
+  /// Test seam: deliver [event] to whatever handler `on(event, …)` registered,
+  /// exactly as socket.io would.
+  @visibleForTesting
+  static void debugDispatch(String event, dynamic data) {
+    _handlers[event]?.call(data);
+  }
+
+  @visibleForTesting
+  static void debugReset() {
+    debugEmitOverride = null;
+    _handlers.clear();
+    _disconnectListeners.clear();
+    _reconnectListeners.clear();
+    _connectFailedListeners.clear();
+  }
+
   static void emit(String event, dynamic data) {
+    final override = debugEmitOverride;
+    if (override != null) {
+      override(event, data);
+      return;
+    }
     if (!isConnected) {
       throw Exception('Socket not connected');
     }
