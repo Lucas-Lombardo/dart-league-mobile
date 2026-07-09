@@ -76,7 +76,15 @@ void main() async {
   ]);
   
   // Load the voice-caller on/off preference so it's ready before any match.
-  await DartCallerService.loadPreference();
+  // Guarded like the Firebase/IAP inits above: this reads flutter_secure_
+  // storage, which throws a PlatformException on a corrupted Android keystore
+  // (and after some backup restores). Unguarded, it aborted startup before
+  // runApp — the whole app failed to boot over a caller preference.
+  try {
+    await DartCallerService.loadPreference();
+  } catch (e) {
+    debugPrint('⚠️ DartCallerService.loadPreference failed: $e');
+  }
 
   // Create GameProvider eagerly at app startup so listeners are ready
   final gameProvider = GameProvider();

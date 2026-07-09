@@ -40,12 +40,22 @@ class DartSoundService {
   }
 
   static Future<void> _doInit() async {
-    // Why ambient: sound effects mix with Agora's playAndRecord audio session
-    // instead of fighting it for control, and follow the system volume.
+    // playAndRecord + mixWithOthers (not ambient): ambient is silenced by the
+    // iOS ring/silent switch, so with the ringer off the game was completely
+    // mute. playAndRecord matches Agora's own session category, so the two
+    // coexist instead of one stealing the session. See DartCallerService.
     final context = AudioContext(
-      iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playAndRecord,
+        options: const {
+          AVAudioSessionOptions.mixWithOthers,
+          AVAudioSessionOptions.defaultToSpeaker,
+          AVAudioSessionOptions.allowBluetooth,
+        },
+      ),
       android: const AudioContextAndroid(),
     );
+    var loaded = 0;
     for (final asset in _allAssets) {
       try {
         final player = AudioPlayer();
@@ -53,10 +63,14 @@ class DartSoundService {
         await player.setAudioContext(context);
         await player.setSource(AssetSource(asset));
         _players[asset] = player;
+        loaded++;
       } catch (e) {
         debugPrint('[DartSoundService] failed to load $asset: $e');
       }
     }
+    // A total failure (platform channel hiccup) must not be cached forever:
+    // clearing the future lets the next play() retry the whole init.
+    if (loaded == 0) _initFuture = null;
   }
 
   static Future<void> _play(String asset) async {

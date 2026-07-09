@@ -243,17 +243,27 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         DartCallerService.callCheckout(game.myScore);
       }
       // Caller: announce the visit total once the server has accepted a full
-      // 3-dart round (pendingConfirmation) that did NOT bust. We can't decide
-      // this from the local darts alone: the throws hit 3 locally before the
-      // server rules, and on a bust the backend sends pending_bust with no
-      // score_updated. So we wait for the verdict — round_ready_confirm leaves
-      // pendingType null, pending_bust sets it to 'bust'. On a bust we stay
-      // silent (DartSoundService.playBust covers it) rather than read out a
-      // score that doesn't count. Guard against '' edit placeholders.
+      // 3-dart round (pendingConfirmation) that did NOT bust and did NOT win.
+      // We can't decide this from the local darts alone: the throws hit 3
+      // locally before the server rules, and on a bust/win the backend sends
+      // pending_bust / pending_win with no score_updated. So we wait for the
+      // verdict — round_ready_confirm is the ONLY outcome that leaves
+      // pendingType null. Requiring exactly that (rather than "not a bust")
+      // stops two wrong calls: a win announced while the confirm dialog is
+      // still up and editable, and — because an edit mid-pending changes the
+      // local darts without clearing pendingConfirmation — a busted edit
+      // announced as a valid score. Also require every dart to be acked, so
+      // we never read out a total the server hasn't got. Guard against ''
+      // edit placeholders.
       if (game.isMyTurn) {
         final throws = game.currentRoundThrows as List<String>;
         final visitComplete = throws.length == 3 && throws.every((t) => t.isNotEmpty);
-        if (visitComplete && game.pendingConfirmation && game.pendingType != 'bust') {
+        int unacked = 0;
+        try { unacked = (game.unackedDartCount as int?) ?? 0; } catch (_) {}
+        if (visitComplete &&
+            game.pendingConfirmation &&
+            game.pendingType == null &&
+            unacked == 0) {
           final sig = throws.join(',');
           if (sig != _lastCalledVisitSignature) {
             _lastCalledVisitSignature = sig;
