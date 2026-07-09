@@ -33,6 +33,33 @@ class SocketService {
   // surfaces the recovery first.
   static bool _wasDisconnected = false;
 
+  // Rate-limits the refresh-token + socket-rebuild recovery so an
+  // unrecoverable auth problem can't loop it.
+  static DateTime? _lastAuthRebuild;
+
+  /// Refresh the access token and rebuild the socket with it, keeping every
+  /// registered event handler. Used when the server signals an auth problem —
+  /// a server-initiated disconnect turns off socket.io auto-reconnect, so
+  /// without this the app stayed offline until a restart.
+  static Future<void> _refreshTokenAndRebuild() async {
+    final now = DateTime.now();
+    if (_lastAuthRebuild != null &&
+        now.difference(_lastAuthRebuild!) < const Duration(seconds: 10)) {
+      return;
+    }
+    _lastAuthRebuild = now;
+    try {
+      final refreshed = await ApiService.refreshAccessToken();
+      if (!refreshed) return;
+      debugPrint('SocketService: token refreshed, rebuilding socket');
+      _disconnectInternal(preserveHandlers: true);
+      _connectCompleter = null;
+      await connect();
+    } catch (e) {
+      debugPrint('SocketService: auth rebuild failed: $e');
+    }
+  }
+
   // Fire the reconnect handlers once, only if we were actually disconnected.
   // Both onConnect and the manager 'reconnect' event funnel through here: on
   // Android a recovered connection often surfaces as a fresh 'connect' rather
@@ -110,6 +137,26 @@ class SocketService {
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
+        }
+        // A server-initiated disconnect (usually an auth rejection) disables
+        // socket.io auto-reconnect: without intervention the app stays
+        // offline for good. Refresh the token and rebuild.
+        if (reason.toString().contains('io server disconnect')) {
+          _refreshTokenAndRebuild();
+        }
+      });
+
+      // Server-side auth verdicts. 'invalid_token' = we were (or are about to
+      // be) kicked; 'token_expiring' = the server let an expired-token
+      // reconnect through for an active match and asks us to refresh for the
+      // next one. Both resolve by refreshing; only the kick needs a rebuild.
+      _socket!.on('auth_error', (data) {
+        final reason = (data is Map ? data['reason'] : null)?.toString();
+        debugPrint('SocketService: auth_error from server: $reason');
+        if (reason == 'token_expiring') {
+          ApiService.refreshAccessToken();
+        } else {
+          _refreshTokenAndRebuild();
         }
       });
 
