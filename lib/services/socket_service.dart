@@ -141,7 +141,11 @@ class SocketService {
           final refreshed = await ApiService.refreshAccessToken();
           if (refreshed) {
             debugPrint('SocketService: Token refreshed, reconnecting with new token...');
-            _disconnectInternal();
+            // Keep the registered event handlers: they are re-attached to the
+            // new socket inside connect(). Wiping them here (the old behavior)
+            // silently killed every game listener while the providers still
+            // believed they were set up — a frozen match on a healthy socket.
+            _disconnectInternal(preserveHandlers: true);
             _connectCompleter = null;
             await connect();
           }
@@ -150,6 +154,12 @@ class SocketService {
 
       _socket!.onError((error) {
         debugPrint('SocketService: Error - $error');
+      });
+
+      // Re-attach handlers that were registered on a previous socket instance
+      // (auth-refresh rebuild path). No-op on the very first connect.
+      _handlers.forEach((event, handler) {
+        _socket!.on(event, handler);
       });
 
       _socket!.connect();
@@ -174,14 +184,19 @@ class SocketService {
     });
   }
 
-  static void _disconnectInternal() {
+  /// [preserveHandlers] keeps the tracked event handlers so an immediately
+  /// following connect() re-attaches them to the new socket (token-refresh
+  /// rebuild). A full teardown (logout) clears them.
+  static void _disconnectInternal({bool preserveHandlers = false}) {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _handlers.clear();
+      if (!preserveHandlers) {
+        _handlers.clear();
+      }
     }
   }
 
@@ -200,14 +215,15 @@ class SocketService {
   }
 
   static void on(String event, Function(dynamic) handler) {
-    if (_socket == null) throw Exception('Socket not initialized');
     // Remove any previously registered handler for this event before adding the new one
     final existing = _handlers[event];
-    if (existing != null) {
+    if (existing != null && _socket != null) {
       _socket!.off(event, existing);
     }
     _handlers[event] = handler;
-    _socket!.on(event, handler);
+    // Socket may be mid-rebuild (token refresh); connect() attaches every
+    // tracked handler to the new instance, so storing it is enough.
+    _socket?.on(event, handler);
   }
 
   static void off(String event) {

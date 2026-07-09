@@ -104,9 +104,16 @@ class MatchmakingProvider with ChangeNotifier {
     // up and leaving the player "disconnected" and not actually queued.
     SocketService.clearReconnectHandler();
     SocketService.setReconnectHandler(() {
+      // Queue recovery ONLY. This handler stays registered long after the
+      // search ends, so it must not touch the game providers outside the
+      // searching phase: driving GameProvider.ensureListenersSetup() from a
+      // stale handler used to re-register its listeners over a running
+      // tournament's (the event registry is single-slot per event) and freeze
+      // that tournament match. Mid-match reconnection is owned by each game
+      // provider's own reconnect listener.
+      if (!_isSearching || _matchFound || _leaving) return;
       _setupSocketListeners();
       _gameProvider?.ensureListenersSetup();
-      _gameProvider?.reconnectToMatch();
       _rejoinQueueAfterReconnect();
     });
 
