@@ -1697,16 +1697,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String youHitToFinish(String notation) => 'You hit $notation to finish!';
 
   @override
-  String shortRoundScored(int count) =>
-      'Only $count of 3 darts were scored this turn. End the turn anyway, or keep scoring?';
-
-  @override
-  String get endTurnAnyway => 'End turn';
-
-  @override
-  String get keepScoring => 'Keep scoring';
-
-  @override
   String get isThisCorrect => 'Is this correct?';
 
   @override
