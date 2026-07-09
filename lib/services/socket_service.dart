@@ -37,6 +37,29 @@ class SocketService {
   // unrecoverable auth problem can't loop it.
   static DateTime? _lastAuthRebuild;
 
+  // Capability announced by the server in its `authenticated` payload.
+  //
+  // False until the current socket has been authenticated by a server that
+  // understands per-dart ids. The providers MUST NOT attach a dartId, retry an
+  // un-acked dart, or send dartCount while this is false: an older backend
+  // silently drops the unknown dartId, scores the dart, and never acks — so a
+  // retry loop would score the same dart on every attempt. Reset on every
+  // disconnect so a backend rollback mid-session degrades us safely instead of
+  // corrupting scores.
+  static bool _supportsDartAck = false;
+
+  /// Whether the server this socket is authenticated against acknowledges and
+  /// deduplicates individual darts. See [_supportsDartAck].
+  static bool get supportsDartAck => _supportsDartAck;
+
+  static void _handleAuthenticated(dynamic data) {
+    final supports = data is Map && data['supportsDartAck'] == true;
+    if (supports != _supportsDartAck) {
+      debugPrint('SocketService: server supportsDartAck=$supports');
+    }
+    _supportsDartAck = supports;
+  }
+
   /// Refresh the access token and rebuild the socket with it, keeping every
   /// registered event handler. Used when the server signals an auth problem —
   /// a server-initiated disconnect turns off socket.io auto-reconnect, so
@@ -131,9 +154,17 @@ class SocketService {
         _dispatchReconnected();
       });
 
+      // Capability handshake. Attached directly to the socket (not through the
+      // single-slot `on` registry) so a provider can still listen to
+      // 'authenticated' without displacing this.
+      _socket!.on('authenticated', _handleAuthenticated);
+
       _socket!.onDisconnect((reason) {
         debugPrint('SocketService: Disconnected - reason: $reason');
         _wasDisconnected = true;
+        // Re-derived from the next 'authenticated'. Until then we assume the
+        // server cannot dedup darts, which is always the safe assumption.
+        _supportsDartAck = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -237,6 +268,7 @@ class SocketService {
   static void _disconnectInternal({bool preserveHandlers = false}) {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
+    _supportsDartAck = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
@@ -261,15 +293,18 @@ class SocketService {
   static void Function(String event, dynamic data)? debugEmitOverride;
 
   /// Test seam: deliver [event] to whatever handler `on(event, …)` registered,
-  /// exactly as socket.io would.
+  /// exactly as socket.io would. 'authenticated' also drives the capability
+  /// handshake, as it does against a real socket.
   @visibleForTesting
   static void debugDispatch(String event, dynamic data) {
+    if (event == 'authenticated') _handleAuthenticated(data);
     _handlers[event]?.call(data);
   }
 
   @visibleForTesting
   static void debugReset() {
     debugEmitOverride = null;
+    _supportsDartAck = false;
     _handlers.clear();
     _disconnectListeners.clear();
     _reconnectListeners.clear();

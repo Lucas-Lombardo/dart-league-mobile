@@ -758,8 +758,11 @@ class TournamentGameProvider with ChangeNotifier {
   void confirmRound() {
     if (_gameEnded || _currentGameMatchId == null) return;
 
+    final tracked = SocketService.supportsDartAck;
+
     // Never commit a turn while a dart is still in flight (see GameProvider).
-    if (_pendingDartAcks.isNotEmpty && _confirmAttempts < 5) {
+    // Pointless against a legacy backend, which never acks.
+    if (tracked && _pendingDartAcks.isNotEmpty && _confirmAttempts < 5) {
       _confirmAttempts++;
       _flushPendingDarts();
       Timer(const Duration(milliseconds: 800), () {
@@ -769,22 +772,19 @@ class TournamentGameProvider with ChangeNotifier {
     }
     _confirmAttempts = 0;
 
-    final dartCount =
-        _currentRoundThrows.where((t) => t.isNotEmpty).length.clamp(0, 3);
+    final payload = <String, dynamic>{
+      'matchId': _currentGameMatchId,
+      'playerId': _myUserId,
+    };
+    if (tracked) {
+      payload['dartCount'] =
+          _currentRoundThrows.where((t) => t.isNotEmpty).length.clamp(0, 3);
+    }
     try {
-      if (_currentRoundThrows.length < 3) {
-        SocketService.emit('end_round_early', {
-          'matchId': _currentGameMatchId,
-          'playerId': _myUserId,
-          'dartCount': dartCount,
-        });
-      } else {
-        SocketService.emit('confirm_round', {
-          'matchId': _currentGameMatchId,
-          'playerId': _myUserId,
-          'dartCount': dartCount,
-        });
-      }
+      SocketService.emit(
+        _currentRoundThrows.length < 3 ? 'end_round_early' : 'confirm_round',
+        payload,
+      );
     } catch (e) {
       debugPrint('TournamentGameProvider: confirmRound failed: $e');
     }
@@ -812,6 +812,12 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _flushPendingDarts() {
+    if (!SocketService.supportsDartAck) {
+      // A server that can't dedup would score the re-sent dart again.
+      _dartRetryTimer?.cancel();
+      _dartRetryTimer = null;
+      return;
+    }
     if (_pendingDartAcks.isEmpty) {
       _dartRetryTimer?.cancel();
       _dartRetryTimer = null;
@@ -940,15 +946,28 @@ class TournamentGameProvider with ChangeNotifier {
 
     final isDouble = multiplier == ScoreMultiplier.double;
     final isTriple = multiplier == ScoreMultiplier.triple;
-    _emitDartWithTracking({
+    final payload = <String, dynamic>{
       'matchId': _currentGameMatchId,
       'playerId': _myUserId,
       'baseScore': baseScore,
       'isDouble': isDouble,
       'isTriple': isTriple,
       'source': source,
-      'dartIndex': _dartsEmittedThisRound,
-    });
+    };
+
+    if (!SocketService.supportsDartAck) {
+      // Legacy backend: never track or retry — it would score the dart twice.
+      _dartsEmittedThisRound++;
+      try {
+        SocketService.emit('throw_dart', payload);
+      } catch (_) {
+        _dartsEmittedThisRound--;
+      }
+      return;
+    }
+
+    payload['dartIndex'] = _dartsEmittedThisRound;
+    _emitDartWithTracking(payload);
     _dartsEmittedThisRound++;
   }
 
@@ -967,15 +986,20 @@ class TournamentGameProvider with ChangeNotifier {
       if (index >= _dartsEmittedThisRound) {
         // Delivery-tracked; the server verifies dartIndex so a gap-fill can't
         // silently record the dart at the wrong position (see GameProvider).
-        _emitDartWithTracking({
+        final payload = <String, dynamic>{
           'matchId': _currentGameMatchId,
           'playerId': _myUserId,
           'baseScore': baseScore,
           'isDouble': isDouble,
           'isTriple': isTriple,
           'source': 'manual',
-          'dartIndex': index,
-        });
+        };
+        if (SocketService.supportsDartAck) {
+          payload['dartIndex'] = index;
+          _emitDartWithTracking(payload);
+        } else {
+          SocketService.emit('throw_dart', payload);
+        }
         _dartsEmittedThisRound = index + 1;
       } else {
         SocketService.emit('edit_dart', {

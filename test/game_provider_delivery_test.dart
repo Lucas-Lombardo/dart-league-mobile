@@ -41,6 +41,13 @@ void main() {
 
     game = GameProvider();
     game.ensureListenersSetup();
+    // The server announces its capabilities on authentication. Without this the
+    // client stays on the legacy fire-and-forget path — see the last group.
+    SocketService.debugDispatch('authenticated', {
+      'userId': p1,
+      'socketId': 's1',
+      'supportsDartAck': true,
+    });
     game.initGame(matchId, p1, p2);
     // game_started makes it our turn and fixes the score mapping.
     SocketService.debugDispatch('game_started', {
@@ -316,6 +323,87 @@ void main() {
       // false and the board froze until the corrective sync landed.
       expect(game.isMyTurn, isTrue);
       expect(game.currentPlayerId, p1);
+    });
+  });
+
+  // A backend that never announced supportsDartAck cannot deduplicate darts.
+  // Retrying an un-acked dart there would score it again on every attempt —
+  // strictly worse than the bug this whole protocol fixes. So the client must
+  // fall back to exactly the old fire-and-forget behaviour. This is what makes
+  // a backend rollback (or a mobile-before-backend deploy) safe.
+  group('against a legacy backend (no supportsDartAck)', () {
+    setUp(() {
+      // Re-authenticate as an old server: no capability flag.
+      SocketService.debugDispatch('authenticated', {'userId': p1, 'socketId': 's1'});
+    });
+
+    test('the capability is off', () {
+      expect(SocketService.supportsDartAck, isFalse);
+    });
+
+    test('throw_dart carries no dartId and no dartIndex', () async {
+      await game.throwDart(baseScore: 20, multiplier: ScoreMultiplier.single);
+
+      final sentDart = emitsOf('throw_dart').single;
+      expect(sentDart.containsKey('dartId'), isFalse);
+      expect(sentDart.containsKey('dartIndex'), isFalse);
+      expect(game.unackedDartCount, 0); // nothing tracked, nothing to retry
+    });
+
+    test('confirm_round carries no dartCount and does not defer', () async {
+      for (final s in [20, 1, 5]) {
+        await game.throwDart(baseScore: s, multiplier: ScoreMultiplier.single);
+      }
+      // A legacy backend still echoes the round through score_updated; that
+      // echo is the only thing that fills currentRoundThrows here.
+      SocketService.debugDispatch('score_updated', {
+        'matchId': matchId,
+        'player1Score': 475,
+        'player2Score': 501,
+        'currentPlayerId': p1,
+        'dartsThrown': 3,
+        'currentRoundThrows': ['S20', 'S1', 'S5'],
+      });
+
+      game.confirmRound();
+
+      final confirms = emitsOf('confirm_round');
+      expect(confirms, hasLength(1));
+      expect(confirms.single.containsKey('dartCount'), isFalse);
+    });
+
+    test('a dart is emitted exactly once and never re-sent', () async {
+      await game.throwDart(baseScore: 20, multiplier: ScoreMultiplier.single);
+      final before = emitsOf('throw_dart').length;
+
+      // Anything that would normally trigger the retry pump.
+      game.confirmRound();
+      SocketService.debugDispatch('game_state_sync', {
+        'matchId': matchId,
+        'player1Id': p1,
+        'player1Score': 501,
+        'player2Score': 501,
+        'currentPlayerId': p1,
+        'dartsThrown': 0,
+        'currentRoundThrows': <String>[],
+      });
+
+      expect(emitsOf('throw_dart').length, before);
+    });
+
+    test('losing the socket turns the capability back off', () async {
+      // Back to a capable server…
+      SocketService.debugDispatch('authenticated', {
+        'userId': p1,
+        'socketId': 's1',
+        'supportsDartAck': true,
+      });
+      expect(SocketService.supportsDartAck, isTrue);
+
+      // …then the socket drops. Until the next 'authenticated' we must assume
+      // the worst, because a rollback may have happened underneath us.
+      SocketService.debugReset();
+      expect(SocketService.supportsDartAck, isFalse);
     });
   });
 }
