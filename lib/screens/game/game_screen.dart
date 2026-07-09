@@ -795,6 +795,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                         game.editDartThrow(index, base, mul);
                       },
                       onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
+                      onEditModalClosed: resumeCaptureAfterEdit,
                       onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                       aiEnabled: !aiManuallyDisabled,
                       myAverage: game.myAveragePerRound,

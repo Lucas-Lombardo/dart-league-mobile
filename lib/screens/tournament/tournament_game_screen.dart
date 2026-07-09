@@ -611,6 +611,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                         game.editDartThrow(index, base, mul);
                       },
                       onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
+                      onEditModalClosed: resumeCaptureAfterEdit,
                       onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                       aiEnabled: !aiManuallyDisabled,
                     )
