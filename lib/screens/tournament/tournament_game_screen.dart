@@ -594,7 +594,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                       iAmPlayer2: game.iAmPlayer2,
                       dartsThrown: game.dartsThrown,
                       agoraEngine: agoraEngine,
-                      localCameraPreview: cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
+                      localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
                           ? LocalCameraPreview(controller: cameraFrameService!.controller!)
                           : null,
                       remoteUid: game.remoteUid,

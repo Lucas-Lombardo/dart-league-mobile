@@ -26,13 +26,18 @@ class FriendlyMatchLauncher {
     HapticService.lightImpact();
 
     final subscription = context.read<SubscriptionProvider>();
-    if (!subscription.isPremiumActive) {
-      _showPremiumRequiredDialog(context, l10n);
-      return;
-    }
-    if (!friend.isPremiumActive) {
-      _showInfoDialog(context, l10n.friendNeedsPremium);
-      return;
+    // During Free Play (Sat 20:00–00:00 Europe/Paris) friend matches are open to
+    // everyone; otherwise both players must be premium. The backend re-validates
+    // this exact rule on invite/accept either way.
+    if (!subscription.freePlayActive) {
+      if (!subscription.isPremiumActive) {
+        _showPremiumRequiredDialog(context, l10n);
+        return;
+      }
+      if (!friend.isPremiumActive) {
+        _showInfoDialog(context, l10n.friendNeedsPremium);
+        return;
+      }
     }
 
     final inviteProvider = context.read<MatchInviteProvider>();

@@ -47,7 +47,6 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends BaseGameScreenState<GameScreen> {
   String? _storedMatchId;
-  final bool _didForfeit = false; // not final: set in disposeScreenSpecific via leaveMatch check
 
   @override
   dynamic readGame() => context.read<GameProvider>();
@@ -133,7 +132,11 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
   @override
   void disposeScreenSpecific() {
-    if (!_didForfeit) leaveMatch();
+    // Safety-net forfeit for the swipe-back / app-kill paths. leaveMatch() only
+    // emits when the game is still live (gameStarted && !gameEnded), so a screen
+    // popped after the match already ended — including a ghost match the server
+    // already voided — never triggers a spurious forfeit.
+    leaveMatch();
     try {
       context.read<GameProvider>().removeListener(handleSharedStateChange);
     } catch (e) {
@@ -775,7 +778,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       iAmPlayer2: game.iAmPlayer2,
                       dartsThrown: dartsThrown,
                       agoraEngine: agoraEngine,
-                      localCameraPreview: cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
+                      localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
                           ? LocalCameraPreview(controller: cameraFrameService!.controller!)
                           : null,
                       remoteUid: game.remoteUid,

@@ -49,6 +49,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
   int? customVideoTrackId;
+  // True while the camera is being flipped front/back, so the build shows the
+  // placeholder instead of a LocalCameraPreview bound to a disposed controller.
+  bool switchingCamera = false;
   bool isAudioMuted = true;
   bool permissionsGranted = false;
   bool cameraZoomInitialized = false;
@@ -760,7 +763,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     await agoraEngine!.muteLocalAudioStream(isAudioMuted);
   }
   Future<void> switchCamera() async {
-    // Not applicable with custom video track — always uses back camera
+    final svc = cameraFrameService;
+    if (svc == null || switchingCamera) return;
+    HapticService.lightImpact();
+    setState(() => switchingCamera = true);
+    try {
+      await svc.switchCamera();
+      // Zoom range differs per lens (front cameras often can't zoom at all),
+      // so re-read the bounds and re-apply the saved zoom for the new lens.
+      cameraZoomInitialized = false;
+      await initCameraZoom();
+    } finally {
+      if (mounted) setState(() => switchingCamera = false);
+    }
   }
   Future<void> zoomIn() async {
     if (cameraFrameService == null) return;

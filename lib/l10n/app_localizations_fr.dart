@@ -1660,6 +1660,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tapToUpgradeForUnlimited => 'Appuyez pour passer à l\'offre illimitée';
 
   @override
+  String get freePlayBannerTitle => 'Soirée gratuite !';
+
+  @override
+  String get freePlayBannerSubtitle =>
+      'Classées illimitées et matchs entre amis gratuits pour tout le monde';
+
+  @override
   String get unrankedFreeTierHint =>
       'Après le placement, les joueurs gratuits ont 1 match classé par jour';
 

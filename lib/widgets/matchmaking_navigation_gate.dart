@@ -33,6 +33,11 @@ class MatchmakingNavigationGate extends StatefulWidget {
 class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
   MatchmakingProvider? _matchmaking;
   bool _navigating = false;
+  // Tracks whether the "Match Found!" dialog is currently on screen, so we can
+  // force-dismiss it if the match is aborted (e.g. the player cancelled their
+  // search and the server voided the ghost match) — otherwise the
+  // barrierDismissible:false dialog would stay stuck forever.
+  bool _dialogOpen = false;
 
   @override
   void didChangeDependencies() {
@@ -55,18 +60,30 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       _showMatchFoundDialog(matchmaking);
       _waitForAgoraCredentialsAndNavigate(matchmaking);
     } else {
-      // New search started (or queue left) — allow the next match to navigate.
+      // New search started, queue left, or the match was aborted — allow the
+      // next match to navigate and tear down any stuck "Match Found!" dialog.
       _navigating = false;
+      _dismissDialogIfOpen();
     }
   }
 
   NavigatorState? get _navigator => widget.navigatorKey.currentState;
   BuildContext? get _navContext => widget.navigatorKey.currentContext;
 
+  /// Force-close the match-found dialog if it's showing. Safe to call when it
+  /// isn't (guarded by [_dialogOpen]).
+  void _dismissDialogIfOpen() {
+    if (!_dialogOpen) return;
+    _dialogOpen = false;
+    final nav = _navigator;
+    if (nav != null && nav.canPop()) nav.pop();
+  }
+
   void _showMatchFoundDialog(MatchmakingProvider matchmaking) {
     final ctx = _navContext;
     if (ctx == null) return;
 
+    _dialogOpen = true;
     showDialog(
       context: ctx,
       barrierDismissible: false,
@@ -148,7 +165,11 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      // Cleared however the dialog closes (our dismiss, or removal by the
+      // pushAndRemoveUntil into GameScreen).
+      _dialogOpen = false;
+    });
   }
 
   /// Polls up to ~5s for Agora credentials, then jumps into the match. Navigating
@@ -163,6 +184,11 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       final navigator = _navigator;
       if (navigator == null || matchmaking.matchId == null ||
           matchmaking.opponentId == null) {
+        // The match was aborted (cancelled search / voided ghost match) before
+        // we could navigate. Don't leave the dialog stuck and let a future
+        // match navigate again.
+        _navigating = false;
+        _dismissDialogIfOpen();
         return;
       }
       navigator.pushAndRemoveUntil(

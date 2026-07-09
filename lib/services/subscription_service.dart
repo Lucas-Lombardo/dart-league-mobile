@@ -8,11 +8,16 @@ class SubscriptionStatus {
   final int? matchesRemainingToday;
   final int? dailyLimit;
 
+  /// True during the weekly Free Play window (Sat 20:00–00:00 Europe/Paris),
+  /// when ranked is unlimited and friend matches are free for everyone.
+  final bool freePlayActive;
+
   SubscriptionStatus({
     required this.isPremium,
     this.premiumExpiresAt,
     this.matchesRemainingToday,
     this.dailyLimit,
+    this.freePlayActive = false,
   });
 
   factory SubscriptionStatus.fromJson(Map<String, dynamic> json) {
@@ -30,6 +35,7 @@ class SubscriptionStatus {
       premiumExpiresAt: parseDate(json['premiumExpiresAt'] as String?),
       matchesRemainingToday: json['matchesRemainingToday'] as int?,
       dailyLimit: json['dailyLimit'] as int?,
+      freePlayActive: json['freePlayActive'] as bool? ?? false,
     );
   }
 }

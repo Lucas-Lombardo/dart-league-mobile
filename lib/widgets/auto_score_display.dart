@@ -302,12 +302,15 @@ class AutoScoreGameView extends StatelessWidget {
                             onTap: onToggleAudio,
                           ),
                           const SizedBox(width: 8),
+                        ],
+                        // Front/back flip — available in every mode that wires
+                        // a switch handler (multiplayer and solo alike).
+                        if (onSwitchCamera != null)
                           _CameraControlButton(
                             icon: Icons.cameraswitch,
                             isActive: true,
                             onTap: onSwitchCamera,
                           ),
-                        ],
                       ],
                     ),
                   ),

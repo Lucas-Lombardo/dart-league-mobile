@@ -12,6 +12,11 @@ class MatchmakingProvider with ChangeNotifier {
   bool _isSearching = false;
   bool _disposed = false;
   bool _matchFound = false;
+  // True from the moment the user asks to leave the queue until that leave
+  // completes. Gates match_found/poll handling so a match_found (or active-match
+  // poll result) arriving during the leave round-trip can't navigate the user
+  // into a match they just cancelled.
+  bool _leaving = false;
   String? _matchId;
   String? _opponentId;
   String? _opponentUsername;
@@ -60,73 +65,99 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   Future<void> joinQueue(String userId) async {
-    try {
-      debugPrint('QUEUE DEBUG: joinQueue called - userId=$userId');
-      debugPrint('QUEUE DEBUG: gameProvider state - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}, winnerId=${_gameProvider?.winnerId}, matchId=${_gameProvider?.matchId}');
-      
-      // Reset ALL state from previous match before starting new search
-      _matchFound = false;
-      _matchId = null;
-      _opponentId = null;
-      _opponentUsername = null;
-      _opponentElo = null;
-      _agoraAppId = null;
-      _agoraToken = null;
-      _agoraChannelName = null;
-      _errorMessage = null;
-      _currentUserId = userId;
-      
-      // Reset game provider if it still has stale state from previous match
-      if (_gameProvider != null && (_gameProvider!.gameStarted || _gameProvider!.gameEnded)) {
-        debugPrint('QUEUE DEBUG: Resetting stale game provider state before queuing');
-        _gameProvider!.reset();
-      }
-      
-      notifyListeners();
+    debugPrint('QUEUE DEBUG: joinQueue called - userId=$userId');
+    debugPrint('QUEUE DEBUG: gameProvider state - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}, winnerId=${_gameProvider?.winnerId}, matchId=${_gameProvider?.matchId}');
 
-      await SocketService.ensureConnected();
+    // Reset ALL state from the previous match/search BEFORE any await. Doing the
+    // reset (especially the search timer) up front means a failure below can
+    // never leave a stale "0:30" from the previous search frozen on screen.
+    _leaving = false;
+    _matchFound = false;
+    _matchId = null;
+    _opponentId = null;
+    _opponentUsername = null;
+    _opponentElo = null;
+    _agoraAppId = null;
+    _agoraToken = null;
+    _agoraTokenStrict = null;
+    _agoraChannelName = null;
+    _agoraUid = null;
+    _opponentAgoraUid = null;
+    _errorMessage = null;
+    _currentUserId = userId;
+    _eloRange = 250;
 
-      // Ensure game listeners are set up now that socket is connected
-      _gameProvider?.ensureListenersSetup();
+    // Reset game provider if it still has stale state from the previous match
+    if (_gameProvider != null && (_gameProvider!.gameStarted || _gameProvider!.gameEnded)) {
+      debugPrint('QUEUE DEBUG: Resetting stale game provider state before queuing');
+      _gameProvider!.reset();
+    }
 
+    // Enter the searching state immediately at 0:00 and start ticking, so the UI
+    // is always coherent regardless of what happens with the socket below.
+    _isSearching = true;
+    _startSearchTimer();
+
+    // Register recovery handlers BEFORE connecting. If the socket is down right
+    // now (e.g. it bounced after the previous game) the reconnect handler will
+    // re-drive the queue join once it comes back, instead of us silently giving
+    // up and leaving the player "disconnected" and not actually queued.
+    SocketService.clearReconnectHandler();
+    SocketService.setReconnectHandler(() {
       _setupSocketListeners();
+      _gameProvider?.ensureListenersSetup();
+      _gameProvider?.reconnectToMatch();
+      _rejoinQueueAfterReconnect();
+    });
 
-      // Clear old handler before setting new one to avoid stale closures
-      SocketService.clearReconnectHandler();
-      SocketService.setReconnectHandler(() {
-        _setupSocketListeners();
-        _gameProvider?.ensureListenersSetup();
-        _gameProvider?.reconnectToMatch();
-      });
+    notifyListeners();
 
-      final response = await MatchmakingService.joinQueue(userId);
-
-      _playerElo = response['playerElo'] as int?;
-      
-      // Only update these if match wasn't already found via socket
-      // (socket event can arrive before HTTP response)
-      if (!_matchFound) {
-        _isSearching = true;
-        _searchTime = 0;
-        _eloRange = 250;
-        _matchId = null;
-        _opponentId = null;
-        _opponentUsername = null;
-        _opponentElo = null;
-        _agoraAppId = null;
-        _agoraToken = null;
-        _agoraTokenStrict = null;
-        _agoraChannelName = null;
-        _agoraUid = null;
-        _opponentAgoraUid = null;
-      }
-      
-      notifyListeners();
-      _startSearchTimer();
+    try {
+      await SocketService.ensureConnected();
     } catch (e) {
+      // Socket not ready yet. Keep the searching UI up (the connection banner
+      // already reflects "disconnected"); SocketService retries the connection
+      // unboundedly and the reconnect handler above will POST the join then.
+      debugPrint('QUEUE DEBUG: socket not ready, will join on reconnect: $e');
+      return;
+    }
+
+    // Socket is connected — wire listeners and actually join the queue.
+    _gameProvider?.ensureListenersSetup();
+    _setupSocketListeners();
+
+    try {
+      final response = await MatchmakingService.joinQueue(userId);
+      _playerElo = response['playerElo'] as int?;
+      notifyListeners();
+    } catch (e) {
+      // A business error (daily limit, active tournament, already in a match…) —
+      // surface it and stop searching. Connection errors are handled above.
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _isSearching = false;
+      _stopSearchTimer();
       notifyListeners();
+    }
+  }
+
+  /// Re-issue the queue join after the socket reconnects mid-search. The server
+  /// join is idempotent (already-queued → no-op), so this safely recovers a
+  /// search that was interrupted by a dropped socket. No-op if we're no longer
+  /// searching, already matched, or leaving.
+  Future<void> _rejoinQueueAfterReconnect() async {
+    if (!_isSearching || _matchFound || _leaving || _currentUserId == null) {
+      return;
+    }
+    try {
+      final response = await MatchmakingService.joinQueue(_currentUserId!);
+      if (!_isSearching || _matchFound || _leaving) return;
+      _playerElo = response['playerElo'] as int?;
+      notifyListeners();
+    } catch (e) {
+      // If we were matched while offline the server may reject the re-join; the
+      // 5s active-match poll recovers us into that match. Anything else: leave
+      // the search running so a later reconnect retries.
+      debugPrint('QUEUE DEBUG: rejoin after reconnect failed: $e');
     }
   }
 
@@ -166,11 +197,11 @@ class MatchmakingProvider with ChangeNotifier {
   void _startActiveMatchPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!_isSearching || _matchFound || _currentUserId == null) return;
+      if (!_isSearching || _matchFound || _leaving || _currentUserId == null) return;
       try {
         final result = await MatchService.getActiveMatch(_currentUserId!);
         // Re-check state after await to avoid acting on stale conditions
-        if (!_isSearching || _matchFound || _currentUserId == null) return;
+        if (!_isSearching || _matchFound || _leaving || _currentUserId == null) return;
         if (result['active'] == true) {
           debugPrint('QUEUE DEBUG: active match detected via poll - matchId=${result['matchId']}');
           _handleMatchFound({
@@ -193,9 +224,17 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   void _handleMatchFound(dynamic data) {
+    // Ignore any match landing while we're leaving the queue. Without this, a
+    // match_found (or active-match poll) arriving during the leave round-trip
+    // would flip _matchFound and the global navigation gate would drag the user
+    // into a match they just cancelled — which then instantly forfeited.
+    if (_leaving) {
+      debugPrint('QUEUE DEBUG: match_found ignored (leaving queue)');
+      return;
+    }
     debugPrint('QUEUE DEBUG: match_found received - matchId=${data['matchId']}, opponentId=${data['opponentId']}');
     debugPrint('QUEUE DEBUG: gameProvider state at match_found - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}');
-    
+
     HapticService.heavyImpact();
     DartSoundService.playMatchFound();
 
@@ -271,11 +310,18 @@ class MatchmakingProvider with ChangeNotifier {
   }
 
   Future<void> leaveQueue(String userId) async {
+    // Enter the leaving state and tear down listeners/timers BEFORE the network
+    // call. A match_found can arrive during the round-trip; if we waited until
+    // after the await to remove listeners, that event would still navigate the
+    // user into the cancelled match. Order matters here.
+    _leaving = true;
+    _cleanupSocketListeners();
+    _stopSearchTimer();
+    _isSearching = false;
+    _matchFound = false;
+    notifyListeners();
     try {
       await MatchmakingService.leaveQueue(userId);
-
-      _cleanupSocketListeners();
-      _stopSearchTimer();
 
       _isSearching = false;
       _searchTime = 0;

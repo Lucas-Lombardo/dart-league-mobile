@@ -330,6 +330,50 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
   }
 
+  /// Celebratory banner shown while the weekly Free Play window is live
+  /// (Sat 20:00–00:00 Europe/Paris): unlimited ranked + free friend matches.
+  Widget _buildFreePlayBanner() {
+    final l10n = AppLocalizations.of(context);
+    const green = Color(0xFF22C55E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: green.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.celebration, color: green, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.freePlayBannerTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l10n.freePlayBannerSubtitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUnrankedFreeTierHint() {
     final l10n = AppLocalizations.of(context);
     return InkWell(
@@ -1173,7 +1217,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             // The play button is always shown for free users now; the
             // daily-match hint stays visible (it reads "match used" once the
             // free match is spent) and tapping Play surfaces the upgrade popup.
-            if (!subscription.isPremiumActive &&
+            // During Free Play, the upsell hint is replaced by a celebratory
+            // "it's free tonight" banner.
+            if (subscription.freePlayActive) ...[
+              _buildFreePlayBanner(),
+              const SizedBox(height: 12),
+            ] else if (!subscription.isPremiumActive &&
                 subscription.matchesRemainingToday != null) ...[
               _buildFreeTierHint(subscription),
               const SizedBox(height: 12),
