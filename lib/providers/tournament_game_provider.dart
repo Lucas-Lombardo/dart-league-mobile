@@ -555,6 +555,20 @@ class TournamentGameProvider with ChangeNotifier {
     if (player1Id != null) _player1Id = player1Id;
     if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
     if (dartsThrown != null) _dartsThrown = dartsThrown;
+
+    // Settle the pending-dart queue against the server's applied dart IDs
+    // (see GameProvider).
+    final serverDartIds = (data['currentRoundDartIds'] as List<dynamic>?)
+        ?.map((e) => e?.toString())
+        .toList();
+    if (serverDartIds != null && _pendingDartAcks.isNotEmpty) {
+      _pendingDartAcks.removeWhere((id, _) => serverDartIds.contains(id));
+      if (_pendingDartAcks.isEmpty) {
+        _dartRetryTimer?.cancel();
+        _dartRetryTimer = null;
+      }
+    }
+
     if (currentRoundThrows != null) {
       // Why: see GameProvider._handleGameStateSync. Don't wipe locally-detected
       // darts when our throw_dart is still in flight to the server.
@@ -579,6 +593,24 @@ class TournamentGameProvider with ChangeNotifier {
     }
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
+    }
+
+    // Restore pending win/bust confirmation after a reconnect/heal (see
+    // GameProvider for the full rationale).
+    if (data is Map && data.containsKey('pendingState')) {
+      final pendingState = data['pendingState'] as String?;
+      final pendingPlayerId = data['pendingPlayerId'] as String?;
+      if (pendingState != null && pendingPlayerId == _myUserId) {
+        _pendingConfirmation = true;
+        _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
+        _pendingReason = data['pendingReason'] as String?;
+        _pendingData ??= <String, dynamic>{};
+      } else if (pendingState == null &&
+          isMyTurn &&
+          _dartsThrown >= 3 &&
+          _pendingType == null) {
+        _pendingConfirmation = true;
+      }
     }
 
     final newAgoraAppId = data['agoraAppId'] as String?;

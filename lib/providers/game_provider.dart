@@ -850,6 +850,21 @@ class GameProvider with ChangeNotifier {
     if (player1Id != null) _player1Id = player1Id;
     if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
     if (dartsThrown != null) _dartsThrown = dartsThrown;
+
+    // Settle the pending-dart queue against the server's applied dart IDs:
+    // a dart whose ack was lost but that IS in the server's round no longer
+    // needs re-delivery.
+    final serverDartIds = (data['currentRoundDartIds'] as List<dynamic>?)
+        ?.map((e) => e?.toString())
+        .toList();
+    if (serverDartIds != null && _pendingDartAcks.isNotEmpty) {
+      _pendingDartAcks.removeWhere((id, _) => serverDartIds.contains(id));
+      if (_pendingDartAcks.isEmpty) {
+        _dartRetryTimer?.cancel();
+        _dartRetryTimer = null;
+      }
+    }
+
     if (currentRoundThrows != null) {
       // Why: when it's my turn and the AI has already detected darts locally
       // (added to _currentRoundThrows + emitted throw_dart to server), a
@@ -882,6 +897,28 @@ class GameProvider with ChangeNotifier {
     }
 
     _updateRoundsFromData(data);
+
+    // Restore pending win/bust confirmation. A client that missed the
+    // pending_win/pending_bust emit used to reconnect to a board stuck at
+    // "reste 0" with no dialog and every throw rejected. Only act when the
+    // backend actually sends the field (older backends don't).
+    if (data is Map && data.containsKey('pendingState')) {
+      final pendingState = data['pendingState'] as String?;
+      final pendingPlayerId = data['pendingPlayerId'] as String?;
+      if (pendingState != null && pendingPlayerId == _myUserId) {
+        _pendingConfirmation = true;
+        _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
+        _pendingReason = data['pendingReason'] as String?;
+        _pendingData ??= <String, dynamic>{};
+      } else if (pendingState == null &&
+          isMyTurn &&
+          _dartsThrown >= 3 &&
+          _pendingType == null) {
+        // Full non-pending round awaiting confirm: re-show the CONFIRM pill
+        // (round_ready_confirm is fire-and-forget and may have been missed).
+        _pendingConfirmation = true;
+      }
+    }
 
     // Update Agora credentials if provided (reconnection scenario)
     final newAgoraAppId = data['agoraAppId'] as String?;
