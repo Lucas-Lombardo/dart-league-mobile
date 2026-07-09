@@ -1705,6 +1705,16 @@ class AppLocalizationsFr extends AppLocalizations {
       'Vous avez touché $notation pour finir !';
 
   @override
+  String shortRoundScored(int count) =>
+      'Seulement $count fléchette${count > 1 ? 's' : ''} sur 3 comptée${count > 1 ? 's' : ''} ce tour. Terminer le tour quand même, ou continuer ?';
+
+  @override
+  String get endTurnAnyway => 'Terminer le tour';
+
+  @override
+  String get keepScoring => 'Continuer';
+
+  @override
   String get isThisCorrect => 'Est-ce correct ?';
 
   @override

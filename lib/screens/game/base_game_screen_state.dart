@@ -265,7 +265,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             captureYuv: _captureYuvCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
-            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame(), auto: true); },
           );
         } else if ((!game.isMyTurn || pendingNeedsStop) && autoScoringService!.isCapturing) {
           autoScoringService!.stopCapture();
@@ -357,7 +357,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           captureBgra: _captureBgraCallback,
           captureYuv: _captureYuvCallback,
           onDartDetected: _onDartDetectedCallback,
-          onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+          onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame(), auto: true); },
         );
       }
     });
@@ -403,7 +403,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             captureYuv: _captureYuvCallback,
             cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
             onDartDetected: _onDartDetectedCallback,
-            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+            onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame(), auto: true); },
           );
         }
       }
@@ -434,11 +434,85 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       captureYuv: _captureYuvCallback,
       cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
       onDartDetected: _onDartDetectedCallback,
-      onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+      onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame(), auto: true); },
     );
   }
 
-  void submitAutoScoredDarts(dynamic game) { aiPausedForEdit = false; autoScoringService?.stopCapture(); game.confirmRound(); }
+  /// Commit the current turn. [auto] marks AI-initiated confirms (takeout
+  /// detected): those are only allowed through when 3 darts are accounted for
+  /// (echoed by the server or still in delivery). With fewer, the player is
+  /// asked explicitly — an AI that missed a dart used to silently commit a
+  /// 2-dart visit here, which is the "threw 26, scored 21" bug.
+  void submitAutoScoredDarts(dynamic game, {bool auto = false}) {
+    if (auto) {
+      int visible = 0;
+      int unacked = 0;
+      try {
+        visible = (game.currentRoundThrows as List)
+            .where((t) => t.toString().isNotEmpty)
+            .length;
+        unacked = (game.unackedDartCount as int?) ?? 0;
+      } catch (_) {}
+      if (visible + unacked < 3) {
+        _promptShortRoundConfirmation(game, visible + unacked);
+        return;
+      }
+    }
+    aiPausedForEdit = false;
+    autoScoringService?.stopCapture();
+    game.confirmRound();
+  }
+
+  bool shortRoundDialogShowing = false;
+
+  void _promptShortRoundConfirmation(dynamic game, int dartCount) {
+    if (shortRoundDialogShowing || !mounted) return;
+    shortRoundDialogShowing = true;
+    final l10n = AppLocalizations.of(context);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: AppTheme.primary, width: 2)),
+        title: Row(children: [
+          const Icon(Icons.help_outline, color: AppTheme.primary, size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Text(l10n.endRoundEarlyUpper,
+                  style: AppTheme.titleLarge.copyWith(
+                      color: AppTheme.primary, fontWeight: FontWeight.bold))),
+        ]),
+        content: Text(l10n.shortRoundScored(dartCount),
+            style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+            textAlign: TextAlign.center),
+        actions: [
+          OutlinedButton(
+            onPressed: () {
+              shortRoundDialogShowing = false;
+              Navigator.pop(ctx);
+              // Player says darts are missing: keep the turn open so they can
+              // score them manually (or the AI catches up).
+            },
+            child: Text(l10n.keepScoring),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              shortRoundDialogShowing = false;
+              Navigator.pop(ctx);
+              submitAutoScoredDarts(game);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+            child: Text(l10n.endTurnAnyway),
+          ),
+        ],
+      ),
+    ).then((_) {
+      if (mounted) shortRoundDialogShowing = false;
+    });
+  }
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
   Future<void> initializeAgora({required String appId, required String token, required String channelName, int? uid}) async {

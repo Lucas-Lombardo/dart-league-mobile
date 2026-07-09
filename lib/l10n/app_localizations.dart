@@ -643,6 +643,9 @@ abstract class AppLocalizations {
   String get stayInMatch;
   String get leaveAndForfeit;
   String youHitToFinish(String notation);
+  String shortRoundScored(int count);
+  String get endTurnAnyway;
+  String get keepScoring;
   String get isThisCorrect;
   String get editDarts;
   String get confirmPassOrEdit;
