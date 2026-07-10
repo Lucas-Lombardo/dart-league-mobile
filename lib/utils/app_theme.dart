@@ -18,6 +18,19 @@ class AppTheme {
   static const Color success = Color(0xFF22C55E); // Green 500
   static const Color error = Color(0xFFEF4444); // Red 500
 
+  // Game-screen maquette palette. The in-match screens use a deeper navy and
+  // a blue-vs-pink player identity: blue is always ME, pink is always the
+  // opponent, on both the "your turn" and "opponent turn" layouts.
+  static const Color gameBackground = Color(0xFF0C1321);
+  static const Color gamePanel = Color(0xFF182236);
+  static const Color gamePanelEmpty = Color(0xFF10182A);
+  static const Color playerBlue = Color(0xFF5CA4E6);
+  static const Color playerBlueBright = Color(0xFFA6CFF2);
+  static const Color playerBlueDim = Color(0xFF4170A0);
+  static const Color opponentPink = Color(0xFFDC6069);
+  static const Color opponentPinkBright = Color(0xFFEBB2B8);
+  static const Color warnBannerBg = Color(0xFF261C2B);
+
   // Medal / placement colors (1st / 2nd / 3rd) — shared so gold/silver/bronze
   // stay consistent across the history card and the end-of-tournament screen.
   static const Color gold = Color(0xFFFFD700);

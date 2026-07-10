@@ -87,12 +87,13 @@ class _DartEditSheetState extends State<_DartEditSheet> {
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: AppTheme.gamePanelEmpty,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(24),
           topRight: Radius.circular(24),
         ),
+        border: Border.all(color: AppTheme.playerBlueDim.withValues(alpha: 0.45), width: 1.2),
       ),
       child: SafeArea(
         top: false,
@@ -115,14 +116,15 @@ class _DartEditSheetState extends State<_DartEditSheet> {
               padding: const EdgeInsets.fromLTRB(20, 14, 12, 10),
               child: Row(
                 children: [
-                  const Icon(Icons.edit, color: AppTheme.primary, size: 24),
+                  const Icon(Icons.edit, color: AppTheme.playerBlue, size: 24),
                   const SizedBox(width: 10),
                   Text(
                     AppLocalizations.of(context).editDartNumber(widget.dartIndex + 1),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   if (widget.currentScore != null) ...[
@@ -130,8 +132,9 @@ class _DartEditSheetState extends State<_DartEditSheet> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
+                        color: AppTheme.gamePanel,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.playerBlueDim.withValues(alpha: 0.5)),
                       ),
                       child: Text(
                         widget.currentScore!.formatted,
@@ -152,7 +155,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
               ),
             ),
 
-            const Divider(color: AppTheme.surfaceLight, height: 1),
+            Divider(color: AppTheme.playerBlueDim.withValues(alpha: 0.3), height: 1),
 
             Flexible(
               child: SingleChildScrollView(
@@ -216,7 +219,7 @@ class _DartEditSheetState extends State<_DartEditSheet> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppTheme.background,
+        color: AppTheme.gameBackground,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(

@@ -20,6 +20,7 @@ import '../../utils/storage_service.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/game_turn_ui.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
@@ -865,6 +866,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     await agoraEngine!.muteLocalAudioStream(isAudioMuted);
   }
   Future<void> switchCamera() async {
+    // Web uses Agora's own capture — let the SDK flip it.
+    if (kIsWeb) {
+      try {
+        await agoraEngine?.switchCamera();
+      } catch (e) {
+        debugPrint('[BaseGameScreen] web switchCamera error: $e');
+      }
+      return;
+    }
     final svc = cameraFrameService;
     if (svc == null || switchingCamera) return;
     HapticService.lightImpact();
@@ -924,18 +934,23 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final game = readGame();
     if (!game.gameStarted || game.gameEnded) return true;
     final l10n = AppLocalizations.of(context);
-    final result = await showDialog<bool>(
-      context: context, barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.error, width: 2)),
-        title: Row(children: [const Icon(Icons.warning, color: AppTheme.error, size: 32), const SizedBox(width: 12), Text(l10n.leaveMatch, style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold))]),
-        content: Text(leaveWarningText, style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.stayInMatch)),
-          ElevatedButton(onPressed: () { leaveMatch(); Navigator.pop(ctx, true); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: Text(l10n.leaveAndForfeit)),
-        ],
-      ),
+    final result = await showGameDialog<bool>(
+      context,
+      accent: AppTheme.opponentPink,
+      icon: Icons.warning_amber_rounded,
+      title: l10n.leaveMatch,
+      content: Text(leaveWarningText, style: AppTheme.bodyLarge.copyWith(fontSize: 15), textAlign: TextAlign.center),
+      actionsBuilder: (ctx) => [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(l10n.stayInMatch, style: const TextStyle(color: AppTheme.textSecondary)),
+        ),
+        ElevatedButton(
+          onPressed: () { leaveMatch(); Navigator.pop(ctx, true); },
+          style: gameFilledButtonStyle(AppTheme.opponentPink),
+          child: Text(l10n.leaveAndForfeit),
+        ),
+      ],
     );
     return result ?? false;
   }
@@ -948,10 +963,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final notation = (game.pendingData?['finalDart'])?['notation'] as String?;
     final l10n = AppLocalizations.of(context);
     winDialogShowing = true;
-    showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.success, width: 2)),
-      title: Row(children: [const Icon(Icons.emoji_events, color: AppTheme.success, size: 32), const SizedBox(width: 12), Text(l10n.checkout, style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold))]),
+    showGameDialog(
+      context,
+      accent: AppTheme.success,
+      icon: Icons.emoji_events,
+      title: l10n.checkout,
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         if (notation != null && notation.isNotEmpty) ...[
           Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
@@ -959,11 +975,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         ],
         Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
       ]),
-      actions: [
-        OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: Text(l10n.editDarts)),
-        ElevatedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success), child: Text(l10n.confirmWin)),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          style: gameOutlineButtonStyle(AppTheme.playerBlue),
+          child: Text(l10n.editDarts),
+        ),
+        ElevatedButton(
+          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); },
+          style: gameFilledButtonStyle(AppTheme.success),
+          child: Text(l10n.confirmWin),
+        ),
       ],
-    )).then((_) { if (mounted) winDialogShowing = false; });
+    ).then((_) { if (mounted) winDialogShowing = false; });
   }
 
   void showPendingBustDialog(dynamic game) {
@@ -975,19 +999,28 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       'score_one_remaining' => l10n.bustReasonOneRemaining,
       _ => l10n.bustReasonInvalid,
     };
-    showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.error, width: 2)),
-      title: Row(children: [const Icon(Icons.warning, color: AppTheme.error, size: 32), const SizedBox(width: 12), Text(l10n.bust, style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold))]),
+    showGameDialog(
+      context,
+      accent: AppTheme.opponentPink,
+      icon: Icons.warning_amber_rounded,
+      title: l10n.bust,
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(reasonText, style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
         const SizedBox(height: 8), Text(l10n.confirmPassOrEdit, style: const TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
       ]),
-      actions: [
-        OutlinedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: Text(l10n.editDarts)),
-        ElevatedButton(onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmBust(); }, style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error), child: Text(l10n.confirmBustButton)),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          style: gameOutlineButtonStyle(AppTheme.playerBlue),
+          child: Text(l10n.editDarts),
+        ),
+        ElevatedButton(
+          onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmBust(); },
+          style: gameFilledButtonStyle(AppTheme.opponentPink),
+          child: Text(l10n.confirmBustButton),
+        ),
       ],
-    )).then((_) { if (mounted) bustDialogShowing = false; });
+    ).then((_) { if (mounted) bustDialogShowing = false; });
   }
 
   void showReportDialog({required Future<void> Function(String) onSubmit, required VoidCallback onComplete}) {
@@ -1000,17 +1033,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       l10n.reportReasonConnectionIssues,
       l10n.reportReasonOther,
     ];
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.error, width: 2)),
-      title: Row(children: [const Icon(Icons.flag, color: AppTheme.error), const SizedBox(width: 12), Text(l10n.reportPlayer, style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold))]),
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => gameDialogFrame(
+      accent: AppTheme.opponentPink,
+      icon: Icons.flag,
+      title: l10n.reportPlayer,
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(l10n.selectReasonReporting, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
         const SizedBox(height: 16),
         ...reasons.map((r) => InkWell(
           onTap: () => setDlg(() => selectedReason = r),
           child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
-            Icon(selectedReason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selectedReason == r ? AppTheme.error : AppTheme.textSecondary),
+            Icon(selectedReason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selectedReason == r ? AppTheme.opponentPink : AppTheme.textSecondary),
             const SizedBox(width: 12), Text(r, style: const TextStyle(color: Colors.white)),
           ])),
         )),
@@ -1029,8 +1062,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             }
             onComplete();
           },
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-          child: Text(l10n.submitReport, style: const TextStyle(fontWeight: FontWeight.bold)),
+          style: gameFilledButtonStyle(AppTheme.opponentPink),
+          child: Text(l10n.submitReport),
         ),
       ],
     )));
@@ -1038,6 +1071,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Shared widget builders ────────────────────────────────────────────────────
   String formatSeconds(int s) { final m = s ~/ 60; final r = s % 60; return '$m:${r.toString().padLeft(2, '0')}'; }
+
+  /// Back action shared by both turn layouts: confirm-leave dialog, then pop.
+  Future<void> handleBackPressed() async {
+    final shouldLeave = await onWillPop();
+    if (shouldLeave && mounted) Navigator.of(context).pop();
+  }
+
+  /// Back button styled like the in-camera controls (rounded square).
+  Widget buildGameBackButton() => GameControlButton(
+        icon: Icons.arrow_back_ios_new,
+        color: AppTheme.textSecondary,
+        onTap: handleBackPressed,
+      );
 
   /// Banner overlay shown when OUR OWN socket is down mid-match. Without it
   /// the player keeps "throwing" into a dead connection and only learns about
@@ -1104,7 +1150,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(22),
       child: Stack(
         fit: StackFit.expand,
           children: [
@@ -1143,96 +1189,267 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   )
             else
               Container(
-                color: AppTheme.surface,
+                color: AppTheme.gamePanelEmpty,
                 child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), const SizedBox(height: 8),
                   Text(AppLocalizations.of(context).waitingUpper, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                 ])),
               ),
-            // ── Red border ──
-            Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.error, width: 3), borderRadius: BorderRadius.circular(16))),
-            // ── Controls + dart scores — bottom overlay ──
+            // ── Dart-hit flash (big "T20 / +60 pts" glow) ──
+            DartHitFlash(throws: opponentThrows),
+            // ── Pink border ──
+            Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.opponentPink, width: 2), borderRadius: BorderRadius.circular(22))),
+            // ── Live badge ──
+            const Positioned(top: 12, left: 12, child: LiveBadge()),
+            // ── Mic / camera controls ──
             Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black.withValues(alpha: 0.75), Colors.transparent],
-                  ),
+              top: 10,
+              right: 10,
+              child: Row(children: [
+                GameControlButton(
+                  icon: isAudioMuted ? Icons.mic_off : Icons.mic,
+                  color: isAudioMuted ? AppTheme.opponentPink : AppTheme.playerBlue,
+                  onTap: toggleAudio,
                 ),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  buildControlButton(icon: isAudioMuted ? Icons.mic_off : Icons.mic, color: isAudioMuted ? AppTheme.error : AppTheme.primary, onTap: toggleAudio),
-                  const SizedBox(width: 10),
-                  buildControlButton(icon: Icons.cameraswitch, color: AppTheme.primary, onTap: switchCamera),
-                  const SizedBox(width: 20),
-                  ...List.generate(3, (i) {
-                    final hasThrow = i < opponentThrows.length;
-                    return Container(
-                      width: 52,
-                      margin: const EdgeInsets.only(left: 6),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: hasThrow ? AppTheme.primary.withValues(alpha: 0.7) : Colors.white24),
-                      ),
-                      child: Text(
-                        hasThrow ? opponentThrows[i] : '—',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: hasThrow ? Colors.white : Colors.white38, fontSize: 14, fontWeight: FontWeight.bold),
-                      ),
-                    );
-                  }),
-                ]),
-              ),
+                const SizedBox(width: 8),
+                GameControlButton(
+                  icon: Icons.cameraswitch,
+                  color: AppTheme.playerBlue,
+                  onTap: switchCamera,
+                ),
+              ]),
             ),
           ],
         ),
       );
   }
 
-  Widget buildControlButton({required IconData icon, required Color color, required VoidCallback onTap}) {
-    return Material(color: Colors.transparent, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: color, width: 2)),
-      child: Icon(icon, color: color, size: 24),
-    )));
+  /// Round number of the side currently throwing (1-based), or null when the
+  /// provider doesn't track per-round history (tournament legs).
+  int? roundNumberOf(dynamic game, {required bool forOpponent}) {
+    try {
+      final rounds = (forOpponent ? game.opponentRounds : game.myRounds) as List;
+      return rounds.length + 1;
+    } catch (_) {
+      return null;
+    }
   }
 
-  Widget buildOpponentWaitingPanel(dynamic game) {
-    final myHint = (game.myScore >= 2 && game.myScore <= 170) ? checkoutHint(game.myScore) : null;
+  double? opponentAvgOrNull(dynamic game) {
+    try {
+      final avg = game.opponentAveragePerRound as double;
+      return avg > 0 ? avg : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double? myAvgOrNull(dynamic game) {
+    try {
+      final avg = game.myAveragePerRound as double;
+      return avg > 0 ? avg : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// "VOLÉE DE (name) … TOTAL n" label row + the three visit chips for the
+  /// opponent's current visit, plus the player's own checkout hint when one
+  /// exists.
+  Widget buildOpponentVisitSection(dynamic game) {
     final l10n = AppLocalizations.of(context);
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2.5)),
-      const SizedBox(height: 12),
-      Text(l10n.opponentTurnUpper, style: TextStyle(color: AppTheme.error.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
-      const SizedBox(height: 4), Text(l10n.pleaseWait, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-      if (myHint != null) ...[
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(color: AppTheme.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.success.withValues(alpha: 0.4))),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.gps_fixed, color: AppTheme.success, size: 18), const SizedBox(width: 8),
-            Text(l10n.finishHint(myHint), style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.bold)),
-          ]),
-        ),
-      ],
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: AppTheme.error.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.error.withValues(alpha: 0.5))),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.warning_rounded, color: AppTheme.error, size: 18), const SizedBox(width: 8),
-          Flexible(child: Text(l10n.doNotPlayDuringOpponentTurn, style: const TextStyle(color: AppTheme.error, fontSize: 12, fontWeight: FontWeight.w600))),
+    final throws = game.opponentRoundThrows as List<String>;
+    final total = throws.fold<int>(0, (sum, n) => sum + notationPoints(n));
+    final myHint = (game.myScore >= 2 && game.myScore <= 170) ? checkoutHint(game.myScore) : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              l10n.visitOf(opponentUsername.toUpperCase()),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          VisitTotal(total: total, color: AppTheme.opponentPinkBright),
         ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 74,
+          child: Row(
+            children: List.generate(3, (i) {
+              final notation = i < throws.length ? throws[i] : null;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                  child: DartVisitChip(
+                    notation: notation,
+                    accent: AppTheme.surfaceLight,
+                    highlighted: notation != null && i == throws.length - 1,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+        if (myHint != null) ...[
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.gps_fixed, color: AppTheme.success, size: 14),
+                const SizedBox(width: 6),
+                Text(
+                  l10n.finishHint(myHint),
+                  style: const TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ]),
+            ),
+          ]),
+        ],
+      ],
+    );
+  }
+
+  /// Yellow "opponent disconnected" strip (unchanged behavior, shared here so
+  /// both game screens stop duplicating it).
+  Widget? buildOpponentDisconnectBanner(dynamic game) {
+    if (game.opponentDisconnected != true) return null;
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: AppTheme.accent.withValues(alpha: 0.15),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${l10n.opponentDisconnected} — ${l10n.timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
+              style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
-    ]));
+    );
+  }
+
+  /// Full opponent-turn screen (maquette layout), shared by the ranked and
+  /// tournament game screens. The camera panel uses gameCameraHeight() so it
+  /// is exactly the same size as on the player's own turn.
+  Widget buildOpponentTurnScreenShared(
+    dynamic game,
+    AuthProvider auth,
+    double safeTop, {
+    Widget? extraHeader,
+    String? channelId,
+  }) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final disconnectBanner = buildOpponentDisconnectBanner(game);
+
+    final header = TurnScoreHeader(
+      myName: auth.currentUser?.username ?? 'You',
+      opponentName: opponentUsername,
+      myScore: game.myScore,
+      opponentScore: game.opponentScore,
+      roundNumber: roundNumberOf(game, forOpponent: true),
+      myAverage: myAvgOrNull(game),
+      opponentAverage: opponentAvgOrNull(game),
+      leading: buildGameBackButton(),
+    );
+
+    final cameraView = buildOpponentTurnVideoLayout(
+      game,
+      channelId: channelId ?? game.agoraChannelName ?? '',
+    );
+
+    if (isLandscape) {
+      return Container(
+        color: AppTheme.gameBackground,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: safeTop),
+            if (extraHeader != null) extraHeader,
+            if (disconnectBanner != null) disconnectBanner,
+            Expanded(
+              child: Row(children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                    child: cameraView,
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                    child: Column(children: [
+                      header,
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: buildOpponentVisitSection(game),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const OpponentWarningBanner(),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+            SizedBox(height: safeBottom),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      color: AppTheme.gameBackground,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: safeTop),
+          if (extraHeader != null) extraHeader,
+          if (disconnectBanner != null) disconnectBanner,
+          const SizedBox(height: 6),
+          header,
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              height: gameCameraHeight(context),
+              child: cameraView,
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: buildOpponentVisitSection(game),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
+            child: const OpponentWarningBanner(),
+          ),
+        ],
+      ),
+    );
   }
 
 }

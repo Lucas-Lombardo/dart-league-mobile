@@ -2101,4 +2101,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateAvailableBody => 'A new version of Dart Rivals is available.';
   @override
   String get updateNow => 'Update';
+  @override
+  String get liveBadge => 'LIVE';
+  @override
+  String get playingBadge => 'PLAYING';
+  @override
+  String roundChip(int number) => 'ROUND $number';
+  @override
+  String get opponentAvgLabel => 'OPP. AVG.';
+  @override
+  String get yourAvgLabel => 'YOUR AVG.';
+  @override
+  String visitOf(String name) => 'VISIT OF $name';
+  @override
+  String get yourVisit => 'YOUR VISIT';
+  @override
+  String get totalLabel => 'TOTAL';
+  @override
+  String get upcomingDart => 'upcoming';
+  @override
+  String get editShort => 'EDIT';
+  @override
+  String dartOf(int number) => 'DART $number / 3';
+  @override
+  String plusPts(int points) => '+$points pts';
+  @override
+  String ptsLabel(int points) => points == 1 ? '1 pt' : '$points pts';
+  @override
+  String get doNotThrowTitle => 'DO NOT THROW YOUR DARTS';
+  @override
+  String get opponentTurnWait => "Opponent's turn — please wait…";
+  @override
+  String get autoValidation => 'AUTO VALIDATION';
+  @override
+  String get autoValidationHint => 'Remove your darts from the board to validate';
+  @override
+  String get confirmUpper => 'CONFIRM';
 }

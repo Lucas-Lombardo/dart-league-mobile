@@ -817,6 +817,26 @@ abstract class AppLocalizations {
   String get updateAvailableTitle;
   String get updateAvailableBody;
   String get updateNow;
+
+  // In-match maquette UI (turn header, visit chips, camera overlays)
+  String get liveBadge;
+  String get playingBadge;
+  String roundChip(int number);
+  String get opponentAvgLabel;
+  String get yourAvgLabel;
+  String visitOf(String name);
+  String get yourVisit;
+  String get totalLabel;
+  String get upcomingDart;
+  String get editShort;
+  String dartOf(int number);
+  String plusPts(int points);
+  String ptsLabel(int points);
+  String get doNotThrowTitle;
+  String get opponentTurnWait;
+  String get autoValidation;
+  String get autoValidationHint;
+  String get confirmUpper;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

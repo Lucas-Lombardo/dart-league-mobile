@@ -257,6 +257,10 @@ class AutoScoringService extends ChangeNotifier {
   bool _waitingForEmptyBoard = false;
   int _emptyBoardCheckCount = 0;
   static const int _emptyBoardCheckThreshold = 3;
+  // Whether the armed gate has actually SEEN leftover darts. The "remove
+  // your darts" UI hint keys off this, so an already-clean board clears the
+  // gate silently instead of flashing the hint at every match start.
+  bool _emptyBoardGateSawDarts = false;
 
   // Last snapshot of UI-visible state used to suppress no-op rebuilds.
   // notifyListeners() runs after every inference cycle, so without this the
@@ -297,6 +301,7 @@ class AutoScoringService extends ChangeNotifier {
     b.write(_dartsRemoved ? '1' : '0');
     b.write('|');
     b.write(_waitingForEmptyBoard ? '1' : '0');
+    b.write(_emptyBoardGateSawDarts ? '1' : '0');
     return b.toString();
   }
 
@@ -318,6 +323,12 @@ class AutoScoringService extends ChangeNotifier {
   int? get lastInferenceMs => _lastInferenceMs;
   bool get dartsRemoved => _dartsRemoved;
   bool get waitingForEmptyBoard => _waitingForEmptyBoard;
+
+  /// True only when the match-start gate is armed AND the camera has actually
+  /// seen darts on the board — drives the "remove your darts" hint. A board
+  /// that is already empty never shows the hint.
+  bool get showRemoveDartsHint =>
+      _waitingForEmptyBoard && _emptyBoardGateSawDarts;
   int get detectedDartCount => _getValidShootDetectionThisRound();
   static bool get isSupported => !kIsWeb;
 
@@ -329,6 +340,7 @@ class AutoScoringService extends ChangeNotifier {
   void waitForEmptyBoardOnce() {
     _waitingForEmptyBoard = true;
     _emptyBoardCheckCount = 0;
+    _emptyBoardGateSawDarts = false;
     _notifyIfChanged();
   }
 
@@ -637,9 +649,11 @@ class AutoScoringService extends ChangeNotifier {
           if (_emptyBoardCheckCount >= _emptyBoardCheckThreshold) {
             _waitingForEmptyBoard = false;
             _emptyBoardCheckCount = 0;
+            _emptyBoardGateSawDarts = false;
           }
         } else if (dartCount > 0) {
           _emptyBoardCheckCount = 0;
+          _emptyBoardGateSawDarts = true;
         }
         _trace('GATE waitingForEmptyBoard tips=$dartCount cp=${result.calibrationPoints.length} '
             'emptyCount=$_emptyBoardCheckCount/$_emptyBoardCheckThreshold (frame not scored)');

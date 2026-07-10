@@ -665,30 +665,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
             // Top-center status: a transient "it's X's turn" banner right after
             // an auto-switch, otherwise a compact leg-score indicator.
             _buildTopStatus(safeTop),
-
-            // Floating back button
-            Positioned(
-              top: safeTop + 8,
-              left: 12,
-              child: GestureDetector(
-                onTap: () async {
-                  final shouldLeave = await _showLeaveDialog();
-                  if (shouldLeave && context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.arrow_back_ios_new,
-                      size: 16, color: Colors.white),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -745,6 +721,10 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
               _cameraService!.isInitialized
           ? LocalCameraPreview(controller: _cameraService!.controller!)
           : null,
+      onBack: () async {
+        final shouldLeave = await _showLeaveDialog();
+        if (shouldLeave && mounted) Navigator.of(context).pop();
+      },
       onSwitchCamera: _switchCamera,
       onZoomIn: _zoomIn,
       onZoomOut: _zoomOut,

@@ -2113,4 +2113,40 @@ class AppLocalizationsFr extends AppLocalizations {
   String get updateAvailableBody => 'Une nouvelle version de Dart Rivals est disponible.';
   @override
   String get updateNow => 'Mettre à jour';
+  @override
+  String get liveBadge => 'EN DIRECT';
+  @override
+  String get playingBadge => 'JOUE';
+  @override
+  String roundChip(int number) => 'TOUR $number';
+  @override
+  String get opponentAvgLabel => 'MOY. ADV.';
+  @override
+  String get yourAvgLabel => 'VOTRE MOY.';
+  @override
+  String visitOf(String name) => 'VOLÉE DE $name';
+  @override
+  String get yourVisit => 'VOTRE VOLÉE';
+  @override
+  String get totalLabel => 'TOTAL';
+  @override
+  String get upcomingDart => 'à venir';
+  @override
+  String get editShort => 'MODIF.';
+  @override
+  String dartOf(int number) => 'FLÉCHETTE $number / 3';
+  @override
+  String plusPts(int points) => '+$points pts';
+  @override
+  String ptsLabel(int points) => points == 1 ? '1 pt' : '$points pts';
+  @override
+  String get doNotThrowTitle => 'NE LANCEZ PAS VOS FLÉCHETTES';
+  @override
+  String get opponentTurnWait => "Tour de l'adversaire — patientez…";
+  @override
+  String get autoValidation => 'VALIDATION AUTO';
+  @override
+  String get autoValidationHint => 'Retirez vos fléchettes de la cible pour valider';
+  @override
+  String get confirmUpper => 'CONFIRMER';
 }

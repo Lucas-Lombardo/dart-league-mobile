@@ -22,9 +22,9 @@ import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
 import '../../widgets/queue_searching_banner.dart';
-import '../../widgets/tv_scoreboard.dart';
 
 class PlacementGameScreen extends StatefulWidget {
   const PlacementGameScreen({super.key});
@@ -736,39 +736,20 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     },
                     onToggleAi: _autoScoringService!.modelLoaded ? _toggleAi : null,
                     aiEnabled: !_aiManuallyDisabled,
+                    onBack: () async {
+                      final shouldLeave = await _showLeaveDialog();
+                      if (shouldLeave && context.mounted) Navigator.of(context).pop();
+                    },
                   )
                 // Bot's turn
                 : _buildBotTurnScreen(placement, auth, botName, safeTop),
 
-            // Floating back button
-            Positioned(
-              top: safeTop + 8,
-              left: 12,
-              child: GestureDetector(
-                onTap: () async {
-                  final shouldLeave = await _showLeaveDialog();
-                  if (shouldLeave && context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
-                ),
-              ),
-            ),
-
             // "Still searching" pill when this bot training was launched while
             // queued — the player is pulled into the match automatically when
             // an opponent is found (see MatchmakingNavigationGate). Sits a row
-            // below the top controls (back button + END ROUND EARLY pill) so it
-            // never overlaps them, and uses a high-contrast gold style to stay
-            // readable over the camera feed.
+            // below the in-camera top controls so it never overlaps them, and
+            // uses a high-contrast gold style to stay readable over the
+            // camera feed.
             Positioned(
               top: safeTop + 52,
               left: 0,
@@ -788,154 +769,260 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     double safeTop,
   ) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
 
-    final scoreboard = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: LayoutBuilder(
-        builder: (context, c) => FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: c.maxWidth,
-            child: TvScoreboard(
-              myScore: _myScore,
-              opponentScore: placement.player2Score,
-              myName: auth.currentUser?.username ?? 'You',
-              opponentName: botName,
-              isMyTurn: false,
-              startingScore: placement.startingScore,
-              myAverage: _myAverage,
-              opponentAverage: _botAverage,
-            ),
-          ),
-        ),
+    final header = TurnScoreHeader(
+      myName: auth.currentUser?.username ?? 'You',
+      opponentName: botName,
+      myScore: _myScore,
+      opponentScore: placement.player2Score,
+      roundNumber: _botRoundScores.length + 1,
+      myAverage: _myAverage,
+      opponentAverage: _botAverage,
+      leading: GameControlButton(
+        icon: Icons.arrow_back_ios_new,
+        color: AppTheme.textSecondary,
+        onTap: () async {
+          final shouldLeave = await _showLeaveDialog();
+          if (shouldLeave && mounted) Navigator.of(context).pop();
+        },
       ),
     );
-    final botDisplay = _buildBotTurnDisplay(placement);
-    final waitingPanel = Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
-      ),
-      child: _buildWaitingForBot(),
-    );
+
+    final botPanel = _buildBotPanel(placement);
+    final visitSection = _buildBotVisitSection(placement, botName);
 
     if (isLandscape) {
       return Container(
-        color: AppTheme.background,
+        color: AppTheme.gameBackground,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(height: safeTop),
             Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                      child: botDisplay,
-                    ),
+              child: Row(children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                    child: botPanel,
                   ),
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      children: [
-                        scoreboard,
-                        Expanded(child: waitingPanel),
-                      ],
-                    ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                    child: Column(children: [
+                      header,
+                      const SizedBox(height: 8),
+                      Expanded(child: SingleChildScrollView(child: visitSection)),
+                      const SizedBox(height: 8),
+                      const OpponentWarningBanner(),
+                    ]),
                   ),
-                ],
-              ),
+                ),
+              ]),
             ),
+            SizedBox(height: safeBottom),
           ],
         ),
       );
     }
 
     return Container(
-      color: AppTheme.background,
+      color: AppTheme.gameBackground,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(height: safeTop),
-          scoreboard,
-          Expanded(
-            flex: 55,
-            child: botDisplay,
-          ),
-          Expanded(
-            flex: 38,
-            child: waitingPanel,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBotTurnDisplay(PlacementProvider placement) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      color: AppTheme.surface,
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.smart_toy, color: AppTheme.accent, size: 32),
-              const SizedBox(width: 12),
-              Text(
-                _botIsThrowingLabel(context, placement),
-                style: const TextStyle(color: AppTheme.accent, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              placement.lastBotThrows.length,
-              (index) {
-                final t = placement.lastBotThrows[index];
-                return Container(
-                  width: 60,
-                  height: 50,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.primary, width: 2),
-                  ),
-                  child: Center(
-                    child: Text(t.notation, style: const TextStyle(color: AppTheme.primary, fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                );
-              },
+          const SizedBox(height: 6),
+          header,
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              height: gameCameraHeight(context),
+              child: botPanel,
             ),
           ),
-          const SizedBox(height: 12),
-          if (placement.botIsBust)
-            Text(AppLocalizations.of(context).bust, style: const TextStyle(color: AppTheme.error, fontSize: 16, fontWeight: FontWeight.bold))
-          else if (placement.botIsCheckout)
-            Text(AppLocalizations.of(context).checkout, style: const TextStyle(color: AppTheme.success, fontSize: 16, fontWeight: FontWeight.bold)),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: visitSection,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
+            child: const OpponentWarningBanner(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildWaitingForBot() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  /// Center panel for the bot's turn — same pink frame and size as the
+  /// opponent camera, showing the bot throw animation instead of a live feed:
+  /// robot + spinner while the bot "aims", then the visit total as a big
+  /// glow with a BUST/CHECKOUT verdict when the throws land.
+  Widget _buildBotPanel(PlacementProvider placement) {
+    final l10n = AppLocalizations.of(context);
+    final throws = placement.lastBotThrows;
+    final hasThrown = throws.isNotEmpty;
+    final visitTotal =
+        throws.fold<int>(0, (sum, t) => sum + notationPoints(t.notation));
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          const CircularProgressIndicator(color: AppTheme.accent),
-          const SizedBox(height: 16),
-          Text(AppLocalizations.of(context).botIsThrowing, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16, fontWeight: FontWeight.bold)),
+          Container(color: AppTheme.gamePanelEmpty),
+          Center(
+            child: hasThrown
+                ? Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(
+                      l10n.plusPts(placement.botIsBust ? 0 : visitTotal),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 64,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        shadows: [
+                          Shadow(
+                            color: AppTheme.opponentPink.withValues(alpha: 0.9),
+                            blurRadius: 36,
+                          ),
+                          Shadow(
+                            color: AppTheme.opponentPink.withValues(alpha: 0.6),
+                            blurRadius: 70,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (placement.botIsBust || placement.botIsCheckout) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        placement.botIsBust ? l10n.bust.toUpperCase() : l10n.checkout.toUpperCase(),
+                        style: TextStyle(
+                          color: placement.botIsBust
+                              ? AppTheme.opponentPinkBright
+                              : AppTheme.success,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2.5,
+                        ),
+                      ),
+                    ],
+                  ])
+                : Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(
+                      Icons.smart_toy,
+                      size: 56,
+                      color: AppTheme.opponentPinkBright.withValues(alpha: 0.9),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _botIsThrowingLabel(context, placement),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppTheme.opponentPinkBright,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.opponentPink,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  ]),
+          ),
+          // Pink frame, mirroring the opponent camera border.
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppTheme.opponentPink, width: 2),
+              borderRadius: BorderRadius.circular(22),
+            ),
+          ),
+          // "BOT" pill where the live badge sits during online matches.
+          Positioned(
+            top: 12,
+            left: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppTheme.opponentPink,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.smart_toy, size: 12, color: Colors.white),
+                SizedBox(width: 6),
+                Text(
+                  'BOT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ]),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// "VOLÉE DE (bot) … TOTAL n" + the three visit chips, mirroring the
+  /// opponent-turn visit section.
+  Widget _buildBotVisitSection(PlacementProvider placement, String botName) {
+    final l10n = AppLocalizations.of(context);
+    final throws = placement.lastBotThrows;
+    final total =
+        throws.fold<int>(0, (sum, t) => sum + notationPoints(t.notation));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              l10n.visitOf(botName.toUpperCase()),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          VisitTotal(total: total, color: AppTheme.opponentPinkBright),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 74,
+          child: Row(
+            children: List.generate(3, (i) {
+              final notation = i < throws.length ? throws[i].notation : null;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                  child: DartVisitChip(
+                    notation: notation,
+                    accent: AppTheme.surfaceLight,
+                    highlighted: notation != null && i == throws.length - 1,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 

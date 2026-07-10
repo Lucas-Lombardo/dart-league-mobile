@@ -12,7 +12,7 @@ import '../../utils/score_converter.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/local_camera_preview.dart';
-import '../../widgets/tv_scoreboard.dart';
+import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
 import 'tournament_leg_result_screen.dart';
 import 'tournament_match_result_screen.dart';
@@ -230,54 +230,30 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     final isWinner = winnerId == auth.currentUser?.id;
     final parentNav = Navigator.of(context);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: isWinner ? AppTheme.success : AppTheme.error, width: 2),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              isWinner ? Icons.emoji_events : Icons.exit_to_app,
-              color: isWinner ? AppTheme.success : AppTheme.error,
-              size: 32,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              isWinner ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
-              style: AppTheme.titleLarge.copyWith(
-                color: isWinner ? AppTheme.success : AppTheme.error,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          isWinner
-              ? AppLocalizations.of(context).opponentLeftForfeitAdvance
-              : AppLocalizations.of(context).youLeftEliminated,
-          style: AppTheme.bodyLarge.copyWith(fontSize: 16),
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              forfeitDialogShowing = false;
-              Navigator.of(dialogCtx).pop();
-              game.reset();
-              parentNav.pushNamedAndRemoveUntil('/home', (route) => false);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
-            ),
-            child: Text(AppLocalizations.of(context).returnToHome),
-          ),
-        ],
+    showGameDialog(
+      context,
+      accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
+      icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
+      title: isWinner ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
+      content: Text(
+        isWinner
+            ? AppLocalizations.of(context).opponentLeftForfeitAdvance
+            : AppLocalizations.of(context).youLeftEliminated,
+        style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+        textAlign: TextAlign.center,
       ),
+      actionsBuilder: (dialogCtx) => [
+        ElevatedButton(
+          onPressed: () {
+            forfeitDialogShowing = false;
+            Navigator.of(dialogCtx).pop();
+            game.reset();
+            parentNav.pushNamedAndRemoveUntil('/home', (route) => false);
+          },
+          style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
+          child: Text(AppLocalizations.of(context).returnToHome),
+        ),
+      ],
     ).then((_) => forfeitDialogShowing = false);
   }
 
@@ -405,117 +381,11 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
   Widget _buildOpponentTurnScreen(TournamentGameProvider game, AuthProvider auth, double safeTop) {
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
-    final extraHeader = buildExtraHeader(game, auth);
-    final disconnectBanner = game.opponentDisconnected
-        ? Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: AppTheme.accent.withValues(alpha: 0.15),
-            child: Row(
-              children: [
-                const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
-                    style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          )
-        : null;
-
-    final scoreboard = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: LayoutBuilder(
-        builder: (context, c) => FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: c.maxWidth,
-            child: TvScoreboard(
-              myScore: game.myScore,
-              opponentScore: game.opponentScore,
-              myName: auth.currentUser?.username ?? 'You',
-              opponentName: widget.opponentUsername,
-              isMyTurn: false,
-              iAmPlayer2: game.iAmPlayer2,
-            ),
-          ),
-        ),
-      ),
-    );
-    final cameraView = buildOpponentTurnVideoLayout(game, channelId: game.agoraChannelName ?? '');
-    final waitingPanel = Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
-      ),
-      child: buildOpponentWaitingPanel(game),
-    );
-
-    if (isLandscape) {
-      return Container(
-        color: AppTheme.background,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(height: safeTop),
-            if (extraHeader != null) extraHeader,
-            if (disconnectBanner != null) disconnectBanner,
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                      child: cameraView,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      children: [
-                        scoreboard,
-                        Expanded(child: waitingPanel),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      color: AppTheme.background,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: safeTop),
-          if (extraHeader != null) extraHeader,
-          if (disconnectBanner != null) disconnectBanner,
-          scoreboard,
-          Expanded(
-            flex: 55,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: cameraView,
-            ),
-          ),
-          Expanded(
-            flex: 38,
-            child: waitingPanel,
-          ),
-        ],
-      ),
+    return buildOpponentTurnScreenShared(
+      game,
+      auth,
+      safeTop,
+      extraHeader: buildExtraHeader(game, auth),
     );
   }
 
@@ -614,6 +484,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
                       onEditModalClosed: resumeCaptureAfterEdit,
                       onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                       aiEnabled: !aiManuallyDisabled,
+                      onBack: handleBackPressed,
                     )
                   // Opponent's turn
                   : _buildOpponentTurnScreen(game, auth, safeTop),
@@ -621,28 +492,6 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
               // Own-connection banner (shows when OUR socket is down)
               if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
                 banner,
-
-              // Floating back button
-              Positioned(
-                top: safeTop + 8,
-                left: 12,
-                child: GestureDetector(
-                  onTap: () async {
-                    if (await onWillPop() && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
-                  ),
-                ),
-              ),
             ],
           ),
         ),

@@ -10,7 +10,7 @@ import '../../utils/score_converter.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/local_camera_preview.dart';
-import '../../widgets/tv_scoreboard.dart';
+import '../../widgets/game_turn_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../widgets/rank_change_overlay.dart';
@@ -241,92 +241,65 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     final winnerId = forfeitData?['winnerId'] as String?;
     final eloChange = forfeitData?['winnerEloChange'] as int? ?? 0;
     final isWinner = winnerId == auth.currentUser?.id;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isWinner ? AppTheme.success : AppTheme.error,
-            width: 2,
+    showGameDialog(
+      context,
+      accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
+      icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
+      title: isWinner ? AppLocalizations.of(context).victory : AppLocalizations.of(context).gameOver,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            isWinner
+                ? AppLocalizations.of(context).opponentLeftForfeit
+                : AppLocalizations.of(context).youLeftForfeited,
+            style: AppTheme.bodyLarge.copyWith(fontSize: 16),
+            textAlign: TextAlign.center,
           ),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              isWinner ? Icons.emoji_events : Icons.exit_to_app,
-              color: isWinner ? AppTheme.success : AppTheme.error,
-              size: 32,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              isWinner ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).gameOver.toUpperCase(),
-              style: AppTheme.titleLarge.copyWith(
-                color: isWinner ? AppTheme.success : AppTheme.error,
-                fontWeight: FontWeight.bold,
+          if (isWinner) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${AppLocalizations.of(context).eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
+                style: const TextStyle(
+                  color: AppTheme.success,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isWinner
-                  ? AppLocalizations.of(context).opponentLeftForfeit
-                  : AppLocalizations.of(context).youLeftForfeited,
-              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            if (isWinner) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.success.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${AppLocalizations.of(context).eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
-                  style: const TextStyle(
-                    color: AppTheme.success,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () async {
-              forfeitDialogShowing = false;
-              final oldRank = auth.currentUser?.rank ?? 'unranked';
-              final oldElo = auth.currentUser?.elo ?? 1200;
-              Navigator.of(dialogCtx).pop();
-              await auth.checkAuthStatus();
-              if (!context.mounted) return;
-              final newRank = auth.currentUser?.rank ?? oldRank;
-              final newElo = auth.currentUser?.elo ?? oldElo;
-              _showEloChangeOverlay(
-                oldElo: oldElo,
-                newElo: newElo,
-                isWin: isWinner,
-                game: game,
-                oldRank: oldRank,
-                newRank: newRank,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isWinner ? AppTheme.success : AppTheme.primary,
-            ),
-            child: Text(AppLocalizations.of(context).continuePlaying),
-          ),
         ],
       ),
+      actionsBuilder: (dialogCtx) => [
+        ElevatedButton(
+          onPressed: () async {
+            forfeitDialogShowing = false;
+            final oldRank = auth.currentUser?.rank ?? 'unranked';
+            final oldElo = auth.currentUser?.elo ?? 1200;
+            Navigator.of(dialogCtx).pop();
+            await auth.checkAuthStatus();
+            if (!context.mounted) return;
+            final newRank = auth.currentUser?.rank ?? oldRank;
+            final newElo = auth.currentUser?.elo ?? oldElo;
+            _showEloChangeOverlay(
+              oldElo: oldElo,
+              newElo: newElo,
+              isWin: isWinner,
+              game: game,
+              oldRank: oldRank,
+              newRank: newRank,
+            );
+          },
+          style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
+          child: Text(AppLocalizations.of(context).continuePlaying),
+        ),
+      ],
     ).then((_) => forfeitDialogShowing = false);
   }
 
@@ -586,126 +559,11 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   }
 
   Widget _buildOpponentTurnScreen(GameProvider game, AuthProvider auth, double safeTop) {
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
-    final disconnectBanner = game.opponentDisconnected
-        ? Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: AppTheme.accent.withValues(alpha: 0.15),
-            child: Row(
-              children: [
-                const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${AppLocalizations.of(context).opponentDisconnected} — ${AppLocalizations.of(context).timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
-                    style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          )
-        : null;
-
-    // TvScoreboard now sizes itself to its allocated slot. We wrap in
-    // FittedBox.scaleDown without a forced width so it shrinks on short
-    // landscape viewports but doesn't get double-shrunk like before.
-    final scoreboard = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: LayoutBuilder(
-        builder: (context, c) => FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: c.maxWidth,
-            child: TvScoreboard(
-              myScore: game.myScore,
-              opponentScore: game.opponentScore,
-              myName: auth.currentUser?.username ?? 'You',
-              opponentName: widget.opponentUsername,
-              isMyTurn: false,
-              iAmPlayer2: game.iAmPlayer2,
-              myAverage: game.myAveragePerRound,
-              opponentAverage: game.opponentAveragePerRound,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    final cameraView = buildOpponentTurnVideoLayout(
+    return buildOpponentTurnScreenShared(
       game,
+      auth,
+      safeTop,
       channelId: game.agoraChannelName ?? widget.agoraChannelName ?? '',
-    );
-    final waitingPanel = Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -4))],
-      ),
-      child: buildOpponentWaitingPanel(game),
-    );
-
-    if (isLandscape) {
-      return Container(
-        color: AppTheme.background,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(height: safeTop),
-            if (disconnectBanner != null) disconnectBanner,
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                      child: cameraView,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      children: [
-                        scoreboard,
-                        Expanded(child: waitingPanel),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      color: AppTheme.background,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: safeTop),
-          if (disconnectBanner != null) disconnectBanner,
-          // Bounded-height scoreboard so the bigger score circles can't push
-          // the camera/waiting panels off-screen on shorter phones —
-          // FittedBox scales the natural size down to fit when needed.
-          scoreboard,
-          Expanded(
-            flex: 55,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: cameraView,
-            ),
-          ),
-          Expanded(
-            flex: 38,
-            child: waitingPanel,
-          ),
-        ],
-      ),
     );
   }
 
@@ -800,6 +658,8 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       aiEnabled: !aiManuallyDisabled,
                       myAverage: game.myAveragePerRound,
                       opponentAverage: game.opponentAveragePerRound,
+                      roundNumber: game.myRounds.length + 1,
+                      onBack: handleBackPressed,
                     )
                   // Opponent's turn
                   : _buildOpponentTurnScreen(game, auth, safeTop),
@@ -807,30 +667,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               // Own-connection banner (shows when OUR socket is down)
               if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
                 banner,
-
-              // Floating back button
-              Positioned(
-                top: safeTop + 8,
-                left: 12,
-                child: GestureDetector(
-                  onTap: () async {
-                    final shouldLeave = await onWillPop();
-                    if (shouldLeave && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
-                  ),
-                ),
-              ),
-
             ],
           ),
         ),

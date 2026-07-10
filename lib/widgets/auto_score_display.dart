@@ -1,4 +1,3 @@
-import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../services/auto_scoring_service.dart';
@@ -8,10 +7,12 @@ import '../utils/haptic_service.dart';
 import '../utils/score_converter.dart';
 import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
-import 'tv_scoreboard.dart';
+import 'game_turn_ui.dart';
 
-/// Full-screen auto-scoring layout for when it's the player's turn.
-/// Camera feed on top (~55%), dart indicators + score panel below, confirm button.
+/// Full-screen auto-scoring layout for when it's the player's turn (maquette
+/// layout): blue-bordered camera on top — sized by gameCameraHeight() so it
+/// matches the opponent-turn camera exactly — then the visit chips, the
+/// score bar and the AUTO VALIDATION + CONFIRM row.
 class AutoScoreGameView extends StatelessWidget {
   final AutoScoringService scoringService;
   final VoidCallback onConfirm;
@@ -46,6 +47,8 @@ class AutoScoreGameView extends StatelessWidget {
   final double? myAverage;
   final double? opponentAverage;
   final int startingScore;
+  final int? roundNumber;
+  final VoidCallback? onBack;
 
   const AutoScoreGameView({
     super.key,
@@ -79,6 +82,8 @@ class AutoScoreGameView extends StatelessWidget {
     this.myAverage,
     this.opponentAverage,
     this.startingScore = 501,
+    this.roundNumber,
+    this.onBack,
   });
 
   @override
@@ -86,96 +91,109 @@ class AutoScoreGameView extends StatelessWidget {
     return ListenableBuilder(
       listenable: scoringService,
       builder: (context, _) {
+        final l10n = AppLocalizations.of(context);
         final slots = scoringService.dartSlots;
         final turnTotal = scoringService.turnTotal;
         final hint = scoringService.zoomHint;
-        final waitingForEmptyBoard = scoringService.waitingForEmptyBoard;
-        final noDartsDetected = slots.every((s) => s == null);
+        // Only true when the AI has actually seen leftover darts on the
+        // board — an already-clean board never shows the "remove darts" pill.
+        final showRemoveDartsHint = scoringService.showRemoveDartsHint;
         final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
         final safeTop = MediaQuery.of(context).padding.top;
+        final safeBottom = MediaQuery.of(context).padding.bottom;
         final isLandscape =
             MediaQuery.of(context).orientation == Orientation.landscape;
 
-        // ── Camera feed + all overlay controls ──
+        // ── Camera feed + overlay controls ──
         // The native camera preview is a platform view that renders ABOVE
-        // sibling Flutter widgets earlier in the tree, so every control
-        // has to live inside this Stack (after the camera Container) to
-        // be visible. We overlay them at the top with semi-transparent
-        // backgrounds; they sit over the wall area above the dartboard
-        // rather than the board itself.
-        final cameraPanel = Stack(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    color: Colors.black,
-                    child: localCameraPreview != null
-                        ? localCameraPreview!
-                        : agoraEngine != null
-                            ? AgoraVideoView(
-                                controller: VideoViewController(
-                                  rtcEngine: agoraEngine!,
-                                  canvas: const VideoCanvas(uid: 0),
-                                ),
-                              )
-                            : const Center(
-                                child: Icon(
-                                  Icons.videocam_off,
-                                  color: Colors.white24,
-                                  size: 48,
-                                ),
-                              ),
-                  ),
-
-                  // Zoom hint overlay
-                  if (hint != null)
-                    Positioned(
-                      top: safeTop + 4,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.7),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.camera_alt, color: AppTheme.accent, size: 16),
-                            const SizedBox(width: 8),
-                            Text(
-                              hint,
-                              style: const TextStyle(
-                                color: AppTheme.accent,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+        // sibling Flutter widgets earlier in the tree, so every control has
+        // to live inside this Stack (after the camera Container) to be
+        // visible.
+        final cameraPanel = ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(
+                color: Colors.black,
+                child: localCameraPreview != null
+                    ? localCameraPreview!
+                    : agoraEngine != null
+                        ? AgoraVideoView(
+                            controller: VideoViewController(
+                              rtcEngine: agoraEngine!,
+                              canvas: const VideoCanvas(uid: 0),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
+                          )
+                        : const Center(
+                            child: Icon(
+                              Icons.videocam_off,
+                              color: Colors.white24,
+                              size: 48,
+                            ),
+                          ),
+              ),
 
-                  // "Remove your darts" hint — shown while the AI is waiting
-                  // for an empty board on match start (so practice darts from
-                  // the queue aren't counted as throws).
-                  if (waitingForEmptyBoard)
-                    Positioned(
-                      top: safeTop + (hint != null ? 48 : 12),
-                      left: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              // ── Blue border (my turn) ──
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.playerBlue, width: 2),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+
+              // ── Back button (top-left, styled like the other controls) ──
+              if (onBack != null)
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: GameControlButton(
+                    icon: Icons.arrow_back_ios_new,
+                    color: AppTheme.textSecondary,
+                    onTap: onBack,
+                  ),
+                ),
+
+              // ── Mic / camera controls (top-right) ──
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Row(children: [
+                  if (onToggleAudio != null) ...[
+                    GameControlButton(
+                      icon: isAudioMuted ? Icons.mic_off : Icons.mic,
+                      color: isAudioMuted ? AppTheme.opponentPink : AppTheme.playerBlue,
+                      onTap: onToggleAudio,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  if (onSwitchCamera != null)
+                    GameControlButton(
+                      icon: Icons.cameraswitch,
+                      color: AppTheme.playerBlue,
+                      onTap: onSwitchCamera,
+                    ),
+                ]),
+              ),
+
+              // ── Camera guidance pills (bottom center, above the zoom
+              // pill): "remove your darts" while the empty-board gate is
+              // armed, and the AI's zoom/detection hint. Compact centered
+              // pills so they read as status, not as a blocking banner.
+              Positioned(
+                bottom: 60,
+                left: 16,
+                right: 16,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showRemoveDartsHint)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.92),
-                          borderRadius: BorderRadius.circular(12),
+                          color: AppTheme.accent.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.3),
@@ -187,14 +205,14 @@ class AutoScoreGameView extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: Colors.black87, size: 18),
+                            const Icon(Icons.warning_amber_rounded, color: Colors.black87, size: 16),
                             const SizedBox(width: 8),
-                            Expanded(
+                            Flexible(
                               child: Text(
-                                AppLocalizations.of(context).removeDartsFromBoardHint,
+                                l10n.removeDartsFromBoardHint,
                                 style: const TextStyle(
                                   color: Colors.black87,
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -202,263 +220,297 @@ class AutoScoreGameView extends StatelessWidget {
                           ],
                         ),
                       ),
-                    ),
-
-                  // ── Primary action pill (top-right, aligned with back) ──
-                  // Single contextual button. Label & icon shift with state:
-                  //  • no darts        → END ROUND EARLY (skip icon)
-                  //  • darts detected  → END TURN (check icon)
-                  //  • pending confirm → CONFIRM & END TURN (filled primary)
-                  Positioned(
-                    top: safeTop + 8,
-                    right: 12,
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticService.heavyImpact();
-                        onConfirm();
-                      },
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                    if (showRemoveDartsHint && hint != null)
+                      const SizedBox(height: 8),
+                    if (hint != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: pendingConfirmation
-                              ? AppTheme.primary
-                              : Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(18),
-                          border: pendingConfirmation
-                              ? null
-                              : Border.all(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                ),
+                          color: AppTheme.gameBackground.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.6), width: 1.2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              noDartsDetected
-                                  ? Icons.skip_next
-                                  : Icons.check_circle_outline,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              noDartsDetected
-                                  ? AppLocalizations.of(context).endRoundEarlyUpper
-                                  : pendingConfirmation
-                                      ? AppLocalizations.of(context).confirmAndEndTurn
-                                      : AppLocalizations.of(context).endTurnUpper,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
+                            const Icon(Icons.camera_alt, color: AppTheme.accent, size: 15),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                hint,
+                                style: const TextStyle(
+                                  color: AppTheme.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
+                  ],
+                ),
+              ),
 
-                  // ── Camera controls (zoom / mic / cam switch) ──
-                  // Anchored to the bottom-right of the camera area so they
-                  // sit over the wall below the dartboard, well clear of the
-                  // top-right action pill. Each subgroup decides its own
-                  // visibility from its callbacks/state.
-                  Positioned(
-                    bottom: 12,
-                    right: 12,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (onZoomIn != null && onZoomOut != null) ...[
-                          _ZoomButton(
-                            icon: Icons.remove,
-                            onTap: currentZoom > minZoom ? onZoomOut : null,
-                          ),
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${currentZoom.toStringAsFixed(1)}x',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          _ZoomButton(
-                            icon: Icons.add,
-                            onTap: currentZoom < maxZoom ? onZoomIn : null,
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        if (agoraEngine != null) ...[
-                          _CameraControlButton(
-                            icon: isAudioMuted ? Icons.mic_off : Icons.mic,
-                            isActive: !isAudioMuted,
-                            onTap: onToggleAudio,
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        // Front/back flip — available in every mode that wires
-                        // a switch handler (multiplayer and solo alike).
-                        if (onSwitchCamera != null)
-                          _CameraControlButton(
-                            icon: Icons.cameraswitch,
-                            isActive: true,
-                            onTap: onSwitchCamera,
-                          ),
-                      ],
+              // ── Zoom pill (bottom center) ──
+              if (onZoomIn != null && onZoomOut != null)
+                Positioned(
+                  bottom: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: ZoomPill(
+                      zoom: currentZoom,
+                      minZoom: minZoom,
+                      maxZoom: maxZoom,
+                      onZoomIn: onZoomIn,
+                      onZoomOut: onZoomOut,
                     ),
                   ),
-                ],
+                ),
+            ],
+          ),
         );
 
-        // ── Scoring panel ──
-        final scoringPanel = LayoutBuilder(
-              builder: (context, constraints) {
-                  final safeBottom = MediaQuery.of(context).padding.bottom;
-                  final screenH = MediaQuery.of(context).size.height;
-                  final isSmallScreen = screenH < 700 || isLandscape;
-                  final availableH = constraints.maxHeight;
-                  // No bottom button anymore — the End-Turn / End-Round-Early
-                  // action lives in the top-right pill regardless of state,
-                  // freeing the bottom region for the score readout.
-                  final buttonH = safeBottom;
-                  final contentH = availableH - buttonH;
-                  // The three dart slots are live feedback, but the running
-                  // score is the element that must read from ~2m, so the
-                  // scoreboard gets the larger share of the panel.
-                  final indicatorH = (contentH * 0.30).clamp(80.0, 128.0);
-                  final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
-                  final hintParts = hintStr?.split(' ') ?? [];
+        // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──
+        final visitLabel = Row(children: [
+          Expanded(
+            child: Text(
+              roundNumber != null
+                  ? '${l10n.yourVisit} — ${l10n.roundChip(roundNumber!)}'
+                  : l10n.yourVisit,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          VisitTotal(total: turnTotal, color: AppTheme.playerBlueBright),
+        ]);
 
-                  return Container(
-                    color: AppTheme.background,
-                    child: Column(
-                      children: [
-                        // 3 dart indicators
-                        SizedBox(
-                          height: indicatorH,
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(12, isSmallScreen ? 2 : 4, 12, 0),
-                            child: Row(
-                              children: List.generate(3, (i) {
-                                // Place suggestions only under empty dart slots,
-                                // starting from the first empty slot.
-                                final suggestionIdx = i - (lastFilledIndex + 1);
-                                final suggestion = (slots[i] == null &&
-                                        suggestionIdx >= 0 &&
-                                        suggestionIdx < hintParts.length)
-                                    ? hintParts[suggestionIdx]
-                                    : '';
-                                return Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                    child: _DartIndicator(
-                                      index: i,
-                                      score: slots[i],
-                                      isCapturing: scoringService.isCapturing,
-                                      onTap: () => _editDart(context, i, slots[i]),
-                                      onRemove: (onRemoveDart != null && i == lastFilledIndex)
-                                          ? () => onRemoveDart!(i)
-                                          : null,
-                                      suggestion: suggestion,
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
+        // ── The three visit chips ──
+        final chipsRow = SizedBox(
+          height: 92,
+          child: Row(
+            children: List.generate(3, (i) {
+              final score = slots[i];
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                  child: DartVisitChip(
+                    notation: score != null ? shortDartLabel(score) : null,
+                    accent: AppTheme.playerBlue,
+                    showEditLabel: score != null,
+                    capturing: scoringService.isCapturing,
+                    onTap: () => _editDart(context, i, score),
+                    onRemove: (onRemoveDart != null && score != null && i == lastFilledIndex)
+                        ? () {
+                            HapticService.heavyImpact();
+                            onRemoveDart!(i);
+                          }
+                        : null,
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+
+        final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
+        final finishHintChip = hintStr == null
+            ? null
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.gps_fixed, color: AppTheme.success, size: 14),
+                    const SizedBox(width: 6),
+                    Text(
+                      l10n.finishHint(hintStr),
+                      style: const TextStyle(
+                        color: AppTheme.success,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ]),
+                ),
+              ]);
+
+        final scoreBar = UserScoreBar(
+          myName: myName,
+          opponentName: opponentName,
+          myScore: myScore,
+          opponentScore: opponentScore,
+        );
+
+        // ── Bottom row: AUTO VALIDATION chip + CONFIRM button ──
+        final showAutoValidation =
+            aiEnabled && (scoringService.isCapturing || pendingConfirmation);
+        final confirmButton = pendingConfirmation
+            ? ElevatedButton(
+                onPressed: () {
+                  HapticService.heavyImpact();
+                  onConfirm();
+                },
+                style: gameFilledButtonStyle(AppTheme.playerBlue),
+                child: Text(l10n.confirmUpper),
+              )
+            : OutlinedButton(
+                onPressed: () {
+                  HapticService.heavyImpact();
+                  onConfirm();
+                },
+                style: gameOutlineButtonStyle(AppTheme.playerBlue),
+                child: Text(l10n.confirmUpper),
+              );
+        final bottomRow = IntrinsicHeight(
+          child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: showAutoValidation
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.gamePanelEmpty,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppTheme.playerBlueDim.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.playerBlue,
+                            shape: BoxShape.circle,
                           ),
                         ),
-
-                        // Turn total
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: turnTotal > 0
-                                  ? AppTheme.primary.withValues(alpha: 0.5)
-                                  : AppTheme.surfaceLight.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${AppLocalizations.of(context).turnLabel} ',
-                                style: TextStyle(
-                                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                                l10n.autoValidation,
+                                style: const TextStyle(
+                                  color: AppTheme.playerBlue,
                                   fontSize: 11,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
                                 ),
                               ),
                               Text(
-                                '$turnTotal',
-                                style: TextStyle(
-                                  color: turnTotal > 0 ? AppTheme.primary : Colors.white30,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                                l10n.autoValidationHint,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 10,
+                                  height: 1.2,
                                 ),
                               ),
                             ],
                           ),
                         ),
-
-                        // TV Scoreboard — fills the remaining panel space. It
-                        // now receives a bounded height (from this Expanded) and
-                        // sizes its score rings to the available area, so the
-                        // whole card scales up to fill the space instead of
-                        // hugging a width-derived natural size.
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-                            child: TvScoreboard(
-                              myScore: myScore,
-                              opponentScore: opponentScore,
-                              myName: myName,
-                              opponentName: opponentName,
-                              isMyTurn: true,
-                              iAmPlayer2: iAmPlayer2,
-                              myAverage: myAverage,
-                              opponentAverage: opponentAverage,
-                              startingScore: startingScore,
-                            ),
-                          ),
-                        ),
-
-                        // Only reserve the system safe-area at the bottom —
-                        // the action button now lives in the top-right pill.
-                        SizedBox(height: safeBottom),
-                      ],
-                    ),
-                  );
-                },
-              );
+                      ]),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 10),
+            confirmButton,
+          ],
+        ));
 
         if (isLandscape) {
-          return Row(
-            children: [
-              Expanded(child: cameraPanel),
-              Expanded(child: scoringPanel),
-            ],
+          return Container(
+            color: AppTheme.gameBackground,
+            child: Row(children: [
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(12, safeTop + 8, 6, safeBottom + 8),
+                  child: cameraPanel,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(6, safeTop + 8, 12, safeBottom + 8),
+                  child: Column(children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            visitLabel,
+                            const SizedBox(height: 8),
+                            chipsRow,
+                            if (finishHintChip != null) ...[
+                              const SizedBox(height: 8),
+                              finishHintChip,
+                            ],
+                            const SizedBox(height: 10),
+                            scoreBar,
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    bottomRow,
+                  ]),
+                ),
+              ),
+            ]),
           );
         }
-        return Column(
-          children: [
-            Expanded(flex: 50, child: cameraPanel),
-            Expanded(flex: 50, child: scoringPanel),
-          ],
+
+        return Container(
+          color: AppTheme.gameBackground,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, safeTop + 4, 12, 0),
+                child: SizedBox(
+                  height: gameCameraHeight(context),
+                  child: cameraPanel,
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      visitLabel,
+                      const SizedBox(height: 8),
+                      chipsRow,
+                      if (finishHintChip != null) ...[
+                        const SizedBox(height: 8),
+                        finishHintChip,
+                      ],
+                      const SizedBox(height: 10),
+                      scoreBar,
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
+                child: bottomRow,
+              ),
+            ],
+          ),
         );
       },
     );
@@ -490,257 +542,13 @@ class AutoScoreGameView extends StatelessWidget {
   }
 }
 
-// ── Dart indicator (small circle icon with score) ──
-
-class _DartIndicator extends StatelessWidget {
-  final int index;
-  final DartScore? score;
-  final bool isCapturing;
-  final VoidCallback onTap;
-  final VoidCallback? onRemove;
-  final String suggestion;
-
-  const _DartIndicator({
-    required this.index,
-    required this.score,
-    required this.isCapturing,
-    required this.onTap,
-    this.onRemove,
-    this.suggestion = '',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasScore = score != null;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Always reserve the same space so all 3 circles are identical size.
-          // Needs to cover: 2 (gap) + label text (~14) + 1 (gap) + suggestion
-          // slot (~18) ≈ 35, plus a few px of slack to avoid 1-px rounding
-          // overflows that show as a "BOTTOM OVERFLOWED" stripe in landscape.
-          const reservedForText = 42.0;
-          final widthBased = constraints.maxWidth * 0.92;
-          final heightBased = constraints.maxHeight - reservedForText;
-          final size = min(widthBased, heightBased).clamp(64.0, 120.0);
-          final labelSize = (size * 0.34).clamp(18.0, 34.0);
-          final subSize = (size * 0.20).clamp(12.0, 18.0);
-          final iconSize = (size * 0.36).clamp(22.0, 36.0);
-          final badgeSize = (size * 0.30).clamp(22.0, 32.0);
-
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: size,
-                height: size,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        color: hasScore
-                            ? AppTheme.primary.withValues(alpha: 0.15)
-                            : AppTheme.surface,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: hasScore ? AppTheme.primary : AppTheme.surfaceLight,
-                          width: 2,
-                        ),
-                      ),
-                      child: hasScore
-                          ? Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _shortLabel(score!),
-                                  style: TextStyle(
-                                    color: _scoreLabelColor(score!),
-                                    fontSize: labelSize,
-                                    fontWeight: FontWeight.bold,
-                                    height: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${score!.score}',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: subSize,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : isCapturing
-                              ? SizedBox(
-                                  width: iconSize,
-                                  height: iconSize,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.textSecondary.withValues(alpha: 0.3),
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.add,
-                                  color: AppTheme.textSecondary,
-                                  size: iconSize,
-                                ),
-                    ),
-                    if (onRemove != null)
-                      Positioned(
-                        top: -4,
-                        right: -4,
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticService.heavyImpact();
-                            onRemove!();
-                          },
-                          child: Container(
-                            width: badgeSize,
-                            height: badgeSize,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.error,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.close, size: badgeSize * 0.55, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                hasScore ? AppLocalizations.of(context).editLabel : AppLocalizations.of(context).dartNumber(index + 1),
-                style: TextStyle(
-                  color: hasScore
-                      ? AppTheme.primary.withValues(alpha: 0.7)
-                      : AppTheme.textSecondary.withValues(alpha: 0.5),
-                  fontSize: (size * 0.16).clamp(9.0, 12.0),
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 1),
-              // Always same height so all circles stay the same size
-              SizedBox(
-                height: (size * 0.20).clamp(10.0, 16.0) + 2,
-                child: suggestion.isNotEmpty
-                    ? Text(
-                        suggestion,
-                        style: TextStyle(
-                          color: AppTheme.success,
-                          fontSize: (size * 0.22).clamp(12.0, 18.0),
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      )
-                    : null,
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  static String _shortLabel(DartScore score) {
-    if (score.ring == 'double_bull') return 'D25';
-    if (score.ring == 'single_bull') return 'S25';
-    if (score.ring == 'triple') return 'T${score.segment}';
-    if (score.ring == 'double') return 'D${score.segment}';
-    if (score.ring == 'miss') return 'MISS';
-    return 'S${score.segment}';
-  }
-
-  static Color _scoreLabelColor(DartScore score) {
-    if (score.ring == 'triple') return AppTheme.error;
-    if (score.ring == 'double' || score.ring == 'double_bull') return AppTheme.success;
-    if (score.ring == 'single_bull') return AppTheme.accent;
-    if (score.ring == 'miss') return AppTheme.error;
-    return AppTheme.textSecondary;
-  }
+/// Compact notation for a detected dart ('T20', 'D25', 'MISS'…), shared by
+/// the visit chips and the edit modal callers.
+String shortDartLabel(DartScore score) {
+  if (score.ring == 'double_bull') return 'D25';
+  if (score.ring == 'single_bull') return 'S25';
+  if (score.ring == 'triple') return 'T${score.segment}';
+  if (score.ring == 'double') return 'D${score.segment}';
+  if (score.ring == 'miss') return 'MISS';
+  return 'S${score.segment}';
 }
-
-// ── Small camera control button ──
-
-class _CameraControlButton extends StatelessWidget {
-  final IconData icon;
-  final bool isActive;
-  final VoidCallback? onTap;
-
-  const _CameraControlButton({
-    required this.icon,
-    required this.isActive,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const offColor = AppTheme.error;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.5),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isActive
-                ? Colors.white.withValues(alpha: 0.3)
-                : offColor.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: isActive ? Colors.white : offColor,
-          size: 18,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Zoom button (+/-) ──
-
-class _ZoomButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  const _ZoomButton({
-    required this.icon,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnabled = onTap != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.5),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isEnabled
-                ? Colors.white.withValues(alpha: 0.3)
-                : Colors.white.withValues(alpha: 0.1),
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: isEnabled ? Colors.white : Colors.white30,
-          size: 18,
-        ),
-      ),
-    );
-  }
-}
-
