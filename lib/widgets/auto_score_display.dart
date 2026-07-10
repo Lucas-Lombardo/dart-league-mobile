@@ -36,6 +36,10 @@ class AutoScoreGameView extends StatelessWidget {
   final double maxZoom;
   final void Function(int index, DartScore score)? onEditDart;
   final void Function(int index)? onRemoveDart;
+  /// Called once the dart-edit modal closes, whatever the outcome. Capture is
+  /// stopped while the modal is open; a CANCELLED edit produces no provider
+  /// notify, so without this the AI stayed dead for the rest of the turn.
+  final VoidCallback? onEditModalClosed;
   final VoidCallback? onToggleAi;
   final bool aiEnabled;
   final bool iAmPlayer2;
@@ -68,6 +72,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.maxZoom = 1.0,
     this.onEditDart,
     this.onRemoveDart,
+    this.onEditModalClosed,
     this.onToggleAi,
     this.aiEnabled = true,
     this.iAmPlayer2 = false,
@@ -302,12 +307,15 @@ class AutoScoreGameView extends StatelessWidget {
                             onTap: onToggleAudio,
                           ),
                           const SizedBox(width: 8),
+                        ],
+                        // Front/back flip — available in every mode that wires
+                        // a switch handler (multiplayer and solo alike).
+                        if (onSwitchCamera != null)
                           _CameraControlButton(
                             icon: Icons.cameraswitch,
                             isActive: true,
                             onTap: onSwitchCamera,
                           ),
-                        ],
                       ],
                     ),
                   ),
@@ -461,20 +469,24 @@ class AutoScoreGameView extends StatelessWidget {
     // Pause AI capture while the edit modal is open so detections
     // don't overwrite the manual correction.
     scoringService.stopCapture();
-    final result = await showDartboardEditModal(
-      context,
-      dartIndex: index,
-      currentScore: current,
-    );
-    if (result != null) {
-      // Order matters: onEditDart clears all slots on the server then
-      // re-emits the edited dart.  overrideDart must come AFTER so the
-      // local display isn't wiped by the clear.
-      onEditDart?.call(index, result);
-      scoringService.overrideDart(index, result);
+    try {
+      final result = await showDartboardEditModal(
+        context,
+        dartIndex: index,
+        currentScore: current,
+      );
+      if (result != null) {
+        // Order matters: onEditDart clears all slots on the server then
+        // re-emits the edited dart.  overrideDart must come AFTER so the
+        // local display isn't wiped by the clear.
+        onEditDart?.call(index, result);
+        scoringService.overrideDart(index, result);
+      }
+    } finally {
+      // Always resume: a swipe-away/cancel notifies nothing, and relying on
+      // the post-edit provider notify left capture stopped for the whole turn.
+      onEditModalClosed?.call();
     }
-    // Capture restarts automatically via handleSharedStateChange
-    // when the game state updates after editDartThrow.
   }
 }
 

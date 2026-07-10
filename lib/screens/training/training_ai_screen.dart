@@ -59,6 +59,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   bool _aiLoading = true;
   bool _aiManuallyDisabled = false;
   bool _aiPausedForEdit = false;
+  bool _switchingCamera = false;
   String? _initError;
   double _cameraZoom = 1.0;
   double _cameraMinZoom = 1.0;
@@ -261,6 +262,32 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       await _cameraService!.setZoomLevel(next);
       if (mounted) setState(() => _cameraZoom = next);
     } catch (_) {}
+  }
+
+  Future<void> _switchCamera() async {
+    final svc = _cameraService;
+    if (svc == null || _switchingCamera) return;
+    HapticService.lightImpact();
+    setState(() => _switchingCamera = true);
+    try {
+      await svc.switchCamera();
+      // Refresh the zoom bounds for the new lens (front cameras often can't zoom).
+      try {
+        final minZoom = await svc.getMinZoomLevel();
+        final maxZoom = await svc.getMaxZoomLevel();
+        final clamped = _cameraZoom.clamp(minZoom, maxZoom);
+        await svc.setZoomLevel(clamped);
+        if (mounted) {
+          setState(() {
+            _cameraMinZoom = minZoom;
+            _cameraMaxZoom = maxZoom;
+            _cameraZoom = clamped;
+          });
+        }
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _switchingCamera = false);
+    }
   }
 
   void _submitVisit() {
@@ -535,7 +562,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   Widget _buildPlayingView(AppLocalizations l10n) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final cameraPanel = _CameraPanel(
-      camera: _cameraService?.controller,
+      camera: _switchingCamera ? null : _cameraService?.controller,
       zoom: _cameraZoom,
       minZoom: _cameraMinZoom,
       maxZoom: _cameraMaxZoom,
@@ -543,6 +570,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       onZoomOut: _zoomOut,
       aiEnabled: !_aiManuallyDisabled,
       onToggleAi: _ai?.modelLoaded == true ? _toggleAi : null,
+      onSwitchCamera: _cameraService != null ? _switchCamera : null,
     );
     final dartSlots = _DartSlotsRow(
       ai: _ai!,
@@ -678,6 +706,7 @@ class _CameraPanel extends StatelessWidget {
   final VoidCallback onZoomOut;
   final bool aiEnabled;
   final VoidCallback? onToggleAi;
+  final VoidCallback? onSwitchCamera;
 
   const _CameraPanel({
     required this.camera,
@@ -688,6 +717,7 @@ class _CameraPanel extends StatelessWidget {
     required this.onZoomOut,
     required this.aiEnabled,
     required this.onToggleAi,
+    this.onSwitchCamera,
   });
 
   @override
@@ -754,6 +784,16 @@ class _CameraPanel extends StatelessWidget {
                   enabled: true,
                   active: aiEnabled,
                   onTap: onToggleAi!,
+                ),
+              ),
+            if (ready && onSwitchCamera != null)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _RoundIconButton(
+                  icon: Icons.cameraswitch,
+                  enabled: true,
+                  onTap: onSwitchCamera!,
                 ),
               ),
           ],

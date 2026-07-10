@@ -33,6 +33,56 @@ class SocketService {
   // surfaces the recovery first.
   static bool _wasDisconnected = false;
 
+  // Rate-limits the refresh-token + socket-rebuild recovery so an
+  // unrecoverable auth problem can't loop it.
+  static DateTime? _lastAuthRebuild;
+
+  // Capability announced by the server in its `authenticated` payload.
+  //
+  // False until the current socket has been authenticated by a server that
+  // understands per-dart ids. The providers MUST NOT attach a dartId, retry an
+  // un-acked dart, or send dartCount while this is false: an older backend
+  // silently drops the unknown dartId, scores the dart, and never acks — so a
+  // retry loop would score the same dart on every attempt. Reset on every
+  // disconnect so a backend rollback mid-session degrades us safely instead of
+  // corrupting scores.
+  static bool _supportsDartAck = false;
+
+  /// Whether the server this socket is authenticated against acknowledges and
+  /// deduplicates individual darts. See [_supportsDartAck].
+  static bool get supportsDartAck => _supportsDartAck;
+
+  static void _handleAuthenticated(dynamic data) {
+    final supports = data is Map && data['supportsDartAck'] == true;
+    if (supports != _supportsDartAck) {
+      debugPrint('SocketService: server supportsDartAck=$supports');
+    }
+    _supportsDartAck = supports;
+  }
+
+  /// Refresh the access token and rebuild the socket with it, keeping every
+  /// registered event handler. Used when the server signals an auth problem —
+  /// a server-initiated disconnect turns off socket.io auto-reconnect, so
+  /// without this the app stayed offline until a restart.
+  static Future<void> _refreshTokenAndRebuild() async {
+    final now = DateTime.now();
+    if (_lastAuthRebuild != null &&
+        now.difference(_lastAuthRebuild!) < const Duration(seconds: 10)) {
+      return;
+    }
+    _lastAuthRebuild = now;
+    try {
+      final refreshed = await ApiService.refreshAccessToken();
+      if (!refreshed) return;
+      debugPrint('SocketService: token refreshed, rebuilding socket');
+      _disconnectInternal(preserveHandlers: true);
+      _connectCompleter = null;
+      await connect();
+    } catch (e) {
+      debugPrint('SocketService: auth rebuild failed: $e');
+    }
+  }
+
   // Fire the reconnect handlers once, only if we were actually disconnected.
   // Both onConnect and the manager 'reconnect' event funnel through here: on
   // Android a recovered connection often surfaces as a fresh 'connect' rather
@@ -104,12 +154,40 @@ class SocketService {
         _dispatchReconnected();
       });
 
+      // Capability handshake. Attached directly to the socket (not through the
+      // single-slot `on` registry) so a provider can still listen to
+      // 'authenticated' without displacing this.
+      _socket!.on('authenticated', _handleAuthenticated);
+
       _socket!.onDisconnect((reason) {
         debugPrint('SocketService: Disconnected - reason: $reason');
         _wasDisconnected = true;
+        // Re-derived from the next 'authenticated'. Until then we assume the
+        // server cannot dedup darts, which is always the safe assumption.
+        _supportsDartAck = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
+        }
+        // A server-initiated disconnect (usually an auth rejection) disables
+        // socket.io auto-reconnect: without intervention the app stays
+        // offline for good. Refresh the token and rebuild.
+        if (reason.toString().contains('io server disconnect')) {
+          _refreshTokenAndRebuild();
+        }
+      });
+
+      // Server-side auth verdicts. 'invalid_token' = we were (or are about to
+      // be) kicked; 'token_expiring' = the server let an expired-token
+      // reconnect through for an active match and asks us to refresh for the
+      // next one. Both resolve by refreshing; only the kick needs a rebuild.
+      _socket!.on('auth_error', (data) {
+        final reason = (data is Map ? data['reason'] : null)?.toString();
+        debugPrint('SocketService: auth_error from server: $reason');
+        if (reason == 'token_expiring') {
+          ApiService.refreshAccessToken();
+        } else {
+          _refreshTokenAndRebuild();
         }
       });
 
@@ -141,7 +219,11 @@ class SocketService {
           final refreshed = await ApiService.refreshAccessToken();
           if (refreshed) {
             debugPrint('SocketService: Token refreshed, reconnecting with new token...');
-            _disconnectInternal();
+            // Keep the registered event handlers: they are re-attached to the
+            // new socket inside connect(). Wiping them here (the old behavior)
+            // silently killed every game listener while the providers still
+            // believed they were set up — a frozen match on a healthy socket.
+            _disconnectInternal(preserveHandlers: true);
             _connectCompleter = null;
             await connect();
           }
@@ -150,6 +232,12 @@ class SocketService {
 
       _socket!.onError((error) {
         debugPrint('SocketService: Error - $error');
+      });
+
+      // Re-attach handlers that were registered on a previous socket instance
+      // (auth-refresh rebuild path). No-op on the very first connect.
+      _handlers.forEach((event, handler) {
+        _socket!.on(event, handler);
       });
 
       _socket!.connect();
@@ -174,14 +262,20 @@ class SocketService {
     });
   }
 
-  static void _disconnectInternal() {
+  /// [preserveHandlers] keeps the tracked event handlers so an immediately
+  /// following connect() re-attaches them to the new socket (token-refresh
+  /// rebuild). A full teardown (logout) clears them.
+  static void _disconnectInternal({bool preserveHandlers = false}) {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
+    _supportsDartAck = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _handlers.clear();
+      if (!preserveHandlers) {
+        _handlers.clear();
+      }
     }
   }
 
@@ -192,7 +286,37 @@ class SocketService {
     _disconnectInternal();
   }
 
+  /// Test seam: when set, [emit] routes here instead of touching a real socket,
+  /// and [debugDispatch] feeds server events back to the registered handlers.
+  /// Never set in production code.
+  @visibleForTesting
+  static void Function(String event, dynamic data)? debugEmitOverride;
+
+  /// Test seam: deliver [event] to whatever handler `on(event, …)` registered,
+  /// exactly as socket.io would. 'authenticated' also drives the capability
+  /// handshake, as it does against a real socket.
+  @visibleForTesting
+  static void debugDispatch(String event, dynamic data) {
+    if (event == 'authenticated') _handleAuthenticated(data);
+    _handlers[event]?.call(data);
+  }
+
+  @visibleForTesting
+  static void debugReset() {
+    debugEmitOverride = null;
+    _supportsDartAck = false;
+    _handlers.clear();
+    _disconnectListeners.clear();
+    _reconnectListeners.clear();
+    _connectFailedListeners.clear();
+  }
+
   static void emit(String event, dynamic data) {
+    final override = debugEmitOverride;
+    if (override != null) {
+      override(event, data);
+      return;
+    }
     if (!isConnected) {
       throw Exception('Socket not connected');
     }
@@ -200,14 +324,15 @@ class SocketService {
   }
 
   static void on(String event, Function(dynamic) handler) {
-    if (_socket == null) throw Exception('Socket not initialized');
     // Remove any previously registered handler for this event before adding the new one
     final existing = _handlers[event];
-    if (existing != null) {
+    if (existing != null && _socket != null) {
       _socket!.off(event, existing);
     }
     _handlers[event] = handler;
-    _socket!.on(event, handler);
+    // Socket may be mid-rebuild (token refresh); connect() attaches every
+    // tracked handler to the new instance, so storing it is enough.
+    _socket?.on(event, handler);
   }
 
   static void off(String event) {

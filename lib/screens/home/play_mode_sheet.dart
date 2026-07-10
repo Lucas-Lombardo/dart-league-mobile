@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../providers/subscription_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 
@@ -24,6 +26,9 @@ class _PlayModeSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // Friend matches are premium-gated — except during Free Play, when the
+    // "PREMIUM" pill would be misleading, so it's hidden.
+    final freePlayActive = context.watch<SubscriptionProvider>().freePlayActive;
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surface,
@@ -63,7 +68,7 @@ class _PlayModeSheet extends StatelessWidget {
                 accent: AppTheme.secondary,
                 title: l10n.friendModeTitle,
                 subtitle: l10n.friendModeSubtitle,
-                badge: l10n.premium,
+                badge: freePlayActive ? null : l10n.premium,
                 onTap: () => Navigator.of(context).pop(PlayMode.friend),
               ),
               const SizedBox(height: 12),

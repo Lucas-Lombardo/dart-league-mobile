@@ -26,6 +26,13 @@ class DartCallerService {
   static StreamSubscription<void>? _completeSub;
   static Future<void>? _initFuture;
 
+  /// Fail-safe for a completion event that never arrives (iOS audio-session
+  /// interruption: incoming call, Siri). _playing would stay true forever and
+  /// every later announcement would silently pile up in _queue — the caller
+  /// went dead for the rest of the app session with no way back.
+  static Timer? _playWatchdog;
+  static const _maxClipDuration = Duration(seconds: 6);
+
   static bool _enabled = true;
 
   /// Whether the caller is currently on. Read by the game screen before it
@@ -77,10 +84,20 @@ class DartCallerService {
   static Future<void> _ensureInit() => _initFuture ??= _doInit();
 
   static Future<void> _doInit() async {
-    // Why ambient (matches DartSoundService): mix with Agora's playAndRecord
-    // session instead of fighting it, and follow the system volume.
+    // playAndRecord (not ambient): ambient is silenced by the iOS ring/silent
+    // switch, so with the ringer off — very common — the caller was mute for
+    // the entire match. playAndRecord ignores the silent switch and is the
+    // same category Agora's voice call already uses, so we don't take the
+    // session away from it; mixWithOthers keeps both audible.
     final context = AudioContext(
-      iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playAndRecord,
+        options: const {
+          AVAudioSessionOptions.mixWithOthers,
+          AVAudioSessionOptions.defaultToSpeaker,
+          AVAudioSessionOptions.allowBluetooth,
+        },
+      ),
       android: const AudioContextAndroid(),
     );
     try {
@@ -91,18 +108,32 @@ class DartCallerService {
       _player = player;
     } catch (e) {
       debugPrint('[DartCallerService] init failed: $e');
+      // Don't cache the failed init: a transient platform-channel error used
+      // to leave the caller permanently dead (the completed-with-error future
+      // was reused forever). Next call retries.
+      _initFuture = null;
     }
   }
 
   static void _playNext() {
+    _playWatchdog?.cancel();
+    _playWatchdog = null;
     final player = _player;
-    if (player == null) return;
+    if (player == null) {
+      _playing = false;
+      return;
+    }
     if (_queue.isEmpty) {
       _playing = false;
       return;
     }
     _playing = true;
     final clip = _queue.removeAt(0);
+    // If the completion event is lost, advance anyway.
+    _playWatchdog = Timer(_maxClipDuration, () {
+      debugPrint('[DartCallerService] watchdog: no completion for $clip');
+      _playNext();
+    });
     player.play(AssetSource('$_basePath/$clip.mp3')).catchError((Object e) {
       debugPrint('[DartCallerService] play($clip) failed: $e');
       _playNext(); // skip the broken clip so the queue keeps draining
@@ -112,6 +143,8 @@ class DartCallerService {
   static Future<void> stop() async {
     _queue.clear();
     _playing = false;
+    _playWatchdog?.cancel();
+    _playWatchdog = null;
     try {
       await _player?.stop();
     } catch (_) {}
@@ -120,6 +153,8 @@ class DartCallerService {
   static Future<void> dispose() async {
     _queue.clear();
     _playing = false;
+    _playWatchdog?.cancel();
+    _playWatchdog = null;
     await _completeSub?.cancel();
     _completeSub = null;
     try {

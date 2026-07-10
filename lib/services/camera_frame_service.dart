@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
 import 'agora_service.dart';
+import '../utils/storage_service.dart';
 
 /// Owns the Flutter camera during gameplay and distributes frames to both
 /// Agora (for video calling) and AI scoring (for dart detection).
@@ -34,8 +35,14 @@ class CameraFrameService {
   bool _firstPushLogged = false;
   DeviceOrientation? _lastLoggedOrientation;
 
+  // Which physical lens is currently open. Follows the persisted preference on
+  // start and flips via [switchCamera].
+  CameraLensDirection _lensDirection = CameraLensDirection.back;
+  bool _switching = false;
+
   CameraController? get controller => _controller;
   bool get isInitialized => _controller?.value.isInitialized ?? false;
+  CameraLensDirection get lensDirection => _lensDirection;
 
   // --- ANDROID-ONLY device-orientation-aware frame rotation -----------------
   // Android delivers image-stream frames in FIXED sensor coordinates that do
@@ -104,23 +111,46 @@ class CameraFrameService {
     _agoraEngine = agoraEngine;
     _videoTrackId = videoTrackId;
 
+    // Honour the persisted front/back choice (set from the camera-setup screen
+    // or a previous in-game switch). Defaults to the back camera.
+    final useFront = await StorageService.getUseFrontCamera();
+    final requested =
+        useFront ? CameraLensDirection.front : CameraLensDirection.back;
+
+    if (!await _openCamera(requested)) return;
+    if (_disposed) return;
+
+    // Start the image stream — each frame goes to Agora + cached for AI
+    _startImageStream();
+  }
+
+  /// Open (or re-open) the physical camera for the given [requested] lens.
+  /// Falls back to the back camera, then any camera, when that lens is
+  /// unavailable, and records the lens actually opened in [_lensDirection] /
+  /// [_sensorOrientation]. Returns false if no camera could be initialised.
+  Future<bool> _openCamera(CameraLensDirection requested) async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
       debugPrint('[CameraFrameService] No cameras available');
-      return;
+      return false;
     }
 
-    final backCamera = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.back,
-      orElse: () => cameras.first,
+    final selected = cameras.firstWhere(
+      (c) => c.lensDirection == requested,
+      orElse: () => cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      ),
     );
-    _sensorOrientation = backCamera.sensorOrientation;
+    _lensDirection = selected.lensDirection;
+    _sensorOrientation = selected.sensorOrientation;
     debugPrint(
         '[CameraFrameService] platform=${Platform.isIOS ? "iOS" : "Android"} '
-        'camera=${backCamera.name} sensorOrientation=$_sensorOrientation');
+        'camera=${selected.name} lens=$_lensDirection '
+        'sensorOrientation=$_sensorOrientation');
 
     CameraController buildController() => CameraController(
-          backCamera,
+          selected,
           ResolutionPreset.high, // 720p
           enableAudio: false, // Agora handles audio — avoid iOS AVAudioSession conflict
           imageFormatGroup: Platform.isAndroid
@@ -140,7 +170,7 @@ class CameraFrameService {
     // visible effect is a slightly longer "Starting camera…".
     const maxAttempts = 8;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      if (_disposed) return;
+      if (_disposed) return false;
       _controller = buildController();
       try {
         await _controller!.initialize();
@@ -150,7 +180,7 @@ class CameraFrameService {
         _controller = null;
         if (attempt == maxAttempts - 1) {
           debugPrint('[CameraFrameService] init failed after $maxAttempts attempts: $e');
-          return;
+          return false;
         }
         debugPrint(
             '[CameraFrameService] init failed (attempt ${attempt + 1}/$maxAttempts), '
@@ -162,7 +192,7 @@ class CameraFrameService {
     // _disposed first and owns tearing down the controller it saw, so bail here
     // rather than dereference _controller! (which it may already have nulled) or
     // start a stream on a controller that is being disposed.
-    if (_disposed) return;
+    if (_disposed) return false;
     final preview = _controller!.value.previewSize;
     debugPrint(
         '[CameraFrameService] previewSize=${preview?.width}x${preview?.height}');
@@ -172,8 +202,43 @@ class CameraFrameService {
       await _controller!.setFlashMode(FlashMode.off);
     } catch (_) {}
 
-    // Start the image stream — each frame goes to Agora + cached for AI
-    _startImageStream();
+    return true;
+  }
+
+  /// Flip between the back and front camera during gameplay. Tears down the
+  /// current controller, opens the other lens, resumes streaming to Agora + AI,
+  /// and persists the choice so it carries to the next screen and next launch.
+  /// No-op while a switch is already in flight or after [dispose].
+  Future<void> switchCamera() async {
+    if (_disposed || _switching) return;
+    _switching = true;
+    try {
+      final target = _lensDirection == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+
+      // Tear down the current controller. Null it out FIRST so any widget
+      // rebuild that races with us reads a null controller (and renders its
+      // placeholder) instead of touching a disposed one.
+      _stopImageStream();
+      final old = _controller;
+      _controller = null;
+      _latestFrame = null;
+      _firstPushLogged = false;
+      await old?.dispose();
+      if (_disposed) return;
+
+      if (!await _openCamera(target)) return;
+      if (_disposed) return;
+      _startImageStream();
+
+      // Persist the lens actually opened (the target may have fallen back to
+      // back when the device has no camera for that direction).
+      await StorageService.saveUseFrontCamera(
+          _lensDirection == CameraLensDirection.front);
+    } finally {
+      _switching = false;
+    }
   }
 
   void _startImageStream() {

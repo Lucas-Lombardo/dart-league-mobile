@@ -78,4 +78,19 @@ class StorageService {
     if (value == null) return true;
     return value == 'true';
   }
+
+  // Whether to use the front (selfie) camera instead of the back one for the
+  // dartboard feed. Remembered across screens and app launches so the last
+  // choice sticks. Defaults off (back camera).
+  static const String _useFrontCameraKey = 'use_front_camera';
+
+  static Future<void> saveUseFrontCamera(bool useFront) async {
+    await _storage.write(key: _useFrontCameraKey, value: useFront.toString());
+  }
+
+  static Future<bool> getUseFrontCamera() async {
+    final value = await _storage.read(key: _useFrontCameraKey);
+    if (value == null) return false;
+    return value == 'true';
+  }
 }

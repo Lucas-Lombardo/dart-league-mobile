@@ -45,6 +45,9 @@ class CameraSetupConfig {
 mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   CameraController? cameraController;
   List<CameraDescription>? cameras;
+  // Which lens the preview is currently using. Seeded from the persisted
+  // preference in [initializeCamera] and flipped by [toggleCameraLens].
+  CameraLensDirection cameraLensDirection = CameraLensDirection.back;
   bool isLoading = true;
   bool permissionsGranted = false;
   bool cameraReady = false;
@@ -178,13 +181,23 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         return;
       }
 
-      final backCamera = cameras!.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras!.first,
+      // Seed the lens from the persisted front/back preference. Falls back to
+      // the back camera (then any camera) when the chosen lens isn't present.
+      final useFront = await StorageService.getUseFrontCamera();
+      final desired = useFront
+          ? CameraLensDirection.front
+          : CameraLensDirection.back;
+      final selectedCamera = cameras!.firstWhere(
+        (camera) => camera.lensDirection == desired,
+        orElse: () => cameras!.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.back,
+          orElse: () => cameras!.first,
+        ),
       );
+      cameraLensDirection = selectedCamera.lensDirection;
 
       cameraController = CameraController(
-        backCamera,
+        selectedCamera,
         ResolutionPreset.high,
         enableAudio: false,
       );
@@ -228,6 +241,43 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         errorMessage = '${l10n.failedToInitializeCamera}: $e';
       });
     }
+  }
+
+  /// Whether the device exposes both a front and a back camera, i.e. flipping
+  /// between them is meaningful. Drives the visibility of the flip button.
+  bool get canFlipCamera {
+    final c = cameras;
+    if (c == null) return false;
+    final hasFront =
+        c.any((x) => x.lensDirection == CameraLensDirection.front);
+    final hasBack =
+        c.any((x) => x.lensDirection == CameraLensDirection.back);
+    return hasFront && hasBack;
+  }
+
+  /// Flip between the front and back camera. Persists the choice (so the game
+  /// screen and the next launch honour it) and rebuilds the preview on the
+  /// other lens.
+  Future<void> toggleCameraLens() async {
+    if (isLoading || !cameraReady) return;
+    final goingFront = cameraLensDirection != CameraLensDirection.front;
+    HapticService.lightImpact();
+    await StorageService.saveUseFrontCamera(goingFront);
+    // Release the current lens before opening the other one — the camera
+    // device can't be held twice. initializeCamera() re-reads the saved
+    // preference to pick the new lens.
+    final old = cameraController;
+    cameraController = null;
+    if (mounted) {
+      setState(() {
+        cameraReady = false;
+        boardDetected = false;
+        aiHint = null;
+      });
+    }
+    await old?.dispose();
+    if (!mounted) return;
+    await initializeCamera();
   }
 
   // --- AI Detection ---
@@ -451,9 +501,36 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                 bottom: 0,
                 child: buildZoomControls(),
               ),
+              if (canFlipCamera)
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  child: buildCameraFlipButton(),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Circular button that flips between the front and back camera. Only shown
+  /// (via [canFlipCamera]) when the device actually has both lenses.
+  Widget buildCameraFlipButton() {
+    final isFront = cameraLensDirection == CameraLensDirection.front;
+    return GestureDetector(
+      onTap: toggleCameraLens,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: isFront
+              ? AppTheme.primary.withValues(alpha: 0.85)
+              : Colors.black.withValues(alpha: 0.6),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+        child: const Icon(Icons.cameraswitch, color: Colors.white, size: 22),
       ),
     );
   }

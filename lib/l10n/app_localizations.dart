@@ -626,6 +626,8 @@ abstract class AppLocalizations {
   String get freeTierMatchAvailable;
   String get freeTierMatchUsed;
   String get tapToUpgradeForUnlimited;
+  String get freePlayBannerTitle;
+  String get freePlayBannerSubtitle;
   String get unrankedFreeTierHint;
   String get tapToLearnAboutPremium;
 

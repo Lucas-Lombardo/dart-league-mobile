@@ -194,6 +194,9 @@ class AutoScoringService extends ChangeNotifier {
 
   // Capture state
   bool _capturing = false;
+  // Bumped on every start/stop so a stale capture loop can detect it has been
+  // superseded and exit (a stop→start in one tick otherwise leaves it alive).
+  int _captureGeneration = 0;
   bool _inferenceInProgress = false;
   int _captureSeq = 0;
   bool _modelLoaded = false;
@@ -403,17 +406,23 @@ class AutoScoringService extends ChangeNotifier {
   }) {
     if (!_modelLoaded || _capturing) return;
     _capturing = true;
+    // Each loop owns a generation. A stop→start inside a single loop tick used
+    // to leave the OLD loop running (it re-read _capturing == true after the
+    // restart) and hold a disposed camera service; now the stale generation
+    // exits on its next check.
+    final generation = ++_captureGeneration;
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
     _frameCounter = 0;
     notifyListeners();
     _captureLoop(captureFrame, captureRgba, captureBgra, captureYuv, cleanupFile,
-        onDartDetected, onAutoConfirm);
+        onDartDetected, onAutoConfirm, generation);
   }
 
   void stopCapture() {
     _capturing = false;
+    _captureGeneration++;
     notifyListeners();
   }
 
@@ -441,10 +450,20 @@ class AutoScoringService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void syncEmittedCount(int confirmedCount) {
-    for (int i = confirmedCount; i < 3; i++) {
+  /// Align the AI's slot bookkeeping with the number of darts the game layer
+  /// accounts for ([accountedCount] = applied by the server + still in
+  /// delivery). Slots beyond that count are cleared ONLY when no live shoot
+  /// group is bound to them.
+  ///
+  /// Clearing a slot whose group survives in [_shootGroups] used to orphan
+  /// that group: _assignSlots then re-assigned it to a free slot with
+  /// firstEmit == true and fired onDartDetected a SECOND time for a dart that
+  /// is physically still in the board — the dart-duplication bug. A dart that
+  /// was emitted stays emitted; delivery is the provider's job (dartId + ack).
+  void syncEmittedCount(int accountedCount) {
+    for (int i = accountedCount; i < 3; i++) {
+      if (_slotShootGroupIds[i] != null) continue;
       _dartSlots[i] = null;
-      _slotShootGroupIds[i] = null;
       _emittedSlots[i] = false;
       _manualOverrideSlots[i] = false;
       _removedSlots[i] = false;
@@ -491,14 +510,15 @@ class AutoScoringService extends ChangeNotifier {
     CleanupFileCallback? cleanupFile,
     OnDartDetectedCallback? onDartDetected,
     OnAutoConfirmCallback? onAutoConfirm,
+    int generation,
   ) async {
-    while (_capturing) {
+    while (_capturing && generation == _captureGeneration) {
       // Yield to the event loop BEFORE inference so pending UI frames,
       // touch events, and setState callbacks can be processed.
       // This is critical because inference blocks the Dart thread for ~400ms.
       await Future.delayed(const Duration(milliseconds: 16)); // ~1 frame at 60fps
 
-      if (!_capturing) break;
+      if (!_capturing || generation != _captureGeneration) break;
 
       await _fireCapture(captureFrame, captureRgba, captureBgra, captureYuv,
           cleanupFile, onDartDetected, onAutoConfirm);

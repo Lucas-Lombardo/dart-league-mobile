@@ -1655,6 +1655,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tapToUpgradeForUnlimited => 'Tap to upgrade for unlimited matches';
 
   @override
+  String get freePlayBannerTitle => 'Free Play is live!';
+  @override
+  String get freePlayBannerSubtitle =>
+      'Unlimited ranked & free friend matches for everyone';
+
+  @override
   String get unrankedFreeTierHint => 'After placement, free players get 1 ranked match per day';
 
   @override

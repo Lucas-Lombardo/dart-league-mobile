@@ -68,6 +68,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
   bool _autoScoringLoading = false;
   bool _aiManuallyDisabled = false;
   bool _aiPausedForEdit = false;
+  bool _switchingCamera = false;
   double _cameraZoom = 1.0;
   double _cameraMinZoom = 1.0;
   double _cameraMaxZoom = 1.0;
@@ -280,6 +281,32 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       await _cameraService!.setZoomLevel(next);
       if (mounted) setState(() => _cameraZoom = next);
     } catch (_) {}
+  }
+
+  Future<void> _switchCamera() async {
+    final svc = _cameraService;
+    if (svc == null || _switchingCamera) return;
+    HapticService.lightImpact();
+    setState(() => _switchingCamera = true);
+    try {
+      await svc.switchCamera();
+      // Refresh the zoom bounds for the new lens (front cameras often can't zoom).
+      try {
+        final minZoom = await svc.getMinZoomLevel();
+        final maxZoom = await svc.getMaxZoomLevel();
+        final clamped = _cameraZoom.clamp(minZoom, maxZoom);
+        await svc.setZoomLevel(clamped);
+        if (mounted) {
+          setState(() {
+            _cameraMinZoom = minZoom;
+            _cameraMaxZoom = maxZoom;
+            _cameraZoom = clamped;
+          });
+        }
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _switchingCamera = false);
+    }
   }
 
   // ── Scoring ────────────────────────────────────────────────────────────────
@@ -713,10 +740,12 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       iAmPlayer2: _activePlayer == 1,
       myAverage: _averageOf(_activePlayer),
       opponentAverage: _averageOf(_opponent),
-      localCameraPreview: _cameraService?.controller != null &&
+      localCameraPreview: !_switchingCamera &&
+              _cameraService?.controller != null &&
               _cameraService!.isInitialized
           ? LocalCameraPreview(controller: _cameraService!.controller!)
           : null,
+      onSwitchCamera: _switchCamera,
       onZoomIn: _zoomIn,
       onZoomOut: _zoomOut,
       currentZoom: _cameraZoom,

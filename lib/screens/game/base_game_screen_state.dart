@@ -49,6 +49,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
   int? customVideoTrackId;
+  // True while the camera is being flipped front/back, so the build shows the
+  // placeholder instead of a LocalCameraPreview bound to a disposed controller.
+  bool switchingCamera = false;
   bool isAudioMuted = true;
   bool permissionsGranted = false;
   bool cameraZoomInitialized = false;
@@ -176,14 +179,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         return;
       }
       _wasPausedSinceLastResume = false;
-      // App actually backgrounded — re-sync everything.
+      // App actually backgrounded — re-sync everything. A connect timeout used
+      // to surface as an unhandled future error, and reconnectToMatch never
+      // ran: recovery then depended entirely on the reconnect listener.
       SocketService.ensureConnected().then((_) {
         if (!mounted) return;
         final game = readGame();
+        // Re-register socket listeners FIRST: reconnect_to_match's reply
+        // (game_state_sync) is useless if nothing is listening for it.
+        game.ensureListenersSetup();
         // Tell the server we're back so opponent sees us as connected
         game.reconnectToMatch();
-        // Re-register socket listeners in case they were lost
-        game.ensureListenersSetup();
+      }).catchError((Object e) {
+        debugPrint('[BaseGameScreen] resume reconnect failed: $e');
       });
     }
   }
@@ -220,8 +228,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         }
       }
       final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
-      // Reset dart slots on turn change (always, even without AI capture)
-      if (justBecameMyTurn) { aiManuallyDisabled = false; aiPausedForEdit = false; autoScoringService!.resetTurn(); }
+      // Reset dart slots on turn change (always, even without AI capture) and
+      // re-arm the empty-board gate: a player who ended their previous turn
+      // without pulling their darts (END TURN pill, bust confirm) leaves them
+      // in the board, and the AI used to re-score those three as this turn's
+      // throws — then auto-confirm passed the turn before a single real dart
+      // was thrown. The gate clears itself as soon as the board is seen empty.
+      if (justBecameMyTurn) {
+        aiManuallyDisabled = false;
+        aiPausedForEdit = false;
+        autoScoringService!.resetTurn();
+        autoScoringService!.waitForEmptyBoardOnce();
+      }
       // Caller: announce "you require <n>" when we come to the throw on a
       // finish. Signature reset here so the next visit is called even if it
       // repeats the previous visit's exact darts (no-op when caller disabled).
@@ -230,17 +248,27 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         DartCallerService.callCheckout(game.myScore);
       }
       // Caller: announce the visit total once the server has accepted a full
-      // 3-dart round (pendingConfirmation) that did NOT bust. We can't decide
-      // this from the local darts alone: the throws hit 3 locally before the
-      // server rules, and on a bust the backend sends pending_bust with no
-      // score_updated. So we wait for the verdict — round_ready_confirm leaves
-      // pendingType null, pending_bust sets it to 'bust'. On a bust we stay
-      // silent (DartSoundService.playBust covers it) rather than read out a
-      // score that doesn't count. Guard against '' edit placeholders.
+      // 3-dart round (pendingConfirmation) that did NOT bust and did NOT win.
+      // We can't decide this from the local darts alone: the throws hit 3
+      // locally before the server rules, and on a bust/win the backend sends
+      // pending_bust / pending_win with no score_updated. So we wait for the
+      // verdict — round_ready_confirm is the ONLY outcome that leaves
+      // pendingType null. Requiring exactly that (rather than "not a bust")
+      // stops two wrong calls: a win announced while the confirm dialog is
+      // still up and editable, and — because an edit mid-pending changes the
+      // local darts without clearing pendingConfirmation — a busted edit
+      // announced as a valid score. Also require every dart to be acked, so
+      // we never read out a total the server hasn't got. Guard against ''
+      // edit placeholders.
       if (game.isMyTurn) {
         final throws = game.currentRoundThrows as List<String>;
         final visitComplete = throws.length == 3 && throws.every((t) => t.isNotEmpty);
-        if (visitComplete && game.pendingConfirmation && game.pendingType != 'bust') {
+        int unacked = 0;
+        try { unacked = (game.unackedDartCount as int?) ?? 0; } catch (_) {}
+        if (visitComplete &&
+            game.pendingConfirmation &&
+            game.pendingType == null &&
+            unacked == 0) {
           final sig = throws.join(',');
           if (sig != _lastCalledVisitSignature) {
             _lastCalledVisitSignature = sig;
@@ -254,7 +282,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null && autoScoringService!.modelLoaded) {
         final pendingNeedsStop = game.pendingConfirmation && (game.pendingType == 'bust' || game.pendingType == 'win');
         if (game.isMyTurn && !pendingNeedsStop && !autoScoringService!.isCapturing && !aiPausedForEdit) {
-          if (!justBecameMyTurn && !game.pendingConfirmation) { autoScoringService!.syncEmittedCount(game.currentRoundThrows.length); }
+          if (!justBecameMyTurn && !game.pendingConfirmation) {
+            // Darts the game layer accounts for: echoed by the server PLUS
+            // those still in delivery. Passing only the echo let an in-flight
+            // dart's slot be freed and re-emitted.
+            int accounted = game.currentRoundThrows.length as int;
+            try { accounted += (game.unackedDartCount as int?) ?? 0; } catch (_) {}
+            autoScoringService!.syncEmittedCount(accounted);
+          }
           autoScoringService!.startCapture(
             captureFrame: _captureFrameCallback!,
             captureRgba: _captureRgbaCallback,
@@ -316,9 +351,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             }
           });
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[BaseGameScreen] reconnectFailed handling error: $e');
+      }
       onScreenSpecificStateChange(game);
-    } catch (_) {}
+    } catch (e, stack) {
+      // This handler drives turn changes, capture start/stop and the pending
+      // dialogs. Swallowing silently meant a single throw skipped everything
+      // after it with zero diagnostics.
+      debugPrint('[BaseGameScreen] handleSharedStateChange error: $e');
+      debugPrint('$stack');
+    }
   }
 
   void updateLoadingMessage(String msg) {
@@ -353,6 +396,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           captureRgba: _captureRgbaCallback,
           captureBgra: _captureBgraCallback,
           captureYuv: _captureYuvCallback,
+          // Without this the file-capture fallback path leaks cam_frame_*.jpg
+          // for the rest of the match after the AI is toggled back on.
+          cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
           onDartDetected: _onDartDetectedCallback,
           onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
         );
@@ -360,7 +406,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     });
   }
 
-  Future<void> initAutoScoring() async {
+  /// [armEmptyBoardGate] must be false when re-initializing MID-TURN (Agora
+  /// reconnect): the board still holds this turn's darts, so the gate would
+  /// never clear until takeout and every remaining dart of the turn would go
+  /// unscored. At match start / turn start the board is expected empty.
+  Future<void> initAutoScoring({bool armEmptyBoardGate = true}) async {
     if (cameraFrameService == null || kIsWeb || !AutoScoringService.isSupported) return;
     if (!mounted) return;
     setState(() {
@@ -390,7 +440,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // Arm the one-shot "empty board" gate so practice darts thrown while
         // the player was in the queue don't get counted in the new match.
         // The gate clears itself once the camera sees an empty dartboard.
-        autoScoringService!.waitForEmptyBoardOnce();
+        if (armEmptyBoardGate) autoScoringService!.waitForEmptyBoardOnce();
         final game = readGame();
         if (game.isMyTurn) {
           autoScoringService!.startCapture(
@@ -423,7 +473,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final game = readGame();
     if (!game.isMyTurn || svc.isCapturing || aiManuallyDisabled) return;
     // Practice darts left in the board from the queue warm-up shouldn't count.
-    svc.waitForEmptyBoardOnce();
+    // Only when the visit hasn't started: arming mid-turn would stall the AI
+    // until the player pulls this turn's darts (i.e. for the rest of the turn).
+    final roundEmpty = (game.currentRoundThrows as List).isEmpty &&
+        ((game.unackedDartCount as int?) ?? 0) == 0;
+    if (roundEmpty) svc.waitForEmptyBoardOnce();
     svc.startCapture(
       captureFrame: _captureFrameCallback!,
       captureRgba: _captureRgbaCallback,
@@ -435,7 +489,51 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
-  void submitAutoScoredDarts(dynamic game) { aiPausedForEdit = false; autoScoringService?.stopCapture(); game.confirmRound(); }
+  /// Commit the current turn.
+  ///
+  /// The turn ends on exactly one rule, whether the AI or the player triggers
+  /// it: at least one dart was detected, and the board has been seen empty
+  /// (the AI's 3-consecutive-frame takeout check). A visit of fewer than 3
+  /// darts is legitimate — a dart that bounces out or drops off the board
+  /// scores nothing but still counts as thrown, and `end_round_early` pads the
+  /// visit with S0 accordingly. Never second-guess the count here: the dart
+  /// that must not be lost is protected by the delivery layer instead
+  /// (confirmRound waits for every in-flight dart to be acked, and the server
+  /// refuses a confirm whose dartCount disagrees with its own).
+  void submitAutoScoredDarts(dynamic game) {
+    aiPausedForEdit = false;
+    autoScoringService?.stopCapture();
+    game.confirmRound();
+  }
+
+  /// Restart AI capture after the dart-edit modal closes (including cancel).
+  /// Mid-turn, so the empty-board gate is never re-armed here.
+  void resumeCaptureAfterEdit() {
+    if (!mounted) return;
+    final svc = autoScoringService;
+    if (svc == null ||
+        !autoScoringEnabled ||
+        aiManuallyDisabled ||
+        aiPausedForEdit ||
+        !svc.modelLoaded ||
+        svc.isCapturing ||
+        _captureFrameCallback == null) {
+      return;
+    }
+    final game = readGame();
+    final pendingNeedsStop = game.pendingConfirmation &&
+        (game.pendingType == 'bust' || game.pendingType == 'win');
+    if (!game.isMyTurn || pendingNeedsStop || game.gameEnded) return;
+    svc.startCapture(
+      captureFrame: _captureFrameCallback!,
+      captureRgba: _captureRgbaCallback,
+      captureBgra: _captureBgraCallback,
+      captureYuv: _captureYuvCallback,
+      cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
+      onDartDetected: _onDartDetectedCallback,
+      onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
+    );
+  }
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
   Future<void> initializeAgora({required String appId, required String token, required String channelName, int? uid}) async {
@@ -603,8 +701,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         cameraZoomInitialized = false;
         await initCameraZoom();
         autoScoringService!.stopCapture();
-        autoScoringService!.resetTurn();
-        initAutoScoring();
+        // Mid-turn (darts already thrown this visit): keep the AI's slot and
+        // emitted-dart bookkeeping. resetTurn() here wiped _emittedSlots, so
+        // the darts physically still in the board were detected as fresh and
+        // emitted a SECOND time. Only a clean board justifies a full reset,
+        // and only then is the empty-board gate safe to arm.
+        final roundEmpty = ((readGame().currentRoundThrows as List).isEmpty) &&
+            ((readGame().unackedDartCount as int?) ?? 0) == 0;
+        if (roundEmpty) autoScoringService!.resetTurn();
+        initAutoScoring(armEmptyBoardGate: roundEmpty);
       }
       // Re-seed remoteUid with the deterministic opponent UID so the remote
       // AgoraVideoView re-binds to the new engine immediately, without
@@ -760,7 +865,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     await agoraEngine!.muteLocalAudioStream(isAudioMuted);
   }
   Future<void> switchCamera() async {
-    // Not applicable with custom video track — always uses back camera
+    final svc = cameraFrameService;
+    if (svc == null || switchingCamera) return;
+    HapticService.lightImpact();
+    setState(() => switchingCamera = true);
+    try {
+      await svc.switchCamera();
+      // Zoom range differs per lens (front cameras often can't zoom at all),
+      // so re-read the bounds and re-apply the saved zoom for the new lens.
+      cameraZoomInitialized = false;
+      await initCameraZoom();
+    } finally {
+      if (mounted) setState(() => switchingCamera = false);
+    }
   }
   Future<void> zoomIn() async {
     if (cameraFrameService == null) return;
@@ -777,10 +894,30 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   void leaveMatch() {
     try {
       final matchId = matchIdForLeave;
-      if (matchId != null && storedPlayerId != null && gameStarted && !gameEnded) {
-        SocketService.emit('leave_match', {'matchId': matchId, 'playerId': storedPlayerId});
+      if (matchId == null || storedPlayerId == null || !gameStarted || gameEnded) {
+        return;
       }
-    } catch (_) {}
+      // The game providers are shared across matches, and Flutter defers a
+      // popped route's dispose() by ~300ms — long enough for the NEXT match
+      // (rematch, next tournament leg) to have started. gameStarted/gameEnded
+      // then describe the new match while matchId is the old one, so this
+      // emitted a leave_match for a match we already left, during live entry
+      // into its successor. Only forfeit the match the provider is still on.
+      try {
+        final currentMatchId = readGame().matchId as String?;
+        if (currentMatchId != null && currentMatchId != matchId) {
+          debugPrint('[BaseGameScreen] skipping leave_match for stale match $matchId '
+              '(provider now on $currentMatchId)');
+          return;
+        }
+      } catch (_) {
+        // Provider gone — fall through and emit; a leave for an ended match
+        // is ignored server-side.
+      }
+      SocketService.emit('leave_match', {'matchId': matchId, 'playerId': storedPlayerId});
+    } catch (e) {
+      debugPrint('[BaseGameScreen] leaveMatch failed: $e');
+    }
   }
 
   Future<bool> onWillPop() async {
@@ -805,7 +942,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Shared dialogs ───────────────────────────────────────────────────────────
   void showPendingWinDialog(dynamic game) {
-    final notation = (game.pendingData?['finalDart'])?['notation'] ?? 'Unknown';
+    // Null when the pending win was recovered from a sync whose round was
+    // empty. Never substitute a placeholder here: "You hit Unknown to finish!"
+    // reads as a bug. Drop the sentence and keep the question instead.
+    final notation = (game.pendingData?['finalDart'])?['notation'] as String?;
     final l10n = AppLocalizations.of(context);
     winDialogShowing = true;
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
@@ -813,8 +953,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.success, width: 2)),
       title: Row(children: [const Icon(Icons.emoji_events, color: AppTheme.success, size: 32), const SizedBox(width: 12), Text(l10n.checkout, style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold))]),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-        const SizedBox(height: 8), Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
+        if (notation != null && notation.isNotEmpty) ...[
+          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+        ],
+        Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
       ]),
       actions: [
         OutlinedButton(onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } }, child: Text(l10n.editDarts)),

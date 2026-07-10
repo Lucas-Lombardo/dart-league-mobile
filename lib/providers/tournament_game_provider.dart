@@ -36,6 +36,15 @@ class TournamentGameProvider with ChangeNotifier {
   List<String> _currentRoundThrows = [];
   List<String> _opponentRoundThrows = [];
   int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
+  // Per-dart delivery tracking — see GameProvider for the full rationale.
+  // Every throw_dart carries a dartId; the server acks and dedups, so lost
+  // darts are re-sent instead of silently disappearing.
+  final Map<String, Map<String, dynamic>> _pendingDartAcks = {};
+  Timer? _dartRetryTimer;
+  int _dartIdSeq = 0;
+  int _ackedDartsThisRound = 0;
+  int _confirmAttempts = 0;
+  int _confirmRejectedRetries = 0;
   bool _pendingConfirmation = false;
   String? _pendingType;
   String? _pendingReason;
@@ -111,6 +120,13 @@ class TournamentGameProvider with ChangeNotifier {
   int get disconnectGraceSeconds => _disconnectGraceSeconds;
   bool get selfDisconnected => _selfDisconnected;
   int get selfDisconnectGraceSeconds => _selfDisconnectGraceSeconds;
+  /// Darts emitted but not yet confirmed applied by the server. The AI
+  /// auto-confirm must not end the turn while this is non-zero.
+  int get unackedDartCount => _pendingDartAcks.length;
+
+  /// Darts the server has confirmed applied this round.
+  int get ackedDartsThisRound => _ackedDartsThisRound;
+
   bool get isMyTurn => _currentPlayerId == _myUserId;
   // True when this user was the second to throw in the match (captured from
   // the first game_started event). Used to render the current user on the
@@ -226,6 +242,10 @@ class TournamentGameProvider with ChangeNotifier {
     _lastThrow = null;
     _currentRoundThrows = [];
     _dartsEmittedThisRound = 0;
+    _clearPendingDarts();
+    _ackedDartsThisRound = 0;
+    _confirmAttempts = 0;
+    _confirmRejectedRetries = 0;
     _pendingConfirmation = false;
     _pendingType = null;
     _pendingReason = null;
@@ -251,6 +271,8 @@ class TournamentGameProvider with ChangeNotifier {
     SocketService.on('game_state_sync', _handleGameStateSync);
     SocketService.on('player_forfeited', _handlePlayerForfeited);
     SocketService.on('dart_undone', _handleDartUndone);
+    SocketService.on('throw_dart_ack', _handleThrowDartAck);
+    SocketService.on('confirm_round_rejected', _handleConfirmRoundRejected);
 
     // Tournament-specific events
     SocketService.on('tournament_leg_won', _handleTournamentLegWon);
@@ -335,7 +357,18 @@ class TournamentGameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// True when an event belongs to a different match (previous leg, other
+  /// match) than the leg currently being played.
+  bool _isForeignMatch(dynamic data) {
+    if (data is! Map) return false;
+    final eventMatchId = data['matchId'] as String?;
+    return eventMatchId != null &&
+        _currentGameMatchId != null &&
+        eventMatchId != _currentGameMatchId;
+  }
+
   void _handleScoreUpdated(dynamic data) {
+    if (_isForeignMatch(data)) return;
     // Why: auto-resync the turn when round_complete was missed (e.g. brief
     // socket disconnect that left the client out of the room). The server
     // always includes currentPlayerId in score_updated payloads.
@@ -356,8 +389,15 @@ class TournamentGameProvider with ChangeNotifier {
       final throws = data['currentRoundThrows'] as List<dynamic>?;
       if (throws != null) {
         _currentRoundThrows = throws.map((t) => t.toString()).toList();
-        // Keep guard in sync with server
-        _dartsEmittedThisRound = _currentRoundThrows.length;
+        // Never let a stale echo LOWER the guard below what is delivered or
+        // in flight — that used to re-open an occupied slot (dart duplication).
+        final claimed = _ackedDartsThisRound + _pendingDartAcks.length;
+        final serverCount = _currentRoundThrows.length;
+        _dartsEmittedThisRound =
+            serverCount > claimed ? serverCount : claimed;
+        if (serverCount > _ackedDartsThisRound) {
+          _ackedDartsThisRound = serverCount;
+        }
       }
     }
     // Track opponent's throws during their turn
@@ -375,6 +415,10 @@ class TournamentGameProvider with ChangeNotifier {
   void _handleRoundReadyConfirm(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != null && eventMatchId != _currentGameMatchId) return;
+    // The server broadcasts this to the whole room — without this guard the
+    // WAITING player's UI flipped into the confirm state on the opponent's
+    // third dart (same guard GameProvider already had).
+    if (!isMyTurn) return;
     _pendingConfirmation = true;
     notifyListeners();
   }
@@ -386,6 +430,11 @@ class TournamentGameProvider with ChangeNotifier {
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
     _dartsEmittedThisRound = 0;
+    // Turn committed: settle all per-dart delivery state.
+    _clearPendingDarts();
+    _ackedDartsThisRound = 0;
+    _confirmAttempts = 0;
+    _confirmRejectedRetries = 0;
     _currentPlayerId = data['nextPlayerId'] as String?;
     _pendingConfirmation = false;
     final player1Score = data['player1Score'] as int?;
@@ -412,19 +461,28 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleInvalidThrow(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
-    _currentPlayerId = data['currentPlayerId'] as String?;
-    _dartsThrown = data['dartsThrown'] as int? ?? 0;
-    _currentRoundThrows = [];
-    _dartsEmittedThisRound = 0;
+    // Bare invalid_throw ({message}) carries no state — don't null the turn
+    // out from under the UI (see GameProvider).
+    final serverCurrentPlayerId = data['currentPlayerId'] as String?;
+    if (serverCurrentPlayerId != null) _currentPlayerId = serverCurrentPlayerId;
+    final serverDartsThrown = data['dartsThrown'] as int?;
+    if (serverDartsThrown != null) {
+      _dartsThrown = serverDartsThrown;
+      _currentRoundThrows = [];
+      _dartsEmittedThisRound = 0;
+      _ackedDartsThisRound = 0;
+    }
     notifyListeners();
   }
 
   void _handleMustFinishDouble(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
@@ -517,6 +575,20 @@ class TournamentGameProvider with ChangeNotifier {
     if (player1Id != null) _player1Id = player1Id;
     if (currentPlayerId != null) _currentPlayerId = currentPlayerId;
     if (dartsThrown != null) _dartsThrown = dartsThrown;
+
+    // Settle the pending-dart queue against the server's applied dart IDs
+    // (see GameProvider).
+    final serverDartIds = (data['currentRoundDartIds'] as List<dynamic>?)
+        ?.map((e) => e?.toString())
+        .toList();
+    if (serverDartIds != null && _pendingDartAcks.isNotEmpty) {
+      _pendingDartAcks.removeWhere((id, _) => serverDartIds.contains(id));
+      if (_pendingDartAcks.isEmpty) {
+        _dartRetryTimer?.cancel();
+        _dartRetryTimer = null;
+      }
+    }
+
     if (currentRoundThrows != null) {
       // Why: see GameProvider._handleGameStateSync. Don't wipe locally-detected
       // darts when our throw_dart is still in flight to the server.
@@ -524,10 +596,41 @@ class TournamentGameProvider with ChangeNotifier {
       if (!isMyTurn || serverThrows.length >= _currentRoundThrows.length) {
         _currentRoundThrows = serverThrows;
         _dartsEmittedThisRound = _currentRoundThrows.length;
+        _ackedDartsThisRound = isMyTurn ? serverThrows.length : 0;
+      } else {
+        // Server holds FEWER darts than us: ours never arrived. They are
+        // still un-acked in _pendingDartAcks — re-deliver instead of keeping
+        // an unhealable phantom view (see GameProvider).
+        _ackedDartsThisRound = serverThrows.length;
+        final claimed = _ackedDartsThisRound + _pendingDartAcks.length;
+        if (_dartsEmittedThisRound > claimed) {
+          _dartsEmittedThisRound = claimed;
+        }
+      }
+      if (_pendingDartAcks.isNotEmpty && isMyTurn) {
+        _flushPendingDarts();
       }
     }
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
+    }
+
+    // Restore pending win/bust confirmation after a reconnect/heal (see
+    // GameProvider for the full rationale).
+    if (data is Map && data.containsKey('pendingState')) {
+      final pendingState = data['pendingState'] as String?;
+      final pendingPlayerId = data['pendingPlayerId'] as String?;
+      if (pendingState != null && pendingPlayerId == _myUserId) {
+        _pendingConfirmation = true;
+        _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
+        _pendingReason = data['pendingReason'] as String?;
+        _pendingData = _restoredPendingData(pendingState);
+      } else if (pendingState == null &&
+          isMyTurn &&
+          _dartsThrown >= 3 &&
+          _pendingType == null) {
+        _pendingConfirmation = true;
+      }
     }
 
     final newAgoraAppId = data['agoraAppId'] as String?;
@@ -561,6 +664,7 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleDartUndone(dynamic data) {
+    if (_isForeignMatch(data)) return;
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
     if (player1Score != null && player2Score != null) {
@@ -570,7 +674,8 @@ class TournamentGameProvider with ChangeNotifier {
     final throws = data['currentRoundThrows'] as List<dynamic>?;
     if (throws != null) {
       _currentRoundThrows = throws.map((t) => t.toString()).toList();
-      _dartsEmittedThisRound = _currentRoundThrows.length;
+      _ackedDartsThisRound = _currentRoundThrows.length;
+      _dartsEmittedThisRound = _ackedDartsThisRound + _pendingDartAcks.length;
     }
     _pendingConfirmation = false;
     _pendingType = null;
@@ -651,21 +756,142 @@ class TournamentGameProvider with ChangeNotifier {
   // --- Actions ---
 
   void confirmRound() {
+    if (_gameEnded || _currentGameMatchId == null) return;
+
+    final tracked = SocketService.supportsDartAck;
+
+    // Never commit a turn while a dart is still in flight (see GameProvider).
+    // Pointless against a legacy backend, which never acks.
+    if (tracked && _pendingDartAcks.isNotEmpty && _confirmAttempts < 5) {
+      _confirmAttempts++;
+      _flushPendingDarts();
+      Timer(const Duration(milliseconds: 800), () {
+        if (!_disposed && !_gameEnded && isMyTurn) confirmRound();
+      });
+      return;
+    }
+    _confirmAttempts = 0;
+
+    final payload = <String, dynamic>{
+      'matchId': _currentGameMatchId,
+      'playerId': _myUserId,
+    };
+    if (tracked) {
+      payload['dartCount'] =
+          _currentRoundThrows.where((t) => t.isNotEmpty).length.clamp(0, 3);
+    }
     try {
-      if (_currentRoundThrows.length < 3) {
-        SocketService.emit('end_round_early', {
-          'matchId': _currentGameMatchId,
-          'playerId': _myUserId,
-        });
-      } else {
-        SocketService.emit('confirm_round', {
-          'matchId': _currentGameMatchId,
-          'playerId': _myUserId,
-        });
-      }
+      SocketService.emit(
+        _currentRoundThrows.length < 3 ? 'end_round_early' : 'confirm_round',
+        payload,
+      );
     } catch (e) {
       debugPrint('TournamentGameProvider: confirmRound failed: $e');
     }
+  }
+
+  String _nextDartId() {
+    final user = (_myUserId ?? 'u').replaceAll('-', '');
+    final prefix = user.length >= 8 ? user.substring(0, 8) : user;
+    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    return 't$prefix$stamp${_dartIdSeq++}';
+  }
+
+  /// Delivery-tracked throw_dart (see GameProvider._emitDartWithTracking).
+  void _emitDartWithTracking(Map<String, dynamic> payload) {
+    final dartId = _nextDartId();
+    payload['dartId'] = dartId;
+    _pendingDartAcks[dartId] = payload;
+    try {
+      SocketService.emit('throw_dart', payload);
+    } catch (e) {
+      debugPrint('TournamentGameProvider: throw_dart queued for retry: $e');
+    }
+    _dartRetryTimer ??=
+        Timer.periodic(const Duration(seconds: 2), (_) => _flushPendingDarts());
+  }
+
+  void _flushPendingDarts() {
+    if (!SocketService.supportsDartAck) {
+      // A server that can't dedup would score the re-sent dart again.
+      _dartRetryTimer?.cancel();
+      _dartRetryTimer = null;
+      return;
+    }
+    if (_pendingDartAcks.isEmpty) {
+      _dartRetryTimer?.cancel();
+      _dartRetryTimer = null;
+      return;
+    }
+    final entries = _pendingDartAcks.values.toList()
+      ..sort((a, b) =>
+          ((a['dartIndex'] as int?) ?? 0).compareTo((b['dartIndex'] as int?) ?? 0));
+    for (final payload in entries) {
+      try {
+        SocketService.emit('throw_dart', payload);
+      } catch (_) {
+        break;
+      }
+    }
+  }
+
+  void _clearPendingDarts() {
+    _pendingDartAcks.clear();
+    _dartRetryTimer?.cancel();
+    _dartRetryTimer = null;
+  }
+
+  void _handleThrowDartAck(dynamic data) {
+    if (data is! Map) return;
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null &&
+        _currentGameMatchId != null &&
+        eventMatchId != _currentGameMatchId) {
+      return;
+    }
+    final dartId = data['dartId'] as String?;
+    if (dartId == null) return;
+    final wasPending = _pendingDartAcks.remove(dartId) != null;
+
+    if (data['applied'] == true) {
+      final appliedIndex = data['appliedIndex'] as int?;
+      if (appliedIndex != null && appliedIndex + 1 > _ackedDartsThisRound) {
+        _ackedDartsThisRound = appliedIndex + 1;
+      }
+    } else if (wasPending) {
+      final claimed = _ackedDartsThisRound + _pendingDartAcks.length;
+      if (_dartsEmittedThisRound > claimed) {
+        _dartsEmittedThisRound = claimed;
+      }
+      debugPrint(
+          'TournamentGameProvider: dart $dartId rejected (${data['reason']})');
+    }
+
+    if (_pendingDartAcks.isEmpty) {
+      _dartRetryTimer?.cancel();
+      _dartRetryTimer = null;
+    }
+    notifyListeners();
+  }
+
+  void _handleConfirmRoundRejected(dynamic data) {
+    if (data is! Map) return;
+    final eventMatchId = data['matchId'] as String?;
+    if (eventMatchId != null &&
+        _currentGameMatchId != null &&
+        eventMatchId != _currentGameMatchId) {
+      return;
+    }
+    debugPrint(
+        'TournamentGameProvider: confirm rejected — server=${data['serverDartsThrown']} client=${data['clientDartCount']}');
+    _flushPendingDarts();
+    if (_confirmRejectedRetries < 3) {
+      _confirmRejectedRetries++;
+      Timer(const Duration(milliseconds: 900), () {
+        if (!_disposed && !_gameEnded && isMyTurn) confirmRound();
+      });
+    }
+    notifyListeners();
   }
 
   void cancelConfirmation() {
@@ -718,24 +944,31 @@ class TournamentGameProvider with ChangeNotifier {
   }) async {
     if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) return;
 
-    try {
-      final isDouble = multiplier == ScoreMultiplier.double;
-      final isTriple = multiplier == ScoreMultiplier.triple;
+    final isDouble = multiplier == ScoreMultiplier.double;
+    final isTriple = multiplier == ScoreMultiplier.triple;
+    final payload = <String, dynamic>{
+      'matchId': _currentGameMatchId,
+      'playerId': _myUserId,
+      'baseScore': baseScore,
+      'isDouble': isDouble,
+      'isTriple': isTriple,
+      'source': source,
+    };
 
+    if (!SocketService.supportsDartAck) {
+      // Legacy backend: never track or retry — it would score the dart twice.
       _dartsEmittedThisRound++;
-
-      SocketService.emit('throw_dart', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
-        'baseScore': baseScore,
-        'isDouble': isDouble,
-        'isTriple': isTriple,
-        'source': source,
-      });
-    } catch (_) {
-      // Socket emit failed — roll back guard
-      _dartsEmittedThisRound--;
+      try {
+        SocketService.emit('throw_dart', payload);
+      } catch (_) {
+        _dartsEmittedThisRound--;
+      }
+      return;
     }
+
+    payload['dartIndex'] = _dartsEmittedThisRound;
+    _emitDartWithTracking(payload);
+    _dartsEmittedThisRound++;
   }
 
   void editDartThrow(int index, int baseScore, ScoreMultiplier multiplier) {
@@ -749,36 +982,71 @@ class TournamentGameProvider with ChangeNotifier {
     final isDouble = multiplier == ScoreMultiplier.double;
     final isTriple = multiplier == ScoreMultiplier.triple;
     // If this slot was never thrown to the backend, emit throw_dart instead of edit_dart
-    if (index >= _dartsEmittedThisRound) {
-      _dartsEmittedThisRound = index + 1;
-      SocketService.emit('throw_dart', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
-        'baseScore': baseScore,
-        'isDouble': isDouble,
-        'isTriple': isTriple,
-      });
-    } else {
-      SocketService.emit('edit_dart', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
-        'dartIndex': index,
-        'baseScore': baseScore,
-        'isDouble': isDouble,
-        'isTriple': isTriple,
-      });
+    try {
+      if (index >= _dartsEmittedThisRound) {
+        // Delivery-tracked; the server verifies dartIndex so a gap-fill can't
+        // silently record the dart at the wrong position (see GameProvider).
+        final payload = <String, dynamic>{
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+          'baseScore': baseScore,
+          'isDouble': isDouble,
+          'isTriple': isTriple,
+          'source': 'manual',
+        };
+        if (SocketService.supportsDartAck) {
+          payload['dartIndex'] = index;
+          _emitDartWithTracking(payload);
+        } else {
+          SocketService.emit('throw_dart', payload);
+        }
+        _dartsEmittedThisRound = index + 1;
+      } else {
+        SocketService.emit('edit_dart', {
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+          'dartIndex': index,
+          'baseScore': baseScore,
+          'isDouble': isDouble,
+          'isTriple': isTriple,
+        });
+      }
+    } catch (e) {
+      // A dead socket used to throw out of this UI callback with the guard
+      // already inflated; now it's logged and the tracked dart is retried.
+      debugPrint('TournamentGameProvider: editDartThrow emit failed: $e');
     }
     notifyListeners();
   }
 
   void undoLastDart() {
-    try {
-      SocketService.emit('undo_last_dart', {
-        'matchId': _currentGameMatchId,
-        'playerId': _myUserId,
+    // Cancel an in-flight dart instead of undoing an applied one — the server
+    // hasn't applied it yet, so undo_last_dart would pop the wrong dart (see
+    // GameProvider for the reconciliation story).
+    if (_pendingDartAcks.isNotEmpty) {
+      String? newestId;
+      var newestIndex = -1;
+      _pendingDartAcks.forEach((id, payload) {
+        final idx = (payload['dartIndex'] as int?) ?? 0;
+        if (idx > newestIndex) {
+          newestIndex = idx;
+          newestId = id;
+        }
       });
-    } catch (e) {
-      debugPrint('TournamentGameProvider: undoLastDart failed: $e');
+      if (newestId != null) _pendingDartAcks.remove(newestId);
+      if (_pendingDartAcks.isEmpty) {
+        _dartRetryTimer?.cancel();
+        _dartRetryTimer = null;
+      }
+    } else {
+      try {
+        SocketService.emit('undo_last_dart', {
+          'matchId': _currentGameMatchId,
+          'playerId': _myUserId,
+        });
+      } catch (e) {
+        debugPrint('TournamentGameProvider: undoLastDart failed: $e');
+      }
     }
     // Decrement local guard (server will sync actual state via dart_undone)
     if (_dartsEmittedThisRound > 0) {
@@ -793,7 +1061,13 @@ class TournamentGameProvider with ChangeNotifier {
 
   /// Undo all darts thrown this round (used when editing to avoid negative scores)
   void undoAllDarts() {
-    while (_dartsEmittedThisRound > 0) {
+    // Only server-applied darts need an undo each; in-flight darts are simply
+    // cancelled (see GameProvider).
+    _clearPendingDarts();
+    var applied = _ackedDartsThisRound > _currentRoundThrows.length
+        ? _ackedDartsThisRound
+        : _currentRoundThrows.where((t) => t.isNotEmpty).length;
+    while (applied > 0) {
       try {
         SocketService.emit('undo_last_dart', {
           'matchId': _currentGameMatchId,
@@ -802,14 +1076,39 @@ class TournamentGameProvider with ChangeNotifier {
       } catch (e) {
         debugPrint('TournamentGameProvider: undoAllDarts failed: $e');
       }
-      _dartsEmittedThisRound--;
+      applied--;
     }
+    _dartsEmittedThisRound = 0;
+    _ackedDartsThisRound = 0;
     _currentRoundThrows.clear();
     _pendingConfirmation = false;
     _pendingType = null;
     _pendingReason = null;
     _pendingData = null;
     notifyListeners();
+  }
+
+  /// See GameProvider._restoredPendingData. A checkout never switches the turn,
+  /// so the finishing dart is the last throw of the round the server just sent.
+  Map<String, dynamic> _restoredPendingData(String pendingState) {
+    final restored = <String, dynamic>{
+      'matchId': _currentGameMatchId,
+      'playerId': _myUserId,
+      'reason': _pendingReason,
+      'restoredFromSync': true,
+    };
+    if (pendingState == 'pending_win') {
+      String? finishingDart;
+      for (final notation in _currentRoundThrows) {
+        if (notation.isNotEmpty) finishingDart = notation;
+      }
+      if (finishingDart != null) {
+        restored['finalDart'] = {'notation': finishingDart};
+      }
+    }
+    final existing = _pendingData?['finalDart'];
+    if (existing != null) restored['finalDart'] = existing;
+    return restored;
   }
 
   void reconnectToMatch() {
@@ -886,6 +1185,8 @@ class TournamentGameProvider with ChangeNotifier {
     SocketService.off('tournament_leg_won');
     SocketService.off('tournament_next_leg');
     SocketService.off('tournament_match_won');
+    SocketService.off('throw_dart_ack');
+    SocketService.off('confirm_round_rejected');
   }
 
   void reset() {
@@ -907,6 +1208,10 @@ class TournamentGameProvider with ChangeNotifier {
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _clearPendingDarts();
+    _ackedDartsThisRound = 0;
+    _confirmAttempts = 0;
+    _confirmRejectedRetries = 0;
     _listenersSetUp = false;
     _pendingConfirmation = false;
     _pendingType = null;
@@ -941,6 +1246,7 @@ class TournamentGameProvider with ChangeNotifier {
   void dispose() {
     _disposed = true;
     _cleanupSocketListeners();
+    _clearPendingDarts();
     _disconnectCountdownTimer?.cancel();
     _selfDisconnectCountdownTimer?.cancel();
     super.dispose();

@@ -21,6 +21,7 @@ class SubscriptionProvider with ChangeNotifier {
   DateTime? _premiumExpiresAt;
   int? _matchesRemainingToday;
   int? _dailyLimit;
+  bool _freePlayActive = false;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -33,6 +34,15 @@ class SubscriptionProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// True during the weekly Free Play window (Sat 20:00–00:00 Europe/Paris),
+  /// when ranked is unlimited and friend matches are free for everyone —
+  /// regardless of premium status.
+  bool get freePlayActive => _freePlayActive;
+
+  /// True when the user may play a friend match without premium: either they
+  /// are premium, or Free Play is currently live.
+  bool get canPlayFriendMatch => isPremiumActive || _freePlayActive;
+
   /// True when the user is premium and not yet expired.
   bool get isPremiumActive {
     if (!_isPremium) return false;
@@ -40,9 +50,10 @@ class SubscriptionProvider with ChangeNotifier {
     return _premiumExpiresAt!.isAfter(DateTime.now());
   }
 
-  /// True for free users who have used their daily slot.
+  /// True for free users who have used their daily slot. Always false during
+  /// Free Play (ranked is unlimited for everyone).
   bool get hasReachedDailyLimit {
-    if (isPremiumActive) return false;
+    if (isPremiumActive || _freePlayActive) return false;
     final remaining = _matchesRemainingToday;
     return remaining != null && remaining <= 0;
   }
@@ -57,6 +68,7 @@ class SubscriptionProvider with ChangeNotifier {
       _premiumExpiresAt = status.premiumExpiresAt;
       _matchesRemainingToday = status.matchesRemainingToday;
       _dailyLimit = status.dailyLimit;
+      _freePlayActive = status.freePlayActive;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       debugPrint('SubscriptionProvider.refresh failed: $_errorMessage');
@@ -206,6 +218,7 @@ class SubscriptionProvider with ChangeNotifier {
     _premiumExpiresAt = null;
     _matchesRemainingToday = null;
     _dailyLimit = null;
+    _freePlayActive = false;
     _errorMessage = null;
     _isLoading = false;
     notifyListeners();
