@@ -428,9 +428,6 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       _autoScoringService?.resetTurn();
       _startAiCapture();
       DartSoundService.playYourTurn();
-      // Caller: announce "you require N" when the player comes to the throw on a
-      // finish (no-op otherwise), mirroring the online game screen.
-      DartCallerService.callCheckout(_myScore);
     }
   }
 

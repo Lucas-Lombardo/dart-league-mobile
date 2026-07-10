@@ -294,7 +294,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceCaller => 'Voice caller';
 
   @override
-  String get voiceCallerDescription => 'Announce scores and checkouts aloud';
+  String get voiceCallerDescription => 'Announce scores aloud';
 
   // Friends Screen
   @override
@@ -1731,9 +1731,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pleaseWait => 'Please wait...';
-
-  @override
-  String finishHint(String hint) => 'Finish: $hint';
 
   @override
   String get doNotPlayDuringOpponentTurn =>

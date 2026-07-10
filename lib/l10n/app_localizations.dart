@@ -655,7 +655,6 @@ abstract class AppLocalizations {
   String get waitingUpper;
   String get opponentTurnUpper;
   String get pleaseWait;
-  String finishHint(String hint);
   String get doNotPlayDuringOpponentTurn;
 
   // Report reasons

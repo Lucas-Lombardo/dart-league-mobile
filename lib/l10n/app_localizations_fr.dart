@@ -294,7 +294,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get voiceCaller => 'Annonceur vocal';
 
   @override
-  String get voiceCallerDescription => 'Annonce les scores et les finitions à voix haute';
+  String get voiceCallerDescription => 'Annonce les scores à voix haute';
 
   // Friends Screen
   @override
@@ -1741,9 +1741,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get pleaseWait => 'Veuillez patienter...';
-
-  @override
-  String finishHint(String hint) => 'Finition : $hint';
 
   @override
   String get doNotPlayDuringOpponentTurn =>

@@ -4,7 +4,6 @@ import '../services/auto_scoring_service.dart';
 import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
-import '../utils/score_converter.dart';
 import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
 import 'game_turn_ui.dart';
@@ -320,31 +319,6 @@ class AutoScoreGameView extends StatelessWidget {
           ),
         );
 
-        final hintStr = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
-        final finishHintChip = hintStr == null
-            ? null
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.gps_fixed, color: AppTheme.success, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      l10n.finishHint(hintStr),
-                      style: const TextStyle(
-                        color: AppTheme.success,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ]),
-                ),
-              ]);
-
         final scoreBar = UserScoreBar(
           myName: myName,
           opponentName: opponentName,
@@ -455,10 +429,6 @@ class AutoScoreGameView extends StatelessWidget {
                             visitLabel,
                             const SizedBox(height: 8),
                             chipsRow,
-                            if (finishHintChip != null) ...[
-                              const SizedBox(height: 8),
-                              finishHintChip,
-                            ],
                             const SizedBox(height: 10),
                             scoreBar,
                           ],
@@ -495,10 +465,6 @@ class AutoScoreGameView extends StatelessWidget {
                       visitLabel,
                       const SizedBox(height: 8),
                       chipsRow,
-                      if (finishHintChip != null) ...[
-                        const SizedBox(height: 8),
-                        finishHintChip,
-                      ],
                       const SizedBox(height: 10),
                       scoreBar,
                     ],

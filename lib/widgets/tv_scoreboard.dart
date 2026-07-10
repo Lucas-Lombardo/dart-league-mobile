@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
-import '../utils/score_converter.dart';
 import '../l10n/app_localizations.dart';
 
 /// PDC TV-style scoreboard with circular score displays.
@@ -33,9 +32,6 @@ class TvScoreboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hint = (myScore >= 2 && myScore <= 170) ? checkoutHint(myScore) : null;
-    final opponentHint = (opponentScore >= 2 && opponentScore <= 170) ? checkoutHint(opponentScore) : null;
-
     // me renders on the left unless the current user is player 2.
     final mePanel = _PlayerScore(
       name: myName,
@@ -43,7 +39,6 @@ class TvScoreboard extends StatelessWidget {
       startingScore: startingScore,
       isActive: isMyTurn,
       color: AppTheme.primary,
-      hint: hint,
       average: myAverage,
       isMe: true,
       isLeft: !iAmPlayer2,
@@ -54,7 +49,6 @@ class TvScoreboard extends StatelessWidget {
       startingScore: startingScore,
       isActive: !isMyTurn,
       color: AppTheme.error,
-      hint: opponentHint,
       average: opponentAverage,
       isMe: false,
       isLeft: iAmPlayer2,
@@ -129,7 +123,6 @@ class _PlayerScore extends StatelessWidget {
   final int startingScore;
   final bool isActive;
   final Color color;
-  final String? hint;
   final double? average;
   final bool isMe;
   // Which half of the scoreboard this panel occupies. Drives the direction of
@@ -142,7 +135,6 @@ class _PlayerScore extends StatelessWidget {
     required this.startingScore,
     required this.isActive,
     required this.color,
-    this.hint,
     this.average,
     this.isMe = false,
     this.isLeft = true,
@@ -266,25 +258,6 @@ class _PlayerScore extends StatelessWidget {
             // Circular score — grows to fill the panel when height is bounded.
             circle,
             const SizedBox(height: 2),
-            // Checkout hint
-            SizedBox(
-              height: 18,
-              child: hint != null
-                  ? FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        hint!,
-                        style: TextStyle(
-                          color: AppTheme.success,
-                          fontSize: (slotWidth * 0.07).clamp(11.0, 18.0),
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    )
-                  : null,
-            ),
             // Average score per round.
             // Always reserve the same vertical space so the two player
             // columns stay symmetric — otherwise an opponent with no rounds

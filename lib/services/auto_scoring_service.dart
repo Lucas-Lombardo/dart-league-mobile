@@ -250,16 +250,20 @@ class AutoScoringService extends ChangeNotifier {
   int _consecutiveRemovalCount = 0;
   static const int _removalConfirmThreshold = 3;
 
-  // One-shot "wait until the board is empty before scoring darts" gate.
-  // Used at match start so practice darts left in the board from the queue
-  // warm-up don't get counted as throws in the new match. The gate clears
-  // itself once we see [_emptyBoardCheckThreshold] consecutive empty frames.
+  // One-shot "leftover darts" gate, armed at the start of each of our turns
+  // (and at match start) so darts already in the board — previous visit left
+  // in place, queue warm-up practice — don't get counted as this turn's
+  // throws. The FIRST analyzed frame with a visible board decides: darts
+  // present → hold scoring and show the "remove your darts" hint until the
+  // board is confirmed empty; board clean → disarm immediately so a dart
+  // thrown right at turn start is scored normally.
   bool _waitingForEmptyBoard = false;
   int _emptyBoardCheckCount = 0;
   static const int _emptyBoardCheckThreshold = 3;
-  // Whether the armed gate has actually SEEN leftover darts. The "remove
-  // your darts" UI hint keys off this, so an already-clean board clears the
-  // gate silently instead of flashing the hint at every match start.
+  // Whether the armed gate has actually SEEN leftover darts (decision made on
+  // the first board-visible frame). The "remove your darts" UI hint keys off
+  // this, and it selects the gate's takeout phase: once true, only
+  // [_emptyBoardCheckThreshold] consecutive empty frames clear the gate.
   bool _emptyBoardGateSawDarts = false;
 
   // Last snapshot of UI-visible state used to suppress no-op rebuilds.
@@ -332,11 +336,12 @@ class AutoScoringService extends ChangeNotifier {
   int get detectedDartCount => _getValidShootDetectionThisRound();
   static bool get isSupported => !kIsWeb;
 
-  /// Arm a one-shot "wait until empty board" gate. While armed, the AI
-  /// continues running inference (so we can detect the empty state) but
-  /// won't emit dart detections or update the slot UI. Call this once at
-  /// match start so practice darts in the board from the queue warm-up
-  /// don't get attributed to the new match's first turn.
+  /// Arm the one-shot "leftover darts" gate. While armed, the AI continues
+  /// running inference but won't emit dart detections or update the slot UI.
+  /// The first analyzed frame with a visible board decides: darts present →
+  /// show the "remove your darts" hint and wait for a confirmed-empty board;
+  /// board clean → disarm right away so the turn's first throw scores
+  /// normally. Called at match start and at the start of each of our turns.
   void waitForEmptyBoardOnce() {
     _waitingForEmptyBoard = true;
     _emptyBoardCheckCount = 0;
@@ -639,12 +644,32 @@ class AutoScoringService extends ChangeNotifier {
 
       _updateZoomHint(result);
 
-      // One-shot "wait until empty board" gate (match-start practice cleanup).
-      // Don't process any dart logic until we see a clean board for several
-      // consecutive frames — otherwise leftover warm-up darts get counted.
+      // One-shot "leftover darts" gate (armed at turn start). The FIRST
+      // analyzed frame with a visible board decides:
+      //  - darts present → they can only be leftovers (previous visit left in
+      //    the board, warm-up practice): show the "remove your darts" hint and
+      //    hold scoring until the board is confirmed empty;
+      //  - board clean → disarm immediately. Requiring several empty frames
+      //    before disarming (the old behaviour) misread a dart thrown right at
+      //    turn start as a leftover: the hint asked the player to pull a
+      //    legitimate first throw, which was then never scored.
       if (_waitingForEmptyBoard) {
         final boardVisible = result.calibrationPoints.length >= 4;
-        if (boardVisible && dartCount == 0) {
+        if (!_emptyBoardGateSawDarts) {
+          // Decision frame — a frame without a visible board proves nothing,
+          // keep waiting for the first usable look at the board.
+          if (boardVisible) {
+            if (dartCount > 0) {
+              _emptyBoardGateSawDarts = true;
+            } else {
+              _waitingForEmptyBoard = false;
+              _emptyBoardCheckCount = 0;
+            }
+          }
+        } else if (boardVisible && dartCount == 0) {
+          // Takeout phase: leftovers were seen. A single empty frame is
+          // unreliable (hand occlusion while pulling darts), so require
+          // several consecutive empty frames before scoring resumes.
           _emptyBoardCheckCount++;
           if (_emptyBoardCheckCount >= _emptyBoardCheckThreshold) {
             _waitingForEmptyBoard = false;
@@ -653,10 +678,11 @@ class AutoScoringService extends ChangeNotifier {
           }
         } else if (dartCount > 0) {
           _emptyBoardCheckCount = 0;
-          _emptyBoardGateSawDarts = true;
         }
         _trace('GATE waitingForEmptyBoard tips=$dartCount cp=${result.calibrationPoints.length} '
-            'emptyCount=$_emptyBoardCheckCount/$_emptyBoardCheckThreshold (frame not scored)');
+            'sawDarts=${_emptyBoardGateSawDarts ? 1 : 0} '
+            'emptyCount=$_emptyBoardCheckCount/$_emptyBoardCheckThreshold '
+            '${_waitingForEmptyBoard ? "(frame not scored)" : "(gate cleared)"}');
         await _maybeCleanup(imagePath, cleanupFile);
         _notifyIfChanged();
         return;

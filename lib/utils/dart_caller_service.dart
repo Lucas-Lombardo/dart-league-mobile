@@ -3,22 +3,17 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'storage_service.dart';
 
-/// Voice "caller" that announces completed-visit scores and checkout
-/// requirements using the pre-recorded clips in assets/caller/ — one mp3 per
-/// number (1..180), plus you-require.mp3 and no-score.mp3.
+/// Voice "caller" that announces completed-visit scores using the
+/// pre-recorded clips in assets/caller/ — one mp3 per number (1..180),
+/// plus no-score.mp3.
 ///
 /// Unlike [DartSoundService] we do NOT preload a player per clip: there are
 /// ~180 files and only a handful ever play in a match. Instead a single
-/// [AudioPlayer] drains a short queue, so a multi-clip call
-/// ("you require" → "121") plays back-to-back without the two clips
-/// overlapping.
+/// [AudioPlayer] drains a short queue so consecutive clips never overlap.
 class DartCallerService {
   DartCallerService._();
 
   static const _basePath = 'caller';
-
-  /// Numbers that cannot be finished in 501 double-out (plus everything > 170).
-  static const Set<int> _bogeyNumbers = {169, 168, 166, 165, 163, 162, 159};
 
   static AudioPlayer? _player;
   static final List<String> _queue = [];
@@ -52,26 +47,11 @@ class DartCallerService {
     if (!value) await stop();
   }
 
-  /// Whether [score] is a finishable checkout in 501 double-out (2..170,
-  /// excluding the bogey numbers). Callers that are not on a finish get no call.
-  static bool isCheckout(int score) {
-    if (score < 2 || score > 170) return false;
-    return !_bogeyNumbers.contains(score);
-  }
-
   /// Announce the total of a completed 3-dart visit. 0 → "no score".
   static Future<void> callScore(int score) async {
     if (!_enabled) return;
     if (score < 0 || score > 180) return;
     await _enqueue([score == 0 ? 'no-score' : '$score']);
-  }
-
-  /// Announce "you require [remaining]" when a checkout is on. No-op when the
-  /// remaining score can't be finished (> 170, a bogey number, or < 2).
-  static Future<void> callCheckout(int remaining) async {
-    if (!_enabled) return;
-    if (!isCheckout(remaining)) return;
-    await _enqueue(['you-require', '$remaining']);
   }
 
   static Future<void> _enqueue(List<String> clips) async {

@@ -75,6 +75,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // called exactly once even though handleSharedStateChange fires on every
   // provider notify. Cleared at the start of each of our turns.
   String? _lastCalledVisitSignature;
+  // Same guard for the opponent's visit — their throws stream in live via
+  // score_updated, so without a signature the total would be announced on
+  // every provider notify after their third dart.
+  String? _lastCalledOpponentVisitSignature;
   bool winDialogShowing = false;
   bool bustDialogShowing = false;
   bool forfeitDialogShowing = false;
@@ -241,12 +245,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         autoScoringService!.resetTurn();
         autoScoringService!.waitForEmptyBoardOnce();
       }
-      // Caller: announce "you require <n>" when we come to the throw on a
-      // finish. Signature reset here so the next visit is called even if it
-      // repeats the previous visit's exact darts (no-op when caller disabled).
+      // Caller: signature reset so the next visit is called even if it
+      // repeats the previous visit's exact darts.
       if (justBecameMyTurn) {
         _lastCalledVisitSignature = null;
-        DartCallerService.callCheckout(game.myScore);
       }
       // Caller: announce the visit total once the server has accepted a full
       // 3-dart round (pendingConfirmation) that did NOT bust and did NOT win.
@@ -277,6 +279,26 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           }
         } else if (throws.isEmpty) {
           _lastCalledVisitSignature = null;
+        }
+      }
+      // Caller: announce the opponent's visit total as soon as the result of
+      // their THIRD dart arrives — no need to wait for their round to be
+      // committed. Unlike our own visit there is no pending/ack state to
+      // consult for the remote side: their throws simply stream in via
+      // score_updated and the list is cleared on round_complete, which also
+      // re-arms the signature for their next visit. Early-ended opponent
+      // turns (1–2 darts) never reach 3 throws and are not announced.
+      {
+        final oppThrows = game.opponentRoundThrows as List<String>;
+        if (oppThrows.length == 3 && oppThrows.every((t) => t.isNotEmpty)) {
+          final sig = oppThrows.join(',');
+          if (sig != _lastCalledOpponentVisitSignature) {
+            _lastCalledOpponentVisitSignature = sig;
+            DartCallerService.callScore(
+                oppThrows.fold<int>(0, (sum, n) => sum + notationPoints(n)));
+          }
+        } else if (oppThrows.isEmpty) {
+          _lastCalledOpponentVisitSignature = null;
         }
       }
       // Start/stop AI capture when supported
@@ -1254,13 +1276,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   /// "VOLÉE DE (name) … TOTAL n" label row + the three visit chips for the
-  /// opponent's current visit, plus the player's own checkout hint when one
-  /// exists.
+  /// opponent's current visit.
   Widget buildOpponentVisitSection(dynamic game) {
     final l10n = AppLocalizations.of(context);
     final throws = game.opponentRoundThrows as List<String>;
     final total = throws.fold<int>(0, (sum, n) => sum + notationPoints(n));
-    final myHint = (game.myScore >= 2 && game.myScore <= 170) ? checkoutHint(game.myScore) : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -1300,26 +1320,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             }),
           ),
         ),
-        if (myHint != null) ...[
-          const SizedBox(height: 10),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.gps_fixed, color: AppTheme.success, size: 14),
-                const SizedBox(width: 6),
-                Text(
-                  l10n.finishHint(myHint),
-                  style: const TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-              ]),
-            ),
-          ]),
-        ],
       ],
     );
   }
