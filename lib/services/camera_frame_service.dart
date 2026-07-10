@@ -75,9 +75,11 @@ class CameraFrameService {
   }
 
   /// ANDROID-ONLY clockwise rotation (degrees) for the raw sensor frame so the
-  /// board is upright for the model. Portrait returns the sensor mount angle
-  /// (the previously-shipped value); landscape compensates for the device's
-  /// physical rotation so the board lands upright/flipped, never sideways.
+  /// board is upright — for the model AND as the Agora push rotation metadata
+  /// (both share the same "rotate CW to upright" semantic). Portrait returns
+  /// the sensor mount angle (the previously-shipped value); landscape
+  /// compensates for the device's physical rotation so the board lands
+  /// upright/flipped, never sideways.
   /// Must never be called on the iOS paths — those pass a literal 0.
   int _effectiveRotation() {
     final baseline = _sensorOrientation ?? 0;
@@ -306,7 +308,14 @@ class CameraFrameService {
         height = image.height;
       }
 
-      final int frameRotation = Platform.isAndroid ? (_sensorOrientation ?? 0) : 0;
+      // Android frames stay in fixed sensor coordinates, so the rotation
+      // metadata must follow the device's physical orientation — a frozen
+      // _sensorOrientation is only right in portrait and made receivers
+      // render this device's landscape stream 90° sideways. In portrait
+      // _effectiveRotation() returns that same baseline, so portrait pushes
+      // are unchanged. iOS buffers already arrive upright in every
+      // orientation, so iOS keeps pushing 0.
+      final int frameRotation = Platform.isAndroid ? _effectiveRotation() : 0;
 
       final frame = ExternalVideoFrame(
         type: VideoBufferType.videoBufferRawData,
