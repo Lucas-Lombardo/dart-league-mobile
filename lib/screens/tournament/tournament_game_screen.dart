@@ -329,9 +329,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
           onPressed: () {
             HapticService.lightImpact();
             showReportDialog(
-              onSubmit: (reason) async {
+              onSubmit: (reason, comment) async {
                 if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
-                await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason);
+                await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
                 if (mounted) { setState(() => _resultAccepted = true); handleSharedStateChange(); }
               },
               onComplete: () {},

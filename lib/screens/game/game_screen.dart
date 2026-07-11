@@ -62,8 +62,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   String get leaveWarningText =>
       AppLocalizations.of(context).forfeitMatchWarning;
 
+  // The BO3 series state is rendered inside the turn header / score bar
+  // centers (maquette), not as a separate bar above the screen.
   @override
   Widget? buildExtraHeader(dynamic game, AuthProvider auth) => null;
+
+  /// Center label for the BO3 series displays ("BO3 · Manche 2"), or null for
+  /// a single-leg match (the displays fall back to their BO1 layout).
+  String? _seriesTitle(GameProvider game) => game.isRankedSeries
+      ? 'BO${game.bestOf} · ${AppLocalizations.of(context).legNumber(game.currentLeg)}'
+      : null;
 
   @override
   Widget buildAppBarTitle() => Row(children: [
@@ -72,8 +80,30 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     Text(AppLocalizations.of(context).liveMatch, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
   ]);
 
+  // The series this screen instance was opened for. _storedMatchId may only
+  // follow the provider across legs of THIS series — see below.
+  String? _screenSeriesId;
+
   @override
-  void onScreenSpecificStateChange(dynamic game) {}
+  void onScreenSpecificStateChange(dynamic game) {
+    // In a BO3 series the live matchId moves to each new leg; the safety-net
+    // forfeit on leave must target the CURRENT leg, not leg 1. But mirror
+    // ONLY across legs of this screen's own series: unconditionally following
+    // the provider defeated the stale-screen guard in leaveMatch() — a
+    // deferred-disposed old screen adopted the SUCCESSOR match's id and
+    // forfeited it (every friendly rematch died instantly at 501-501).
+    final g = game as GameProvider;
+    if (_screenSeriesId == null &&
+        g.seriesId != null &&
+        g.matchId == _storedMatchId) {
+      _screenSeriesId = g.seriesId;
+    }
+    if (g.matchId != null &&
+        _screenSeriesId != null &&
+        g.seriesId == _screenSeriesId) {
+      _storedMatchId = g.matchId;
+    }
+  }
 
   @override
   Future<void> initScreenSpecific() async {
@@ -305,6 +335,12 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
   @override
   Widget buildEndScreen(dynamic game, AuthProvider auth) {
+    // BO3: a leg just ended but the series continues — show the leg result
+    // while the server prepares the next leg (ranked_next_leg resets
+    // gameEnded and brings the board back automatically).
+    if (game.isRankedSeries == true && game.seriesEnded != true) {
+      return _buildLegEndScreen(game as GameProvider, auth);
+    }
     final didWin = game.winnerId == auth.currentUser?.id;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
@@ -335,6 +371,20 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
           textAlign: TextAlign.center,
         ),
         SizedBox(height: isLandscape ? 6 : 12),
+        // Final legs score for a BO3 series (e.g. "2 – 1 · Best of 3").
+        if (game.isRankedSeries == true) ...[
+          Text(
+            '${game.myLegsWon} – ${game.opponentLegsWon}',
+            style: AppTheme.displayLarge.copyWith(color: Colors.white, fontSize: isLandscape ? 24 : 32),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            AppLocalizations.of(context).bestOfN(game.bestOf as int),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: isLandscape ? 6 : 12),
+        ],
         Text(
           didWin ? AppLocalizations.of(context).provenLegend : AppLocalizations.of(context).trainingPath,
           style: AppTheme.bodyLarge,
@@ -362,9 +412,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
           onPressed: () {
             HapticService.lightImpact();
             showReportDialog(
-              onSubmit: (reason) async {
+              onSubmit: (reason, comment) async {
                 if (game.matchId == null || auth.currentUser?.id == null) return;
-                final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason);
+                final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason, comment: comment);
                 final msg = result['message'] as String? ?? 'Dispute submitted';
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
                 Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
@@ -419,6 +469,83 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     );
   }
 
+
+  /// Between-legs screen for ranked BO3: leg result + series score + a
+  /// "next leg" spinner. No buttons — ranked_next_leg drives the transition
+  /// (gameEnded flips back to false and the board returns), and leaving here
+  /// would forfeit the series, exactly like leaving mid-leg.
+  Widget _buildLegEndScreen(GameProvider game, AuthProvider auth) {
+    final l10n = AppLocalizations.of(context);
+    final wonLeg = game.legWinnerId == auth.currentUser?.id ||
+        (game.legWinnerId == null && game.winnerId == auth.currentUser?.id);
+    final accent = wonLeg ? AppTheme.success : AppTheme.error;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // PopScope: the series is still live here — a bare back press silently
+    // abandoned it (no dialog, no leave_match). Route through onWillPop like
+    // the live board does.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await onWillPop() && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(isLandscape ? 16 : 24),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: accent, width: 3),
+                    ),
+                    child: Icon(
+                      wonLeg ? Icons.check_circle_outline : Icons.close,
+                      color: accent,
+                      size: isLandscape ? 40 : 56,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    wonLeg ? l10n.legWon.toUpperCase() : l10n.legLost.toUpperCase(),
+                    style: AppTheme.displayLarge.copyWith(color: accent, fontSize: isLandscape ? 28 : 36),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '${game.myLegsWon} – ${game.opponentLegsWon}',
+                    style: AppTheme.displayLarge.copyWith(color: Colors.white, fontSize: isLandscape ? 32 : 44),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.firstToNLegs(game.legsNeeded),
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  const CircularProgressIndicator(color: AppTheme.primary),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.nextLeg,
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14, letterSpacing: 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
 
   void _leaveFriendlyToHome(GameProvider game) {
     HapticService.lightImpact();
@@ -564,6 +691,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       auth,
       safeTop,
       channelId: game.agoraChannelName ?? widget.agoraChannelName ?? '',
+      seriesTitle: _seriesTitle(game),
+      myLegs: game.myLegsWon,
+      opponentLegs: game.opponentLegsWon,
     );
   }
 
@@ -575,6 +705,17 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       final game = context.watch<GameProvider>();
       final auth = context.watch<AuthProvider>();
       
+      // BO3 between-legs: after ranked_next_leg (_gameStarted=false, next leg
+      // not started yet) keep the leg result + series score on screen instead
+      // of the generic "INITIALIZING MATCH" spinner — the ~2s transition made
+      // every leg change look like a crash and hid the series score. And if
+      // the series ENDS in that window (opponent forfeits), go straight to
+      // the final end screen, which the init branch below would have masked.
+      if (game.isRankedSeries && !game.gameStarted && game.currentLeg > 1) {
+        if (game.seriesEnded) return buildEndScreen(game, auth);
+        return _buildLegEndScreen(game, auth);
+      }
+
       if (game.matchId == null || !game.gameStarted) {
         return PopScope(canPop: false, onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
@@ -660,6 +801,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                       opponentAverage: game.opponentAveragePerRound,
                       roundNumber: game.myRounds.length + 1,
                       onBack: handleBackPressed,
+                      seriesTitle: _seriesTitle(game),
+                      myLegs: game.myLegsWon,
+                      opponentLegs: game.opponentLegsWon,
                     )
                   // Opponent's turn
                   : _buildOpponentTurnScreen(game, auth, safeTop),

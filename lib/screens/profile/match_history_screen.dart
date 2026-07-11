@@ -54,7 +54,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         }
 
         final entries = <_HistoryEntry>[
-          ...matches.map((m) => _HistoryEntry.match(m)),
+          ..._collapseSeriesLegs(matches),
           ...penalties.map((p) => _HistoryEntry.penalty(p)),
         ]..sort((a, b) => b.date.compareTo(a.date));
 
@@ -69,6 +69,38 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// Collapse BO3 legs (same seriesId) into ONE history entry. The newest leg
+  /// is the representative: its winner IS the series winner (the series ends
+  /// on the deciding leg) and it carries the series ELO deltas (intermediate
+  /// legs are stamped 0). Legs won are counted across the group so the card
+  /// shows "2 – 1" instead of a 501 remainder.
+  List<_HistoryEntry> _collapseSeriesLegs(List<Match> matches) {
+    final entries = <_HistoryEntry>[];
+    final bySeries = <String, List<Match>>{};
+    for (final match in matches) {
+      final seriesId = match.seriesId;
+      if (seriesId == null) {
+        entries.add(_HistoryEntry.match(match));
+      } else {
+        bySeries.putIfAbsent(seriesId, () => []).add(match);
+      }
+    }
+    for (final legs in bySeries.values) {
+      legs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final newest = legs.first;
+      // Prefer the SERVER's tally (attached to each leg row): counting leg
+      // rows shows an abandoned 2-1 series as "1 - 1" (the credited legs were
+      // never played) and undercounts when old legs fall past the page limit.
+      // Fall back to counting for older backends without the fields.
+      final p1Legs = newest.seriesPlayer1LegsWon ??
+          legs.where((m) => m.winnerId.isNotEmpty && m.winnerId == m.player1Id).length;
+      final p2Legs = newest.seriesPlayer2LegsWon ??
+          legs.where((m) => m.winnerId.isNotEmpty && m.winnerId == m.player2Id).length;
+      entries.add(_HistoryEntry.series(newest, p1Legs, p2Legs));
+    }
+    return entries;
   }
 
   Future<void> _sendFriendRequest(String friendId, String username) async {
@@ -156,7 +188,9 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                           if (entry.penalty != null) {
                             return _buildInactivityCard(entry.penalty!);
                           }
-                          return _buildMatchCard(entry.match!, userId);
+                          return _buildMatchCard(entry.match!, userId,
+                              seriesP1Legs: entry.seriesP1Legs,
+                              seriesP2Legs: entry.seriesP2Legs);
                         },
                       ),
                     ),
@@ -181,14 +215,22 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     ).then((_) => _loadMatches());
   }
 
-  Widget _buildMatchCard(Match match, String userId) {
+  Widget _buildMatchCard(Match match, String userId,
+      {int? seriesP1Legs, int? seriesP2Legs}) {
     final l10n = AppLocalizations.of(context);
+    final isSeries = seriesP1Legs != null && seriesP2Legs != null;
     final isInProgress = match.isInProgress;
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
     final opponentUsername = match.getOpponentUsername(userId);
-    final myScore = match.getMyScore(userId);
-    final opponentScore = match.getOpponentScore(userId);
+    // A BO3 card shows legs won (e.g. 2 – 1) instead of the 501 remainders.
+    final iAmPlayer1 = userId == match.player1Id;
+    final myScore = isSeries
+        ? (iAmPlayer1 ? seriesP1Legs : seriesP2Legs)
+        : match.getMyScore(userId);
+    final opponentScore = isSeries
+        ? (iAmPlayer1 ? seriesP2Legs : seriesP1Legs)
+        : match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d, y • h:mm a');
     final Color borderColor = isInProgress
         ? AppTheme.accent
@@ -299,6 +341,16 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                     _buildScoreColumn(l10n.opponentLabel, '$opponentScore', Colors.white),
                   ],
                 ),
+                if (isSeries)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        l10n.bestOfN(3),
+                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -482,14 +534,27 @@ class _HistoryEntry {
   final DateTime date;
   final Match? match;
   final InactivityPenalty? penalty;
+  // Set for a collapsed BO3 series entry: legs won by player1/player2 of the
+  // representative (newest) leg. Null for classic matches and penalties.
+  final int? seriesP1Legs;
+  final int? seriesP2Legs;
 
   _HistoryEntry.match(Match m)
       : match = m,
         penalty = null,
+        seriesP1Legs = null,
+        seriesP2Legs = null,
         date = m.createdAt;
+
+  _HistoryEntry.series(Match newestLeg, this.seriesP1Legs, this.seriesP2Legs)
+      : match = newestLeg,
+        penalty = null,
+        date = newestLeg.createdAt;
 
   _HistoryEntry.penalty(InactivityPenalty p)
       : match = null,
         penalty = p,
+        seriesP1Legs = null,
+        seriesP2Legs = null,
         date = p.createdAt;
 }

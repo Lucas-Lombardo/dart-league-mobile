@@ -24,6 +24,19 @@ class Match {
   final String status;
   final String matchType;
   final int? botDifficulty;
+  // Non-null when this match is one leg of a ranked BO3 series. History
+  // screens group legs sharing a seriesId into a single entry.
+  final String? seriesId;
+  // Authoritative series context from the history payload (additive; null on
+  // older backends). Prefer these over counting leg rows: abandoned series
+  // credit the winner legs he never played, and pagination can cut old legs.
+  final String? seriesStatus;
+  final String? seriesWinnerId;
+  final int? seriesPlayer1LegsWon;
+  final int? seriesPlayer2LegsWon;
+  // Full series summary (legs results, series score) — only present on the
+  // match-detail endpoint; null in list payloads and on older backends.
+  final MatchSeries? series;
   final List<MatchRound>? rounds;
   final MatchStatistics? statistics;
 
@@ -44,11 +57,19 @@ class Match {
     required this.status,
     this.matchType = 'ranked',
     this.botDifficulty,
+    this.seriesId,
+    this.seriesStatus,
+    this.seriesWinnerId,
+    this.seriesPlayer1LegsWon,
+    this.seriesPlayer2LegsWon,
+    this.series,
     this.rounds,
     this.statistics,
   });
 
   bool get isPlacement => matchType == 'placement';
+
+  bool get isSeriesLeg => seriesId != null;
 
   bool get isInProgress => status == 'in_progress';
 
@@ -71,6 +92,14 @@ class Match {
       status: json['status'] as String? ?? 'completed',
       matchType: json['matchType'] as String? ?? 'ranked',
       botDifficulty: json['botDifficulty'] as int?,
+      seriesId: json['seriesId'] as String?,
+      seriesStatus: json['seriesStatus'] as String?,
+      seriesWinnerId: json['seriesWinnerId'] as String?,
+      seriesPlayer1LegsWon: json['seriesPlayer1LegsWon'] as int?,
+      seriesPlayer2LegsWon: json['seriesPlayer2LegsWon'] as int?,
+      series: json['series'] is Map<String, dynamic>
+          ? MatchSeries.fromJson(json['series'] as Map<String, dynamic>)
+          : null,
       rounds: _parseRounds(json),
       statistics: json['statistics'] != null
           ? MatchStatistics.fromJson(json['statistics'] as Map<String, dynamic>)
@@ -177,6 +206,73 @@ class Match {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// Summary of a ranked BO3 series as returned by GET /matches/:id for a leg.
+class MatchSeries {
+  final String id;
+  final int bestOf;
+  final int player1LegsWon;
+  final int player2LegsWon;
+  final String? winnerId;
+  final String status;
+  final List<SeriesLeg> legs;
+
+  MatchSeries({
+    required this.id,
+    required this.bestOf,
+    required this.player1LegsWon,
+    required this.player2LegsWon,
+    this.winnerId,
+    required this.status,
+    required this.legs,
+  });
+
+  factory MatchSeries.fromJson(Map<String, dynamic> json) {
+    return MatchSeries(
+      id: json['id'] as String? ?? '',
+      bestOf: json['bestOf'] as int? ?? 3,
+      player1LegsWon: json['player1LegsWon'] as int? ?? 0,
+      player2LegsWon: json['player2LegsWon'] as int? ?? 0,
+      winnerId: json['winnerId'] as String?,
+      status: json['status'] as String? ?? 'finished',
+      legs: (json['legs'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(SeriesLeg.fromJson)
+              .toList() ??
+          [],
+    );
+  }
+}
+
+/// One leg's result line inside a [MatchSeries].
+class SeriesLeg {
+  final String id;
+  final int legNumber;
+  final String status;
+  final int? player1Score;
+  final int? player2Score;
+  final String? winnerId;
+
+  SeriesLeg({
+    required this.id,
+    required this.legNumber,
+    required this.status,
+    this.player1Score,
+    this.player2Score,
+    this.winnerId,
+  });
+
+  factory SeriesLeg.fromJson(Map<String, dynamic> json) {
+    return SeriesLeg(
+      id: json['id'] as String? ?? '',
+      legNumber: json['legNumber'] as int? ?? 0,
+      status: json['status'] as String? ?? 'finished',
+      player1Score: json['player1Score'] as int?,
+      player2Score: json['player2Score'] as int?,
+      winnerId: json['winnerId'] as String?,
+    );
+  }
 }
 
 class MatchRound {

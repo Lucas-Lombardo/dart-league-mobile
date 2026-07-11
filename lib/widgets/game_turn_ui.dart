@@ -254,6 +254,12 @@ class TurnScoreHeader extends StatelessWidget {
   final double? myAverage;
   final double? opponentAverage;
   final Widget? leading;
+  // BO3 series context ("BO3 · Manche 2"). When set, the center column shows
+  // it over the colored legs score, and the round chip moves next to the
+  // "VOUS" chip on the left. Null for single-leg matches (center = round chip).
+  final String? seriesTitle;
+  final int myLegs;
+  final int opponentLegs;
 
   const TurnScoreHeader({
     super.key,
@@ -265,6 +271,9 @@ class TurnScoreHeader extends StatelessWidget {
     this.myAverage,
     this.opponentAverage,
     this.leading,
+    this.seriesTitle,
+    this.myLegs = 0,
+    this.opponentLegs = 0,
   });
 
   @override
@@ -294,6 +303,13 @@ class TurnScoreHeader extends StatelessWidget {
                   child: Row(children: [
                     if (leading != null) ...[leading!, const SizedBox(width: 8)],
                     GameChip(text: l10n.you, color: AppTheme.playerBlue),
+                    if (seriesTitle != null && roundNumber != null) ...[
+                      const SizedBox(width: 8),
+                      GameChip(
+                        text: l10n.roundChip(roundNumber!),
+                        color: AppTheme.textSecondary,
+                      ),
+                    ],
                   ]),
                 ),
                 const SizedBox(height: 4),
@@ -316,11 +332,31 @@ class TurnScoreHeader extends StatelessWidget {
             SizedBox(
               height: badgeRowHeight,
               child: Center(
-                child: roundNumber != null
+                child: seriesTitle == null && roundNumber != null
                     ? GameChip(text: l10n.roundChip(roundNumber!), color: AppTheme.textSecondary)
                     : const SizedBox.shrink(),
               ),
             ),
+            // Series mode: title sits on the names line, legs score on the
+            // scores line (mirrors the two side columns).
+            if (seriesTitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                seriesTitle!.toUpperCase(),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 6),
+              SeriesLegsScore(
+                myLegs: myLegs,
+                opponentLegs: opponentLegs,
+                fontSize: 26,
+              ),
+            ],
             if (myAverage != null || opponentAverage != null) ...[
               const SizedBox(height: 4),
               AlternatingAverage(
@@ -377,6 +413,47 @@ class TurnScoreHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Colored BO3 legs score ("1 – 0"): my legs in blue, opponent's in red,
+/// gray dash between. Shared by the turn header and the your-turn score bar.
+class SeriesLegsScore extends StatelessWidget {
+  final int myLegs;
+  final int opponentLegs;
+  final double fontSize;
+
+  const SeriesLegsScore({
+    super.key,
+    required this.myLegs,
+    required this.opponentLegs,
+    this.fontSize = 24,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w800,
+      height: 1.05,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$myLegs', style: style.copyWith(color: AppTheme.playerBlue)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.22),
+          child: Text(
+            '–',
+            style: style.copyWith(
+              color: AppTheme.textSecondary.withValues(alpha: 0.6),
+              fontSize: fontSize * 0.72,
+            ),
+          ),
+        ),
+        Text('$opponentLegs', style: style.copyWith(color: AppTheme.opponentPink)),
+      ],
     );
   }
 }
@@ -815,6 +892,11 @@ class UserScoreBar extends StatelessWidget {
   final String opponentName;
   final int myScore;
   final int opponentScore;
+  // BO3 series context ("BO3 · Manche 2"). When set, the center shows it over
+  // the colored legs score over the "manches" caption instead of the VS label.
+  final String? seriesTitle;
+  final int myLegs;
+  final int opponentLegs;
 
   const UserScoreBar({
     super.key,
@@ -822,6 +904,9 @@ class UserScoreBar extends StatelessWidget {
     required this.opponentName,
     required this.myScore,
     required this.opponentScore,
+    this.seriesTitle,
+    this.myLegs = 0,
+    this.opponentLegs = 0,
   });
 
   @override
@@ -881,15 +966,46 @@ class UserScoreBar extends StatelessWidget {
             ],
           ),
         ),
-        Text(
-          l10n.vsLabel,
-          style: TextStyle(
-            color: AppTheme.textSecondary.withValues(alpha: 0.6),
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-          ),
-        ),
+        seriesTitle != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    seriesTitle!.toUpperCase(),
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  SeriesLegsScore(
+                    myLegs: myLegs,
+                    opponentLegs: opponentLegs,
+                    fontSize: 24,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    l10n.legsShort.toUpperCase(),
+                    style: TextStyle(
+                      color: AppTheme.textSecondary.withValues(alpha: 0.7),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              )
+            : Text(
+                l10n.vsLabel,
+                style: TextStyle(
+                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,

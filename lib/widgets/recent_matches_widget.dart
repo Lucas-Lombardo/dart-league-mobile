@@ -37,11 +37,46 @@ class RecentMatchesWidget extends StatelessWidget {
     }
 
     return Column(
-      children: matches.take(3).map((match) => _buildMatchItem(context, match)).toList(),
+      children: _collapseSeriesLegs(matches)
+          .take(3)
+          .map((entry) => _buildMatchItem(context, entry))
+          .toList(),
     );
   }
 
-  Widget _buildMatchItem(BuildContext context, Match match) {
+  /// Collapse BO3 legs (same seriesId) into one entry, keyed on the newest
+  /// leg (its winner is the series winner and it carries the series ELO).
+  /// Same logic as the full history screen.
+  List<_RecentEntry> _collapseSeriesLegs(List<Match> source) {
+    final entries = <_RecentEntry>[];
+    final bySeries = <String, List<Match>>{};
+    for (final match in source) {
+      final seriesId = match.seriesId;
+      if (seriesId == null) {
+        entries.add(_RecentEntry(match));
+      } else {
+        bySeries.putIfAbsent(seriesId, () => []).add(match);
+      }
+    }
+    for (final legs in bySeries.values) {
+      legs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final newest = legs.first;
+      // Server tally first (see match_history_screen._collapseSeriesLegs);
+      // row-counting is only the fallback for older backends.
+      entries.add(_RecentEntry(
+        newest,
+        seriesP1Legs: newest.seriesPlayer1LegsWon ??
+            legs.where((m) => m.winnerId.isNotEmpty && m.winnerId == m.player1Id).length,
+        seriesP2Legs: newest.seriesPlayer2LegsWon ??
+            legs.where((m) => m.winnerId.isNotEmpty && m.winnerId == m.player2Id).length,
+      ));
+    }
+    entries.sort((a, b) => b.match.createdAt.compareTo(a.match.createdAt));
+    return entries;
+  }
+
+  Widget _buildMatchItem(BuildContext context, _RecentEntry entry) {
+    final match = entry.match;
     final l10n = AppLocalizations.of(context);
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
@@ -50,8 +85,14 @@ class RecentMatchesWidget extends StatelessWidget {
         ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
         : match.getOpponentUsername(userId);
     final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
-    final myScore = match.getMyScore(userId);
-    final opponentScore = match.getOpponentScore(userId);
+    // BO3 series entry: show legs won instead of 501 remainders.
+    final iAmPlayer1 = userId == match.player1Id;
+    final myScore = entry.isSeries
+        ? (iAmPlayer1 ? entry.seriesP1Legs! : entry.seriesP2Legs!)
+        : match.getMyScore(userId);
+    final opponentScore = entry.isSeries
+        ? (iAmPlayer1 ? entry.seriesP2Legs! : entry.seriesP1Legs!)
+        : match.getOpponentScore(userId);
     final dateFormat = DateFormat('MMM d');
 
     return Container(
@@ -167,7 +208,9 @@ class RecentMatchesWidget extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '$myScore - $opponentScore',
+                      entry.isSeries
+                          ? '$myScore - $opponentScore ${l10n.legsShort}'
+                          : '$myScore - $opponentScore',
                       style: const TextStyle(
                         color: AppTheme.primary,
                         fontSize: 18,
@@ -217,4 +260,16 @@ class RecentMatchesWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A recent-matches row: a plain match, or a collapsed BO3 series represented
+/// by its newest (deciding) leg plus the legs tally.
+class _RecentEntry {
+  final Match match;
+  final int? seriesP1Legs;
+  final int? seriesP2Legs;
+
+  _RecentEntry(this.match, {this.seriesP1Legs, this.seriesP2Legs});
+
+  bool get isSeries => seriesP1Legs != null && seriesP2Legs != null;
 }

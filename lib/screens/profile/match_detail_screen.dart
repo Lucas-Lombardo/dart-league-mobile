@@ -89,6 +89,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _buildMatchHeader(_match!, userId),
+                          if (_match!.series != null) ...[
+                            const SizedBox(height: 24),
+                            _buildSeriesCard(_match!, userId),
+                          ],
                           const SizedBox(height: 24),
                           _buildScoreCard(_match!, userId),
                           const SizedBox(height: 24),
@@ -178,6 +182,133 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// BO3 series breakdown: series score in legs + one result row per leg.
+  /// The leg currently displayed is highlighted; the others open their own
+  /// detail screen (each leg is a full match with rounds and stats).
+  Widget _buildSeriesCard(Match match, String userId) {
+    final l10n = AppLocalizations.of(context);
+    final series = match.series!;
+    final iAmPlayer1 = userId == match.player1Id;
+    final myLegs = iAmPlayer1 ? series.player1LegsWon : series.player2LegsWon;
+    final oppLegs = iAmPlayer1 ? series.player2LegsWon : series.player1LegsWon;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  l10n.bestOfN(series.bestOf).toUpperCase(),
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$myLegs – $oppLegs',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...series.legs.map((leg) => _buildLegRow(match, leg, userId)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegRow(Match match, SeriesLeg leg, String userId) {
+    final l10n = AppLocalizations.of(context);
+    final iAmPlayer1 = userId == match.player1Id;
+    final isCurrent = leg.id == widget.matchId;
+    final iWonLeg = leg.winnerId != null && leg.winnerId == userId;
+    final finished = leg.status == 'finished' || leg.status == 'forfeit';
+    final myScore = iAmPlayer1 ? leg.player1Score : leg.player2Score;
+    final oppScore = iAmPlayer1 ? leg.player2Score : leg.player1Score;
+
+    final row = Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isCurrent ? AppTheme.primary.withValues(alpha: 0.12) : AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCurrent
+              ? AppTheme.primary
+              : AppTheme.surfaceLight.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            l10n.legNumber(leg.legNumber),
+            style: TextStyle(
+              color: isCurrent ? AppTheme.primary : AppTheme.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          if (finished) ...[
+            Icon(
+              iWonLeg ? Icons.emoji_events : Icons.close,
+              color: iWonLeg ? AppTheme.success : AppTheme.error,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${myScore ?? '—'} – ${oppScore ?? '—'}',
+              style: TextStyle(
+                color: iWonLeg ? AppTheme.success : AppTheme.error,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ] else
+            const Icon(Icons.hourglass_empty, color: AppTheme.textSecondary, size: 16),
+          if (!isCurrent) ...[
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 18),
+          ],
+        ],
+      ),
+    );
+
+    if (isCurrent) return row;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => MatchDetailScreen(matchId: leg.id),
+          ),
+        );
+      },
+      child: row,
     );
   }
 

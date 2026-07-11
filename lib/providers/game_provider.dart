@@ -60,6 +60,24 @@ class GameProvider with ChangeNotifier {
   bool _rematchWaiting = false;
   bool _rematchDeclined = false;
   bool _opponentWantsRematch = false;
+
+  // Ranked BO3 series state (mirrors TournamentGameProvider's legs/series
+  // machinery). All defaults describe a classic BO1 match: _seriesId stays
+  // null, so isRankedSeries == false and nothing below is consulted. The
+  // fields are fed by game_started / game_state_sync (seriesId, legNumber,
+  // legs won…) and by the ranked_leg_won / ranked_next_leg / ranked_match_won
+  // events. In a series, _gameEnded means "the LEG ended"; only _seriesEnded
+  // means the match is truly over (ELO applied, accept-result available).
+  String? _seriesId;
+  int _bestOf = 1;
+  int _player1LegsWon = 0;
+  int _player2LegsWon = 0;
+  int _currentLeg = 1;
+  int _legsNeeded = 1;
+  String? _legWinnerId;
+  String? _seriesWinnerId;
+  bool _seriesEnded = false;
+  Map<String, dynamic>? _seriesResultData;
   
   // Agora video calling
   String? _agoraAppId;
@@ -123,6 +141,27 @@ class GameProvider with ChangeNotifier {
   bool get rematchWaiting => _rematchWaiting;
   bool get rematchDeclined => _rematchDeclined;
   bool get opponentWantsRematch => _opponentWantsRematch;
+
+  // Ranked BO3 series getters.
+  bool get isRankedSeries => _seriesId != null;
+  String? get seriesId => _seriesId;
+  int get bestOf => _bestOf;
+  int get player1LegsWon => _player1LegsWon;
+  int get player2LegsWon => _player2LegsWon;
+  int get currentLeg => _currentLeg;
+  int get legsNeeded => _legsNeeded;
+  String? get legWinnerId => _legWinnerId;
+  String? get seriesWinnerId => _seriesWinnerId;
+  bool get seriesEnded => _seriesEnded;
+  Map<String, dynamic>? get seriesResultData => _seriesResultData;
+  int get myLegsWon =>
+      _myUserId == _player1Id ? _player1LegsWon : _player2LegsWon;
+  int get opponentLegsWon =>
+      _myUserId == _player1Id ? _player2LegsWon : _player1LegsWon;
+
+  /// The match is truly over: for BO1 that's the (only) leg ending, for a BO3
+  /// series it's the series being decided (checkout, forfeit or timeout).
+  bool get matchOver => isRankedSeries ? _seriesEnded : _gameEnded;
   
   // Agora getters
   String? get agoraAppId => _agoraAppId;
@@ -243,6 +282,11 @@ class GameProvider with ChangeNotifier {
       _rematchWaiting = false;
       _rematchDeclined = false;
       _opponentWantsRematch = false;
+      // Series state belongs to the previous series; a BO3 context for THIS
+      // match is re-established by game_started/game_state_sync. Same race as
+      // _gameStarted below: game_started may have ALREADY fired for this match
+      // (and set the series fields) before initGame runs — don't wipe them.
+      if (!_gameStarted) _resetSeriesState();
       // Don't reset _gameStarted — game_started event may have already fired for this match
     } else {
       debugPrint('GAME DEBUG: initGame - preserving state (same match reconnection)');
@@ -333,6 +377,19 @@ class GameProvider with ChangeNotifier {
       _handleConfirmRoundRejected(data);
     });
 
+    // Ranked BO3 series events (mirrors tournament_leg_won/next_leg/match_won).
+    SocketService.on('ranked_leg_won', (data) {
+      _handleRankedLegWon(data);
+    });
+
+    SocketService.on('ranked_next_leg', (data) {
+      _handleRankedNextLeg(data);
+    });
+
+    SocketService.on('ranked_match_won', (data) {
+      _handleRankedMatchWon(data);
+    });
+
     // Observe our OWN connection so the player learns about a drop instead of
     // throwing darts into a dead socket. Uses the additive listener API so
     // matchmaking's single-slot reconnect handler is not clobbered.
@@ -416,6 +473,29 @@ class GameProvider with ChangeNotifier {
 
   void _handleGameStarted(dynamic data) {
     debugPrint('DEBUG: game_started received, myUserId=$_myUserId');
+    // Heal a missed ranked_next_leg: game_started for the NEXT leg of OUR
+    // series can arrive while _matchId still points at the finished leg
+    // (reconnect inside the transition window). Adopt it — same series,
+    // fresh leg — otherwise every throw targets the dead leg. Any other
+    // matchId mismatch keeps the old behavior: game_started may legitimately
+    // arrive before initGame in the new-match race, so no foreign guard here.
+    if (data is Map) {
+      final startedMatchId = data['matchId'] as String?;
+      final startedSeriesId = data['seriesId'] as String?;
+      if (startedMatchId != null &&
+          _matchId != null &&
+          startedMatchId != _matchId &&
+          _seriesId != null &&
+          startedSeriesId == _seriesId) {
+        debugPrint('GAME DEBUG: game_started for next leg $startedMatchId of our series — adopting');
+        _matchId = startedMatchId;
+        _resetLegState();
+      }
+    }
+    // The previous leg's winner is only useful on the between-legs screen;
+    // clear it when the next leg actually starts (not in _resetLegState —
+    // the between-legs screen still reads it after ranked_next_leg).
+    _legWinnerId = null;
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
 
@@ -446,7 +526,41 @@ class GameProvider with ChangeNotifier {
     _myScore = 501;
     _opponentScore = 501;
 
+    _applySeriesFields(data);
+
     notifyListeners();
+  }
+
+  /// Adopt the BO3 legs context the server attaches to game_started /
+  /// game_state_sync payloads (absent for BO1 — every field is optional so an
+  /// older backend changes nothing).
+  void _applySeriesFields(dynamic data) {
+    if (data is! Map) return;
+    final seriesId = data['seriesId'] as String?;
+    if (seriesId == null) return;
+    // A NEW series must never inherit the previous one's end-state: the
+    // game_started-before-initGame race skips initGame's guarded reset, and
+    // a stale _seriesEnded=true would replace leg 1's between-legs screen
+    // with the final accept-result screen.
+    if (_seriesId != null && seriesId != _seriesId) {
+      _resetSeriesState();
+    }
+    _seriesId = seriesId;
+    _bestOf = data['bestOf'] as int? ?? _bestOf;
+    _currentLeg = data['legNumber'] as int? ?? _currentLeg;
+    _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+    _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+    _legsNeeded = data['legsNeeded'] as int? ?? _legsNeeded;
+  }
+
+  /// True when a series event carries a seriesId that isn't ours (late event
+  /// from a previous series after a rematch/reset).
+  bool _isForeignSeries(dynamic data) {
+    if (data is! Map) return false;
+    final eventSeriesId = data['seriesId'] as String?;
+    return eventSeriesId != null &&
+        _seriesId != null &&
+        eventSeriesId != _seriesId;
   }
 
   /// True when an event belongs to a different match than the one we're in.
@@ -674,6 +788,12 @@ class GameProvider with ChangeNotifier {
     // Friendly matches end with a "play again" prompt instead of the ranked
     // accept-result / ELO flow.
     _isFriendly = data is Map && data['isFriendly'] == true;
+    // BO3 leg win: the series goes on — ranked_leg_won updates the counts and
+    // either ranked_next_leg or ranked_match_won decides what happens next.
+    if (data is Map && data['isRankedSeries'] == true) {
+      _seriesId ??= data['seriesId'] as String?;
+      _legWinnerId = _winnerId;
+    }
     _rematchWaiting = false;
     _rematchDeclined = false;
     _opponentWantsRematch = false;
@@ -681,14 +801,171 @@ class GameProvider with ChangeNotifier {
     _disconnectCountdownTimer = null;
     _cancelSelfDisconnectCountdown();
 
-    debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId, isFriendly=$_isFriendly');
+    debugPrint('GAME DEBUG: game_won processed - gameEnded=$_gameEnded, winnerId=$_winnerId, isFriendly=$_isFriendly, isRankedSeries=$isRankedSeries');
     notifyListeners();
   }
 
+  void _handleRankedLegWon(dynamic data) {
+    if (data is! Map || _isForeignSeries(data)) return;
+    debugPrint('GAME DEBUG: ranked_leg_won received: $data');
+    _seriesId ??= data['seriesId'] as String?;
+    _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+    _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+    _legsNeeded = data['legsNeeded'] as int? ?? _legsNeeded;
+    _bestOf = data['bestOf'] as int? ?? _bestOf;
+    _legWinnerId = data['legWinnerId'] as String? ?? _legWinnerId;
+    notifyListeners();
+  }
+
+  void _handleRankedNextLeg(dynamic data) {
+    if (data is! Map || _isForeignSeries(data)) return;
+    debugPrint('GAME DEBUG: ranked_next_leg received: $data');
+    final newMatchId = data['newMatchId'] as String?;
+    _currentLeg = data['legNumber'] as int? ?? _currentLeg + 1;
+    _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+    _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+    _legsNeeded = data['legsNeeded'] as int? ?? _legsNeeded;
+    _bestOf = data['bestOf'] as int? ?? _bestOf;
+
+    // player1Id is stable across legs, but keep in sync if the server sends it.
+    final serverPlayer1Id = data['player1Id'] as String?;
+    if (serverPlayer1Id != null) _player1Id = serverPlayer1Id;
+
+    if (newMatchId != null) {
+      _matchId = newMatchId;
+    }
+
+    // Each leg is a new Agora channel (channel name == leg matchId): adopt the
+    // fresh tokens and ask the screen to re-key the call, exactly like the
+    // tournament next-leg flow.
+    final newAgoraAppId = data['agoraAppId'] as String?;
+    final newAgoraToken = data['agoraToken'] as String?;
+    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
+    final newAgoraChannelName = data['agoraChannelName'] as String?;
+    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
+    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
+    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
+        newAgoraToken != null && newAgoraToken.isNotEmpty &&
+        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
+      _agoraAppId = newAgoraAppId;
+      _agoraToken = newAgoraToken;
+      _agoraChannelName = newAgoraChannelName;
+      _needsAgoraReconnect = true;
+    }
+    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
+      _agoraTokenStrict = newAgoraTokenStrict;
+    }
+    if (newAgoraUid != null) _agoraUid = newAgoraUid;
+    if (newOpponentAgoraUid != null) {
+      _opponentAgoraUid = newOpponentAgoraUid;
+      if (hasStrictAgoraCredentials) {
+        _remoteUid = newOpponentAgoraUid;
+      }
+    }
+
+    _resetLegState();
+    notifyListeners();
+  }
+
+  void _handleRankedMatchWon(dynamic data) {
+    if (data is! Map || _isForeignSeries(data)) return;
+    debugPrint('GAME DEBUG: ranked_match_won received: $data');
+    _seriesId ??= data['seriesId'] as String?;
+    _seriesWinnerId = data['winnerId'] as String? ?? _seriesWinnerId;
+    _winnerId = _seriesWinnerId ?? _winnerId;
+    _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+    _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+    _bestOf = data['bestOf'] as int? ?? _bestOf;
+    _seriesResultData = Map<String, dynamic>.from(data);
+    _seriesEnded = true;
+    _gameEnded = true;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+    _cancelSelfDisconnectCountdown();
+    notifyListeners();
+  }
+
+  /// Reset the per-leg state between BO3 legs, keeping identities, series
+  /// counts and Agora bookkeeping (adapted from TournamentGameProvider —
+  /// which has neither a rounds UI nor a disconnect banner, hence the extra
+  /// fields here). _legWinnerId deliberately survives: the between-legs
+  /// screen reads it; game_started clears it when the next leg begins.
+  void _resetLegState() {
+    _myScore = 501;
+    _opponentScore = 501;
+    _dartsThrown = 0;
+    _gameEnded = false;
+    _gameStarted = false;
+    _winnerId = null;
+    _lastThrow = null;
+    _currentRoundThrows = [];
+    _opponentRoundThrows = [];
+    // Per-leg round history: without this, leg N+1 opened at "Round N+12"
+    // with the previous leg's averages until the first round_complete.
+    _myRounds = [];
+    _opponentRounds = [];
+    _dartsEmittedThisRound = 0;
+    _clearPendingDarts();
+    _ackedDartsThisRound = 0;
+    _confirmAttempts = 0;
+    _confirmRejectedRetries = 0;
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingReason = null;
+    _pendingData = null;
+    // The opponent-disconnect banner is per-leg: opponent_reconnected for the
+    // OLD leg's matchId is dropped by its guard, so a banner active at the
+    // leg boundary would otherwise stay frozen for the rest of the series.
+    _opponentDisconnected = false;
+    _disconnectGraceSeconds = 0;
+    _disconnectCountdownTimer?.cancel();
+    _disconnectCountdownTimer = null;
+  }
+
+  void _resetSeriesState() {
+    _seriesId = null;
+    _bestOf = 1;
+    _player1LegsWon = 0;
+    _player2LegsWon = 0;
+    _currentLeg = 1;
+    _legsNeeded = 1;
+    _legWinnerId = null;
+    _seriesWinnerId = null;
+    _seriesEnded = false;
+    _seriesResultData = null;
+  }
+
   void _handleMatchEnded(dynamic data) {
+    // A series-ending match_ended may carry the NEXT leg's matchId (we missed
+    // ranked_next_leg) — accept it when the seriesId is ours. Everything else
+    // from a different match is foreign: a late match_ended from a previous
+    // match must not pollute a freshly initialized provider.
+    final isOurSeriesEnd = data is Map &&
+        data['isRankedSeries'] == true &&
+        _seriesId != null &&
+        data['seriesId'] == _seriesId;
+    if (_isForeignMatch(data) && !isOurSeriesEnd) return;
+
+    // A BO3 timeout/disconnect/decision ends the whole series server-side;
+    // the payload says so. Handle it even if the leg already ended locally
+    // (_gameEnded), otherwise the client would wait forever for a next leg.
+    if (isOurSeriesEnd) {
+      _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+      _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+      _seriesWinnerId = data['winnerId'] as String? ?? _seriesWinnerId;
+      // The end screen's verdict reads _winnerId. Without this, a client
+      // whose last local event was losing a LEG showed DEFEAT to the actual
+      // series winner (the _gameEnded guard below returns early).
+      if (_seriesWinnerId != null) _winnerId = _seriesWinnerId;
+      _seriesEnded = true;
+      _disconnectCountdownTimer?.cancel();
+      _disconnectCountdownTimer = null;
+      _cancelSelfDisconnectCountdown();
+    }
 
     // Prevent duplicate processing if game already ended
     if (_gameEnded) {
+      notifyListeners();
       return;
     }
 
@@ -792,14 +1069,29 @@ class GameProvider with ChangeNotifier {
     final eventMatchId = data['matchId'] as String?;
     final winnerId = data['winnerId'] as String?;
 
-    // Validate this event is for the current match
-    if (eventMatchId != _matchId) {
+    // Validate this event is for the current match — EXCEPT a series-ending
+    // forfeit for OUR series carried by a different leg's matchId (we missed
+    // ranked_next_leg while disconnected); dropping that one left the client
+    // waiting forever for a series that was already over.
+    final isOurSeriesEnd = data is Map &&
+        data['isRankedSeries'] == true &&
+        _seriesId != null &&
+        data['seriesId'] == _seriesId;
+    if (eventMatchId != _matchId && !isOurSeriesEnd) {
       return;
     }
 
     // Mark game as ended
     _gameEnded = true;
     _winnerId = winnerId;
+    // A forfeit on a BO3 leg loses the whole series (server policy).
+    if (data is Map && data['isRankedSeries'] == true) {
+      _seriesId ??= data['seriesId'] as String?;
+      _player1LegsWon = data['player1LegsWon'] as int? ?? _player1LegsWon;
+      _player2LegsWon = data['player2LegsWon'] as int? ?? _player2LegsWon;
+      _seriesWinnerId = winnerId;
+      _seriesEnded = true;
+    }
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
     _cancelSelfDisconnectCountdown();
@@ -807,8 +1099,8 @@ class GameProvider with ChangeNotifier {
     // Store forfeit data for UI
     _pendingType = 'forfeit';
     _pendingData = Map<String, dynamic>.from(data);
-    
-    
+
+
     notifyListeners();
   }
 
@@ -861,7 +1153,31 @@ class GameProvider with ChangeNotifier {
 
   void _handleGameStateSync(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
-    if (eventMatchId != _matchId && _matchId != null) return;
+    if (eventMatchId != _matchId && _matchId != null) {
+      // One legitimate mismatch: we missed ranked_next_leg (disconnected
+      // during the leg transition) and the server now syncs the NEXT leg of
+      // OUR series. Adopt it — same series, fresh leg — instead of dropping
+      // the only event that can heal us. Anything else stays rejected.
+      final syncSeriesId = data is Map ? data['seriesId'] as String? : null;
+      if (eventMatchId != null &&
+          _seriesId != null &&
+          syncSeriesId == _seriesId) {
+        // Direction guard: only adopt FORWARD. A stale periodic sync of the
+        // just-finished leg can be emitted after ranked_next_leg (its status
+        // check precedes two awaits server-side); adopting it regressed
+        // _matchId to the dead leg and killed the board until the next sync.
+        final syncLeg = data is Map ? data['legNumber'] as int? : null;
+        if (syncLeg != null && syncLeg < _currentLeg) {
+          debugPrint('GAME DEBUG: stale sync for leg $syncLeg (< $_currentLeg) — ignoring');
+          return;
+        }
+        debugPrint('GAME DEBUG: sync for next leg $eventMatchId of our series — adopting');
+        _matchId = eventMatchId;
+        _resetLegState();
+      } else {
+        return;
+      }
+    }
     // A reset provider (_matchId == null) must not adopt a foreign match's
     // state: that let another provider's sync populate this one and take over
     // its event handlers.
@@ -924,6 +1240,11 @@ class GameProvider with ChangeNotifier {
     }
 
     _updateRoundsFromData(data);
+
+    // Restore the BO3 series context (mid-series reconnects would otherwise
+    // lose the legs scoreboard — legs counts only travel on the ranked_*
+    // events, which a reconnecting client has missed by definition).
+    _applySeriesFields(data);
 
     // Restore pending win/bust confirmation. A client that missed the
     // pending_win/pending_bust emit used to reconnect to a board stuck at
@@ -1408,6 +1729,9 @@ class GameProvider with ChangeNotifier {
     SocketService.off('rematch_declined');
     SocketService.off('throw_dart_ack');
     SocketService.off('confirm_round_rejected');
+    SocketService.off('ranked_leg_won');
+    SocketService.off('ranked_next_leg');
+    SocketService.off('ranked_match_won');
   }
 
   void setRemoteUser(int? uid) {
@@ -1470,6 +1794,7 @@ class GameProvider with ChangeNotifier {
     _rematchWaiting = false;
     _rematchDeclined = false;
     _opponentWantsRematch = false;
+    _resetSeriesState();
     debugPrint('GAME DEBUG: reset() done - gameStarted=$_gameStarted, gameEnded=$_gameEnded');
     notifyListeners();
   }

@@ -733,6 +733,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get firstToLegsWins => 'Premier à';
 
   @override
+  String get legsShort => 'manches';
+
+  @override
   String get nextLeg => 'MANCHE SUIVANTE';
 
   // Tournament Match Result Screen
@@ -1761,6 +1764,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get reportReasonOther => 'Autre';
+
+  // Report comment
+  @override
+  String get reportCommentLabel => 'Ajouter un commentaire (optionnel)';
+
+  @override
+  String get reportCommentHint => 'Décrivez ce qui s\'est passé…';
 
   // Bust reasons
   @override

@@ -48,9 +48,20 @@ class SocketService {
   // corrupting scores.
   static bool _supportsDartAck = false;
 
+  // Server capability: ranked matches may run as best-of-3 series
+  // (ranked_leg_won / ranked_next_leg / ranked_match_won + legs fields in
+  // game_started and game_state_sync). We only DECLARE our own support in the
+  // matchmaking join body when this is true, so an older backend simply never
+  // sees the flag and keeps pairing us into BO1. Reset on every disconnect,
+  // like supportsDartAck, so a backend rollback degrades us safely.
+  static bool _supportsRankedBo3 = false;
+
   /// Whether the server this socket is authenticated against acknowledges and
   /// deduplicates individual darts. See [_supportsDartAck].
   static bool get supportsDartAck => _supportsDartAck;
+
+  /// Whether the server can run ranked matches as best-of-3 series.
+  static bool get supportsRankedBo3 => _supportsRankedBo3;
 
   static void _handleAuthenticated(dynamic data) {
     final supports = data is Map && data['supportsDartAck'] == true;
@@ -58,6 +69,12 @@ class SocketService {
       debugPrint('SocketService: server supportsDartAck=$supports');
     }
     _supportsDartAck = supports;
+
+    final supportsBo3 = data is Map && data['supportsRankedBo3'] == true;
+    if (supportsBo3 != _supportsRankedBo3) {
+      debugPrint('SocketService: server supportsRankedBo3=$supportsBo3');
+    }
+    _supportsRankedBo3 = supportsBo3;
   }
 
   /// Refresh the access token and rebuild the socket with it, keeping every
@@ -163,8 +180,9 @@ class SocketService {
         debugPrint('SocketService: Disconnected - reason: $reason');
         _wasDisconnected = true;
         // Re-derived from the next 'authenticated'. Until then we assume the
-        // server cannot dedup darts, which is always the safe assumption.
+        // server cannot dedup darts nor run BO3, the safe assumptions.
         _supportsDartAck = false;
+        _supportsRankedBo3 = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -269,6 +287,7 @@ class SocketService {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
     _supportsDartAck = false;
+    _supportsRankedBo3 = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
@@ -305,6 +324,7 @@ class SocketService {
   static void debugReset() {
     debugEmitOverride = null;
     _supportsDartAck = false;
+    _supportsRankedBo3 = false;
     _handlers.clear();
     _disconnectListeners.clear();
     _reconnectListeners.clear();

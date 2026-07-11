@@ -71,6 +71,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   CaptureYuvCallback? _captureYuvCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
   String? lastKnownCurrentPlayer;
+  // Last leg number seen (BO3 ranked series / tournament series). Detects leg
+  // transitions that turn-change detection misses: when the SAME player ends
+  // one leg (checkout keeps the turn) and starts the next, currentPlayerId
+  // never changes, so without this the empty-board gate is not re-armed and
+  // the AI re-scores the darts still in the board from the finishing visit.
+  int? _lastKnownLeg;
   // Signature of the visit the caller last announced, so a full 3-dart round is
   // called exactly once even though handleSharedStateChange fires on every
   // provider notify. Cleared at the start of each of our turns.
@@ -233,6 +239,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         }
       }
       final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
+      // New leg in a series (BO3 ranked / tournament): always clear the turn
+      // slots and re-arm the empty-board gate, even when the same player
+      // starts again (see _lastKnownLeg).
+      int? legNow;
+      try { legNow = game.currentLeg as int?; } catch (_) {}
+      if (legNow != null && _lastKnownLeg != null && legNow != _lastKnownLeg) {
+        aiPausedForEdit = false;
+        autoScoringService?.resetTurn();
+        autoScoringService?.waitForEmptyBoardOnce();
+        _lastCalledVisitSignature = null;
+        _lastCalledOpponentVisitSignature = null;
+      }
+      _lastKnownLeg = legNow;
       // Reset dart slots on turn change (always, even without AI capture) and
       // re-arm the empty-board gate: a player who ended their previous turn
       // without pulling their darts (END TURN pill, bust confirm) leaves them
@@ -923,10 +942,29 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   // ─── Leave / pop ──────────────────────────────────────────────────────────────
+
+  /// A ranked BO3 series is still live even when the current LEG has ended:
+  /// between legs the provider reads gameEnded=true (leg result screen) then
+  /// gameStarted=false (next leg not started). Leaving in that window
+  /// forfeits the whole series, so the leave/pop guards below must treat it
+  /// as a live match. Providers without series state (tournament, friendly)
+  /// fall back to false.
+  bool get seriesStillLive {
+    try {
+      final game = readGame();
+      return game.isRankedSeries == true && game.seriesEnded != true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void leaveMatch() {
     try {
       final matchId = matchIdForLeave;
-      if (matchId == null || storedPlayerId == null || !gameStarted || gameEnded) {
+      if (matchId == null || storedPlayerId == null) {
+        return;
+      }
+      if ((!gameStarted || gameEnded) && !seriesStillLive) {
         return;
       }
       // The game providers are shared across matches, and Flutter defers a
@@ -954,7 +992,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   Future<bool> onWillPop() async {
     final game = readGame();
-    if (!game.gameStarted || game.gameEnded) return true;
+    // Between BO3 legs (leg ended / next not started) leaving still forfeits
+    // the series — keep the warning dialog up in that window.
+    if ((!game.gameStarted || game.gameEnded) && !seriesStillLive) return true;
     final l10n = AppLocalizations.of(context);
     final result = await showGameDialog<bool>(
       context,
@@ -1045,8 +1085,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     ).then((_) { if (mounted) bustDialogShowing = false; });
   }
 
-  void showReportDialog({required Future<void> Function(String) onSubmit, required VoidCallback onComplete}) {
+  void showReportDialog({required Future<void> Function(String reason, String? comment) onSubmit, required VoidCallback onComplete}) {
     String? selectedReason;
+    final commentController = TextEditingController();
     final l10n = AppLocalizations.of(context);
     final reasons = [
       l10n.reportReasonCheating,
@@ -1059,7 +1100,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       accent: AppTheme.opponentPink,
       icon: Icons.flag,
       title: l10n.reportPlayer,
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(l10n.selectReasonReporting, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
         const SizedBox(height: 16),
         ...reasons.map((r) => InkWell(
@@ -1069,15 +1110,40 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             const SizedBox(width: 12), Text(r, style: const TextStyle(color: Colors.white)),
           ])),
         )),
-      ]),
+        const SizedBox(height: 16),
+        Text(l10n.reportCommentLabel, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: commentController,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 500,
+          textInputAction: TextInputAction.newline,
+          cursorColor: AppTheme.opponentPink,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: l10n.reportCommentHint,
+            hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 14),
+            counterStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+            filled: true,
+            fillColor: AppTheme.surface,
+            contentPadding: const EdgeInsets.all(12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.opponentPink, width: 2)),
+          ),
+        ),
+      ])),
       actions: [
         TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary))),
         ElevatedButton(
           onPressed: selectedReason == null ? null : () async {
-            HapticService.mediumImpact(); Navigator.of(ctx).pop();
+            HapticService.mediumImpact();
+            final comment = commentController.text.trim();
+            Navigator.of(ctx).pop();
             final messenger = ScaffoldMessenger.of(context);
             try {
-              await onSubmit(selectedReason!);
+              await onSubmit(selectedReason!, comment.isEmpty ? null : comment);
               if (mounted) messenger.showSnackBar(SnackBar(content: Text(l10n.disputeSubmitted), backgroundColor: AppTheme.success, duration: const Duration(seconds: 2)));
             } catch (e) {
               if (mounted) messenger.showSnackBar(SnackBar(content: Text(l10n.errorWithMessage.replaceAll('{message}', e.toString())), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
@@ -1088,7 +1154,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           child: Text(l10n.submitReport),
         ),
       ],
-    )));
+    ))).then((_) => commentController.dispose());
   }
 
   // ─── Shared widget builders ────────────────────────────────────────────────────
@@ -1357,6 +1423,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     double safeTop, {
     Widget? extraHeader,
     String? channelId,
+    String? seriesTitle,
+    int myLegs = 0,
+    int opponentLegs = 0,
   }) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final safeBottom = MediaQuery.of(context).padding.bottom;
@@ -1371,6 +1440,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       myAverage: myAvgOrNull(game),
       opponentAverage: opponentAvgOrNull(game),
       leading: buildGameBackButton(),
+      seriesTitle: seriesTitle,
+      myLegs: myLegs,
+      opponentLegs: opponentLegs,
     );
 
     final cameraView = buildOpponentTurnVideoLayout(

@@ -286,6 +286,8 @@ abstract class AppLocalizations {
   String get legComplete;
   String get firstToLegsWins;
   String get nextLeg;
+  // Short "legs" unit shown next to a BO3 series score (e.g. "2 - 1 legs").
+  String get legsShort;
 
   // Tournament Match Result Screen
   String get youAdvance;
@@ -663,6 +665,10 @@ abstract class AppLocalizations {
   String get reportReasonIncorrectScore;
   String get reportReasonConnectionIssues;
   String get reportReasonOther;
+
+  // Report comment
+  String get reportCommentLabel;
+  String get reportCommentHint;
 
   // Bust reasons
   String get bustReasonBelowZero;

@@ -733,6 +733,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstToLegsWins => 'First to';
 
   @override
+  String get legsShort => 'legs';
+
+  @override
   String get nextLeg => 'NEXT LEG';
 
   // Tournament Match Result Screen
@@ -1751,6 +1754,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportReasonOther => 'Other';
+
+  // Report comment
+  @override
+  String get reportCommentLabel => 'Add a comment (optional)';
+
+  @override
+  String get reportCommentHint => 'Describe what happened…';
 
   // Bust reasons
   @override

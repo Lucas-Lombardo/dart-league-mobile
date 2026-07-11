@@ -296,6 +296,15 @@ class MatchInviteProvider with ChangeNotifier {
         _currentUserId != null &&
         _matchId != null &&
         _opponentId != null) {
+      // Clear stale state from a previous match BEFORE initGame — same
+      // protection as MatchmakingProvider.joinQueue. Without it, a BO3 series
+      // abandoned with gameStarted still true leaked its series state into
+      // this friendly (BO3 header on a friendly board; worst case the
+      // buttonless "next leg" spinner instead of the play-again panel).
+      if (_gameProvider!.gameStarted || _gameProvider!.gameEnded) {
+        debugPrint('INVITE DEBUG: Resetting stale game provider state before friendly match');
+        _gameProvider!.reset();
+      }
       _gameProvider!.ensureListenersSetup();
       _gameProvider!.initGame(
         _matchId!,

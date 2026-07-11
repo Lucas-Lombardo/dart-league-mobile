@@ -48,6 +48,11 @@ class AutoScoreGameView extends StatelessWidget {
   final int startingScore;
   final int? roundNumber;
   final VoidCallback? onBack;
+  // BO3 series context for the score bar center ("BO3 · Manche 2" over the
+  // colored legs score). Null for single-leg matches.
+  final String? seriesTitle;
+  final int myLegs;
+  final int opponentLegs;
 
   const AutoScoreGameView({
     super.key,
@@ -82,6 +87,9 @@ class AutoScoreGameView extends StatelessWidget {
     this.opponentAverage,
     this.startingScore = 501,
     this.roundNumber,
+    this.seriesTitle,
+    this.myLegs = 0,
+    this.opponentLegs = 0,
     this.onBack,
   });
 
@@ -324,6 +332,9 @@ class AutoScoreGameView extends StatelessWidget {
           opponentName: opponentName,
           myScore: myScore,
           opponentScore: opponentScore,
+          seriesTitle: seriesTitle,
+          myLegs: myLegs,
+          opponentLegs: opponentLegs,
         );
 
         // ── Bottom row: AUTO VALIDATION chip + CONFIRM button ──

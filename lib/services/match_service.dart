@@ -16,12 +16,12 @@ class MatchService {
   static Future<Map<String, dynamic>> disputeMatchResult(
     String matchId,
     String playerId,
-    String reason,
-  ) async {
-    final response = await ApiService.post(
-      '/matches/$matchId/dispute',
-      {'playerId': playerId, 'reason': reason},
-    );
+    String reason, {
+    String? comment,
+  }) async {
+    final body = <String, dynamic>{'playerId': playerId, 'reason': reason};
+    if (comment != null && comment.isNotEmpty) body['comment'] = comment;
+    final response = await ApiService.post('/matches/$matchId/dispute', body);
     if (response is Map<String, dynamic>) return response;
     return <String, dynamic>{};
   }
