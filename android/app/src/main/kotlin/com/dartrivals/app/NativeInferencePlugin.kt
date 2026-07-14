@@ -81,11 +81,21 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // thread is wedged inside a hung GPU-driver call.
     private var dvExecutor: ExecutorService = newInferenceExecutor()
 
-    // Set by rebuildEngine: after abandoning a wedged GPU engine, the next
-    // load builds the interpreter CPU-only so the stuck driver isn't touched
-    // again for the rest of the process lifetime.
+    // Set by abandonEngine, consumed by the next SUCCESSFUL build: that one
+    // build is CPU-only so the recovery load doesn't touch the possibly-stuck
+    // GPU driver again. ONE-SHOT on purpose — the old sticky flag turned a
+    // single transient wedge into a CPU-only engine for every remaining match
+    // of the process lifetime.
     @Volatile
-    private var forceCpu = false
+    private var forceCpuOnce = false
+
+    // Whether the CURRENT interpreter was built without the GPU delegate
+    // because of forceCpuOnce. Such an interpreter is deliberately NOT reused
+    // by a later load: the next load (a match start) rebuilds with the GPU
+    // delegate, un-poisoning the session. If the driver is still stuck, that
+    // build fails or wedges and the rebuild path lands us back on CPU.
+    @Volatile
+    private var loadedCpuOnly = false
 
     private fun newInferenceExecutor(): ExecutorService =
         Executors.newSingleThreadExecutor { r ->
@@ -108,13 +118,13 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private fun abandonEngine() {
         android.util.Log.w(
             "NativeInference",
-            "abandonEngine: dropping possibly-wedged interpreter/executor, next load is CPU-only"
+            "abandonEngine: dropping possibly-wedged interpreter/executor, next build is CPU-only"
         )
         try { dvExecutor.shutdownNow() } catch (_: Throwable) {}
         dvExecutor = newInferenceExecutor()
         interpreter = null
         // Deliberately leaked (like the interpreter) — a wedged GPU driver may
-        // still hold it, and the post-rebuild path is CPU-only anyway.
+        // still hold it, and the next (CPU-only) build won't need it anyway.
         gpuDelegate = null
         loadedModelPath = null
         detectInProgress = false
@@ -122,7 +132,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         outputBuffer = null
         outputXfer[0] = null
         outputXfer[1] = null
-        forceCpu = true
+        forceCpuOnce = true
     }
 
     @Volatile
@@ -299,11 +309,19 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // Idempotent — the interpreter persists for the engine's lifetime (only
         // closed in onDetachedFromEngine), so reuse one built earlier (e.g. by
         // the camera-setup screen) instead of rebuilding it per match, which
-        // re-inits the GPU delegate and leaked the old interpreter. See iOS note.
+        // re-inits the GPU delegate and leaked the old interpreter. A CPU-only
+        // interpreter left by a wedge recovery is NOT reused once forceCpuOnce
+        // has been consumed — the rebuild restores the GPU delegate. See iOS note.
+        val buildCpuOnly = forceCpuOnce
         if (interpreter != null) {
-            android.util.Log.d("NativeInference", "Model already loaded — reusing")
-            mainHandler.post { result.success(true) }
-            return
+            if (loadedCpuOnly == buildCpuOnly) {
+                android.util.Log.d("NativeInference", "Model already loaded — reusing")
+                mainHandler.post { result.success(true) }
+                return
+            }
+            android.util.Log.d("NativeInference", "Rebuilding with GPU delegate (was CPU-only after a wedge recovery)")
+            try { interpreter?.close() } catch (_: Throwable) {}
+            interpreter = null
         }
         try {
             // Use FlutterAssets to get the correct path inside the APK.
@@ -320,10 +338,11 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // Match DartsMind's GpuDelegateFactory.Options exactly:
             //   precisionLossAllowed = true (enables FP16 for speed)
             //   inferencePreference = 0 (INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER)
-            // Skipped after a rebuildEngine — creating a new GpuDelegate on a
-            // wedged driver can hang the fresh executor too.
-            if (forceCpu) {
-                android.util.Log.w("NativeInference", "forceCpu after rebuild — skipping GPU delegate")
+            // Skipped for the ONE build right after a rebuildEngine — creating
+            // a new GpuDelegate on a wedged driver can hang the fresh executor
+            // too. Later loads try the GPU delegate again.
+            if (buildCpuOnly) {
+                android.util.Log.w("NativeInference", "CPU-only build after rebuild — skipping GPU delegate")
             } else try {
                 if (gpuDelegate == null) {
                     val gpuOptions = GpuDelegate.Options()
@@ -350,6 +369,10 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
 
             interpreter = interp
+            loadedCpuOnly = buildCpuOnly
+            // Consume the one-shot only on a build that actually used it — a
+            // failed attempt keeps it set so the caller's retry stays CPU-only.
+            if (buildCpuOnly) forceCpuOnce = false
             prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
         } catch (t: Throwable) {
@@ -373,17 +396,24 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // Idempotent for the SAME path — see loadModel(). Reuse an interpreter
         // built earlier instead of rebuilding it per match (the Dart side
         // always uses this file path on Android). A DIFFERENT path forces a
-        // rebuild: this is the adaptive t225 <-> t223 model switch. It runs on
+        // rebuild: this is the adaptive t225 <-> t223 model switch. So does a
+        // CPU-only interpreter left by a wedge recovery once forceCpuOnce has
+        // been consumed — that rebuild restores the GPU delegate. It runs on
         // dvExecutor, serialized behind any in-flight analyze, so the old
         // interpreter is never closed while in use. The GpuDelegate is reused
         // across switches (DartsMind: Detector.gpuDelegate).
+        val buildCpuOnly = forceCpuOnce
         if (interpreter != null) {
-            if (path == loadedModelPath) {
+            if (path == loadedModelPath && loadedCpuOnly == buildCpuOnly) {
                 android.util.Log.d("NativeInference", "Model already loaded — reusing")
                 mainHandler.post { result.success(true) }
                 return
             }
-            android.util.Log.d("NativeInference", "Switching model $loadedModelPath → $path")
+            if (path == loadedModelPath) {
+                android.util.Log.d("NativeInference", "Rebuilding with GPU delegate (was CPU-only after a wedge recovery)")
+            } else {
+                android.util.Log.d("NativeInference", "Switching model $loadedModelPath → $path")
+            }
             try { interpreter?.close() } catch (_: Throwable) {}
             interpreter = null
         }
@@ -398,9 +428,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             var interp: Interpreter? = null
 
             // DartsMind: try GPU first (updateTensorData$useGPU)
-            // Skipped after a rebuildEngine — see loadModel().
-            if (forceCpu) {
-                android.util.Log.w("NativeInference", "forceCpu after rebuild — skipping GPU delegate")
+            // Skipped for the one build after a rebuildEngine — see loadModel().
+            if (buildCpuOnly) {
+                android.util.Log.w("NativeInference", "CPU-only build after rebuild — skipping GPU delegate")
             } else try {
                 if (gpuDelegate == null) {
                     val gpuOptions = GpuDelegate.Options()
@@ -426,6 +456,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
             interpreter = interp
             loadedModelPath = path
+            loadedCpuOnly = buildCpuOnly
+            // One-shot consumed only by a build that used it (see loadModel).
+            if (buildCpuOnly) forceCpuOnce = false
             prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
         } catch (t: Throwable) {
@@ -479,6 +512,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             response["yScale"] = yScale
             response["imageWidth"] = width
             response["imageHeight"] = height
+            // Pure invoke time — feeds the Dart-side ModelSelector ladder,
+            // whose thresholds are pure-inference cut-offs (DartsMind).
+            response["inferenceMs"] = inferenceMs
 
             mainHandler.post { result.success(response) }
         } catch (e: Throwable) {
@@ -618,6 +654,8 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             response["yScale"] = yScale
             response["imageWidth"] = bw
             response["imageHeight"] = bh
+            // Pure invoke time for the ModelSelector ladder (see analyze()).
+            response["inferenceMs"] = inferenceMs
 
             mainHandler.post { result.success(response) }
         } catch (e: Throwable) {

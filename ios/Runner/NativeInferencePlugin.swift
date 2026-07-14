@@ -27,9 +27,20 @@ class NativeInferencePlugin: NSObject {
     // is wedged inside a hung CoreML/Metal call.
     private var inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite", qos: .userInitiated)
     private var queueSeq = 0
-    // Set by rebuildEngine: after abandoning a wedged NE/GPU engine, rebuild
-    // CPU-only so the next load doesn't touch the stuck driver again.
-    private var forceCpu = false
+    // Set by rebuildEngine, consumed by the next SUCCESSFUL build: that one
+    // build is CPU-only so the recovery load doesn't touch the possibly-stuck
+    // NE/GPU driver again. ONE-SHOT on purpose — the old sticky flag turned a
+    // single transient wedge into a CPU-only engine for every remaining match
+    // of the session (nothing ever cleared it), i.e. a permanently degraded
+    // AI whose only fix was killing the app.
+    private var forceCpuOnce = false
+    // Whether the CURRENT interpreter was built without delegates because of
+    // forceCpuOnce. Such an interpreter is deliberately NOT reused by a later
+    // load (see loadModel): the next load — a match start, under the loading
+    // overlay — rebuilds with delegates, un-poisoning the session. If the
+    // driver is still stuck, that build wedges, the Dart load timeout fires
+    // and the rebuild path lands us back on CPU: bounded, self-correcting.
+    private var loadedCpuOnly = false
     private let modelInputSize = 1024
     private var isBusy = false
     // Name (e.g. "t225") of the currently loaded model; nil before first load.
@@ -101,10 +112,11 @@ class NativeInferencePlugin: NSObject {
             // In-process equivalent of the app restart users discovered as the
             // manual fix for a frozen AI: abandon the (possibly wedged) queue
             // and interpreter, and let the next loadModel rebuild fresh ones,
-            // CPU-only. The old interpreter/model/delegate are deliberately
-            // LEAKED, never deleted — deleting objects a stuck invoke may
-            // still be using crashes. Answered inline on the platform thread.
-            print("[NativeInference-iOS] rebuildEngine: abandoning possibly-wedged engine, next load is CPU-only")
+            // CPU-only (that ONE build — see forceCpuOnce). The old
+            // interpreter/model/delegate are deliberately LEAKED, never
+            // deleted — deleting objects a stuck invoke may still be using
+            // crashes. Answered inline on the platform thread.
+            print("[NativeInference-iOS] rebuildEngine: abandoning possibly-wedged engine, next build is CPU-only")
             queueSeq += 1
             inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite.\(queueSeq)", qos: .userInitiated)
             interpreter = nil
@@ -112,7 +124,7 @@ class NativeInferencePlugin: NSObject {
             delegate = nil
             delegateKind = .cpu
             isBusy = false
-            forceCpu = true
+            forceCpuOnce = true
             result(true)
         default:
             result(FlutterMethodNotImplemented)
@@ -131,17 +143,24 @@ class NativeInferencePlugin: NSObject {
         // previous interpreter/model/delegate). Reuse it instead so only the
         // first load in a session pays the cost.
         //
-        // A DIFFERENT modelName forces a rebuild (adaptive model switch): tear
-        // down the old interpreter/model/delegate first. The switch is
-        // serialized on inferenceQueue behind any in-flight analyze, so nothing
-        // is deleted while in use.
+        // A DIFFERENT modelName forces a rebuild (adaptive model switch), and
+        // so does a CPU-only interpreter left behind by a wedge recovery once
+        // forceCpuOnce has been consumed — that rebuild (a match-start load)
+        // restores the delegates. Teardown is serialized on inferenceQueue
+        // behind any in-flight analyze, so nothing is deleted while in use.
+        let buildCpuOnly = forceCpuOnce
         if interpreter != nil {
-            if modelName == nil || modelName == loadedModelName {
+            let sameModel = modelName == nil || modelName == loadedModelName
+            if sameModel && loadedCpuOnly == buildCpuOnly {
                 print("[NativeInference-iOS] model \(loadedModelName ?? "?") already loaded (delegate=\(delegateKind)) — reusing")
                 result(true)
                 return
             }
-            print("[NativeInference-iOS] switching model \(loadedModelName ?? "?") → \(modelName!)")
+            if sameModel {
+                print("[NativeInference-iOS] rebuilding \(loadedModelName ?? "?") with delegates (was CPU-only after a wedge recovery)")
+            } else {
+                print("[NativeInference-iOS] switching model \(loadedModelName ?? "?") → \(modelName!)")
+            }
             TfLiteInterpreterDelete(interpreter)
             interpreter = nil
             TfLiteModelDelete(model)
@@ -166,10 +185,11 @@ class NativeInferencePlugin: NSObject {
 
         // Try CoreML first (Neural Engine on A12+ → fastest path).
         // Falls back to Metal (GPU), then CPU 4 threads.
-        // After a rebuildEngine (wedged driver) we stay CPU-only — creating a
-        // new delegate on a stuck driver can hang the fresh queue too.
-        if forceCpu {
-            print("[NativeInference-iOS] forceCpu after rebuild — CPU 4 threads")
+        // Right after a rebuildEngine (wedged driver) this ONE build is
+        // CPU-only — creating a new delegate on a stuck driver can hang the
+        // fresh queue too. Later loads try the delegates again.
+        if buildCpuOnly {
+            print("[NativeInference-iOS] CPU-only build after rebuild — CPU 4 threads")
         } else if let coreml = createCoreMLDelegate() {
             TfLiteInterpreterOptionsAddDelegate(options, coreml)
             delegate = coreml
@@ -203,6 +223,10 @@ class NativeInferencePlugin: NSObject {
         }
 
         loadedModelName = modelName ?? defaultModelOrder.first(where: { modelPath.hasSuffix("\($0).tflite") })
+        loadedCpuOnly = buildCpuOnly
+        // Consume the one-shot only on a build that actually used it — a
+        // failed attempt keeps it set so the caller's retry stays CPU-only.
+        if buildCpuOnly { forceCpuOnce = false }
         print("[NativeInference-iOS] Model \(loadedModelName ?? "?") loaded (delegate=\(delegateKind))")
         result(true)
     }
@@ -318,6 +342,9 @@ class NativeInferencePlugin: NSObject {
             "yScale": yScale,
             "imageWidth": width,
             "imageHeight": height,
+            // Pure invoke time — feeds the Dart-side ModelSelector ladder,
+            // whose thresholds are pure-inference cut-offs (DartsMind).
+            "inferenceMs": inferenceMs,
         ] as [String: Any])
     }
 

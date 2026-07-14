@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 
 import '../utils/storage_service.dart';
@@ -17,14 +19,18 @@ import '../utils/storage_service.dart';
 /// Divergence from DartsMind, on purpose: UPGRADES are deferred to the next
 /// model load (match start / setup screen) instead of applied mid-match —
 /// on iOS a model rebuild re-runs the multi-second CoreML delegate
-/// compilation, which would freeze the AI mid-turn. DOWNGRADES apply
-/// immediately: they exist to protect a struggling device, and the small
-/// model rebuilds fast.
+/// compilation, which would freeze the AI mid-turn. DOWNGRADES are immediate
+/// on Android only (file-based reload, fast): on iOS they are deferred too,
+/// because the downgrade fires precisely when the device is hot/throttled —
+/// the moment a CoreML recompile is slowest and most likely to blow the load
+/// timeout, cascading into an engine rebuild and a CPU-only session. The
+/// thermal throttle (AutoScoringService) protects a struggling iPhone until
+/// the next match load applies the switch.
 ///
-/// Times fed in are end-to-end per-frame costs (preprocess + inference +
-/// channel), slightly above DartsMind's pure-inference measure — which makes
-/// both thresholds a little conservative. That errs toward the small model,
-/// i.e. toward less heat.
+/// Times fed in are the native-measured PURE invoke cost when available
+/// (see NativeInference.lastNativeInferMs) — the same measure DartsMind's
+/// 260/500ms cut-offs were tuned for. The end-to-end fallback (preprocess +
+/// channel + parse) sits well above it and made downgrades fire too early.
 class ModelSelector {
   ModelSelector._();
 
@@ -91,9 +97,16 @@ class ModelSelector {
       }
     } else if (_runningAsset == bigModelAsset && mean > downgradeAtMs) {
       _currentAsset = smallModelAsset;
-      _switchPending = true;
-      debugPrint('[ModelSelector] big mean=${mean}ms > $downgradeAtMs — '
-          'downgrading to $currentModelName now');
+      if (!kIsWeb && Platform.isAndroid) {
+        _switchPending = true;
+        debugPrint('[ModelSelector] big mean=${mean}ms > $downgradeAtMs — '
+            'downgrading to $currentModelName now');
+      } else {
+        // iOS: deferred like upgrades (see class comment) — a mid-match
+        // switch means a CoreML recompile on an already-throttled device.
+        debugPrint('[ModelSelector] big mean=${mean}ms > $downgradeAtMs — '
+            'next load downgrades to $currentModelName');
+      }
     }
   }
 

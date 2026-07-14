@@ -239,6 +239,36 @@ class AutoScoringService extends ChangeNotifier {
   Duration _thermalExtraDelay = Duration.zero;
   final Stopwatch _thermalPollStopwatch = Stopwatch();
 
+  // Dead-engine trip: consecutive ENGINE-level analyze failures, as flagged
+  // by NativeInference.lastAnalyzeFailed (channel timeout/BUSY, model not
+  // loaded, invoke errors). NOT ScoringResult.error — the parser also sets
+  // that on perfectly normal frames ('No darts detected' on every empty
+  // board, 'Need 4 control points' when the player blocks the camera), which
+  // must keep flowing through the pipeline: auto-confirm and the empty-board
+  // gate are driven by exactly those frames. The loop used to ignore engine
+  // failures entirely, so an engine failing persistently with codes the
+  // NativeInference wedge detector does NOT track (INVOKE_ERROR from a
+  // poisoned delegate, NOT_LOADED after a failed recovery reload) left the
+  // AI silently dead for the whole match: _modelLoaded stayed true, so the
+  // per-turn recoverAutoScoring() self-heal never fired either. Tripping
+  // invalidates the native engine and flips to the clean "model not loaded"
+  // state that self-heal already handles.
+  // Two conditions because failures come at very different rates: fast ones
+  // (BUSY, INVOKE_ERROR) hit the count first; slow ones (10s analyze
+  // timeouts) hit the elapsed bound after a couple of frames.
+  int _consecutiveErrorFrames = 0;
+  final Stopwatch _errorStreakStopwatch = Stopwatch();
+  static const int _errorTripCount = 10;
+  static const int _errorTripSlowCount = 3;
+  static const Duration _errorTripSlowAfter = Duration(seconds: 15);
+
+  void _resetErrorStreak() {
+    _consecutiveErrorFrames = 0;
+    _errorStreakStopwatch
+      ..stop()
+      ..reset();
+  }
+
   // Game state — 3 dart slots
   List<DartScore?> _dartSlots = [null, null, null];
   int _turnTotal = 0;
@@ -464,6 +494,7 @@ class AutoScoringService extends ChangeNotifier {
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
+    _resetErrorStreak();
     _sinceInferenceStart.reset();
     onCaptureActiveChanged?.call(true);
     notifyListeners();
@@ -592,11 +623,15 @@ class AutoScoringService extends ChangeNotifier {
           cleanupFile, onDartDetected, onAutoConfirm);
 
       // Adaptive model ladder: a sustained >500ms mean on the big model
-      // queues an immediate downgrade (heat/latency protection). The reload
-      // is serialized here between inferences, never concurrent with one.
-      // If it fails outright the native side may have already dropped the old
-      // interpreter, so surface a clean "model not loaded" state instead of
-      // silently emitting error frames — recoverAutoScoring() then self-heals.
+      // queues an immediate downgrade (heat/latency protection). ANDROID
+      // ONLY — the file-based reload there is fast; on iOS the same switch
+      // means a multi-second CoreML recompile on an already-throttled device,
+      // so ModelSelector defers it to the next match load instead (this block
+      // never fires on iOS). The reload is serialized here between
+      // inferences, never concurrent with one. If it fails outright the
+      // native side may have already dropped the old interpreter, so surface
+      // a clean "model not loaded" state instead of silently emitting error
+      // frames — recoverAutoScoring() then self-heals.
       if (ModelSelector.takePendingSwitch() && _nativeInference != null) {
         var switched = false;
         for (var attempt = 0; attempt < 3 && !switched; attempt++) {
@@ -727,8 +762,13 @@ class AutoScoringService extends ChangeNotifier {
       _lastInferenceMs = infSw.elapsedMilliseconds;
       // Feed the adaptive model ladder — successful native frames only
       // (errors return fast and would drag the mean down artificially).
+      // Prefer the native-measured pure invoke time: the ladder's 260/500ms
+      // thresholds are DartsMind's PURE-inference cut-offs, and the
+      // end-to-end fallback (pixel copy + channel + parse) sits far enough
+      // above them to fire downgrades on devices that are actually fine.
       if (_nativeInference != null && result.error == null) {
-        ModelSelector.recordInferenceMs(_lastInferenceMs!);
+        ModelSelector.recordInferenceMs(
+            _nativeInference!.lastNativeInferMs ?? _lastInferenceMs!);
       }
 
       if (seq != _captureSeq || !_capturing) {
@@ -749,6 +789,45 @@ class AutoScoringService extends ChangeNotifier {
           debugPrint('[AutoScoring]   error: ${result.error}');
         }
       }
+
+      // Engine-failure frames end here: the channel call itself failed, so
+      // the result carries zero information — no tips, no calibration — and
+      // running the pipeline on it could only misfire (e.g. read as "darts
+      // gone" by the removal detector). Count them toward the dead-engine
+      // trip (except the expected failures of an in-flight wedge recovery,
+      // which ends with a reload). Benign parser errors ('No darts
+      // detected', 'Need 4 control points') do NOT come through here — they
+      // are normal frames and continue into the pipeline below.
+      if (_nativeInference != null && _nativeInference!.lastAnalyzeFailed) {
+        if (!_nativeInference!.isRecovering) {
+          _consecutiveErrorFrames++;
+          if (!_errorStreakStopwatch.isRunning) _errorStreakStopwatch.start();
+          _trace('ENGINE failure frame '
+              '$_consecutiveErrorFrames/$_errorTripCount: ${result.error}');
+          if (_consecutiveErrorFrames >= _errorTripCount ||
+              (_consecutiveErrorFrames >= _errorTripSlowCount &&
+                  _errorStreakStopwatch.elapsed >= _errorTripSlowAfter)) {
+            debugPrint('[AutoScoring] *** engine failing persistently '
+                '($_consecutiveErrorFrames consecutive failures over '
+                '${_errorStreakStopwatch.elapsed.inSeconds}s: ${result.error}) '
+                '— invalidating engine, AI reloads at next turn');
+            _resetErrorStreak();
+            // Abandon the native engine now: without this, the self-heal
+            // reload would hit the "same model — reusing" shortcut and get
+            // the broken interpreter back.
+            await _nativeInference!.invalidateEngine();
+            _modelLoaded = false;
+            _initError = 'AI engine failing: ${result.error}';
+            await _maybeCleanup(imagePath, cleanupFile);
+            stopCapture();
+            return;
+          }
+        }
+        await _maybeCleanup(imagePath, cleanupFile);
+        _notifyIfChanged();
+        return;
+      }
+      _resetErrorStreak();
 
       _updateZoomHint(result);
 

@@ -56,6 +56,12 @@ class SocketService {
   // like supportsDartAck, so a backend rollback degrades us safely.
   static bool _supportsRankedBo3 = false;
 
+  // True once the current socket has received the server's `authenticated`
+  // handshake — the event that carries the capability flags above. Reset on
+  // every disconnect, like the flags themselves, so it always describes the
+  // CURRENT socket.
+  static bool _isAuthenticated = false;
+
   /// Whether the server this socket is authenticated against acknowledges and
   /// deduplicates individual darts. See [_supportsDartAck].
   static bool get supportsDartAck => _supportsDartAck;
@@ -63,7 +69,11 @@ class SocketService {
   /// Whether the server can run ranked matches as best-of-3 series.
   static bool get supportsRankedBo3 => _supportsRankedBo3;
 
+  /// Whether the current socket has completed the `authenticated` handshake.
+  static bool get isAuthenticated => _isAuthenticated;
+
   static void _handleAuthenticated(dynamic data) {
+    _isAuthenticated = true;
     final supports = data is Map && data['supportsDartAck'] == true;
     if (supports != _supportsDartAck) {
       debugPrint('SocketService: server supportsDartAck=$supports');
@@ -181,6 +191,7 @@ class SocketService {
         _wasDisconnected = true;
         // Re-derived from the next 'authenticated'. Until then we assume the
         // server cannot dedup darts nor run BO3, the safe assumptions.
+        _isAuthenticated = false;
         _supportsDartAck = false;
         _supportsRankedBo3 = false;
         _onDisconnectHandler?.call();
@@ -286,6 +297,7 @@ class SocketService {
   static void _disconnectInternal({bool preserveHandlers = false}) {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
+    _isAuthenticated = false;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
     if (_socket != null) {
@@ -323,6 +335,7 @@ class SocketService {
   @visibleForTesting
   static void debugReset() {
     debugEmitOverride = null;
+    _isAuthenticated = false;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
     _handlers.clear();
@@ -378,6 +391,32 @@ class SocketService {
     }
     if (!isConnected) {
       throw Exception('Socket connection timed out after ${timeout.inSeconds}s');
+    }
+  }
+
+  /// Like [ensureConnected], but additionally waits for the server's
+  /// `authenticated` handshake. The handshake lands a round-trip AFTER the
+  /// transport connects (the server verifies the JWT and does DB work first),
+  /// so any code that snapshots a capability flag — like the BO3 opt-in in the
+  /// matchmaking join body — must wait on this, not just on [ensureConnected]:
+  /// in the gap the flags still hold their reset-on-disconnect false and the
+  /// caller silently takes the no-capability path.
+  ///
+  /// Unlike the connection wait, the handshake wait does NOT throw on timeout:
+  /// it returns with the flags still false so callers degrade (BO1, no dart
+  /// acks) instead of being blocked by a server that never announces
+  /// capabilities.
+  static Future<void> ensureAuthenticated({
+    Duration timeout = const Duration(seconds: 10),
+    Duration authTimeout = const Duration(seconds: 5),
+    Duration pollInterval = const Duration(milliseconds: 100),
+  }) async {
+    await ensureConnected(timeout: timeout, pollInterval: pollInterval);
+    final deadline = DateTime.now().add(authTimeout);
+    while (!_isAuthenticated &&
+        isConnected &&
+        DateTime.now().isBefore(deadline)) {
+      await Future.delayed(pollInterval);
     }
   }
 

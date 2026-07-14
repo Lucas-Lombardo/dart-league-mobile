@@ -120,7 +120,11 @@ class MatchmakingProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await SocketService.ensureConnected();
+      // Wait for the capability handshake, not just the transport: the join
+      // body only declares supportsRankedBo3 once `authenticated` has landed,
+      // and a join POSTed in the gap queues this player as BO1-only — even a
+      // rejoin can then only upgrade the entry until it gets matched.
+      await SocketService.ensureAuthenticated();
     } catch (e) {
       // Socket not ready yet. Keep the searching UI up (the connection banner
       // already reflects "disconnected"); SocketService retries the connection
@@ -128,6 +132,11 @@ class MatchmakingProvider with ChangeNotifier {
       debugPrint('QUEUE DEBUG: socket not ready, will join on reconnect: $e');
       return;
     }
+
+    // The waits above can take seconds — the user may have cancelled (or a
+    // match_found may have landed) in the meantime. POSTing anyway would
+    // re-queue a player whose UI already left the search.
+    if (!_isSearching || _matchFound || _leaving) return;
 
     // Socket is connected — wire listeners and actually join the queue.
     _gameProvider?.ensureListenersSetup();
@@ -156,6 +165,12 @@ class MatchmakingProvider with ChangeNotifier {
       return;
     }
     try {
+      // This runs from onConnect, which always fires BEFORE the server's
+      // `authenticated` event is processed — POSTing right away would build
+      // the join body with supportsRankedBo3 still false (it resets on every
+      // disconnect) and queue this player as BO1-only. Wait for the handshake.
+      await SocketService.ensureAuthenticated();
+      if (!_isSearching || _matchFound || _leaving) return;
       final response = await MatchmakingService.joinQueue(_currentUserId!);
       if (!_isSearching || _matchFound || _leaving) return;
       _playerElo = response['playerElo'] as int?;

@@ -27,13 +27,33 @@ class NativeInference {
   // ("Chargement du score auto…") span forever. These bounds turn a native
   // wedge into the normal failure path (retry / error frame) instead.
   // Values are far above the normal case (inference ≤ ~1s; a cold load is a
-  // few seconds, but first-launch GPU shader compilation on some Android
-  // devices can legitimately take >10s — hence the more generous load bound).
-  static const Duration _loadTimeout = Duration(seconds: 15);
+  // few seconds). The load bound must clear a LEGITIMATE slow delegate build:
+  // first-launch GPU shader compilation on some Android devices and the
+  // CoreML delegate compilation on a hot/throttled iPhone both exceed 15s —
+  // the old bound — which misread them as wedges and rebuilt a working
+  // engine into a CPU-only one. Genuine load wedges are almost always queued
+  // behind a hung analyze, which the (unchanged) 10s analyze bound catches.
+  static const Duration _loadTimeout = Duration(seconds: 30);
   static const Duration _analyzeTimeout = Duration(seconds: 10);
 
   bool _loaded = false;
   bool get isLoaded => _loaded;
+
+  /// Pure model-invoke time (ms) of the last successful analyze, measured on
+  /// the native side — excludes preprocess, channel marshaling and Dart-side
+  /// parsing. Null until the first successful frame. This is what feeds the
+  /// ModelSelector ladder: its 260/500ms thresholds are DartsMind's
+  /// pure-inference cut-offs, not end-to-end figures.
+  int? lastNativeInferMs;
+
+  /// True when the last analyze call failed at the ENGINE level: model not
+  /// loaded, channel timeout/BUSY, invoke error, or an unparseable response.
+  /// This is the ONLY reliable "engine is broken" signal — ScoringResult.error
+  /// alone is NOT one: the parser also sets it on perfectly normal frames
+  /// ('No darts detected' on every empty board, 'Need 4 control points'
+  /// whenever the player blocks the camera), which carry real calibration
+  /// data and must keep flowing through the scoring pipeline.
+  bool lastAnalyzeFailed = false;
 
   // Reused buffer for the rare case where the channel bytes aren't 4-byte
   // aligned. The common path returns a zero-copy Float32List VIEW over the
@@ -77,12 +97,19 @@ class NativeInference {
   static const Duration _rebuildMinInterval = Duration(seconds: 45);
   bool _recovering = false;
 
+  /// True while the engine is being rebuilt + reloaded after a wedge. The
+  /// capture loop uses this to NOT count the transient "Model not loaded"
+  /// error frames of a recovery window toward its own dead-engine trip.
+  bool get isRecovering => _recovering;
+
   void _noteAnalyzeSuccess() {
+    lastAnalyzeFailed = false;
     _sawAnalyzeTimeout = false;
     _failuresSinceTimeout = 0;
   }
 
   void _noteAnalyzeFailure(Object e) {
+    lastAnalyzeFailed = true;
     final isTimeout = e is TimeoutException;
     final isBusy = e is PlatformException && e.code == 'BUSY';
     if (isTimeout) _sawAnalyzeTimeout = true;
@@ -132,6 +159,26 @@ class NativeInference {
       debugPrint('[NativeInference] engine rebuild/reload failed: $e');
     } finally {
       _recovering = false;
+    }
+  }
+
+  /// Abandon the native engine unconditionally so the NEXT loadModel rebuilds
+  /// it from scratch (CPU-only first, delegates again on the load after).
+  ///
+  /// The automatic wedge detector above only reacts to TIMEOUT/BUSY. When an
+  /// engine fails persistently with anything else (INVOKE_ERROR from a
+  /// poisoned delegate, NOT_LOADED after a failed recovery reload), the
+  /// capture loop trips its dead-engine counter and calls this — without it,
+  /// the reload that follows would hit the native "same model — reusing"
+  /// shortcut and hand the broken interpreter straight back.
+  Future<void> invalidateEngine() async {
+    _loaded = false;
+    try {
+      await _channel
+          .invokeMethod('rebuildEngine')
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('[NativeInference] invalidateEngine failed: $e');
     }
   }
 
@@ -188,6 +235,7 @@ class NativeInference {
   Future<ScoringResult> analyzeRgba(Uint8List rgba, int width, int height,
       {bool isBgra = false}) async {
     if (!_loaded) {
+      lastAnalyzeFailed = true;
       return _error('Model not loaded');
     }
 
@@ -203,6 +251,7 @@ class NativeInference {
       final channelMs = sw.elapsedMilliseconds;
 
       if (response == null) return _error('Null response from native');
+      lastNativeInferMs = (response['inferenceMs'] as num?)?.toInt();
 
       sw.reset();
       final outputBytes = response['output'] as Uint8List;
@@ -243,7 +292,10 @@ class NativeInference {
     required int uvPixelStride,
     required int rotation,
   }) async {
-    if (!_loaded) return _error('Model not loaded');
+    if (!_loaded) {
+      lastAnalyzeFailed = true;
+      return _error('Model not loaded');
+    }
 
     try {
       final sw = Stopwatch()..start();
@@ -262,6 +314,7 @@ class NativeInference {
       final channelMs = sw.elapsedMilliseconds;
 
       if (response == null) return _error('Null response from native');
+      lastNativeInferMs = (response['inferenceMs'] as num?)?.toInt();
 
       sw.reset();
       final outputBytes = response['output'] as Uint8List;
@@ -291,7 +344,10 @@ class NativeInference {
   /// Analyze an image file (JPEG/PNG). Native reads and decodes the file,
   /// then runs preprocess + inference. Used by camera setup screen.
   Future<ScoringResult> analyzeFile(String filePath) async {
-    if (!_loaded) return _error('Model not loaded');
+    if (!_loaded) {
+      lastAnalyzeFailed = true;
+      return _error('Model not loaded');
+    }
 
     try {
       final response = await _channel
@@ -299,6 +355,7 @@ class NativeInference {
           .timeout(_analyzeTimeout);
       _noteAnalyzeSuccess();
       if (response == null) return _error('Null response from native');
+      lastNativeInferMs = (response['inferenceMs'] as num?)?.toInt();
 
       final outputBytes = response['output'] as Uint8List;
       final xScale = (response['xScale'] as num).toDouble();
