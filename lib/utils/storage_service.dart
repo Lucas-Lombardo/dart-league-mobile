@@ -42,6 +42,21 @@ class StorageService {
     await _storage.delete(key: _languageKey);
   }
 
+  // Small-model (t225) mean per-frame cost in ms, best-ever ratchet.
+  // Device speed profile for the adaptive AI model ladder (ModelSelector) —
+  // mirrors DartsMind's persisted checkInferenceAvgTime_t201.
+  static const String _aiSmallModelAvgMsKey = 'ai_small_model_avg_ms';
+
+  static Future<void> saveAiSmallModelAvgMs(int ms) async {
+    await _storage.write(key: _aiSmallModelAvgMsKey, value: ms.toString());
+  }
+
+  static Future<int?> getAiSmallModelAvgMs() async {
+    final value = await _storage.read(key: _aiSmallModelAvgMsKey);
+    if (value == null) return null;
+    return int.tryParse(value);
+  }
+
   static const String _cameraZoomKey = 'camera_zoom';
 
   static Future<void> saveCameraZoom(double zoom) async {

@@ -136,6 +136,10 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         return;
       }
       _cameraService = cameraService;
+      // Solo mode: stop the 30fps image stream whenever the AI loop is off
+      // (score edit, AI toggled off, training finished) — no Agora viewer
+      // needs the frames.
+      _ai?.onCaptureActiveChanged = cameraService.setAiActive;
 
       try {
         final minZoom = await cameraService.getMinZoomLevel();

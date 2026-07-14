@@ -151,6 +151,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     // Show loading spinner instead of the manual dartboard until the model loads.
     if (autoScoringEnabled && agoraEngine == null && !kIsWeb && AutoScoringService.isSupported) {
       setState(() => autoScoringLoading = true);
+      // If game_state_sync never arrives (or the reconnect wedges), the
+      // watchdog drops the blocking overlay instead of spinning forever.
+      armAutoScoringLoadingWatchdog();
       // game_state_sync may have already fired before the listener was attached.
       // If so, process the pending reconnect now instead of waiting for next notification.
       if (game.needsAgoraReconnect) {
@@ -267,6 +270,11 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   void showForfeitDialog(dynamic game) {
     forfeitDialogShowing = true;
     final auth = context.read<AuthProvider>();
+    // The screen can unmount while this dialog is still up (leaving the match
+    // pops the route, but the dialog lives on the root overlay), and
+    // actionsBuilder re-runs on every dialog rebuild — so nothing below may
+    // touch the State's `context` after this point. Capture l10n now.
+    final l10n = AppLocalizations.of(context);
     final forfeitData = game.pendingData;
     final winnerId = forfeitData?['winnerId'] as String?;
     final eloChange = forfeitData?['winnerEloChange'] as int? ?? 0;
@@ -275,14 +283,12 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       context,
       accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
       icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
-      title: isWinner ? AppLocalizations.of(context).victory : AppLocalizations.of(context).gameOver,
+      title: isWinner ? l10n.victory : l10n.gameOver,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            isWinner
-                ? AppLocalizations.of(context).opponentLeftForfeit
-                : AppLocalizations.of(context).youLeftForfeited,
+            isWinner ? l10n.opponentLeftForfeit : l10n.youLeftForfeited,
             style: AppTheme.bodyLarge.copyWith(fontSize: 16),
             textAlign: TextAlign.center,
           ),
@@ -295,7 +301,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${AppLocalizations.of(context).eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
+                '${l10n.eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
                 style: const TextStyle(
                   color: AppTheme.success,
                   fontSize: 18,
@@ -314,7 +320,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             final oldElo = auth.currentUser?.elo ?? 1200;
             Navigator.of(dialogCtx).pop();
             await auth.checkAuthStatus();
-            if (!context.mounted) return;
+            // State.mounted, not context.mounted: reading a defunct State's
+            // `context` getter itself throws once the screen has unmounted.
+            if (!mounted) return;
             final newRank = auth.currentUser?.rank ?? oldRank;
             final newElo = auth.currentUser?.elo ?? oldElo;
             _showEloChangeOverlay(
@@ -327,7 +335,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             );
           },
           style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
-          child: Text(AppLocalizations.of(context).continuePlaying),
+          child: Text(l10n.continuePlaying),
         ),
       ],
     ).then((_) => forfeitDialogShowing = false);
@@ -488,7 +496,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await onWillPop() && context.mounted) Navigator.of(context).pop();
+        // `mounted`, not `context.mounted`: no build param here, so `context`
+        // is the State getter, which throws once the screen has unmounted.
+        if (await onWillPop() && mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
       body: Container(

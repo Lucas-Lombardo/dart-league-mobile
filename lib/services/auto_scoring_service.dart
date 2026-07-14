@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
+import 'model_selector.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
 
@@ -28,12 +29,21 @@ const double _maxPixelDiff = 8.0;
 const double _maxShiftThreshold = 40.0;
 const int _maxShiftFrames = 2;
 const double _defaultZeroProximity = 3.0;
-// DartsMind frame skipping (DVMind.java: everyXFrame = 2)
-// Process every Nth frame to match DartsMind's frame rate control.
-// Applied on both Android and iOS: even with CoreML/GPU delegates inference
-// takes ~100–300ms, so processing every other frame keeps the UI responsive
-// without hurting detection latency (still ~5fps net).
-const int _everyXFrame = 2;
+// Inference duty-cycle floor (DVMind.java everyXFrame/currentEveryX
+// equivalent). DartsMind is push-driven by an 8–16fps camera and skips every
+// 2nd frame (~2–4 inferences/sec, with MORE skipping on fast devices and
+// everyXFrame3=6 while darts are pulled). Our loop is pull-based and used to
+// re-fire the instant the previous inference returned (~75–80% GPU duty
+// cycle) — the old per-loop-tick `_everyXFrame % 2` skip counted iterations,
+// not camera frames, so it never reduced the inference rate. The equivalent
+// brake for a pull loop is a minimum interval between inference STARTS:
+//   ACTIVE  — expecting darts (board live, mid-visit): ≤4 inferences/sec.
+//   RELAXED — takeout phase (leftover darts seen, waiting for the player to
+//             pull them): ~1.4/sec, DartsMind's everyXFrame3-style backoff.
+// Slow devices are unaffected (their natural cadence is already below the
+// floor); fast devices stop spending their spare headroom on heat.
+const Duration _inferenceFloorActive = Duration(milliseconds: 250);
+const Duration _inferenceFloorRelaxed = Duration(milliseconds: 700);
 
 // ---------------------------------------------------------------------------
 // Callbacks
@@ -192,6 +202,12 @@ class AutoScoringService extends ChangeNotifier {
   /// responsive even while AI is processing a frame.
   NativeInference? _nativeInference;
 
+  /// Fired when the capture loop starts/stops, so the frame source can gate
+  /// the camera image stream (CameraFrameService.setAiActive) — in solo modes
+  /// there is no reason to keep marshaling 30fps of YUV into Dart while the
+  /// AI is off. Set by the screen that wires the capture callbacks.
+  void Function(bool active)? onCaptureActiveChanged;
+
   // Capture state
   bool _capturing = false;
   // Bumped on every start/stop so a stale capture loop can detect it has been
@@ -203,8 +219,25 @@ class AutoScoringService extends ChangeNotifier {
   bool _modelLoading = false;
   String? _initError;
 
-  // DartsMind Android: frame counter for everyXFrame skip
-  int _frameCounter = 0;
+  // Duty-cycle floor: time of the last inference START. The loop waits until
+  // [_inferenceFloorActive]/[_inferenceFloorRelaxed] has elapsed before firing
+  // the next one (see the floor constants at the top of the file).
+  final Stopwatch _sinceInferenceStart = Stopwatch();
+
+  // Thermal throttle: extra pause inserted between inference cycles when the
+  // OS reports the device is overheating. Zero in the normal state — the AI
+  // cadence is completely unchanged unless the phone is already hot, where
+  // slowing the duty cycle both cools the device down and avoids the
+  // GPU-driver wedges that froze matches. Indexed by NativeInference
+  // thermalLevel(): 0 normal, 1 elevated, 2 severe.
+  static const Duration _thermalPollInterval = Duration(seconds: 5);
+  static const List<Duration> _thermalExtraDelays = [
+    Duration.zero,
+    Duration(milliseconds: 250),
+    Duration(milliseconds: 600),
+  ];
+  Duration _thermalExtraDelay = Duration.zero;
+  final Stopwatch _thermalPollStopwatch = Stopwatch();
 
   // Game state — 3 dart slots
   List<DartScore?> _dartSlots = [null, null, null];
@@ -431,7 +464,8 @@ class AutoScoringService extends ChangeNotifier {
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
-    _frameCounter = 0;
+    _sinceInferenceStart.reset();
+    onCaptureActiveChanged?.call(true);
     notifyListeners();
     _captureLoop(captureFrame, captureRgba, captureBgra, captureYuv, cleanupFile,
         onDartDetected, onAutoConfirm, generation);
@@ -440,6 +474,7 @@ class AutoScoringService extends ChangeNotifier {
   void stopCapture() {
     _capturing = false;
     _captureGeneration++;
+    onCaptureActiveChanged?.call(false);
     notifyListeners();
   }
 
@@ -461,7 +496,6 @@ class AutoScoringService extends ChangeNotifier {
     _dartsRemoved = false;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
-    _frameCounter = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
     notifyListeners();
@@ -537,12 +571,87 @@ class AutoScoringService extends ChangeNotifier {
 
       if (!_capturing || generation != _captureGeneration) break;
 
+      // Duty-cycle floor: wait out the remainder of the minimum interval
+      // since the previous inference START. RELAXED during the takeout phase
+      // (leftover darts seen, waiting for the player to pull them) — the gate
+      // clearing flips the next cycle back to ACTIVE, and the player has to
+      // walk back before throwing again, so the slower cadence is invisible.
+      final floor = (_waitingForEmptyBoard && _emptyBoardGateSawDarts)
+          ? _inferenceFloorRelaxed
+          : _inferenceFloorActive;
+      if (_sinceInferenceStart.isRunning &&
+          _sinceInferenceStart.elapsed < floor) {
+        await Future.delayed(floor - _sinceInferenceStart.elapsed);
+        if (!_capturing || generation != _captureGeneration) break;
+      }
+      _sinceInferenceStart
+        ..reset()
+        ..start();
+
       await _fireCapture(captureFrame, captureRgba, captureBgra, captureYuv,
           cleanupFile, onDartDetected, onAutoConfirm);
+
+      // Adaptive model ladder: a sustained >500ms mean on the big model
+      // queues an immediate downgrade (heat/latency protection). The reload
+      // is serialized here between inferences, never concurrent with one.
+      // If it fails outright the native side may have already dropped the old
+      // interpreter, so surface a clean "model not loaded" state instead of
+      // silently emitting error frames — recoverAutoScoring() then self-heals.
+      if (ModelSelector.takePendingSwitch() && _nativeInference != null) {
+        var switched = false;
+        for (var attempt = 0; attempt < 3 && !switched; attempt++) {
+          if (!_capturing || generation != _captureGeneration) break;
+          try {
+            await _nativeInference!.loadModel();
+            switched = true;
+          } catch (e) {
+            debugPrint('[AutoScoring] model downgrade reload failed '
+                '(attempt ${attempt + 1}/3): $e');
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
+        }
+        if (!_capturing || generation != _captureGeneration) break;
+        if (!switched) {
+          _modelLoaded = false;
+          _initError = 'Model reload failed';
+          stopCapture();
+          break;
+        }
+      }
 
       // Yield AFTER inference too, so the results (notifyListeners) can
       // trigger widget rebuilds before the next cycle starts.
       await Future.delayed(const Duration(milliseconds: 16));
+
+      // Thermal throttle — no-op (Duration.zero) unless the OS reports the
+      // device is overheating. The generation check at the top of the loop
+      // still runs right after, so a stop during the pause exits promptly.
+      await _maybeUpdateThermalThrottle();
+      if (_thermalExtraDelay > Duration.zero) {
+        await Future.delayed(_thermalExtraDelay);
+      }
+    }
+  }
+
+  /// Poll the device thermal status every [_thermalPollInterval] and update
+  /// the extra inter-inference delay. Cheap: one platform-thread method call
+  /// (never routed through the native inference executor).
+  Future<void> _maybeUpdateThermalThrottle() async {
+    final native = _nativeInference;
+    if (native == null) return;
+    if (_thermalPollStopwatch.isRunning &&
+        _thermalPollStopwatch.elapsed < _thermalPollInterval) {
+      return;
+    }
+    _thermalPollStopwatch
+      ..reset()
+      ..start();
+    final level = await native.thermalLevel();
+    final next = _thermalExtraDelays[level.clamp(0, 2)];
+    if (next != _thermalExtraDelay) {
+      _thermalExtraDelay = next;
+      debugPrint('[AutoScoring] thermal level=$level → '
+          '+${next.inMilliseconds}ms between inferences');
     }
   }
 
@@ -563,13 +672,7 @@ class AutoScoringService extends ChangeNotifier {
     try {
       _inferenceInProgress = true;
 
-      // DartsMind frame skipping (DVMind.java everyXFrame) — both platforms.
       final bool isAndroid = !kIsWeb && Platform.isAndroid;
-      _frameCounter++;
-      if (_frameCounter % _everyXFrame != 0) {
-        return; // Skip this frame — matches DartsMind's frameFlag logic
-      }
-
       final infSw = Stopwatch()..start();
       ScoringResult result;
 
@@ -622,6 +725,11 @@ class AutoScoringService extends ChangeNotifier {
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
+      // Feed the adaptive model ladder — successful native frames only
+      // (errors return fast and would drag the mean down artificially).
+      if (_nativeInference != null && result.error == null) {
+        ModelSelector.recordInferenceMs(_lastInferenceMs!);
+      }
 
       if (seq != _captureSeq || !_capturing) {
         await _maybeCleanup(imagePath, cleanupFile);

@@ -44,9 +44,14 @@ class AgoraService {
       // metadata instead of forcing a portrait rotation pass. fixedPortrait
       // was stacking with the iOS SDK's per-frame rotation handling and
       // making Android receivers see the iPhone stream rotated 90°.
+      // 540×720 (was 720×960): the encoder is a continuous heat source for
+      // the whole match. The remote tile only shows the opponent + board, so
+      // the lower encode resolution is not noticeable there, and it does NOT
+      // affect the AI — dart detection reads the raw camera frames, never the
+      // encoded stream.
       await _engine!.setVideoEncoderConfiguration(
         const VideoEncoderConfiguration(
-          dimensions: VideoDimensions(width: 720, height: 960),
+          dimensions: VideoDimensions(width: 540, height: 720),
           frameRate: 15,
           bitrate: 0,
           mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,

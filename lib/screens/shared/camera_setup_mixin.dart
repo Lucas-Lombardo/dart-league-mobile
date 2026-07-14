@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/dart_detection_service_stub.dart'
+    if (dart.library.io) '../../services/dart_detection_service.dart';
 import '../../services/native_inference.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
-import '../../utils/silent_capture.dart';
 import '../../utils/storage_service.dart';
 
 /// Configuration for camera setup behavior.
@@ -64,6 +66,9 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   bool boardDetected = false;
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
+  // Latest frame from the persistent image stream, analyzed by the AI loop.
+  CameraImage? _latestAiFrame;
+  bool _aiFrameStreamActive = false;
 
   /// Override to customize camera setup behavior.
   CameraSetupConfig get cameraSetupConfig => const CameraSetupConfig();
@@ -71,13 +76,22 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// Whether the play/ready button should be enabled.
   bool get canPlay {
     if (!permissionsGranted || !cameraReady) return false;
-    if (aiModelLoaded && !boardDetected) return false;
+    if (cameraSetupConfig.enableAiDetection && !kIsWeb) {
+      // AI scoring is a core feature — never let a match start without a
+      // loaded model AND a detected board. Before this, a failed model load
+      // silently skipped the AI gate and the player could queue into a match
+      // whose AI then had to cold-load (or was already broken).
+      if (!aiModelLoaded || !boardDetected) return false;
+    }
     return true;
   }
 
   /// Label for the play/ready button based on current state.
   String getPlayButtonLabel(AppLocalizations l10n) {
     if (!permissionsGranted || !cameraReady) return l10n.cameraRequiredButton;
+    if (cameraSetupConfig.enableAiDetection && !kIsWeb && !aiModelLoaded) {
+      return l10n.loadingAi.toUpperCase();
+    }
     if (aiModelLoaded && !boardDetected) {
       return aiHint != null ? aiHint!.toUpperCase() : l10n.scanningButton;
     }
@@ -95,10 +109,37 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// Call from dispose to clean up resources.
   void disposeCamera() {
     _aiCapturing = false;
+    _stopAiFrameStream();
     _nativeInference?.dispose();
     _nativeInference = null;
-    cameraController?.dispose();
+    final controller = cameraController;
+    cameraController = null;
+    if (controller != null) {
+      // Dispose only after any in-flight AI analysis finishes: disposing a
+      // controller that is still being torn away from (stream detach racing
+      // an analysis) can wedge the camera plugin. Fire-and-forget since
+      // dispose() can't await; the next screen's camera open retries "in use".
+      _disposeControllerWhenAiIdle(controller);
+    }
     OrientationUtils.portraitOnly();
+  }
+
+  /// Wait (bounded) for an in-flight AI analysis to finish before releasing
+  /// the camera.
+  Future<void> _waitForAiIdle() async {
+    final sw = Stopwatch()..start();
+    while (_aiAnalyzing && sw.elapsed < const Duration(seconds: 5)) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
+  Future<void> _disposeControllerWhenAiIdle(CameraController controller) async {
+    await _waitForAiIdle();
+    try {
+      await controller.dispose().timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('[CameraSetup] deferred controller dispose failed: $e');
+    }
   }
 
   /// Handle app lifecycle changes for AI capture.
@@ -106,6 +147,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       _aiCapturing = false;
+      _stopAiFrameStream();
     } else if (state == AppLifecycleState.resumed) {
       if (aiModelLoaded && cameraReady) {
         _startAiCapture();
@@ -196,13 +238,50 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       );
       cameraLensDirection = selectedCamera.lensDirection;
 
-      cameraController = CameraController(
-        selectedCamera,
-        ResolutionPreset.high,
-        enableAudio: false,
-      );
-
-      await cameraController!.initialize();
+      // Initialize with retries + a per-attempt timeout. The camera can still
+      // be held by the screen we navigated from (its dispose() releases the
+      // device asynchronously, up to ~1s later — same window handled by
+      // CameraFrameService._openCamera), and on some devices initialize() can
+      // hang outright instead of failing. Without this, a transient
+      // "camera in use" left the user stuck on the spinner with no way out.
+      const maxAttempts = 5;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!mounted) return;
+        cameraController = CameraController(
+          selectedCamera,
+          ResolutionPreset.high,
+          enableAudio: false,
+          // Same stream format as the in-game pipeline (CameraFrameService):
+          // the AI loop reads raw frames off the image stream.
+          imageFormatGroup: Platform.isAndroid
+              ? ImageFormatGroup.yuv420
+              : ImageFormatGroup.bgra8888,
+        );
+        try {
+          await cameraController!
+              .initialize()
+              .timeout(const Duration(seconds: 10));
+          break;
+        } catch (e) {
+          final failed = cameraController;
+          cameraController = null;
+          try {
+            await failed?.dispose().timeout(const Duration(seconds: 2));
+          } catch (_) {}
+          if (attempt == maxAttempts - 1) rethrow;
+          debugPrint('[CameraSetup] init failed '
+              '(attempt ${attempt + 1}/$maxAttempts), retrying in 400ms: $e');
+          await Future.delayed(const Duration(milliseconds: 400));
+        }
+      }
+      if (!mounted) {
+        final orphan = cameraController;
+        cameraController = null;
+        try {
+          await orphan?.dispose();
+        } catch (_) {}
+        return;
+      }
 
       try {
         await cameraController!.setFlashMode(FlashMode.off);
@@ -263,6 +342,12 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     final goingFront = cameraLensDirection != CameraLensDirection.front;
     HapticService.lightImpact();
     await StorageService.saveUseFrontCamera(goingFront);
+    // Pause the AI loop, detach the frame stream and wait out any in-flight
+    // analysis before releasing the lens — disposing a controller that is
+    // still being used can wedge the camera plugin. initializeCamera()
+    // restarts the capture loop (and stream) once the new lens is up.
+    _aiCapturing = false;
+    _stopAiFrameStream();
     // Release the current lens before opening the other one — the camera
     // device can't be held twice. initializeCamera() re-reads the saved
     // preference to pick the new lens.
@@ -275,7 +360,12 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         aiHint = null;
       });
     }
-    await old?.dispose();
+    await _waitForAiIdle();
+    try {
+      await old?.dispose().timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('[CameraSetup] dispose during lens flip failed: $e');
+    }
     if (!mounted) return;
     await initializeCamera();
   }
@@ -283,15 +373,29 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   // --- AI Detection ---
 
   Future<void> _initAiDetection() async {
-    try {
-      _nativeInference = NativeInference();
-      await _nativeInference!.loadModel();
-      if (mounted && _nativeInference!.isLoaded) {
-        setState(() => aiModelLoaded = true);
-        _startAiCapture();
+    // The play gate requires a loaded model (AI is a core feature), so a
+    // failed load can't just give up — keep retrying with backoff while the
+    // screen is up. Each native call is time-bounded (NativeInference
+    // timeouts), so one wedged attempt can't hang this loop.
+    var attempt = 0;
+    while (mounted && !aiModelLoaded) {
+      try {
+        _nativeInference?.dispose();
+        _nativeInference = NativeInference();
+        await _nativeInference!.loadModel();
+        if (!mounted) return;
+        if (_nativeInference!.isLoaded) {
+          setState(() => aiModelLoaded = true);
+          _startAiCapture();
+          return;
+        }
+      } catch (e) {
+        debugPrint(
+            '[CameraSetup] AI detection init failed (attempt ${attempt + 1}): $e');
       }
-    } catch (e) {
-      debugPrint('[CameraSetup] AI detection init failed: $e');
+      attempt++;
+      await Future.delayed(
+          Duration(milliseconds: (600 * attempt).clamp(600, 5000)));
     }
   }
 
@@ -301,9 +405,49 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     _runAiCaptureLoop();
   }
 
+  /// Keep the latest camera frame cached for the AI loop. The persistent
+  /// image stream replaces the old silentCapture start/stop churn (2×/s),
+  /// which both burned CPU for nothing (YUV→RGB pixel loop in Dart + JPEG
+  /// encode + file write + native JPEG decode per capture) and could wedge
+  /// the camera plugin when a dispose raced an in-flight stream toggle.
+  void _startAiFrameStream() {
+    final controller = cameraController;
+    if (_aiFrameStreamActive ||
+        controller == null ||
+        !controller.value.isInitialized ||
+        controller.value.isStreamingImages) {
+      return;
+    }
+    try {
+      controller.startImageStream((image) => _latestAiFrame = image);
+      _aiFrameStreamActive = true;
+    } catch (e) {
+      debugPrint('[CameraSetup] startImageStream failed: $e');
+    }
+  }
+
+  void _stopAiFrameStream() {
+    final controller = cameraController;
+    _latestAiFrame = null;
+    if (!_aiFrameStreamActive) return;
+    _aiFrameStreamActive = false;
+    try {
+      if (controller != null &&
+          controller.value.isInitialized &&
+          controller.value.isStreamingImages) {
+        controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('[CameraSetup] stopImageStream failed: $e');
+    }
+  }
+
   Future<void> _runAiCaptureLoop() async {
     while (_aiCapturing && mounted && aiModelLoaded) {
       if (cameraReady && cameraController != null) {
+        // (Re-)attach the frame stream — idempotent, and needed both when the
+        // camera becomes ready after the model loaded and after a lens flip.
+        _startAiFrameStream();
         await _runAiCapture();
       }
       if (!_aiCapturing || !mounted) break;
@@ -315,25 +459,50 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
+  /// Analyze a raw camera frame through the same native path the in-game
+  /// scorer uses — no JPEG/file round-trip. Android sends the YUV planes
+  /// (rotation 0, matching the old unrotated JPEG path); iOS sends the BGRA
+  /// bytes and native does the channel swap on its background queue.
+  Future<ScoringResult> _analyzeSetupFrame(CameraImage frame) {
+    if (Platform.isAndroid) {
+      return _nativeInference!.analyzeYuv(
+        yPlane: frame.planes[0].bytes,
+        uPlane: frame.planes[1].bytes,
+        vPlane: frame.planes[2].bytes,
+        width: frame.width,
+        height: frame.height,
+        yRowStride: frame.planes[0].bytesPerRow,
+        uvRowStride: frame.planes[1].bytesPerRow,
+        uvPixelStride: frame.planes[1].bytesPerPixel ?? 1,
+        rotation: 0,
+      );
+    }
+    final plane = frame.planes[0];
+    final w = frame.width;
+    final h = frame.height;
+    final stride = plane.bytesPerRow;
+    var bgra = plane.bytes;
+    if (stride != w * 4) {
+      // Strip row padding — native expects tightly packed rows.
+      final tight = Uint8List(w * h * 4);
+      final rowBytes = w * 4;
+      for (int y = 0; y < h; y++) {
+        tight.setRange(y * rowBytes, y * rowBytes + rowBytes, bgra, y * stride);
+      }
+      bgra = tight;
+    }
+    return _nativeInference!.analyzeRgba(bgra, w, h, isBgra: true);
+  }
+
   Future<void> _runAiCapture() async {
     final l10n = AppLocalizations.of(context);
     if (_aiAnalyzing) return;
     if (_nativeInference == null || !aiModelLoaded) return;
-    if (cameraController == null ||
-        !cameraController!.value.isInitialized) {
-      return;
-    }
+    final frame = _latestAiFrame;
+    if (frame == null) return;
     _aiAnalyzing = true;
     try {
-      final imagePath = await silentCapture(cameraController!);
-      if (imagePath == null || !mounted) {
-        if (imagePath != null) {
-          try { await File(imagePath).delete(); } catch (_) {}
-        }
-        return;
-      }
-      final result = await _nativeInference!.analyzeFile(imagePath);
-      try { await File(imagePath).delete(); } catch (_) {}
+      final result = await _analyzeSetupFrame(frame);
       if (!mounted) return;
       final calibs = result.calibrationPoints;
       String? hint;
@@ -759,8 +928,24 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
 
   /// Save zoom and dispose camera before navigating away.
   Future<void> prepareForNavigation() async {
+    // Stop the AI loop and detach the frame stream BEFORE touching the
+    // controller: disposing while the stream is being toggled can wedge the
+    // camera plugin — the dispose below then never returns and the user is
+    // stuck on the setup screen with a dead preview (spinner).
+    _aiCapturing = false;
+    _stopAiFrameStream();
     await StorageService.saveCameraZoom(currentZoom);
-    await cameraController?.dispose();
+    await _waitForAiIdle();
+    final controller = cameraController;
     cameraController = null;
+    if (controller != null) {
+      try {
+        await controller.dispose().timeout(const Duration(seconds: 5));
+      } catch (e) {
+        // Proceed with navigation anyway — the next screen's camera open
+        // retries while the device finishes releasing.
+        debugPrint('[CameraSetup] dispose before navigation failed: $e');
+      }
+    }
   }
 }

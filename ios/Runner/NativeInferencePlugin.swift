@@ -23,9 +23,17 @@ class NativeInferencePlugin: NSObject {
     // pointers to it as UnsafeMutablePointer<TfLiteDelegate>, not OpaquePointer.
     private var delegate: UnsafeMutablePointer<TfLiteDelegate>?
     private var delegateKind: DelegateKind = .cpu
-    private let inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite", qos: .userInitiated)
+    // var (not let): rebuildEngine swaps in a fresh queue when the current one
+    // is wedged inside a hung CoreML/Metal call.
+    private var inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite", qos: .userInitiated)
+    private var queueSeq = 0
+    // Set by rebuildEngine: after abandoning a wedged NE/GPU engine, rebuild
+    // CPU-only so the next load doesn't touch the stuck driver again.
+    private var forceCpu = false
     private let modelInputSize = 1024
     private var isBusy = false
+    // Name (e.g. "t225") of the currently loaded model; nil before first load.
+    private var loadedModelName: String?
 
     // MARK: - Reusable preprocessing buffers
     // Sized lazily on first frame, reused after. Camera resolution is fixed
@@ -42,8 +50,11 @@ class NativeInferencePlugin: NSObject {
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "loadModel":
+            // Optional {"modelName": "t225"} — which bundled model to load.
+            // Omitted → keep whatever is loaded, or default preference order.
+            let modelName = (call.arguments as? [String: Any])?["modelName"] as? String
             inferenceQueue.async { [weak self] in
-                self?.loadModel(result: result)
+                self?.loadModel(modelName: modelName, result: result)
             }
         case "analyze":
             guard let args = call.arguments as? [String: Any],
@@ -81,6 +92,28 @@ class NativeInferencePlugin: NSObject {
                 self?.analyzeFile(path: path, result: result)
                 self?.isBusy = false
             }
+        case "thermalStatus":
+            // ProcessInfo.ThermalState: 0 nominal, 1 fair, 2 serious, 3 critical.
+            // Answered inline on the platform thread — never routed through
+            // inferenceQueue, so it stays responsive even if inference is wedged.
+            result(ProcessInfo.processInfo.thermalState.rawValue)
+        case "rebuildEngine":
+            // In-process equivalent of the app restart users discovered as the
+            // manual fix for a frozen AI: abandon the (possibly wedged) queue
+            // and interpreter, and let the next loadModel rebuild fresh ones,
+            // CPU-only. The old interpreter/model/delegate are deliberately
+            // LEAKED, never deleted — deleting objects a stuck invoke may
+            // still be using crashes. Answered inline on the platform thread.
+            print("[NativeInference-iOS] rebuildEngine: abandoning possibly-wedged engine, next load is CPU-only")
+            queueSeq += 1
+            inferenceQueue = DispatchQueue(label: "com.dartrivals.tflite.\(queueSeq)", qos: .userInitiated)
+            interpreter = nil
+            model = nil
+            delegate = nil
+            delegateKind = .cpu
+            isBusy = false
+            forceCpu = true
+            result(true)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -88,21 +121,34 @@ class NativeInferencePlugin: NSObject {
 
     // MARK: - Model Loading
 
-    private func loadModel(result: @escaping FlutterResult) {
-        // Idempotent: this plugin is a singleton retained for the app's lifetime
-        // and the bundled model never changes, so an interpreter built earlier
-        // (e.g. by the camera-setup screen before queueing) is still valid. The
-        // app loads a fresh AutoScoringService per match, which used to rebuild
-        // the interpreter every time — re-running the multi-second CoreML
-        // delegate compilation on the match's "loading AI" screen (and leaking
-        // the previous interpreter/model/delegate). Reuse it instead so only the
+    private func loadModel(modelName: String?, result: @escaping FlutterResult) {
+        // Idempotent for the SAME model: this plugin is a singleton retained for
+        // the app's lifetime, so an interpreter built earlier (e.g. by the
+        // camera-setup screen before queueing) is still valid. The app loads a
+        // fresh AutoScoringService per match, which used to rebuild the
+        // interpreter every time — re-running the multi-second CoreML delegate
+        // compilation on the match's "loading AI" screen (and leaking the
+        // previous interpreter/model/delegate). Reuse it instead so only the
         // first load in a session pays the cost.
+        //
+        // A DIFFERENT modelName forces a rebuild (adaptive model switch): tear
+        // down the old interpreter/model/delegate first. The switch is
+        // serialized on inferenceQueue behind any in-flight analyze, so nothing
+        // is deleted while in use.
         if interpreter != nil {
-            print("[NativeInference-iOS] model already loaded (delegate=\(delegateKind)) — reusing")
-            result(true)
-            return
+            if modelName == nil || modelName == loadedModelName {
+                print("[NativeInference-iOS] model \(loadedModelName ?? "?") already loaded (delegate=\(delegateKind)) — reusing")
+                result(true)
+                return
+            }
+            print("[NativeInference-iOS] switching model \(loadedModelName ?? "?") → \(modelName!)")
+            TfLiteInterpreterDelete(interpreter)
+            interpreter = nil
+            TfLiteModelDelete(model)
+            model = nil
+            deleteDelegateIfAny()
         }
-        guard let modelPath = findModelPath() else {
+        guard let modelPath = findModelPath(preferred: modelName) else {
             result(FlutterError(code: "MODEL_NOT_FOUND", message: "t223.tflite/t225.tflite not found in bundle", details: nil))
             return
         }
@@ -120,7 +166,11 @@ class NativeInferencePlugin: NSObject {
 
         // Try CoreML first (Neural Engine on A12+ → fastest path).
         // Falls back to Metal (GPU), then CPU 4 threads.
-        if let coreml = createCoreMLDelegate() {
+        // After a rebuildEngine (wedged driver) we stay CPU-only — creating a
+        // new delegate on a stuck driver can hang the fresh queue too.
+        if forceCpu {
+            print("[NativeInference-iOS] forceCpu after rebuild — CPU 4 threads")
+        } else if let coreml = createCoreMLDelegate() {
             TfLiteInterpreterOptionsAddDelegate(options, coreml)
             delegate = coreml
             delegateKind = .coreml
@@ -152,7 +202,8 @@ class NativeInferencePlugin: NSObject {
             return
         }
 
-        print("[NativeInference-iOS] Model loaded (delegate=\(delegateKind))")
+        loadedModelName = modelName ?? defaultModelOrder.first(where: { modelPath.hasSuffix("\($0).tflite") })
+        print("[NativeInference-iOS] Model \(loadedModelName ?? "?") loaded (delegate=\(delegateKind))")
         result(true)
     }
 
@@ -176,7 +227,10 @@ class NativeInferencePlugin: NSObject {
         // at link time. We replicate the documented defaults inline.
         var opts = TFLGpuDelegateOptions(
             allow_precision_loss: true,                      // FP16 (matches Android GPU options)
-            wait_type: TFLGpuDelegateWaitTypeActive,         // lowest latency
+            // Passive: CPU sleeps on a semaphore while the GPU runs, instead of
+            // spin-waiting a core at 100% for the whole inference (Active).
+            // Costs ~1-2ms latency per inference, saves an entire hot CPU core.
+            wait_type: TFLGpuDelegateWaitTypePassive,
             enable_quantization: true                         // header default
         )
         return TFLGpuDelegateCreate(&opts)
@@ -193,10 +247,17 @@ class NativeInferencePlugin: NSObject {
         delegateKind = .cpu
     }
 
-    private func findModelPath() -> String? {
+    // Small model first: matches DartsMind's MODEL_SMALLER-by-default strategy.
+    private let defaultModelOrder = ["t225", "t223"]
+
+    private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/
-        // Prefer t223; fall back to t225 if absent.
-        for name in ["t223", "t225"] {
+        // Try the requested model first, then the default order as fallback.
+        var order = defaultModelOrder
+        if let p = preferred {
+            order = [p] + order.filter { $0 != p }
+        }
+        for name in order {
             for dir in [
                 "Frameworks/App.framework/flutter_assets/assets/models/\(name)",
                 "flutter_assets/assets/models/\(name)",

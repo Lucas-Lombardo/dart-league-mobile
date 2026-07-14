@@ -31,6 +31,9 @@ class CameraFrameService {
 
   // Cache the latest frame for AI scoring capture
   CameraImage? _latestFrame;
+
+  // Whether the AI capture loop currently wants frames (see [setAiActive]).
+  bool _aiActive = true;
   int? _sensorOrientation;
   bool _firstPushLogged = false;
   DeviceOrientation? _lastLoggedOrientation;
@@ -691,7 +694,34 @@ class CameraFrameService {
   /// Resume the camera (e.g. when app comes back to foreground).
   void resume() {
     if (_controller != null && _controller!.value.isInitialized && !_isStreaming && !_disposed) {
-      _startImageStream();
+      // Don't resurrect a stream that [setAiActive] deliberately stopped.
+      if (_aiActive || _agoraEngine != null) _startImageStream();
+    }
+  }
+
+  /// Gate the image stream on AI activity — DartsMind never burns pixel work
+  /// while detection is off, and neither should we. When the AI capture loop
+  /// stops (score confirmation/edit, opponent's turn, AI disabled) and no
+  /// Agora engine is attached, the image stream is stopped entirely: the
+  /// per-frame YUV marshaling into Dart (~40MB/s of buffer copies at 720p/30)
+  /// is the biggest CONSTANT cost of a match, running even when nothing
+  /// consumes the frames. The camera preview widget is unaffected.
+  ///
+  /// In online matches (Agora attached) this is a stream no-op — the opponent
+  /// watches our live video between turns — but the flag is still recorded so
+  /// [resume] behaves consistently.
+  void setAiActive(bool active) {
+    _aiActive = active;
+    if (_disposed) return;
+    if (active) {
+      if (_controller != null &&
+          _controller!.value.isInitialized &&
+          !_isStreaming) {
+        _startImageStream();
+      }
+    } else if (_agoraEngine == null) {
+      _stopImageStream();
+      _latestFrame = null;
     }
   }
 

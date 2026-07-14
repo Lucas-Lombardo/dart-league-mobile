@@ -12,6 +12,7 @@ import 'dart_detection_service_io.dart'
 
 import 'dart_scoring_service.dart';
 import 'dart_detection_types.dart';
+import 'model_selector.dart';
 export 'dart_detection_types.dart';
 
 // ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ class DartDetectionService {
     if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(
-        'assets/models/t223.tflite',
+        ModelSelector.currentAsset,
         options: cpuOptions,
       );
       debugPrint('[DartDetection] Model loaded on web with CPU (4 threads)');

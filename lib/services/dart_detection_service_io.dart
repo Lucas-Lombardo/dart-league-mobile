@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
+import 'model_selector.dart';
+
 /// DartsMind defaults to CPU with 4 threads (Detector.java line 149:
 /// actualDetectorDevice = DetectorDevice.CPU). GPU is only attempted
 /// on Android when explicitly requested, and falls back to CPU on failure.
@@ -16,7 +18,7 @@ Future<Interpreter> loadModelNative({bool cpuOnly = false}) async {
       final gpuOptions = InterpreterOptions()
         ..addDelegate(GpuDelegateV2());
       interpreter = await Interpreter.fromAsset(
-        'assets/models/t223.tflite',
+        ModelSelector.currentAsset,
         options: gpuOptions,
       );
       print('[DartDetection] Model loaded with GPU delegate');
@@ -30,7 +32,7 @@ Future<Interpreter> loadModelNative({bool cpuOnly = false}) async {
   if (interpreter == null) {
     final cpuOptions = InterpreterOptions()..threads = 4;
     interpreter = await Interpreter.fromAsset(
-      'assets/models/t223.tflite',
+      ModelSelector.currentAsset,
       options: cpuOptions,
     );
     print('[DartDetection] Model loaded on CPU with 4 threads');

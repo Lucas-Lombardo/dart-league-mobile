@@ -42,6 +42,12 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var context: Context
     private lateinit var flutterAssets: FlutterPlugin.FlutterAssets
     private var interpreter: Interpreter? = null
+    // Reused across model switches like DartsMind's Detector.gpuDelegate —
+    // creating a fresh GpuDelegate per load leaks GL contexts.
+    private var gpuDelegate: GpuDelegate? = null
+    // File path of the currently loaded model; a different path forces a
+    // rebuild (adaptive t225 <-> t223 switch).
+    private var loadedModelPath: String? = null
 
     // Per-frame timing logs fire every frame and flood logcat. Off by default;
     // flip to true only to profile the native preprocess/inference breakdown.
@@ -70,9 +76,53 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // MethodChannel.Result must be called on the platform thread.
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // DartsMind-style: dedicated executor for inference (like dvExecutor)
-    private val dvExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "dart-tflite-inference").apply { priority = Thread.MAX_PRIORITY }
+    // DartsMind-style: dedicated executor for inference (like dvExecutor).
+    // var (not val): rebuildEngine swaps in a fresh executor when the current
+    // thread is wedged inside a hung GPU-driver call.
+    private var dvExecutor: ExecutorService = newInferenceExecutor()
+
+    // Set by rebuildEngine: after abandoning a wedged GPU engine, the next
+    // load builds the interpreter CPU-only so the stuck driver isn't touched
+    // again for the rest of the process lifetime.
+    @Volatile
+    private var forceCpu = false
+
+    private fun newInferenceExecutor(): ExecutorService =
+        Executors.newSingleThreadExecutor { r ->
+            Thread(r, "dart-tflite-inference").apply { priority = Thread.MAX_PRIORITY }
+        }
+
+    /**
+     * In-process equivalent of the app restart users discovered as the manual
+     * fix for a frozen AI. A hung GPU call (thermal throttling, driver bug)
+     * leaves the inference thread blocked forever; only killing the process
+     * used to recover. Instead: abandon the wedged executor + interpreter and
+     * let the next loadModel build fresh ones.
+     *
+     * The old interpreter is deliberately LEAKED, never close()d — closing an
+     * interpreter that may still be executing on the wedged thread crashes.
+     * Tensor/transfer buffers are dropped too so new runs never share memory
+     * with the abandoned run (which only ever wedges inside interp.run, after
+     * it is done with the bitmaps). Called inline on the platform thread.
+     */
+    private fun abandonEngine() {
+        android.util.Log.w(
+            "NativeInference",
+            "abandonEngine: dropping possibly-wedged interpreter/executor, next load is CPU-only"
+        )
+        try { dvExecutor.shutdownNow() } catch (_: Throwable) {}
+        dvExecutor = newInferenceExecutor()
+        interpreter = null
+        // Deliberately leaked (like the interpreter) — a wedged GPU driver may
+        // still hold it, and the post-rebuild path is CPU-only anyway.
+        gpuDelegate = null
+        loadedModelPath = null
+        detectInProgress = false
+        inputBuffer = null
+        outputBuffer = null
+        outputXfer[0] = null
+        outputXfer[1] = null
+        forceCpu = true
     }
 
     @Volatile
@@ -108,6 +158,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         channel.setMethodCallHandler(null)
         interpreter?.close()
         interpreter = null
+        try { gpuDelegate?.close() } catch (_: Throwable) {}
+        gpuDelegate = null
+        loadedModelPath = null
         squareBitmap.recycle()
         rawBitmap?.recycle()
         rawBitmap = null
@@ -215,6 +268,27 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     }
                 }
             }
+            "thermalStatus" -> {
+                // PowerManager.THERMAL_STATUS_*: 0 NONE … 3 SEVERE … 6 SHUTDOWN.
+                // Answered inline on the platform thread — never routed through
+                // dvExecutor, so it stays responsive even if inference is wedged.
+                val status = if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    try {
+                        val pm = context.getSystemService(Context.POWER_SERVICE)
+                            as android.os.PowerManager
+                        pm.currentThermalStatus
+                    } catch (_: Throwable) {
+                        0
+                    }
+                } else 0
+                result.success(status)
+            }
+            "rebuildEngine" -> {
+                // Answered inline on the platform thread — the whole point is
+                // that it must work while dvExecutor is wedged.
+                abandonEngine()
+                result.success(true)
+            }
             else -> result.notImplemented()
         }
     }
@@ -246,11 +320,17 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // Match DartsMind's GpuDelegateFactory.Options exactly:
             //   precisionLossAllowed = true (enables FP16 for speed)
             //   inferencePreference = 0 (INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER)
-            try {
-                val gpuOptions = GpuDelegate.Options()
-                gpuOptions.setPrecisionLossAllowed(true)
-                gpuOptions.setInferencePreference(0) // FAST_SINGLE_ANSWER
-                val gpuDelegate = GpuDelegate(gpuOptions)
+            // Skipped after a rebuildEngine — creating a new GpuDelegate on a
+            // wedged driver can hang the fresh executor too.
+            if (forceCpu) {
+                android.util.Log.w("NativeInference", "forceCpu after rebuild — skipping GPU delegate")
+            } else try {
+                if (gpuDelegate == null) {
+                    val gpuOptions = GpuDelegate.Options()
+                    gpuOptions.setPrecisionLossAllowed(true)
+                    gpuOptions.setInferencePreference(0) // FAST_SINGLE_ANSWER
+                    gpuDelegate = GpuDelegate(gpuOptions)
+                }
                 val options = Interpreter.Options().addDelegate(gpuDelegate)
                 interp = Interpreter(modelBuffer, options)
                 android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
@@ -290,13 +370,22 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     /// Load model from a file path (used on Android where Dart extracts the
     /// asset to a temp file to avoid AssetManager path issues).
     private fun loadModelFromFile(path: String, result: MethodChannel.Result) {
-        // Idempotent — see loadModel(). Reuse an interpreter built earlier
-        // instead of rebuilding it per match (the Dart side always uses this
-        // file path on Android).
+        // Idempotent for the SAME path — see loadModel(). Reuse an interpreter
+        // built earlier instead of rebuilding it per match (the Dart side
+        // always uses this file path on Android). A DIFFERENT path forces a
+        // rebuild: this is the adaptive t225 <-> t223 model switch. It runs on
+        // dvExecutor, serialized behind any in-flight analyze, so the old
+        // interpreter is never closed while in use. The GpuDelegate is reused
+        // across switches (DartsMind: Detector.gpuDelegate).
         if (interpreter != null) {
-            android.util.Log.d("NativeInference", "Model already loaded — reusing")
-            mainHandler.post { result.success(true) }
-            return
+            if (path == loadedModelPath) {
+                android.util.Log.d("NativeInference", "Model already loaded — reusing")
+                mainHandler.post { result.success(true) }
+                return
+            }
+            android.util.Log.d("NativeInference", "Switching model $loadedModelPath → $path")
+            try { interpreter?.close() } catch (_: Throwable) {}
+            interpreter = null
         }
         try {
             val file = java.io.File(path)
@@ -309,11 +398,16 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             var interp: Interpreter? = null
 
             // DartsMind: try GPU first (updateTensorData$useGPU)
-            try {
-                val gpuOptions = GpuDelegate.Options()
-                gpuOptions.setPrecisionLossAllowed(true)
-                gpuOptions.setInferencePreference(0) // FAST_SINGLE_ANSWER
-                val gpuDelegate = GpuDelegate(gpuOptions)
+            // Skipped after a rebuildEngine — see loadModel().
+            if (forceCpu) {
+                android.util.Log.w("NativeInference", "forceCpu after rebuild — skipping GPU delegate")
+            } else try {
+                if (gpuDelegate == null) {
+                    val gpuOptions = GpuDelegate.Options()
+                    gpuOptions.setPrecisionLossAllowed(true)
+                    gpuOptions.setInferencePreference(0) // FAST_SINGLE_ANSWER
+                    gpuDelegate = GpuDelegate(gpuOptions)
+                }
                 val options = Interpreter.Options().addDelegate(gpuDelegate)
                 interp = Interpreter(modelBuffer, options)
                 android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
@@ -331,6 +425,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
 
             interpreter = interp
+            loadedModelPath = path
             prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
         } catch (t: Throwable) {

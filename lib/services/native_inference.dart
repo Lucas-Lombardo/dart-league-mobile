@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
+import 'model_selector.dart';
 
 /// Wraps the native iOS/Android TFLite inference plugin.
 ///
@@ -17,6 +19,18 @@ class NativeInference {
   /// Per-frame timing logs (channelRoundTrip/parse). Off by default — these
   /// fire every frame and flood the log. Flip on only to profile inference.
   static bool verboseTiming = false;
+
+  // Both native plugins run everything on ONE serial thread (dvExecutor on
+  // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —
+  // typical under thermal throttling — therefore blocks every later call on
+  // the channel, including the next match's loadModel, and the awaiting UI
+  // ("Chargement du score auto…") span forever. These bounds turn a native
+  // wedge into the normal failure path (retry / error frame) instead.
+  // Values are far above the normal case (inference ≤ ~1s; a cold load is a
+  // few seconds, but first-launch GPU shader compilation on some Android
+  // devices can legitimately take >10s — hence the more generous load bound).
+  static const Duration _loadTimeout = Duration(seconds: 15);
+  static const Duration _analyzeTimeout = Duration(seconds: 10);
 
   bool _loaded = false;
   bool get isLoaded => _loaded;
@@ -46,32 +60,125 @@ class NativeInference {
   /// Parser instance — reuses calibration cache across frames.
   final DartDetectionService _parser = DartDetectionService(useNativeDecode: false);
 
+  // ---- Wedge recovery ------------------------------------------------------
+  // A hung GPU/CoreML call leaves the single native inference thread blocked
+  // forever: the first analyze after the wedge times out, and every later one
+  // is rejected instantly with BUSY (the native in-progress flag never
+  // clears). Users discovered that killing and reopening the app fixes it —
+  // a fresh process gets a fresh thread + interpreter. rebuildEngine
+  // simulates that restart in-process: native abandons the wedged
+  // executor/interpreter (deliberate leak) and the model is reloaded on a
+  // fresh thread, CPU-only so the stuck GPU driver is not touched again.
+  // Slower inference, but the AI comes back mid-match on its own.
+  bool _sawAnalyzeTimeout = false;
+  int _failuresSinceTimeout = 0;
+  static const int _rebuildFailureThreshold = 3;
+  DateTime? _lastRebuildRequest;
+  static const Duration _rebuildMinInterval = Duration(seconds: 45);
+  bool _recovering = false;
+
+  void _noteAnalyzeSuccess() {
+    _sawAnalyzeTimeout = false;
+    _failuresSinceTimeout = 0;
+  }
+
+  void _noteAnalyzeFailure(Object e) {
+    final isTimeout = e is TimeoutException;
+    final isBusy = e is PlatformException && e.code == 'BUSY';
+    if (isTimeout) _sawAnalyzeTimeout = true;
+    // Only a timeout followed by more timeouts/BUSY (no success in between)
+    // is the wedge signature — isolated BUSY errors are normal contention.
+    if (!_sawAnalyzeTimeout || !(isTimeout || isBusy)) return;
+    _failuresSinceTimeout++;
+    if (_failuresSinceTimeout < _rebuildFailureThreshold) return;
+    _sawAnalyzeTimeout = false;
+    _failuresSinceTimeout = 0;
+    // Fire-and-forget: while the engine is rebuilt + reloaded the capture
+    // loop keeps getting fast error frames, then detections resume.
+    unawaited(_rebuildAndReload());
+  }
+
+  /// Ask native to abandon the wedged engine. Rate-limited so repeated
+  /// failures can't loop the rebuild.
+  Future<bool> _requestRebuild() async {
+    final now = DateTime.now();
+    if (_lastRebuildRequest != null &&
+        now.difference(_lastRebuildRequest!) < _rebuildMinInterval) {
+      return false;
+    }
+    _lastRebuildRequest = now;
+    debugPrint('[NativeInference] engine appears wedged — requesting rebuild '
+        '(in-process app-restart equivalent)');
+    try {
+      await _channel
+          .invokeMethod('rebuildEngine')
+          .timeout(const Duration(seconds: 5));
+      return true;
+    } catch (e) {
+      debugPrint('[NativeInference] rebuildEngine failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> _rebuildAndReload() async {
+    if (_recovering) return;
+    _recovering = true;
+    try {
+      if (!await _requestRebuild()) return;
+      _loaded = false;
+      await loadModel();
+      debugPrint('[NativeInference] engine rebuilt, model reloaded (CPU-only)');
+    } catch (e) {
+      debugPrint('[NativeInference] engine rebuild/reload failed: $e');
+    } finally {
+      _recovering = false;
+    }
+  }
+
   Future<void> loadModel() async {
     try {
+      // Adaptive model ladder (DartsMind changeAIModelIfNeed port): small
+      // model by default, big model on devices whose persisted profile is
+      // fast enough. Native reuses the interpreter when the model is
+      // unchanged and rebuilds when the selector picked a different one.
+      await ModelSelector.ensureInitialized();
+      final asset = ModelSelector.currentAsset;
       if (Platform.isAndroid) {
         // Android: extract model to temp file via rootBundle (always works),
         // then pass the file path to native. This bypasses all Android
         // AssetManager path resolution and compression issues.
-        final modelData = await rootBundle.load('assets/models/t223.tflite');
+        final modelData = await rootBundle.load(asset);
         final tempDir = await getTemporaryDirectory();
-        final modelFile = File('${tempDir.path}/t223.tflite');
+        final modelFile = File('${tempDir.path}/${asset.split('/').last}');
         if (!modelFile.existsSync()) {
           await modelFile.writeAsBytes(
             modelData.buffer.asUint8List(),
             flush: true,
           );
         }
-        final result = await _channel.invokeMethod('loadModelFile', modelFile.path);
+        final result = await _channel
+            .invokeMethod('loadModelFile', modelFile.path)
+            .timeout(_loadTimeout);
         _loaded = result == true;
       } else {
         // iOS: load from bundle assets directly (works fine)
-        final result = await _channel.invokeMethod('loadModel');
+        final result = await _channel
+            .invokeMethod('loadModel',
+                {'modelName': ModelSelector.currentModelName})
+            .timeout(_loadTimeout);
         _loaded = result == true;
       }
-      debugPrint('[NativeInference] loadModel: model=t223.tflite loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
+      if (_loaded) ModelSelector.markLoaded(asset);
+      debugPrint('[NativeInference] loadModel: model=$asset loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
     } catch (e) {
       debugPrint('[NativeInference] loadModel error: $e');
       _loaded = false;
+      if (e is TimeoutException) {
+        // The load is queued behind a wedged call on the native inference
+        // thread. Abandon that engine so the caller's retry loads a fresh
+        // (CPU-only) interpreter instead of queueing behind the wedge again.
+        await _requestRebuild();
+      }
       rethrow;
     }
   }
@@ -91,7 +198,8 @@ class NativeInference {
         'width': width,
         'height': height,
         'isBgra': isBgra,
-      });
+      }).timeout(_analyzeTimeout);
+      _noteAnalyzeSuccess();
       final channelMs = sw.elapsedMilliseconds;
 
       if (response == null) return _error('Null response from native');
@@ -115,6 +223,7 @@ class NativeInference {
       }
       return result;
     } catch (e) {
+      _noteAnalyzeFailure(e);
       debugPrint('[NativeInference] analyzeRgba error: $e');
       return _error('Native inference error: $e');
     }
@@ -148,7 +257,8 @@ class NativeInference {
         'uvRowStride': uvRowStride,
         'uvPixelStride': uvPixelStride,
         'rotation': rotation,
-      });
+      }).timeout(_analyzeTimeout);
+      _noteAnalyzeSuccess();
       final channelMs = sw.elapsedMilliseconds;
 
       if (response == null) return _error('Null response from native');
@@ -172,6 +282,7 @@ class NativeInference {
       }
       return result;
     } catch (e) {
+      _noteAnalyzeFailure(e);
       debugPrint('[NativeInference] analyzeYuv error: $e');
       return _error('Native YUV inference error: $e');
     }
@@ -183,7 +294,10 @@ class NativeInference {
     if (!_loaded) return _error('Model not loaded');
 
     try {
-      final response = await _channel.invokeMethod<Map>('analyzeFile', filePath);
+      final response = await _channel
+          .invokeMethod<Map>('analyzeFile', filePath)
+          .timeout(_analyzeTimeout);
+      _noteAnalyzeSuccess();
       if (response == null) return _error('Null response from native');
 
       final outputBytes = response['output'] as Uint8List;
@@ -199,8 +313,28 @@ class NativeInference {
         outputFloats, xScale, yScale, imageWidth, imageHeight,
       );
     } catch (e) {
+      _noteAnalyzeFailure(e);
       debugPrint('[NativeInference] analyzeFile error: $e');
       return _error('Native inference error: $e');
+    }
+  }
+
+  /// Normalized device thermal level: 0 = normal, 1 = elevated (device warm,
+  /// OS starting to throttle), 2 = severe (heavy throttling). Maps
+  /// PowerManager.THERMAL_STATUS_* (Android) and ProcessInfo.thermalState
+  /// (iOS), which happen to share the same cut-offs on their raw scales.
+  /// Natively answered on the platform thread (never the inference executor),
+  /// so it stays responsive even when inference is wedged. Returns 0 on any
+  /// error so callers never throttle by accident.
+  Future<int> thermalLevel() async {
+    try {
+      final raw = await _channel
+          .invokeMethod<int>('thermalStatus')
+          .timeout(const Duration(seconds: 2));
+      if (raw == null || raw <= 1) return 0;
+      return raw >= 3 ? 2 : 1;
+    } catch (_) {
+      return 0;
     }
   }
 

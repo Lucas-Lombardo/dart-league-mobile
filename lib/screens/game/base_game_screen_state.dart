@@ -123,6 +123,32 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Timer? _wakelockReassertTimer;
   static const Duration _wakelockReassertInterval = Duration(seconds: 3);
 
+  // ─── Auto-scoring loading watchdog ─────────────────────────────────────────
+  // autoScoringLoading drives a FULL-SCREEN overlay that replaces the game UI.
+  // Every path that sets it true relies on an async completion to clear it
+  // (model load, Agora reconnect, a game_state_sync that may never arrive on
+  // the rejoin path). If that completion wedges — e.g. the native inference
+  // thread is stuck on a hung GPU call, so the next loadModel never returns —
+  // the player is locked out of the whole match. This watchdog only drops the
+  // overlay: the model load / capture start keep running in the background and
+  // the AI still comes up whenever they complete (plus the per-turn self-heal
+  // retry in handleSharedStateChange).
+  Timer? _autoScoringLoadingWatchdog;
+  static const Duration _autoScoringLoadingMaxWait = Duration(seconds: 30);
+
+  /// (Re-)arm the deadline after which a still-true [autoScoringLoading] is
+  /// force-cleared. Call whenever autoScoringLoading is set to true.
+  void armAutoScoringLoadingWatchdog() {
+    _autoScoringLoadingWatchdog?.cancel();
+    _autoScoringLoadingWatchdog = Timer(_autoScoringLoadingMaxWait, () {
+      if (mounted && autoScoringLoading) {
+        debugPrint('[BaseGameScreen] auto-scoring loading watchdog fired — '
+            'unblocking game UI (AI init continues in background)');
+        setState(() => autoScoringLoading = false);
+      }
+    });
+  }
+
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
   @override
   void initState() {
@@ -155,6 +181,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     WidgetsBinding.instance.removeObserver(this);
     _wakelockReassertTimer?.cancel();
     _wakelockReassertTimer = null;
+    _autoScoringLoadingWatchdog?.cancel();
+    _autoScoringLoadingWatchdog = null;
     _remoteJoinedWatchdog?.cancel();
     _remoteJoinedWatchdog = null;
     disposeScreenSpecific();
@@ -238,7 +266,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           DartSoundService.playTurnFinished();
         }
       }
-      final justBecameMyTurn = game.isMyTurn && game.currentPlayerId != lastKnownCurrentPlayer;
+      // lastKnownCurrentPlayer == null means this is the FIRST run since the
+      // listener was attached — and it is attached after the multi-second
+      // Agora/camera init, so game_started and the join notifies were likely
+      // all missed. That first run is a baseline, never a turn change: without
+      // the null guard (same one the sound block above uses), a first run
+      // triggered by the score echo of the match's first dart reset the AI
+      // slots and re-armed the empty-board gate MID-VISIT — the dart stayed
+      // scored server-side while the UI asked to remove it. Match-start gate
+      // arming doesn't rely on this path: initAutoScoring arms it explicitly.
+      final justBecameMyTurn = game.isMyTurn &&
+          lastKnownCurrentPlayer != null &&
+          game.currentPlayerId != lastKnownCurrentPlayer;
       // New leg in a series (BO3 ranked / tournament): always clear the turn
       // slots and re-arm the empty-board gate, even when the same player
       // starts again (see _lastKnownLeg).
@@ -459,6 +498,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       autoScoringEnabled = true;
       autoScoringLoading = true;
     });
+    armAutoScoringLoadingWatchdog();
     final camService = cameraFrameService!;
     _captureFrameCallback = () => camService.captureFrame();
     _captureRgbaCallback = () => camService.captureRgba();
@@ -666,6 +706,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // flashed empty.
     if (mounted && autoScoringEnabled && AutoScoringService.isSupported && !kIsWeb) {
       setState(() => autoScoringLoading = true);
+      armAutoScoringLoadingWatchdog();
     }
     // Why: with deterministic UIDs we keep the opponent UID across reconnect
     // — but until the engine is rebuilt we want the AgoraVideoView to
@@ -1219,7 +1260,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Widget buildLoadingScreen() {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, _) async { if (didPop) return; final nav = Navigator.of(context); if (await onWillPop() && context.mounted) nav.pop(); },
+      // `mounted`, not `context.mounted`: `context` here is the State getter,
+      // which throws once the screen has unmounted.
+      onPopInvokedWithResult: (didPop, _) async { if (didPop) return; final nav = Navigator.of(context); if (await onWillPop() && mounted) nav.pop(); },
       child: Scaffold(
         backgroundColor: AppTheme.background,
         body: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [

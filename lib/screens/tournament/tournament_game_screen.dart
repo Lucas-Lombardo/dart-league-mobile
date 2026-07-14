@@ -125,6 +125,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     // Show loading spinner instead of the manual dartboard until the model loads.
     if (autoScoringEnabled && agoraEngine == null && !kIsWeb && AutoScoringService.isSupported) {
       setState(() => autoScoringLoading = true);
+      // If game_state_sync never arrives (or the reconnect wedges), the
+      // watchdog drops the blocking overlay instead of spinning forever.
+      armAutoScoringLoadingWatchdog();
       // game_state_sync may have already fired before the listener was attached.
       // If so, process the pending reconnect now instead of waiting for next notification.
       if (game.needsAgoraReconnect) {
@@ -229,16 +232,19 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     final winnerId = tGame.pendingData?['winnerId'] as String?;
     final isWinner = winnerId == auth.currentUser?.id;
     final parentNav = Navigator.of(context);
+    // The screen can unmount while this dialog is still up (leaving the match
+    // pops the route, but the dialog lives on the root overlay), and
+    // actionsBuilder re-runs on every dialog rebuild — so nothing below may
+    // touch the State's `context` after this point. Capture l10n now.
+    final l10n = AppLocalizations.of(context);
 
     showGameDialog(
       context,
       accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
       icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
-      title: isWinner ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
+      title: isWinner ? l10n.youAdvance : l10n.eliminated,
       content: Text(
-        isWinner
-            ? AppLocalizations.of(context).opponentLeftForfeitAdvance
-            : AppLocalizations.of(context).youLeftEliminated,
+        isWinner ? l10n.opponentLeftForfeitAdvance : l10n.youLeftEliminated,
         style: AppTheme.bodyLarge.copyWith(fontSize: 16),
         textAlign: TextAlign.center,
       ),
@@ -251,7 +257,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             parentNav.pushNamedAndRemoveUntil('/home', (route) => false);
           },
           style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
-          child: Text(AppLocalizations.of(context).returnToHome),
+          child: Text(l10n.returnToHome),
         ),
       ],
     ).then((_) => forfeitDialogShowing = false);

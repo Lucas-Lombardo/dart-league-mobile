@@ -171,6 +171,9 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
         return;
       }
       _cameraService = cameraService;
+      // Solo mode: stop the 30fps image stream whenever the AI loop is off —
+      // no Agora viewer needs the frames.
+      _autoScoringService?.onCaptureActiveChanged = cameraService.setAiActive;
 
       try {
         final minZoom = await cameraService.getMinZoomLevel();
