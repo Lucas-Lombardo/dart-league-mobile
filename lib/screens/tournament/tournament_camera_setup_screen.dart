@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/tournament_game_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
 import '../shared/camera_setup_mixin.dart';
+import 'tournament_game_screen.dart';
 import 'tournament_ready_screen.dart';
 
 class TournamentCameraSetupScreen extends StatefulWidget {
@@ -18,6 +22,11 @@ class TournamentCameraSetupScreen extends StatefulWidget {
   final int bestOf;
   final DateTime? inviteSentAt;
 
+  /// When set, this is a RESUME of a live leg (app killed mid-match): after
+  /// camera setup we go straight back into the game — the server re-syncs
+  /// state (and Agora tokens) when the socket rejoins the match room.
+  final String? rejoinGameMatchId;
+
   const TournamentCameraSetupScreen({
     super.key,
     required this.matchId,
@@ -30,6 +39,7 @@ class TournamentCameraSetupScreen extends StatefulWidget {
     required this.player2Id,
     required this.bestOf,
     this.inviteSentAt,
+    this.rejoinGameMatchId,
   });
 
   @override
@@ -65,6 +75,40 @@ class _TournamentCameraSetupScreenState
     HapticService.mediumImpact();
     await prepareForNavigation();
     if (!mounted) return;
+
+    // Resume path: the leg is already running — skip the ready screen and
+    // re-enter the game. State + Agora tokens arrive via game_state_sync when
+    // the socket rejoins the match room.
+    final rejoinGameId = widget.rejoinGameMatchId;
+    if (rejoinGameId != null) {
+      final user = context.read<AuthProvider>().currentUser;
+      if (user == null) return;
+      final tournamentGame = context.read<TournamentGameProvider>();
+      tournamentGame.ensureListenersSetup();
+      tournamentGame.initTournamentGame(
+        tournamentMatchId: widget.matchId,
+        gameMatchId: rejoinGameId,
+        tournamentId: widget.tournamentId,
+        myUserId: user.id,
+        opponentUserId: widget.opponentId,
+        bestOf: widget.bestOf,
+        roundName: widget.roundName,
+      );
+      AppNavigator.replaceWith(
+        context,
+        TournamentGameScreen(
+          tournamentMatchId: widget.matchId,
+          gameMatchId: rejoinGameId,
+          tournamentId: widget.tournamentId,
+          tournamentName: widget.tournamentName,
+          roundName: widget.roundName,
+          opponentUsername: widget.opponentUsername,
+          opponentId: widget.opponentId,
+          bestOf: widget.bestOf,
+        ),
+      );
+      return;
+    }
 
     AppNavigator.replaceWith(
       context,

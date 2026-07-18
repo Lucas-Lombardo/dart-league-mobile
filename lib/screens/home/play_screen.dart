@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../providers/match_invite_provider.dart';
+import '../../providers/tournament_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
@@ -39,6 +40,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   bool _loadingMatches = false;
   Map<String, dynamic>? _activeMatch;
   TournamentMatch? _pendingTournamentMatch;
+  TournamentMatch? _activeTournamentLeg;
+  TournamentProvider? _tournamentProvider;
   bool _inActiveTournament = false;
   String? _activeTournamentName;
 
@@ -64,9 +67,31 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkActiveTournamentStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshSubscription();
+      // Live tournament state: the provider is refreshed by its 30s poll,
+      // socket events and push taps — following it here means the Join /
+      // Resume button flips while the user idles on this tab.
+      if (!mounted) return;
+      _tournamentProvider = context.read<TournamentProvider>();
+      _tournamentProvider!.addListener(_syncFromTournamentProvider);
+      _syncFromTournamentProvider();
     });
 
     widget.refreshNotifier?.addListener(_onRefresh);
+  }
+
+  void _syncFromTournamentProvider() {
+    final tp = _tournamentProvider;
+    if (tp == null || !mounted) return;
+    final pending = tp.pendingMatches.isNotEmpty ? tp.pendingMatches.first : null;
+    final activeLeg = (tp.activeMatch?.isInProgress ?? false) ? tp.activeMatch : null;
+    if (pending?.id == _pendingTournamentMatch?.id &&
+        activeLeg?.id == _activeTournamentLeg?.id) {
+      return;
+    }
+    setState(() {
+      _pendingTournamentMatch = pending;
+      _activeTournamentLeg = activeLeg;
+    });
   }
 
   void _onRefresh() {
@@ -190,12 +215,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 
   Future<void> _checkPendingTournamentMatch() async {
     try {
-      final matches = await TournamentService.getPendingMatches();
-      if (mounted) {
-        setState(() {
-          _pendingTournamentMatch = matches.isNotEmpty ? matches.first : null;
-        });
-      }
+      // Route through the provider: its listener sync (above) updates the
+      // local fields, and every other refresher (poll, sockets, push taps)
+      // flows through the same state.
+      final tp = context.read<TournamentProvider>();
+      await Future.wait([tp.loadPendingMatches(), tp.loadActiveMatch()]);
     } catch (e) {
       // Failed to check for pending tournament match
     }
@@ -213,6 +237,42 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     } catch (e) {
       // Failed to check tournament status
     }
+  }
+
+  // Re-enter a live tournament leg after an app kill: camera first, then the
+  // game screen re-joins the match room and the server re-syncs state.
+  void _resumeTournamentLeg() {
+    final match = _activeTournamentLeg;
+    if (match == null || match.lastGameId == null) return;
+
+    HapticService.mediumImpact();
+    final auth = context.read<AuthProvider>();
+    final currentUserId = auth.currentUser?.id;
+    final isPlayer1 = currentUserId == match.player1Id;
+    final opponentUsername = isPlayer1
+        ? (match.player2Username ?? 'Opponent')
+        : (match.player1Username ?? 'Opponent');
+    final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TournamentCameraSetupScreen(
+          matchId: match.id,
+          tournamentId: match.tournamentId,
+          tournamentName: match.tournamentName ?? 'Tournament',
+          roundName: match.roundName,
+          opponentUsername: opponentUsername,
+          opponentId: opponentId,
+          player1Id: match.player1Id ?? '',
+          player2Id: match.player2Id ?? '',
+          bestOf: match.bestOf,
+          inviteSentAt: match.inviteSentAt,
+          rejoinGameMatchId: match.lastGameId,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) _checkPendingTournamentMatch();
+    });
   }
 
   Future<void> _rejoinMatch() async {
@@ -571,6 +631,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   @override
   void dispose() {
     widget.refreshNotifier?.removeListener(_onRefresh);
+    _tournamentProvider?.removeListener(_syncFromTournamentProvider);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();
@@ -674,6 +735,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         await Future.wait([
           _loadRecentMatches(),
           _checkActiveMatch(),
+          _checkPendingTournamentMatch(),
+          _checkActiveTournamentStatus(),
         ]);
       },
       child: SingleChildScrollView(
@@ -961,6 +1024,87 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               _buildUnrankedFreeTierHint(),
             ],
           ]
+          else if (_activeTournamentLeg?.lastGameId != null)
+            // A tournament leg is LIVE for this player (app was killed
+            // mid-match) — resuming outranks everything: the disconnect grace
+            // timer is running server-side.
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: _resumeTournamentLeg,
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Icon(
+                          Icons.emoji_events,
+                          size: 150,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.replay_rounded,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              l10n.resumeTournamentMatch,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${_activeTournamentLeg!.roundNameDisplay}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           else if (_pendingTournamentMatch != null)
             // Join Tournament Match button (highest priority after placement)
             ScaleTransition(

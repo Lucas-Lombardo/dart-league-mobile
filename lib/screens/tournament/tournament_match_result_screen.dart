@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/tournament_game_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/tournament_round.dart';
 import 'tournament_end_screen.dart';
@@ -188,6 +190,18 @@ class TournamentMatchResultScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         HapticService.mediumImpact();
+                        // Winners of a non-final round are QUALIFIED, not
+                        // placed — the medal ceremony (TournamentEndScreen)
+                        // used to show them "3rd/4th place". They go home and
+                        // wait for the next-round invite instead.
+                        if (didWin && roundName != 'final') {
+                          final provider = context.read<TournamentGameProvider>();
+                          AppNavigator.toHomeClearing(context);
+                          try {
+                            provider.reset();
+                          } catch (_) {}
+                          return;
+                        }
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute(
                             builder: (_) => TournamentEndScreen(

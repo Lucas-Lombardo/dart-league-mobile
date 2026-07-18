@@ -827,6 +827,30 @@ abstract class AppLocalizations {
   String get updateAvailableBody;
   String get updateNow;
 
+  // Tournament registration gate + match-day dialogs
+  String get ok;
+  String get updateRequiredTitle;
+  String get tournamentUpdateRequiredBody;
+  String get tournamentFullTitle;
+  String get tournamentFullBody;
+  String get notEligibleTitle;
+  String get requiredRank;
+  String get profileUnavailable;
+  String get verificationEmailFailed;
+  String get registrationNotOpenError;
+  String get paymentRefunded;
+  String get resultUnderReviewTitle;
+  String get resultUnderReviewBody;
+  String get youAdvanceTitle;
+  String get youAdvanceOpponentNoShow;
+  String get eliminatedTitle;
+  String get eliminatedNoShowBody;
+  String get matchPostponedTitle;
+  String get matchPostponedBody;
+  String get resumeTournamentMatch;
+  String get underReviewBadge;
+  String get disputedMatchBanner;
+
   // In-match maquette UI (turn header, visit chips, camera overlays)
   String get liveBadge;
   String get playingBadge;

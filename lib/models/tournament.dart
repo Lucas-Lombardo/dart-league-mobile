@@ -226,6 +226,10 @@ class TournamentMatch {
   final DateTime? startedAt;
   final DateTime? completedAt;
 
+  /// Current leg's game match id (only on /tournaments/active-match) — lets
+  /// the app resume a live leg after being killed.
+  final String? lastGameId;
+
   TournamentMatch({
     required this.id,
     required this.tournamentId,
@@ -248,6 +252,7 @@ class TournamentMatch {
     this.inviteSentAt,
     this.startedAt,
     this.completedAt,
+    this.lastGameId,
   });
 
   factory TournamentMatch.fromJson(Map<String, dynamic> json) {
@@ -273,6 +278,7 @@ class TournamentMatch {
       inviteSentAt: _tryParseDateTime(json['inviteSentAt'] as String?),
       startedAt: _tryParseDateTime(json['startedAt'] as String?),
       completedAt: _tryParseDateTime(json['completedAt'] as String?),
+      lastGameId: json['lastGameId'] as String?,
     );
   }
 
@@ -299,6 +305,7 @@ class TournamentMatch {
       status == 'player1_ready' ||
       status == 'player2_ready';
 
+  bool get isDisputed => status == 'disputed';
   bool get isInProgress => status == 'in_progress';
   bool get isCompleted => status == 'completed' ||
       status == 'player1_forfeit' ||

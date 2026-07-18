@@ -7,6 +7,7 @@ import '../../models/tournament.dart';
 import '../../services/tournament_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/tournament_registration_gate.dart';
 import '../../l10n/app_localizations.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
@@ -551,14 +552,12 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
   Future<void> _toggleRegistration() async {
     if (_isLoading || !widget.canRegister) return;
 
-    final authProvider = context.read<AuthProvider>();
     if (!widget.isRegistered) {
-      await authProvider.checkAuthStatus();
-      if (!mounted) return;
-      if (authProvider.currentUser?.isEmailVerified == false) {
-        _showEmailVerificationDialog(context, authProvider);
-        return;
-      }
+      // Product spec: the button is always visible; a blocked attempt
+      // (app outdated, email unverified, full, premium/rank) explains why in
+      // a popup. Backend enforces everything again.
+      final allowed = await TournamentRegistrationGate.run(context, widget.tournament);
+      if (!allowed || !mounted) return;
     }
 
     setState(() => _isLoading = true);
@@ -576,12 +575,9 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
     if (success) {
       widget.onChanged();
     } else {
-      // Show error if payment failed
       final error = provider.error;
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
-        );
+        TournamentRegistrationGate.showRegistrationError(context, error);
         provider.clearError();
       }
     }
@@ -589,36 +585,6 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
-  }
-
-  void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
-    final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.emailNotVerifiedTitle),
-        content: Text(l10n.emailVerificationRequired),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.close),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await authProvider.resendVerification();
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(l10n.verificationEmailSent),
-                  backgroundColor: AppTheme.success,
-                ),
-              );
-            },
-            child: Text(l10n.resendEmail),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -653,44 +619,11 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
       );
     }
 
-    // Block registration when the user doesn't meet participation conditions.
-    // (The backend enforces this too — this is a clear, pre-emptive UX gate.)
-    if (!widget.isRegistered) {
-      final isPremium = context.select<SubscriptionProvider, bool>((p) => p.isPremiumActive);
-      final userRank = context.select<AuthProvider, String?>((p) => p.currentUser?.rank);
-      final eligibility = widget.tournament.eligibilityFor(userRank: userRank, isPremium: isPremium);
-      if (eligibility != TournamentEligibility.eligible) {
-        final isPremiumIssue = eligibility == TournamentEligibility.premiumRequired;
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(isPremiumIssue ? Icons.workspace_premium : Icons.lock_outline,
-                  size: 18, color: AppTheme.accent),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  isPremiumIssue ? l10n.tournamentNotEligiblePremium : l10n.tournamentNotEligibleRank,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-    }
+    // Product spec: the register button stays VISIBLE even when the user
+    // doesn't meet the conditions — tapping it explains why in a popup (see
+    // TournamentRegistrationGate). Replacing the button with a banner here
+    // also mis-blocked genuinely premium users whose subscription state was
+    // stale, with no way to let the server decide.
 
     return Container(
       width: double.infinity,
@@ -799,11 +732,48 @@ class _BracketTab extends StatelessWidget {
 
     final rounds = matchesByRound.keys.toList()..sort();
 
+    // Persistent explanation for a player whose own match is frozen by a
+    // dispute — without it they have no way to understand why they haven't
+    // advanced (the one-time dialog at refusal time is long gone, and the
+    // opponent never saw one at all).
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final hasFrozenMatch = currentUserId != null &&
+        bracket.any((m) =>
+            m.isDisputed &&
+            (m.player1Id == currentUserId || m.player2Id == currentUserId));
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: rounds.length,
+      itemCount: rounds.length + (hasFrozenMatch ? 1 : 0),
       itemBuilder: (context, index) {
-        final roundNumber = rounds[index];
+        if (hasFrozenMatch && index == 0) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.gavel, color: AppTheme.accent, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    l10n.disputedMatchBanner,
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        final roundNumber = rounds[hasFrozenMatch ? index - 1 : index];
         final matches = matchesByRound[roundNumber]!;
         final roundName = matches.first.roundNameDisplay;
 
@@ -846,53 +816,97 @@ class _BracketMatchCard extends StatelessWidget {
     final currentUserId = authProvider.currentUser?.id;
     final isMyMatch = currentUserId == match.player1Id || currentUserId == match.player2Id;
 
+    final l10n = AppLocalizations.of(context);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isMyMatch
-            ? AppTheme.primary.withValues(alpha: 0.1)
-            : AppTheme.surfaceLight.withValues(alpha: 0.3),
+        color: match.isDisputed
+            ? AppTheme.accent.withValues(alpha: 0.08)
+            : isMyMatch
+                ? AppTheme.primary.withValues(alpha: 0.1)
+                : AppTheme.surfaceLight.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isMyMatch
-              ? AppTheme.primary.withValues(alpha: 0.5)
-              : AppTheme.surfaceLight.withValues(alpha: 0.5),
+          color: match.isDisputed
+              ? AppTheme.accent.withValues(alpha: 0.6)
+              : isMyMatch
+                  ? AppTheme.primary.withValues(alpha: 0.5)
+                  : AppTheme.surfaceLight.withValues(alpha: 0.5),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              children: [
-                _PlayerRow(
-                  username: match.player1Username ?? 'TBD',
-                  score: match.player1Score,
-                  isWinner: match.winnerId == match.player1Id,
-                  isCurrentUser: currentUserId == match.player1Id,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    _PlayerRow(
+                      username: match.player1Username ?? 'TBD',
+                      score: match.player1Score,
+                      isWinner: match.winnerId == match.player1Id,
+                      isCurrentUser: currentUserId == match.player1Id,
+                    ),
+                    const Divider(height: 16),
+                    _PlayerRow(
+                      username: match.player2Username ?? 'TBD',
+                      score: match.player2Score,
+                      isWinner: match.winnerId == match.player2Id,
+                      isCurrentUser: currentUserId == match.player2Id,
+                    ),
+                  ],
                 ),
-                const Divider(height: 16),
-                _PlayerRow(
-                  username: match.player2Username ?? 'TBD',
-                  score: match.player2Score,
-                  isWinner: match.winnerId == match.player2Id,
-                  isCurrentUser: currentUserId == match.player2Id,
-                ),
-              ],
-            ),
-          ),
-          if (match.isCompleted)
-            Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.check,
-                color: AppTheme.success,
-                size: 16,
+              if (match.isDisputed)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.gavel,
+                    color: AppTheme.accent,
+                    size: 16,
+                  ),
+                )
+              else if (match.isCompleted)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: AppTheme.success,
+                    size: 16,
+                  ),
+                ),
+            ],
+          ),
+          if (match.isDisputed)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.hourglass_top, size: 12, color: AppTheme.accent),
+                  const SizedBox(width: 4),
+                  Text(
+                    l10n.underReviewBadge,
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

@@ -116,6 +116,12 @@ class TournamentService {
     await ApiService.post('/tournaments/matches/$matchId/ready', {});
   }
 
+  /// Withdraw a ready state (backing out of the ready screen before the match
+  /// starts). Throws if the match already started.
+  static Future<void> setMatchUnready(String matchId) async {
+    await ApiService.post('/tournaments/matches/$matchId/unready', {});
+  }
+
   static Future<List<TournamentHistory>> getTournamentHistory() async {
     final response = await ApiService.get('/tournaments/history');
     final list = response?['tournaments'] as List<dynamic>? ?? [];

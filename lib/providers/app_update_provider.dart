@@ -11,7 +11,7 @@ import '../utils/storage_service.dart';
 class AppUpdateProvider with ChangeNotifier {
   AppUpdateInfo? _info;
   String? _dismissedVersion;
-  bool _checked = false;
+  Future<void>? _checkFuture;
 
   AppUpdateInfo? get info => _info;
   String? get message => _info?.message;
@@ -22,15 +22,26 @@ class AppUpdateProvider with ChangeNotifier {
       _info?.latestVersion != null &&
       _dismissedVersion != _info!.latestVersion;
 
+  /// True when the backend refuses tournament entry for this app version.
+  bool get tournamentUpdateRequired => _info?.tournamentUpdateRequired == true;
+
   /// Fire-and-forget; safe to call repeatedly (runs the network check once).
-  Future<void> check() async {
-    if (_checked) return;
-    _checked = true;
+  /// Concurrent callers await the same in-flight check.
+  Future<void> check() => _checkFuture ??= _doCheck();
+
+  Future<void> _doCheck() async {
     _dismissedVersion = await StorageService.getDismissedUpdateVersion();
     final result = await AppUpdateService.check();
     if (result == null) return;
     _info = result;
     notifyListeners();
+  }
+
+  /// Ensures the version check ran, then reports the tournament gate. Used as
+  /// a pre-check before registering — the backend enforces it regardless.
+  Future<bool> requiresTournamentUpdate() async {
+    await check();
+    return tournamentUpdateRequired;
   }
 
   /// Hide the banner until a newer version is published.

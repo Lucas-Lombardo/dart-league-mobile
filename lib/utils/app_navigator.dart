@@ -11,6 +11,19 @@ import 'package:flutter/material.dart';
 class AppNavigator {
   AppNavigator._();
 
+  /// The app's root navigator key (assigned once in main.dart). Lets
+  /// non-widget code — e.g. push-notification tap routing — navigate without
+  /// a BuildContext.
+  static GlobalKey<NavigatorState>? navigatorKey;
+
+  /// Context-free navigation for push-tap deep links. No-op when the
+  /// navigator isn't ready (e.g. before the first frame).
+  static void pushFromRoot(Widget screen) {
+    final nav = navigatorKey?.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(builder: (_) => screen));
+  }
+
   /// Navigate within auth flow using named route replacement.
   /// Used for: splash -> home/login, login -> home, register -> home, etc.
   static void toAuth(BuildContext context, String routeName) {

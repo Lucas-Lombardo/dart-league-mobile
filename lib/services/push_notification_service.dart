@@ -28,22 +28,49 @@ class PushNotificationService {
   static void Function(Map<String, dynamic> data)? _onMessageOpened;
   static Map<String, dynamic>? _bufferedOpenData;
 
+  // Additive multi-listener API: the legacy single-slot setter stays for
+  // MatchInviteProvider, and other consumers (tournament push routing)
+  // register here without displacing it.
+  static final List<void Function(Map<String, dynamic> data)> _openedListeners = [];
+
   static set onMessageOpened(void Function(Map<String, dynamic> data)? handler) {
     _onMessageOpened = handler;
-    if (handler != null && _bufferedOpenData != null) {
-      final data = _bufferedOpenData!;
-      _bufferedOpenData = null;
-      handler(data);
+    if (handler != null) _flushBuffered();
+  }
+
+  static void addOpenedListener(void Function(Map<String, dynamic> data) listener) {
+    if (!_openedListeners.contains(listener)) {
+      _openedListeners.add(listener);
+    }
+    _flushBuffered();
+  }
+
+  static void removeOpenedListener(void Function(Map<String, dynamic> data) listener) {
+    _openedListeners.remove(listener);
+  }
+
+  static void _flushBuffered() {
+    final data = _bufferedOpenData;
+    if (data == null) return;
+    _bufferedOpenData = null;
+    _deliverOpened(data);
+  }
+
+  static void _deliverOpened(Map<String, dynamic> data) {
+    _onMessageOpened?.call(data);
+    for (final listener in List.of(_openedListeners)) {
+      listener(data);
     }
   }
 
   static void _dispatchOpened(Map<String, dynamic> data) {
-    final handler = _onMessageOpened;
-    if (handler != null) {
-      handler(data);
-    } else {
+    if (_onMessageOpened == null && _openedListeners.isEmpty) {
+      // Nobody wired up yet (cold start) — buffer until the first consumer
+      // registers so the tap that launched the app is not lost.
       _bufferedOpenData = data;
+      return;
     }
+    _deliverOpened(data);
   }
 
   static String? get fcmToken => _fcmToken;
@@ -168,6 +195,7 @@ class PushNotificationService {
     _onTokenRefreshSub?.cancel();
     _onTokenRefreshSub = null;
     _onMessageOpened = null;
+    _openedListeners.clear();
     _bufferedOpenData = null;
     _initialized = false;
   }

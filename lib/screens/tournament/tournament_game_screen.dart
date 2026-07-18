@@ -193,6 +193,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     final game = context.read<TournamentGameProvider>();
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
 
     if (game.currentGameMatchId == null || auth.currentUser?.id == null) {
       messenger.showSnackBar(
@@ -211,6 +212,14 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       );
     } catch (e) {
       debugPrint('Error accepting tournament match result: $e');
+      // Surface it, but continue: the result is already applied server-side;
+      // acceptance is a confirmation, not a gate.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(l10n.unableToAcceptResult),
+          backgroundColor: AppTheme.error,
+        ),
+      );
     }
 
     if (!mounted) return;
@@ -220,6 +229,41 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     });
 
     handleSharedStateChange();
+  }
+
+  // Shown after the player contests a result: the match is frozen server-side
+  // until an admin picks the winner — leave the game flow entirely.
+  void _showResultUnderReviewAndExit() {
+    final l10n = AppLocalizations.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(
+          l10n.resultUnderReviewTitle,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          l10n.resultUnderReviewBody,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (!mounted) return;
+              final provider = context.read<TournamentGameProvider>();
+              AppNavigator.toHomeClearing(context);
+              try {
+                provider.reset();
+              } catch (_) {}
+            },
+            child: Text(l10n.ok),
+          ),
+        ],
+      ),
+    );
   }
 
 
@@ -338,7 +382,11 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
               onSubmit: (reason, comment) async {
                 if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
                 await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
-                if (mounted) { setState(() => _resultAccepted = true); handleSharedStateChange(); }
+                // The tournament match is now frozen server-side pending admin
+                // review — do NOT continue as if the result stood (this used
+                // to show the ADVANCE/ELIMINATED ceremony right after
+                // contesting it).
+                if (mounted) _showResultUnderReviewAndExit();
               },
               onComplete: () {},
             );

@@ -1,12 +1,33 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
 
 class ApiService {
   static const Duration _timeout = Duration(seconds: 30);
+
+  // Sent on every request so the backend can gate version-dependent features
+  // (tournament entry requires an up-to-date app). Resolved once per session.
+  static String? _appVersion;
+  static String? _appPlatform;
+  static Future<void>? _versionInfoFuture;
+
+  static Future<void> _ensureVersionInfo() {
+    return _versionInfoFuture ??= () async {
+      if (kIsWeb) return;
+      try {
+        final info = await PackageInfo.fromPlatform();
+        _appVersion = info.version;
+        _appPlatform = Platform.isIOS ? 'ios' : 'android';
+      } catch (e) {
+        debugPrint('ApiService: could not resolve app version: $e');
+      }
+    }();
+  }
 
   /// Called when token refresh fails -- the app should navigate to login.
   /// This is a static callback that persists for the app lifetime.
@@ -25,6 +46,10 @@ class ApiService {
     final headers = {
       'Content-Type': 'application/json',
     };
+
+    await _ensureVersionInfo();
+    if (_appVersion != null) headers['X-App-Version'] = _appVersion!;
+    if (_appPlatform != null) headers['X-App-Platform'] = _appPlatform!;
 
     if (includeAuth) {
       final token = await StorageService.getToken();

@@ -7,6 +7,7 @@ import '../../models/tournament.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/tournament_registration_gate.dart';
 import '../../l10n/app_localizations.dart';
 import 'tournament_detail_screen.dart';
 import 'tournament_history_screen.dart';
@@ -404,30 +405,12 @@ class _TournamentCardState extends State<_TournamentCard> {
   Future<void> _toggleRegistration() async {
     if (_isLoading) return;
 
-    final authProvider = context.read<AuthProvider>();
     if (_isRegistered != true) {
-      await authProvider.checkAuthStatus();
-      if (!mounted) return;
-      if (authProvider.currentUser?.isEmailVerified == false) {
-        _showEmailVerificationDialog(context, authProvider);
-        return;
-      }
-      // Participation conditions gate (rank / premium). Backend enforces too.
-      final isPremium = context.read<SubscriptionProvider>().isPremiumActive;
-      final eligibility = widget.tournament.eligibilityFor(
-        userRank: authProvider.currentUser?.rank,
-        isPremium: isPremium,
-      );
-      if (eligibility != TournamentEligibility.eligible) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(eligibility == TournamentEligibility.premiumRequired
-              ? l10n.tournamentNotEligiblePremium
-              : l10n.tournamentNotEligibleRank),
-          backgroundColor: AppTheme.error,
-        ));
-        return;
-      }
+      // Product spec: the tournament is visible to everyone; trying to join
+      // while blocked (app outdated, email unverified, full, premium/rank)
+      // explains why in a popup. Backend enforces everything again.
+      final allowed = await TournamentRegistrationGate.run(context, widget.tournament);
+      if (!allowed || !mounted) return;
     }
 
     setState(() => _isLoading = true);
@@ -448,66 +431,12 @@ class _TournamentCardState extends State<_TournamentCard> {
       });
     } else if (mounted) {
       setState(() => _isLoading = false);
-      // Show error if payment failed
       final error = provider.error;
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
-        );
+        TournamentRegistrationGate.showRegistrationError(context, error);
         provider.clearError();
       }
     }
-  }
-
-  void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
-    final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.email_outlined, color: AppTheme.primary, size: 28),
-            const SizedBox(width: 12),
-            Text(
-              l10n.emailNotVerifiedTitle,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 20),
-            ),
-          ],
-        ),
-        content: Text(
-          l10n.emailVerificationRequired,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.close, style: const TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await authProvider.resendVerification();
-              if (context.mounted) {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(l10n.verificationEmailSent),
-                    backgroundColor: AppTheme.success,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Text(l10n.resendEmail),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -913,147 +842,6 @@ class _PriceChip extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _RegisterButton extends StatefulWidget {
-  final Tournament tournament;
-
-  const _RegisterButton({required this.tournament});
-
-  @override
-  State<_RegisterButton> createState() => _RegisterButtonState();
-}
-
-class _RegisterButtonState extends State<_RegisterButton> {
-  bool _isLoading = false;
-  bool? _isRegistered;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkRegistration();
-  }
-
-  Future<void> _checkRegistration() async {
-    final provider = context.read<TournamentProvider>();
-    final isRegistered = await provider.isRegisteredForTournament(widget.tournament.id);
-    if (mounted) {
-      setState(() => _isRegistered = isRegistered);
-    }
-  }
-
-  Future<void> _toggleRegistration() async {
-    if (_isLoading) return;
-
-    final authProvider = context.read<AuthProvider>();
-    if (_isRegistered != true) {
-      await authProvider.checkAuthStatus();
-      if (!mounted) return;
-      if (authProvider.currentUser?.isEmailVerified == false) {
-        _showEmailVerificationDialog(context, authProvider);
-        return;
-      }
-    }
-
-    setState(() => _isLoading = true);
-    HapticService.lightImpact();
-
-    final provider = context.read<TournamentProvider>();
-    bool success;
-
-    if (_isRegistered == true) {
-      success = await provider.unregisterFromTournament(widget.tournament.id);
-    } else {
-      success = await provider.registerForTournament(widget.tournament.id, tournament: widget.tournament);
-    }
-
-    if (success && mounted) {
-      setState(() {
-        _isRegistered = !(_isRegistered ?? false);
-        _isLoading = false;
-      });
-    } else if (mounted) {
-      setState(() => _isLoading = false);
-      // Show error if payment failed
-      final error = provider.error;
-      if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error), backgroundColor: AppTheme.error),
-        );
-        provider.clearError();
-      }
-    }
-  }
-
-  void _showEmailVerificationDialog(BuildContext context, AuthProvider authProvider) {
-    final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.emailNotVerifiedTitle),
-        content: Text(l10n.emailVerificationRequired),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.close),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await authProvider.resendVerification();
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(l10n.verificationEmailSent),
-                  backgroundColor: AppTheme.success,
-                ),
-              );
-            },
-            child: Text(l10n.resendEmail),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
-    if (_isRegistered == null) {
-      return const SizedBox(
-        height: 40,
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _toggleRegistration,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _isRegistered! ? AppTheme.error : AppTheme.primary,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: _isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : Text(
-                _isRegistered! ? l10n.unregister : l10n.registerNow,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
       ),
     );
   }

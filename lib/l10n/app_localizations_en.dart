@@ -2118,6 +2118,51 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateAvailableBody => 'A new version of Dart Rivals is available.';
   @override
   String get updateNow => 'Update';
+
+  @override
+  String get ok => 'OK';
+  @override
+  String get updateRequiredTitle => 'Update required';
+  @override
+  String get tournamentUpdateRequiredBody => 'Update Dart Rivals to join tournaments. Your current version is too old to enter.';
+  @override
+  String get tournamentFullTitle => 'Tournament full';
+  @override
+  String get tournamentFullBody => 'All spots are taken for this tournament.';
+  @override
+  String get notEligibleTitle => "Can't join";
+  @override
+  String get requiredRank => 'Required rank';
+  @override
+  String get profileUnavailable => 'Unable to verify your account — check your connection and try again.';
+  @override
+  String get verificationEmailFailed => 'Could not send the verification email. Try again.';
+  @override
+  String get registrationNotOpenError => 'Registration is not open for this tournament.';
+  @override
+  String get paymentRefunded => 'Your payment has been refunded.';
+  @override
+  String get resultUnderReviewTitle => 'Result under review';
+  @override
+  String get resultUnderReviewBody => "You contested this result. An admin will pick the winner and the match stays frozen until then. You'll be notified.";
+  @override
+  String get youAdvanceTitle => 'You advance!';
+  @override
+  String get youAdvanceOpponentNoShow => "Your opponent didn't join in time. You move on to the next round!";
+  @override
+  String get eliminatedTitle => 'Eliminated';
+  @override
+  String get eliminatedNoShowBody => "You didn't join your match in time and were eliminated from the tournament.";
+  @override
+  String get matchPostponedTitle => 'Match postponed';
+  @override
+  String get matchPostponedBody => "A result from the previous round is under review. You'll be notified when your match is ready.";
+  @override
+  String get resumeTournamentMatch => 'RESUME MATCH';
+  @override
+  String get underReviewBadge => 'UNDER REVIEW';
+  @override
+  String get disputedMatchBanner => "Your match result is under review — an admin will pick the winner. You'll be notified.";
   @override
   String get liveBadge => 'LIVE';
   @override

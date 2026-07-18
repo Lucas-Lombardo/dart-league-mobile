@@ -2130,6 +2130,51 @@ class AppLocalizationsFr extends AppLocalizations {
   String get updateAvailableBody => 'Une nouvelle version de Dart Rivals est disponible.';
   @override
   String get updateNow => 'Mettre à jour';
+
+  @override
+  String get ok => 'OK';
+  @override
+  String get updateRequiredTitle => 'Mise à jour requise';
+  @override
+  String get tournamentUpdateRequiredBody => 'Mets à jour Dart Rivals pour participer aux tournois. Ta version est trop ancienne pour entrer.';
+  @override
+  String get tournamentFullTitle => 'Tournoi complet';
+  @override
+  String get tournamentFullBody => 'Toutes les places de ce tournoi sont prises.';
+  @override
+  String get notEligibleTitle => 'Participation impossible';
+  @override
+  String get requiredRank => 'Rang requis';
+  @override
+  String get profileUnavailable => 'Impossible de vérifier ton compte — vérifie ta connexion et réessaie.';
+  @override
+  String get verificationEmailFailed => "Impossible d'envoyer l'email de vérification. Réessaie.";
+  @override
+  String get registrationNotOpenError => 'Les inscriptions ne sont pas ouvertes pour ce tournoi.';
+  @override
+  String get paymentRefunded => 'Ton paiement a été remboursé.';
+  @override
+  String get resultUnderReviewTitle => "Résultat en cours d'examen";
+  @override
+  String get resultUnderReviewBody => "Tu as contesté ce résultat. Un admin désignera le vainqueur et le match reste gelé d'ici là. Tu seras prévenu.";
+  @override
+  String get youAdvanceTitle => 'Tu es qualifié !';
+  @override
+  String get youAdvanceOpponentNoShow => "Ton adversaire ne s'est pas présenté à temps. Tu passes au tour suivant !";
+  @override
+  String get eliminatedTitle => 'Éliminé';
+  @override
+  String get eliminatedNoShowBody => "Tu n'as pas rejoint ton match à temps et tu as été éliminé du tournoi.";
+  @override
+  String get matchPostponedTitle => 'Match reporté';
+  @override
+  String get matchPostponedBody => "Un résultat du tour précédent est en cours d'examen. Tu seras prévenu quand ton match sera prêt.";
+  @override
+  String get resumeTournamentMatch => 'REPRENDRE LE MATCH';
+  @override
+  String get underReviewBadge => 'EN EXAMEN';
+  @override
+  String get disputedMatchBanner => "Le résultat de ton match est en cours d'examen — un admin va désigner le vainqueur. Tu seras prévenu.";
   @override
   String get liveBadge => 'EN DIRECT';
   @override

@@ -5,6 +5,9 @@ import '../models/tournament.dart';
 import '../services/tournament_service.dart';
 import '../services/socket_service.dart';
 import '../services/payment_service.dart';
+import '../services/push_notification_service.dart';
+import '../screens/tournament/tournament_camera_setup_screen.dart';
+import '../utils/app_navigator.dart';
 
 class TournamentProvider extends ChangeNotifier {
   List<Tournament> _allTournaments = [];
@@ -22,6 +25,25 @@ class TournamentProvider extends ChangeNotifier {
   bool _realtimeStarted = false;
   Timer? _pollTimer;
   static const Duration _pollInterval = Duration(seconds: 30);
+
+  // Known after startRealtime — used to compute opponent info when deep-linking
+  // from a push tap into the match flow.
+  String? _myUserId;
+
+  // The provider is the SINGLE owner of the tournament socket events (the
+  // SocketService handler slots are one-per-event; screens registering their
+  // own handlers used to clobber these on reconnect and vice versa). Screens
+  // that need the raw events subscribe to these rebroadcast streams instead.
+  final StreamController<Map<String, dynamic>> _readyUpdates =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _matchStarts =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _matchResults =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  Stream<Map<String, dynamic>> get readyUpdates => _readyUpdates.stream;
+  Stream<Map<String, dynamic>> get matchStarts => _matchStarts.stream;
+  Stream<Map<String, dynamic>> get matchResults => _matchResults.stream;
 
   List<Tournament> get allTournaments => _allTournaments;
   List<Tournament> get upcomingTournaments => _upcomingTournaments;
@@ -236,13 +258,19 @@ class TournamentProvider extends ChangeNotifier {
   /// without a periodic refresh a user could silently miss the 15-minute
   /// window to join their tournament match (= automatic forfeit). The poll is
   /// the safety net; the socket is the fast path.
-  Future<void> startRealtime() async {
+  Future<void> startRealtime({String? myUserId}) async {
+    if (myUserId != null) _myUserId = myUserId;
     if (_realtimeStarted) return;
     _realtimeStarted = true;
 
     // Re-bind listeners after a socket reconnect. Uses the additive listener
     // API so we don't clobber matchmaking's single-slot reconnect handler.
     SocketService.addReconnectListener(_handleReconnect);
+
+    // Tournament push taps (tournament_match, tournament_started, …) refresh
+    // state and deep-link into the match flow. Additive listener — the friend
+    // match_invite handler keeps its legacy slot.
+    PushNotificationService.addOpenedListener(_handlePushOpened);
 
     try {
       await SocketService.ensureConnected();
@@ -260,8 +288,59 @@ class TournamentProvider extends ChangeNotifier {
     _pollTimer?.cancel();
     _pollTimer = null;
     SocketService.removeReconnectListener(_handleReconnect);
+    PushNotificationService.removeOpenedListener(_handlePushOpened);
     clearSocketListeners();
     _realtimeStarted = false;
+  }
+
+  // A tapped push brought the app forward. Refresh, and for a match invite
+  // take the player straight to the camera-setup step of their match.
+  void _handlePushOpened(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    if (!type.startsWith('tournament')) return;
+
+    _pollOnce();
+
+    if (type == 'tournament_match') {
+      _openPendingMatchFromPush(data['matchId']?.toString());
+    }
+  }
+
+  Future<void> _openPendingMatchFromPush(String? matchId) async {
+    try {
+      await loadPendingMatches();
+      if (_pendingMatches.isEmpty) return;
+
+      final match = _pendingMatches.firstWhere(
+        (m) => m.id == matchId,
+        orElse: () => _pendingMatches.first,
+      );
+
+      final myId = _myUserId;
+      if (myId == null) return;
+      final isPlayer1 = match.player1Id == myId;
+      final opponentId = isPlayer1 ? match.player2Id : match.player1Id;
+      final opponentUsername =
+          isPlayer1 ? match.player2Username : match.player1Username;
+      if (match.player1Id == null || match.player2Id == null) return;
+
+      AppNavigator.pushFromRoot(
+        TournamentCameraSetupScreen(
+          matchId: match.id,
+          tournamentId: match.tournamentId,
+          tournamentName: match.tournamentName ?? 'Tournament',
+          roundName: match.roundName,
+          opponentUsername: opponentUsername ?? '',
+          opponentId: opponentId ?? '',
+          player1Id: match.player1Id!,
+          player2Id: match.player2Id!,
+          bestOf: match.bestOf,
+          inviteSentAt: match.inviteSentAt,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Tournament push deep-link failed: $e');
+    }
   }
 
   void _handleReconnect() {
@@ -293,14 +372,21 @@ class TournamentProvider extends ChangeNotifier {
 
       SocketService.on('tournamentMatchStart', (data) {
         debugPrint('Tournament match start: $data');
+        if (data is Map) {
+          _matchStarts.add(Map<String, dynamic>.from(data));
+        }
         loadActiveMatch();
         loadPendingMatches();
       });
 
       SocketService.on('tournamentMatchResult', (data) {
         debugPrint('Tournament match result: $data');
+        if (data is Map) {
+          _matchResults.add(Map<String, dynamic>.from(data));
+        }
         loadMyTournaments();
         loadActiveMatch();
+        loadPendingMatches();
       });
 
       SocketService.on('tournamentNextMatch', (data) {
@@ -321,6 +407,9 @@ class TournamentProvider extends ChangeNotifier {
 
       SocketService.on('matchReadyUpdate', (data) {
         debugPrint('Match ready update: $data');
+        if (data is Map) {
+          _readyUpdates.add(Map<String, dynamic>.from(data));
+        }
         loadPendingMatches();
       });
     } catch (e) {
@@ -357,6 +446,9 @@ class TournamentProvider extends ChangeNotifier {
   @override
   void dispose() {
     stopRealtime();
+    _readyUpdates.close();
+    _matchStarts.close();
+    _matchResults.close();
     super.dispose();
   }
 }

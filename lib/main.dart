@@ -27,6 +27,7 @@ import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
+import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
 import 'utils/dart_caller_service.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
@@ -37,6 +38,9 @@ final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<v
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Context-free navigation (push-tap deep links) goes through this key.
+  AppNavigator.navigatorKey = navigatorKey;
   
   // Initialize Firebase (skip on web — no FirebaseOptions configured)
   if (!kIsWeb) {

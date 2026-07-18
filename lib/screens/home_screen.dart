@@ -48,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       if (!mounted) return;
       final tp = context.read<TournamentProvider>();
       _tournamentProvider = tp;
-      tp.startRealtime();
+      tp.startRealtime(myUserId: context.read<AuthProvider>().currentUser?.id);
     });
   }
 

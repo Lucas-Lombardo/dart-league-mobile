@@ -134,6 +134,10 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
 
   int _calcPlacement(String roundName, bool didWin) {
     if (roundName == 'final') return didWin ? 1 : 2;
+    // A winner below the final is qualified for the next round, not placed —
+    // never show them an elimination medal. (Normally unreachable: the result
+    // screen sends advancing winners home instead of here.)
+    if (didWin) return 0;
     if (roundName == 'semi_final') return 3;
     if (roundName == 'quarter_final') return 5;
     if (roundName == 'round_of_16') return 9;

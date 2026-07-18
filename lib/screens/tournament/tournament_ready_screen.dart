@@ -6,9 +6,10 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/tournament_round.dart';
-import '../../services/socket_service.dart';
+import '../../models/tournament.dart';
 import '../../services/tournament_service.dart';
 import '../../providers/tournament_game_provider.dart';
+import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
 import 'tournament_game_screen.dart';
@@ -47,13 +48,28 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     with SingleTickerProviderStateMixin {
   bool _myReady = false;
   bool _opponentReady = false;
+  bool _navigating = false;
+  bool _cancelling = false;
   late AnimationController _pulseController;
+
+  // Socket events arrive through TournamentProvider's rebroadcast streams —
+  // the provider is the single owner of the SocketService handler slots, so a
+  // reconnect can no longer displace this screen's navigation handler (and
+  // leaving this screen no longer kills the provider's listeners).
+  StreamSubscription<Map<String, dynamic>>? _readySub;
+  StreamSubscription<Map<String, dynamic>>? _startSub;
+  StreamSubscription<Map<String, dynamic>>? _resultSub;
 
   // 15-minute join window (mirrors the backend MATCH_INVITE_TIMEOUT).
   static const Duration _joinWindow = Duration(minutes: 15);
   Timer? _windowTimer;
   Duration _remaining = Duration.zero;
   bool _expired = false;
+
+  // After expiry the backend sweep (runs every minute) settles the match;
+  // poll the bracket until we can tell the player what actually happened.
+  Timer? _outcomePoll;
+  int _outcomePollTries = 0;
 
   @override
   void initState() {
@@ -81,6 +97,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           _remaining = Duration.zero;
           _expired = true;
           _windowTimer?.cancel();
+          _startOutcomePolling();
         } else {
           _remaining = remaining;
         }
@@ -98,12 +115,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   }
 
   Future<void> _setupListeners() async {
-    await SocketService.ensureConnected();
-    if (!mounted) return;
+    final tournamentProvider = context.read<TournamentProvider>();
 
-    // Listen for ready status updates
-    SocketService.on('matchReadyUpdate', (data) {
-      if (data['matchId'] != widget.matchId) return;
+    _readySub = tournamentProvider.readyUpdates.listen((data) {
+      if (!mounted || data['matchId'] != widget.matchId) return;
       final p1Ready = data['player1Ready'] as bool? ?? false;
       final p2Ready = data['player2Ready'] as bool? ?? false;
 
@@ -119,9 +134,9 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       });
     });
 
-    // Listen for match start (both ready, backend created the game)
-    SocketService.on('tournamentMatchStart', (data) {
-      if (data['matchId'] != widget.matchId) return;
+    // Match start (both ready, backend created the game)
+    _startSub = tournamentProvider.matchStarts.listen((data) {
+      if (!mounted || data['matchId'] != widget.matchId) return;
       final gameMatchId = data['gameMatchId'] as String?;
       if (gameMatchId != null) {
         _navigateToGame(
@@ -136,16 +151,141 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       }
     });
 
+    // Outcome events while waiting: opponent timed out (we advance) or the
+    // match got postponed by a dispute rollback in the previous round.
+    _resultSub = tournamentProvider.matchResults.listen((data) {
+      if (!mounted || data['tournamentMatchId'] != widget.matchId) return;
+      final reason = data['reason'] as String?;
+      final user = context.read<AuthProvider>().currentUser;
+      if (reason == 'opponent_timeout' && data['winnerId'] == user?.id) {
+        _showOutcomeDialogAndLeave(advance: true);
+      } else if (reason == 'match_postponed') {
+        _showPostponedDialogAndLeave();
+      }
+    });
+
     // NOW send the ready call, after listeners are in place
     try {
       await TournamentService.setMatchReady(widget.matchId);
+      if (mounted) setState(() => _myReady = true);
     } catch (e) {
       debugPrint('Error setting match ready: $e');
     }
   }
 
+  // The backend sweep runs every minute after the 15-minute deadline. Poll the
+  // bracket a few times to tell the player how it ended instead of leaving
+  // them staring at "expired" forever.
+  void _startOutcomePolling() {
+    _outcomePoll?.cancel();
+    _outcomePollTries = 0;
+    _outcomePoll = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted || _navigating) {
+        _outcomePoll?.cancel();
+        return;
+      }
+      _outcomePollTries++;
+      if (_outcomePollTries > 18) {
+        // ~3 minutes with no verdict — stop polling, leave the manual exit.
+        _outcomePoll?.cancel();
+        return;
+      }
+      try {
+        final bracket = await TournamentService.getBracket(widget.tournamentId);
+        TournamentMatch? match;
+        for (final m in bracket) {
+          if (m.id == widget.matchId) {
+            match = m;
+            break;
+          }
+        }
+        if (match == null || !mounted) return;
+        final myId = context.read<AuthProvider>().currentUser?.id;
+
+        if (match.status == 'in_progress') {
+          // Both readied at the buzzer — the start event should carry us; if
+          // it was missed, the resume flow on the Play screen picks it up.
+          return;
+        }
+        if (match.isCompleted) {
+          _outcomePoll?.cancel();
+          if (match.winnerId != null && match.winnerId == myId) {
+            _showOutcomeDialogAndLeave(advance: true);
+          } else {
+            _showOutcomeDialogAndLeave(advance: false);
+          }
+        } else if (match.status == 'pending') {
+          // Rolled back to un-invited (dispute in the previous round).
+          _outcomePoll?.cancel();
+          _showPostponedDialogAndLeave();
+        }
+      } catch (_) {
+        // Transient — next tick retries.
+      }
+    });
+  }
+
+  void _showOutcomeDialogAndLeave({required bool advance}) {
+    if (!mounted || _navigating) return;
+    _navigating = true;
+    final l10n = AppLocalizations.of(context);
+    HapticService.heavyImpact();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(
+          advance ? l10n.youAdvanceTitle : l10n.eliminatedTitle,
+          style: TextStyle(color: advance ? AppTheme.success : AppTheme.error),
+        ),
+        content: Text(
+          advance ? l10n.youAdvanceOpponentNoShow : l10n.eliminatedNoShowBody,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (mounted) Navigator.of(context).pop();
+            },
+            child: Text(l10n.ok),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPostponedDialogAndLeave() {
+    if (!mounted || _navigating) return;
+    _navigating = true;
+    final l10n = AppLocalizations.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(l10n.matchPostponedTitle, style: const TextStyle(color: Colors.white)),
+        content: Text(
+          l10n.matchPostponedBody,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (mounted) Navigator.of(context).pop();
+            },
+            child: Text(l10n.ok),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid}) {
-    if (!mounted) return;
+    if (!mounted || _navigating) return;
+    _navigating = true;
 
     HapticService.heavyImpact();
 
@@ -186,12 +326,34 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     );
   }
 
+  Future<void> _onCancelPressed() async {
+    HapticService.lightImpact();
+    setState(() => _cancelling = true);
+    try {
+      await TournamentService.setMatchUnready(widget.matchId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      if (e.toString().contains('already started')) {
+        // Both readied at the same moment — the start event is about to
+        // navigate us into the game. Stay put.
+        setState(() => _cancelling = false);
+      } else {
+        // Old backend (no unready endpoint) or transient error: leave anyway
+        // rather than trapping the user on this screen.
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   @override
   void dispose() {
     _windowTimer?.cancel();
+    _outcomePoll?.cancel();
+    _readySub?.cancel();
+    _startSub?.cancel();
+    _resultSub?.cancel();
     _pulseController.dispose();
-    SocketService.off('matchReadyUpdate');
-    SocketService.off('tournamentMatchStart');
     OrientationUtils.portraitOnly();
     super.dispose();
   }
@@ -332,14 +494,12 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
             const Spacer(),
 
-            // Back button
+            // Back button — withdraws the ready state server-side so the
+            // opponent readying later doesn't start a game with nobody here.
             Padding(
               padding: const EdgeInsets.all(24),
               child: TextButton(
-                onPressed: () {
-                  HapticService.lightImpact();
-                  Navigator.of(context).pop();
-                },
+                onPressed: _cancelling ? null : _onCancelPressed,
                 child: Text(
                   AppLocalizations.of(context).cancelButton,
                   style: const TextStyle(
