@@ -22,6 +22,8 @@ import '../../services/dart_scoring_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/logo_watermark.dart';
+import '../../widgets/auto_score_display.dart';
+import '../../widgets/local_camera_preview.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
@@ -32,7 +34,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   dynamic readGame();
   String get opponentUsername;
   Widget buildAppBarTitle();
-  Widget? buildExtraHeader(dynamic game, AuthProvider auth);
   Widget buildEndScreen(dynamic game, AuthProvider auth);
   void onScreenSpecificStateChange(dynamic game);
   Future<void> initScreenSpecific();
@@ -1472,7 +1473,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     dynamic game,
     AuthProvider auth,
     double safeTop, {
-    Widget? extraHeader,
     String? channelId,
     String? seriesTitle,
     int myLegs = 0,
@@ -1508,7 +1508,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(height: safeTop),
-            if (extraHeader != null) extraHeader,
             if (disconnectBanner != null) disconnectBanner,
             Expanded(
               child: Row(children: [
@@ -1548,7 +1547,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(height: safeTop),
-          if (extraHeader != null) extraHeader,
           if (disconnectBanner != null) disconnectBanner,
           const SizedBox(height: 6),
           header,
@@ -1571,6 +1569,141 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             child: const OpponentWarningBanner(),
           ),
         ],
+      ),
+    );
+  }
+
+  /// "BO3 · Manche 2" center label for the series displays, or null for a
+  /// single-leg match (the displays fall back to their BO1 layout).
+  String? seriesTitleOf(dynamic game) {
+    try {
+      final bestOf = game.bestOf as int;
+      if (bestOf <= 1) return null;
+      return 'BO$bestOf · ${AppLocalizations.of(context).legNumber(game.currentLeg as int)}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Agora channel fallback when the provider doesn't hold one (ranked passes
+  /// the channel it was opened with).
+  String? get fallbackAgoraChannelId => null;
+
+  /// "INITIALISATION DU MATCH..." spinner, shown until game_started /
+  /// game_state_sync flips the provider's gameStarted.
+  Widget buildInitializingScreen() {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await onWillPop() && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: AppTheme.primary),
+              const SizedBox(height: 16),
+              Text(AppLocalizations.of(context).initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The live in-match body — my turn (AutoScoreGameView), opponent turn and
+  /// the self-disconnect banner. ONE implementation for ranked, friendly and
+  /// tournament matches: game-mode differences must come from the provider's
+  /// data (bestOf, legs, rounds), never from a forked copy of this layout.
+  Widget buildLiveMatchBody(dynamic game, AuthProvider auth) {
+    final safeTop = MediaQuery.of(context).padding.top;
+    final seriesTitle = seriesTitleOf(game);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await onWillPop() && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Stack(
+          children: [
+            autoScoringLoading && (game.isMyTurn || game.pendingConfirmation)
+              ? Container(
+                  color: AppTheme.background,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: AppTheme.primary),
+                        const SizedBox(height: 16),
+                        Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                )
+              : (game.isMyTurn || game.pendingConfirmation)
+                ? AutoScoreGameView(
+                    scoringService: autoScoringService!,
+                    onConfirm: () => submitAutoScoredDarts(game),
+                    onEndRoundEarly: () => submitAutoScoredDarts(game),
+                    pendingConfirmation: game.pendingConfirmation,
+                    myScore: game.myScore,
+                    opponentScore: game.opponentScore,
+                    opponentName: opponentUsername,
+                    myName: auth.currentUser?.username ?? 'You',
+                    iAmPlayer2: game.iAmPlayer2,
+                    dartsThrown: game.dartsThrown,
+                    agoraEngine: agoraEngine,
+                    localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
+                        ? LocalCameraPreview(controller: cameraFrameService!.controller!)
+                        : null,
+                    remoteUid: game.remoteUid,
+                    isAudioMuted: isAudioMuted,
+                    onToggleAudio: toggleAudio,
+                    onSwitchCamera: switchCamera,
+                    onZoomIn: zoomIn,
+                    onZoomOut: zoomOut,
+                    currentZoom: cameraZoom,
+                    minZoom: cameraMinZoom,
+                    maxZoom: cameraMaxZoom,
+                    onEditDart: (index, dartScore) {
+                      final (base, mul) = dartScoreToBackend(dartScore);
+                      game.editDartThrow(index, base, mul);
+                    },
+                    onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
+                    onEditModalClosed: resumeCaptureAfterEdit,
+                    onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
+                    aiEnabled: !aiManuallyDisabled,
+                    myAverage: myAvgOrNull(game),
+                    opponentAverage: opponentAvgOrNull(game),
+                    roundNumber: roundNumberOf(game, forOpponent: false),
+                    onBack: handleBackPressed,
+                    seriesTitle: seriesTitle,
+                    myLegs: game.myLegsWon,
+                    opponentLegs: game.opponentLegsWon,
+                  )
+                // Opponent's turn
+                : buildOpponentTurnScreenShared(
+                    game,
+                    auth,
+                    safeTop,
+                    channelId: game.agoraChannelName ?? fallbackAgoraChannelId ?? '',
+                    seriesTitle: seriesTitle,
+                    myLegs: game.myLegsWon,
+                    opponentLegs: game.opponentLegsWon,
+                  ),
+
+            // Own-connection banner (shows when OUR socket is down)
+            if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
+              banner,
+          ],
+        ),
       ),
     );
   }

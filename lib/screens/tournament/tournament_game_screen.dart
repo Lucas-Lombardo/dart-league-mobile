@@ -8,10 +8,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
-import '../../utils/score_converter.dart';
 import '../../l10n/app_localizations.dart';
-import '../../widgets/auto_score_display.dart';
-import '../../widgets/local_camera_preview.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
 import 'tournament_leg_result_screen.dart';
@@ -69,10 +66,6 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     const SizedBox(width: 8),
     Text(AppLocalizations.of(context).tournamentAppBarTitle, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
   ]);
-
-  @override
-  Widget? buildExtraHeader(dynamic game, AuthProvider auth) =>
-      _buildSeriesScoreboard(game as TournamentGameProvider, auth);
 
   @override
   void onScreenSpecificStateChange(dynamic game) {
@@ -434,15 +427,6 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     );
   }
 
-  Widget _buildOpponentTurnScreen(TournamentGameProvider game, AuthProvider auth, double safeTop) {
-    return buildOpponentTurnScreenShared(
-      game,
-      auth,
-      safeTop,
-      extraHeader: buildExtraHeader(game, auth),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (isLoading) return buildLoadingScreen();
@@ -451,105 +435,10 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       final game = context.watch<TournamentGameProvider>();
       final auth = context.watch<AuthProvider>();
 
-      if (!game.gameStarted) {
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) async {
-            if (didPop) return;
-            final shouldPop = await onWillPop();
-            if (shouldPop && context.mounted) Navigator.of(context).pop();
-          },
-          child: Scaffold(
-            backgroundColor: AppTheme.background,
-            appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: AppTheme.primary),
-                  const SizedBox(height: 16),
-                  Text(AppLocalizations.of(context).initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-
+      if (!game.gameStarted) return buildInitializingScreen();
       if (game.gameEnded && !_resultAccepted && game.pendingType != 'forfeit') return buildEndScreen(game, auth);
 
-      final safeTop = MediaQuery.of(context).padding.top;
-
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) async {
-          if (didPop) return;
-          if (await onWillPop() && context.mounted) Navigator.of(context).pop();
-        },
-        child: Scaffold(
-          backgroundColor: AppTheme.background,
-          body: Stack(
-            children: [
-              // Main content
-              autoScoringLoading && (game.isMyTurn || game.pendingConfirmation)
-                ? Container(
-                    color: AppTheme.background,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const CircularProgressIndicator(color: AppTheme.primary),
-                          const SizedBox(height: 16),
-                          Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  )
-                : (game.isMyTurn || game.pendingConfirmation)
-                  ? AutoScoreGameView(
-                      scoringService: autoScoringService!,
-                      onConfirm: () => submitAutoScoredDarts(game),
-                      onEndRoundEarly: () => submitAutoScoredDarts(game),
-                      pendingConfirmation: game.pendingConfirmation,
-                      myScore: game.myScore,
-                      opponentScore: game.opponentScore,
-                      opponentName: widget.opponentUsername,
-                      myName: auth.currentUser?.username ?? 'You',
-                      iAmPlayer2: game.iAmPlayer2,
-                      dartsThrown: game.dartsThrown,
-                      agoraEngine: agoraEngine,
-                      localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
-                          ? LocalCameraPreview(controller: cameraFrameService!.controller!)
-                          : null,
-                      remoteUid: game.remoteUid,
-                      isAudioMuted: isAudioMuted,
-                      onToggleAudio: toggleAudio,
-                      onSwitchCamera: switchCamera,
-                      onZoomIn: zoomIn,
-                      onZoomOut: zoomOut,
-                      currentZoom: cameraZoom,
-                      minZoom: cameraMinZoom,
-                      maxZoom: cameraMaxZoom,
-                      onEditDart: (index, dartScore) {
-                        final (base, mul) = dartScoreToBackend(dartScore);
-                        game.editDartThrow(index, base, mul);
-                      },
-                      onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
-                      onEditModalClosed: resumeCaptureAfterEdit,
-                      onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
-                      aiEnabled: !aiManuallyDisabled,
-                      onBack: handleBackPressed,
-                    )
-                  // Opponent's turn
-                  : _buildOpponentTurnScreen(game, auth, safeTop),
-
-              // Own-connection banner (shows when OUR socket is down)
-              if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
-                banner,
-            ],
-          ),
-        ),
-      );
+      return buildLiveMatchBody(game, auth);
     } catch (e, stackTrace) {
       return Scaffold(
         appBar: AppBar(title: Text(AppLocalizations.of(context).error)),
@@ -559,60 +448,4 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
 
-  Widget _buildSeriesScoreboard(TournamentGameProvider game, AuthProvider auth) {
-    final myUsername = auth.currentUser?.username ?? 'You';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          bottom: BorderSide(color: AppTheme.primary.withValues(alpha: 0.3)),
-        ),
-      ),
-      child: Row(
-        children: [
-          // My legs
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(myUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5), overflow: TextOverflow.ellipsis),
-                Text('${game.myLegsWon}', style: const TextStyle(color: AppTheme.primary, fontSize: 24, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          // Center: round info + leg indicator
-          Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  widget.roundName.replaceAll('_', ' ').toUpperCase(),
-                  style: const TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(AppLocalizations.of(context).legNumber(game.currentLeg), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-              Text('${AppLocalizations.of(context).bestOf} ${widget.bestOf}', style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 11)),
-            ],
-          ),
-          // Opponent legs
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(widget.opponentUsername.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5), overflow: TextOverflow.ellipsis),
-                Text('${game.opponentLegsWon}', style: const TextStyle(color: AppTheme.error, fontSize: 24, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

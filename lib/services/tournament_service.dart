@@ -116,6 +116,17 @@ class TournamentService {
     await ApiService.post('/tournaments/matches/$matchId/ready', {});
   }
 
+  /// Poll fallback for the ready screen: ready flags + (once both players
+  /// readied and the leg exists) the same start payload as the
+  /// tournamentMatchStart socket event — so a missed emit can't strand the
+  /// lobby on "waiting for opponent".
+  static Future<Map<String, dynamic>> getMatchReadyState(String matchId) async {
+    final response =
+        await ApiService.get('/tournaments/matches/$matchId/ready-state');
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
+  }
+
   /// Withdraw a ready state (backing out of the ready screen before the match
   /// starts). Throws if the match already started.
   static Future<void> setMatchUnready(String matchId) async {

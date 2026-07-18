@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
@@ -94,6 +95,15 @@ class _TournamentCameraSetupScreenState
         bestOf: widget.bestOf,
         roundName: widget.roundName,
       );
+      // Ask the server for the state explicitly (mirrors the friendly rejoin
+      // in camera_setup_screen.dart): on a cold start the fresh socket is in
+      // no room, so without this emit no game_state_sync ever arrives and the
+      // game screen spins on "initializing match" forever.
+      try {
+        await SocketService.ensureConnected();
+      } catch (_) {}
+      if (!mounted) return;
+      tournamentGame.reconnectToMatch();
       AppNavigator.replaceWith(
         context,
         TournamentGameScreen(

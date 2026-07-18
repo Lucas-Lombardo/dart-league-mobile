@@ -35,6 +35,10 @@ class TournamentGameProvider with ChangeNotifier {
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
   List<String> _opponentRoundThrows = [];
+  // Per-round scores of the current leg (same as GameProvider) — feeds the
+  // shared header's round number + averages.
+  List<int> _myRounds = [];
+  List<int> _opponentRounds = [];
   int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
   // Per-dart delivery tracking — see GameProvider for the full rationale.
   // Every throw_dart carries a dartId; the server acks and dedups, so lost
@@ -112,6 +116,10 @@ class TournamentGameProvider with ChangeNotifier {
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => _currentRoundThrows;
   List<String> get opponentRoundThrows => _opponentRoundThrows;
+  List<int> get myRounds => List.unmodifiable(_myRounds);
+  List<int> get opponentRounds => List.unmodifiable(_opponentRounds);
+  double get myAveragePerRound => _myRounds.isEmpty ? 0.0 : _myRounds.reduce((a, b) => a + b) / _myRounds.length;
+  double get opponentAveragePerRound => _opponentRounds.isEmpty ? 0.0 : _opponentRounds.reduce((a, b) => a + b) / _opponentRounds.length;
   bool get pendingConfirmation => _pendingConfirmation;
   String? get pendingType => _pendingType;
   String? get pendingReason => _pendingReason;
@@ -241,6 +249,8 @@ class TournamentGameProvider with ChangeNotifier {
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];
+    _myRounds = [];
+    _opponentRounds = [];
     _dartsEmittedThisRound = 0;
     _clearPendingDarts();
     _ackedDartsThisRound = 0;
@@ -442,6 +452,7 @@ class TournamentGameProvider with ChangeNotifier {
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
+    _updateRoundsFromData(data);
     notifyListeners();
   }
 
@@ -614,6 +625,7 @@ class TournamentGameProvider with ChangeNotifier {
     if (player1Score != null && player2Score != null) {
       _updateScoresFromPlayerScores(player1Score, player2Score);
     }
+    _updateRoundsFromData(data);
 
     // Restore pending win/bust confirmation after a reconnect/heal (see
     // GameProvider for the full rationale).
@@ -1131,6 +1143,21 @@ class TournamentGameProvider with ChangeNotifier {
             ? 'D'
             : 'T';
     return '$prefix$baseScore';
+  }
+
+  /// Map player1Rounds/player2Rounds to myRounds/opponentRounds (same as
+  /// GameProvider — feeds the shared header's round number + averages).
+  void _updateRoundsFromData(dynamic data) {
+    final p1Rounds = data['player1Rounds'] as List<dynamic>?;
+    final p2Rounds = data['player2Rounds'] as List<dynamic>?;
+    final isPlayer1 = _myUserId == _player1Id;
+    if (isPlayer1) {
+      if (p1Rounds != null) _myRounds = p1Rounds.map((e) => (e as num).toInt()).toList();
+      if (p2Rounds != null) _opponentRounds = p2Rounds.map((e) => (e as num).toInt()).toList();
+    } else {
+      if (p2Rounds != null) _myRounds = p2Rounds.map((e) => (e as num).toInt()).toList();
+      if (p1Rounds != null) _opponentRounds = p1Rounds.map((e) => (e as num).toInt()).toList();
+    }
   }
 
   void _updateScoresFromPlayerScores(int player1Score, int player2Score) {

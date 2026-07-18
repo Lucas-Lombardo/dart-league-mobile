@@ -116,6 +116,18 @@ class UserService {
     }).toList();
   }
 
+  /// 1-based rank of the signed-in user in the global ladder, or null while
+  /// unranked (or on any failure — the pinned row just doesn't show).
+  static Future<int?> getMyLeaderboardPosition() async {
+    try {
+      final response = await ApiService.get('/users/leaderboard/me');
+      if (response is Map<String, dynamic>) {
+        return response['position'] as int?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<List<Match>> getUserMatches(String userId, {int limit = 50}) async {
     final response = await ApiService.get('/users/$userId/matches?limit=$limit');
 

@@ -1012,7 +1012,8 @@ class _CountdownTimerState extends State<_CountdownTimer> {
   }
 
   void _calculateRemaining() {
-    final deadline = widget.inviteSentAt.add(const Duration(minutes: 15));
+    // Keep in sync with MATCH_INVITE_TIMEOUT_MS (backend tournament.service.ts)
+    final deadline = widget.inviteSentAt.add(const Duration(minutes: 5));
     _remaining = deadline.difference(DateTime.now());
     if (_remaining.isNegative) {
       _remaining = Duration.zero;

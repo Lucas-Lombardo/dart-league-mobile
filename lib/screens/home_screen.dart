@@ -244,11 +244,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
               ),
               child: Row(
                 children: [
-                  Expanded(child: _buildNavItem(0, Icons.bar_chart, Icons.bar_chart_rounded, l10n.stats)),
-                  Expanded(child: _buildNavItem(1, Icons.emoji_events_outlined, Icons.emoji_events, l10n.tournament)),
-                  Expanded(child: _buildNavItem(2, Icons.play_circle_outline, Icons.play_circle_filled, l10n.play)),
-                  Expanded(child: _buildNavItem(3, Icons.people_outline, Icons.people, l10n.friends)),
-                  Expanded(child: _buildNavItem(4, Icons.leaderboard_outlined, Icons.leaderboard, l10n.rankings)),
+                  Expanded(child: _buildNavItem(0, '📊', l10n.stats)),
+                  Expanded(child: _buildNavItem(1, '🏆', l10n.tournament)),
+                  Expanded(child: _buildNavItem(2, '', l10n.play)),
+                  Expanded(child: _buildNavItem(3, '👥', l10n.friends)),
+                  Expanded(child: _buildNavItem(4, '📈', l10n.rankings)),
                 ],
               ),
             ),
@@ -258,10 +258,12 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
+  Widget _buildNavItem(int index, String emoji, String label) {
     final isSelected = _currentIndex == index;
     final isPlayTab = index == 2; // Play is middle tab
-    final showCircle = isSelected && isPlayTab;
+    // The Play tab keeps its circle permanently (B2): it reads as the central
+    // action button of the bar; selection only brightens the glow.
+    final showCircle = isPlayTab;
     final isFriendsTab = index == 3;
     final isTournamentTab = index == 1;
     
@@ -286,23 +288,37 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                   height: 48,
                   decoration: showCircle
                       ? BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.2),
+                          color: AppTheme.primary.withValues(alpha: isSelected ? 0.2 : 0.1),
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primary.withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              spreadRadius: 2,
-                            ),
-                          ],
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: AppTheme.primary.withValues(alpha: 0.3),
+                                    blurRadius: 12,
+                                    spreadRadius: 2,
+                                  ),
+                                ]
+                              : null,
                         )
                       : null,
                   child: Center(
-                    child: Icon(
-                      isSelected ? activeIcon : icon,
-                      color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
-                      size: 24,
-                    ),
+                    // The Play tab carries the brand (shield logo); the other
+                    // tabs use rich color emoji like the validated mockup —
+                    // selection reads through the label color and full opacity.
+                    child: isPlayTab
+                        ? Image.asset(
+                            'assets/logo/logo-without-letters.png',
+                            width: 36,
+                            height: 36,
+                            fit: BoxFit.contain,
+                          )
+                        : Opacity(
+                            opacity: isSelected ? 1.0 : 0.72,
+                            child: Text(
+                              emoji,
+                              style: const TextStyle(fontSize: 21),
+                            ),
+                          ),
                   ),
                 ),
                 if (isTournamentTab)

@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../providers/match_invite_provider.dart';
+import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../services/user_service.dart';
@@ -11,6 +14,7 @@ import '../../services/tournament_service.dart';
 import '../../models/match.dart';
 import '../../models/tournament.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/round_labels.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
@@ -71,6 +75,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       // socket events and push taps — following it here means the Join /
       // Resume button flips while the user idles on this tab.
       if (!mounted) return;
+      _loadPlacementStatusIfUnranked();
       _tournamentProvider = context.read<TournamentProvider>();
       _tournamentProvider!.addListener(_syncFromTournamentProvider);
       _syncFromTournamentProvider();
@@ -100,6 +105,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
     _refreshSubscription();
+    _loadPlacementStatusIfUnranked();
+  }
+
+  /// Feeds the placement-progress ring; only relevant while unranked.
+  void _loadPlacementStatusIfUnranked() {
+    if (!mounted) return;
+    final rank = context.read<AuthProvider>().currentUser?.rank;
+    if (rank?.toLowerCase() == 'unranked') {
+      context.read<PlacementProvider>().loadStatus();
+    }
   }
 
   Future<void> _refreshSubscription() async {
@@ -637,24 +652,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  String _getPreviousRank(String currentRank) {
-    switch (currentRank.toLowerCase()) {
-      case 'silver':
-        return 'Bronze';
-      case 'gold':
-        return 'Silver';
-      case 'platinum':
-        return 'Gold';
-      case 'diamond':
-        return 'Platinum';
-      case 'master':
-        return 'Diamond';
-      case 'bronze':
-      default:
-        return 'Bronze';
-    }
-  }
-
   String _getNextRank(String currentRank) {
     switch (currentRank.toLowerCase()) {
       case 'bronze':
@@ -689,9 +686,77 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     return threshold - currentElo;
   }
 
-  int _getEloBelowPreviousRank(String currentRank, int currentElo) {
-    final currentThreshold = _rankThresholds[currentRank.toLowerCase()] ?? 0;
-    return currentThreshold - currentElo;
+  /// Last five results as win/loss chips (oldest → newest) plus the current
+  /// win streak when there is one.
+  Widget _buildFormRow(String userId, AppLocalizations l10n) {
+    final dots = _recentMatches.take(5).toList().reversed.toList();
+    var streak = 0;
+    for (final match in _recentMatches) {
+      if (match.isWinner(userId)) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            l10n.formLabel,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          ...dots.map((match) {
+            final won = match.isWinner(userId);
+            return Container(
+              width: 22,
+              height: 22,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                color: (won ? AppTheme.success : AppTheme.error).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Center(
+                child: Text(
+                  won ? l10n.formWinLetter : l10n.formLossLetter,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: won ? AppTheme.success : AppTheme.error,
+                  ),
+                ),
+              ),
+            );
+          }),
+          if (streak >= 2)
+            Expanded(
+              child: Text(
+                l10n.winStreak(streak),
+                textAlign: TextAlign.right,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.success,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   double _getRankProgress(String currentRank, int currentElo) {
@@ -722,7 +787,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     }
 
     final eloNeeded = _getEloNeededForNextRank(user.rank, user.elo);
-    final previousRank = _getPreviousRank(user.rank);
     final currentRank = user.rank;
     final nextRank = _getNextRank(user.rank);
     final progress = _getRankProgress(user.rank, user.elo);
@@ -746,180 +810,22 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (isUnranked)
-            // Unranked: Placement prompt
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: AppTheme.surfaceGradient,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: AppTheme.accent.withValues(alpha: 0.5),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.emoji_events, size: 48, color: AppTheme.accent),
-                  const SizedBox(height: 12),
-                  Text(l10n.placementMatches, style: AppTheme.displayMedium),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      l10n.completePlacementToUnlock,
-                      textAlign: TextAlign.center,
-                      style: AppTheme.bodyLarge,
-                    ),
-                  ),
-                ],
-              ),
+            // Unranked: the unranked badge inside a gold placement-progress
+            // ring — same hero language as the ranked ELO ring (B2 redesign).
+            _PlacementRingHero(
+              matchesPlayed:
+                  context.watch<PlacementProvider>().status?.matchesPlayed ?? 0,
             )
           else
-            // Ranked: Normal rank progression
-            Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: AppTheme.surfaceGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+            // Ranked: the rank badge inside an ELO progress ring (B2 redesign)
+            _RankRingHero(
+              rank: currentRank,
+              elo: user.elo,
+              nextRank: nextRank,
+              eloNeeded: eloNeeded,
+              progress: progress,
             ),
-            child: Column(
-              children: [
-                // Rank Progression
-                Column(
-                  children: [
-                    // Rank badges row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Previous Rank
-                        Opacity(
-                          opacity: 0.5,
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                width: 70,
-                                height: 70,
-                                child: RankUtils.getRankBadge(
-                                  previousRank,
-                                  size: 70,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '+${_getEloBelowPreviousRank(currentRank, user.elo).abs()}',
-                                style: const TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        // Current Rank
-                        Column(
-                          children: [
-                            SizedBox(
-                              width: 100,
-                              height: 100,
-                              child: RankUtils.getRankBadge(
-                                currentRank,
-                                size: 100,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                          ],
-                        ),
-                        
-                        // Next Rank
-                        Opacity(
-                          opacity: 0.3,
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                width: 75,
-                                height: 75,
-                                child: RankUtils.getRankBadge(
-                                  nextRank,
-                                  size: 75,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '+${eloNeeded > 0 ? eloNeeded : 0}',
-                                style: TextStyle(
-                                  color: AppTheme.primary.withValues(alpha: 0.8),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Progress bar
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Stack(
-                        children: [
-                          // Background bar
-                          Container(
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: AppTheme.surface,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                          // Progress bar
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: FractionallySizedBox(
-                              widthFactor: progress,
-                              child: Container(
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.primary.withValues(alpha: 0.4),
-                                      blurRadius: 8,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
           if (matchInvite.incoming != null)
             // Friend invite — the whole Play button becomes "Join the match".
             // Highest priority: the inviter is actively waiting and the invite
@@ -927,7 +833,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             // this can't collide with an active-match rejoin.)
             _buildFriendInviteButton(matchInvite.incoming!, l10n)
           else if (isUnranked) ...[
-            // Placement Matches button
+            // Placement bar — same CTA language as the ranked play bar, in
+            // gold (B2 redesign). The explanation lives in the hero above.
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
@@ -938,80 +845,44 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                       builder: (context) => const PlacementHubScreen(),
                     ),
                   ).then((_) {
+                    if (!mounted) return;
                     // Reload matches and user data after returning
                     _loadRecentMatches();
                     context.read<AuthProvider>().checkAuthStatus();
+                    context.read<PlacementProvider>().loadStatus();
                   });
                 },
                 child: Container(
-                  height: 180,
+                  padding: const EdgeInsets.symmetric(vertical: 17),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFEAB308).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
+                        color: const Color(0xFFEAB308).withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
-                  child: Stack(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.emoji_events,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.placementMatches.toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: Text(
-                                l10n.completePlacementToUnlock,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
+                      const Icon(Icons.emoji_events, size: 22, color: Colors.white),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          l10n.placementMatches.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                          ),
                         ),
                       ),
                     ],
@@ -1089,7 +960,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${_activeTournamentLeg!.roundNameDisplay}',
+                              '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _activeTournamentLeg!)}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,
@@ -1195,7 +1066,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${_pendingTournamentMatch!.roundNameDisplay}',
+                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _pendingTournamentMatch!)}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,
@@ -1371,63 +1242,37 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               _buildFreeTierHint(subscription),
               const SizedBox(height: 12),
             ],
-            // Find Match button
+            // Play bar — full-width CTA; mode choice stays in the sheet
+            // opened by _onPlayTapped (B2 redesign).
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
                 onTap: _onPlayTapped,
                 child: Container(
-                  height: 180,
+                  padding: const EdgeInsets.symmetric(vertical: 17),
                   decoration: BoxDecoration(
                     gradient: AppTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primary.withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
+                        color: AppTheme.primary.withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
-                  child: Stack(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.sports_esports,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.play,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                          ],
+                      const Icon(Icons.track_changes, size: 22, color: Colors.white),
+                      const SizedBox(width: 10),
+                      Text(
+                        l10n.play.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2,
                         ),
                       ),
                     ],
@@ -1447,30 +1292,30 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               );
             },
             child: Container(
-              height: 96,
+              height: 84,
               decoration: BoxDecoration(
                 color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: AppTheme.accent.withValues(alpha: 0.5),
+                  color: AppTheme.surfaceLight.withValues(alpha: 0.6),
                 ),
               ),
               child: Row(
                 children: [
                   const SizedBox(width: 16),
                   Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.18),
-                      shape: BoxShape.circle,
+                      color: AppTheme.accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
                       Icons.fitness_center,
                       color: AppTheme.accent,
-                      size: 28,
+                      size: 24,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1480,17 +1325,19 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                           l10n.trainingPlayCardTitle,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           l10n.trainingPlayCardSubtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 13,
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
@@ -1502,7 +1349,11 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-          const SizedBox(height: 32),
+          if (_recentMatches.isNotEmpty && user.rank.toLowerCase() != 'unranked') ...[
+            const SizedBox(height: 12),
+            _buildFormRow(user.id, l10n),
+          ],
+          const SizedBox(height: 28),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1611,6 +1462,253 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         ],
       ),
     ),
+    );
+  }
+}
+
+/// Rank badge inside a circular ELO progress ring, with the points needed for
+/// the next rank underneath (home B2 redesign).
+class _RankRingHero extends StatelessWidget {
+  final String rank;
+  final int elo;
+  final String nextRank;
+  final int eloNeeded;
+  final double progress;
+
+  const _RankRingHero({
+    required this.rank,
+    required this.elo,
+    required this.nextRank,
+    required this.eloNeeded,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isMaxRank = rank.toLowerCase() == 'master';
+    final percent = (progress * 100).round();
+
+    return Column(
+      children: [
+        SizedBox(
+          width: 176,
+          height: 176,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 176,
+                height: 176,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.accent.withValues(alpha: 0.12),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.78],
+                  ),
+                ),
+              ),
+              CustomPaint(
+                size: const Size(152, 152),
+                painter: _EloRingPainter(isMaxRank ? 1.0 : progress),
+              ),
+              RankUtils.getRankBadge(rank, size: 92),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              '$elo',
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 5),
+            const Text(
+              'ELO',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        if (isMaxRank)
+          Text(
+            l10n.maxRankReached,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: AppTheme.textSecondary,
+            ),
+          )
+        else
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppTheme.textSecondary,
+              ),
+              children: [
+                TextSpan(text: '$nextRank ${l10n.nextRankConnector} '),
+                TextSpan(
+                  text: '+${math.max(eloNeeded, 0)} pts',
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                TextSpan(text: ' · $percent %'),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _EloRingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  const _EloRingPainter(this.progress, {this.color = AppTheme.primary});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = (size.width - 10) / 2;
+
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7
+      ..color = const Color(0xFF233046);
+    canvas.drawCircle(center, radius, track);
+
+    final clamped = progress.clamp(0.0, 1.0);
+    if (clamped <= 0) return;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final sweep = 2 * math.pi * clamped;
+
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 9
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawArc(rect, -math.pi / 2, sweep, false, glow);
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawArc(rect, -math.pi / 2, sweep, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(_EloRingPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.color != color;
+}
+
+/// Unranked twin of [_RankRingHero]: the unranked badge inside a gold ring
+/// tracking placement progress (X of 4 matches played).
+class _PlacementRingHero extends StatelessWidget {
+  final int matchesPlayed;
+
+  /// Mirrors the backend's TOTAL_PLACEMENT_MATCHES (and the 4 hardcoded in
+  /// PlacementHubScreen).
+  static const int _totalMatches = 4;
+
+  const _PlacementRingHero({required this.matchesPlayed});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final played = matchesPlayed.clamp(0, _totalMatches);
+
+    return Column(
+      children: [
+        SizedBox(
+          width: 176,
+          height: 176,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 176,
+                height: 176,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.accent.withValues(alpha: 0.12),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.78],
+                  ),
+                ),
+              ),
+              CustomPaint(
+                size: const Size(152, 152),
+                painter: _EloRingPainter(
+                  played / _totalMatches,
+                  color: AppTheme.accent,
+                ),
+              ),
+              RankUtils.getRankBadge('unranked', size: 92),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              '$played / $_totalMatches',
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              l10n.placementMatches.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            l10n.completePlacementToUnlock,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

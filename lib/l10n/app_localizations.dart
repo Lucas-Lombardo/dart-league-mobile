@@ -870,6 +870,49 @@ abstract class AppLocalizations {
   String get autoValidation;
   String get autoValidationHint;
   String get confirmUpper;
+
+  // Tournament detail screen (round-focused bracket)
+  String get roundFinalLabel;
+  String get roundSemiFinals;
+  String get roundQuarterFinals;
+  String get roundOf16Label;
+  String get roundOf32Label;
+  String get roundOf64Label;
+  String roundNLabel(int n);
+  String roundProgress(int current, int total);
+  String get yourMatchTag;
+  String get joinTournamentMatch;
+  String get otherMatchesLabel;
+  String get matchStatusCompleted;
+  String get matchStatusInProgress;
+  String get matchStatusWaitingPlayers;
+  String get matchStatusUpcoming;
+  String get startsAfterPreviousRound;
+  String get tbdLabel;
+  String get qualifiedLabel;
+  String championCrowned(String name);
+  String get freeLabel;
+  String get tournamentStatusUpcoming;
+  String get tournamentStatusRegistrationOpen;
+  String get tournamentStatusRegistrationClosed;
+  String get tournamentStatusInProgress;
+  String get tournamentStatusCompleted;
+  String get tournamentStatusCancelled;
+
+  // Home (B2): ELO ring hero + form row
+  String get nextRankConnector;
+  String get maxRankReached;
+  String get formLabel;
+  String get formWinLetter;
+  String get formLossLetter;
+  String winStreak(int n);
+
+  // Leaderboard (option A: podium + pinned position)
+  String get yourPosition;
+  String positionOrdinal(int n);
+
+  // Friends (option A: single challenge CTA, swipe to remove)
+  String get challengeFriend;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

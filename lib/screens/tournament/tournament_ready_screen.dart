@@ -60,8 +60,8 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   StreamSubscription<Map<String, dynamic>>? _startSub;
   StreamSubscription<Map<String, dynamic>>? _resultSub;
 
-  // 15-minute join window (mirrors the backend MATCH_INVITE_TIMEOUT).
-  static const Duration _joinWindow = Duration(minutes: 15);
+  // 5-minute join window (mirrors the backend MATCH_INVITE_TIMEOUT_MS).
+  static const Duration _joinWindow = Duration(minutes: 5);
   Timer? _windowTimer;
   Duration _remaining = Duration.zero;
   bool _expired = false;
@@ -70,6 +70,13 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   // poll the bracket until we can tell the player what actually happened.
   Timer? _outcomePoll;
   int _outcomePollTries = 0;
+
+  // Socket-independent safety net. matchReadyUpdate/tournamentMatchStart are
+  // fire-and-forget emits with no server-side replay: if this device's socket
+  // wasn't registered at that instant, the event is lost and both players sit
+  // here until the invite sweep forfeits them. Poll the ready-state endpoint
+  // and navigate from it when the emit was missed.
+  Timer? _statePoll;
 
   @override
   void initState() {
@@ -82,6 +89,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
     _startWindowCountdown();
     _setupListeners();
+    _startStatePolling();
   }
 
   void _startWindowCountdown() {
@@ -173,7 +181,61 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     }
   }
 
-  // The backend sweep runs every minute after the 15-minute deadline. Poll the
+  void _startStatePolling() {
+    _statePoll = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _navigating) {
+        _statePoll?.cancel();
+        return;
+      }
+      try {
+        final state =
+            await TournamentService.getMatchReadyState(widget.matchId);
+        if (!mounted || _navigating) return;
+
+        final p1Ready = state['player1Ready'] as bool? ?? false;
+        final p2Ready = state['player2Ready'] as bool? ?? false;
+        final user = context.read<AuthProvider>().currentUser;
+        final iAmPlayer1 = user?.id == widget.player1Id;
+        final myServerReady = iAmPlayer1 ? p1Ready : p2Ready;
+
+        setState(() {
+          _myReady = myServerReady || _myReady;
+          _opponentReady = iAmPlayer1 ? p2Ready : p1Ready;
+        });
+
+        // My initial /ready never landed (failed or lost POST): the screen
+        // shows "PRÊT" optimistically while the server disagrees, and the
+        // sweep would forfeit me. Re-send rather than lying.
+        if (!myServerReady && !_cancelling && !_expired) {
+          try {
+            await TournamentService.setMatchReady(widget.matchId);
+          } catch (_) {}
+        }
+
+        final start = state['start'];
+        if (start is Map<String, dynamic>) {
+          final gameMatchId = start['gameMatchId'] as String?;
+          if (gameMatchId != null) {
+            _statePoll?.cancel();
+            _navigateToGame(
+              gameMatchId,
+              agoraAppId: start['agoraAppId'] as String?,
+              agoraToken: start['agoraToken'] as String?,
+              agoraTokenStrict: start['agoraTokenStrict'] as String?,
+              agoraChannelName: start['agoraChannelName'] as String?,
+              agoraUid: (start['agoraUid'] as num?)?.toInt(),
+              opponentAgoraUid: (start['opponentAgoraUid'] as num?)?.toInt(),
+            );
+          }
+        }
+      } catch (_) {
+        // Transient (or old backend without the endpoint) — the socket path
+        // still does the job; next tick retries.
+      }
+    });
+  }
+
+  // The backend sweep runs every minute after the 5-minute deadline. Poll the
   // bracket a few times to tell the player how it ended instead of leaving
   // them staring at "expired" forever.
   void _startOutcomePolling() {
@@ -350,6 +412,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   void dispose() {
     _windowTimer?.cancel();
     _outcomePoll?.cancel();
+    _statePoll?.cancel();
     _readySub?.cancel();
     _startSub?.cancel();
     _resultSub?.cancel();

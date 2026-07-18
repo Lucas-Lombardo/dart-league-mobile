@@ -8,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
 import '../../widgets/premium_badge.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/haptic_service.dart';
 import '../profile/player_stats_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
@@ -22,6 +23,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry> _entries = [];
   String? _errorMessage;
   bool _showFriendsOnly = false;
+
+  /// Global ladder rank of the signed-in user (null while unranked/unknown).
+  int? _myGlobalPosition;
 
   @override
   void initState() {
@@ -55,9 +59,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         });
       } else {
         final entries = await UserService.getLeaderboard();
+        final myPosition = await UserService.getMyLeaderboardPosition();
         if (!mounted) return;
         setState(() {
           _entries = entries;
+          _myGlobalPosition = myPosition;
           _isLoading = false;
         });
       }
@@ -70,16 +76,34 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
   }
 
+  void _openPlayer(LeaderboardEntry entry) {
+    AppNavigator.toScreen(
+      context,
+      PlayerStatsScreen(
+        userId: entry.user.id,
+        username: entry.user.username,
+      ),
+    );
+  }
+
+  /// Pinned-row position: global rank from the backend, or the index in the
+  /// friends list when browsing the friends ladder.
+  int? _myPosition(String? currentUserId) {
+    if (_showFriendsOnly) {
+      final index = _entries.indexWhere((e) => e.user.id == currentUserId);
+      return index >= 0 ? index + 1 : null;
+    }
+    return _myGlobalPosition;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentUserId = context.watch<AuthProvider>().currentUser?.id;
+    final currentUser = context.watch<AuthProvider>().currentUser;
     final l10n = AppLocalizations.of(context);
 
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.primary,
-        ),
+        child: CircularProgressIndicator(color: AppTheme.primary),
       );
     }
 
@@ -109,263 +133,501 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       );
     }
 
-    if (_entries.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _showFriendsOnly ? Icons.people_outline : Icons.leaderboard_outlined,
-              size: 64,
-              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+    final podium = _entries.take(3).toList();
+    final rest = _entries.length > 3 ? _entries.sublist(3) : <LeaderboardEntry>[];
+    final myPosition = _myPosition(currentUser?.id);
+
+    return Column(
+      children: [
+        _ScopeToggle(
+          showFriendsOnly: _showFriendsOnly,
+          onChanged: (friendsOnly) {
+            HapticService.lightImpact();
+            setState(() => _showFriendsOnly = friendsOnly);
+            _loadLeaderboard();
+          },
+        ),
+        Expanded(
+          child: _entries.isEmpty
+              ? _EmptyState(showFriendsOnly: _showFriendsOnly, l10n: l10n)
+              : Column(
+                  children: [
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _loadLeaderboard,
+                        color: AppTheme.primary,
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 12),
+                          children: [
+                            if (podium.length >= 3)
+                              _Podium(entries: podium, onTap: _openPlayer)
+                            else
+                              ...podium.asMap().entries.map(
+                                    (e) => _LeaderboardRow(
+                                      entry: e.value,
+                                      isCurrentUser:
+                                          e.value.user.id == currentUser?.id,
+                                      onTap: () => _openPlayer(e.value),
+                                    ),
+                                  ),
+                            ...rest.map(
+                              (entry) => _LeaderboardRow(
+                                entry: entry,
+                                isCurrentUser: entry.user.id == currentUser?.id,
+                                onTap: () => _openPlayer(entry),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (myPosition != null && currentUser != null)
+                      _PinnedPositionRow(
+                        position: myPosition,
+                        username: currentUser.username,
+                        rank: currentUser.rank,
+                        elo: currentUser.elo,
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact Mondial | Amis segmented control — replaces the old title card.
+class _ScopeToggle extends StatelessWidget {
+  final bool showFriendsOnly;
+  final ValueChanged<bool> onChanged;
+
+  const _ScopeToggle({required this.showFriendsOnly, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    Widget segment(String label, IconData icon, bool selected, VoidCallback onTap) {
+      return Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.primary.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
-            const SizedBox(height: 16),
-            Text(
-              _showFriendsOnly ? 'No friends yet' : 'No leaderboard data available',
-              style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: selected ? Colors.white : AppTheme.textSecondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : AppTheme.textSecondary,
+                  ),
+                ),
+              ],
             ),
-            if (_showFriendsOnly) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Add friends to see their rankings!',
-                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-              ),
-            ],
-          ],
+          ),
         ),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadLeaderboard,
-      color: AppTheme.primary,
-      child: Column(
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+      ),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-            child: Row(
-              children: [
-                Icon(
-                  _showFriendsOnly ? Icons.people : Icons.public,
-                  color: AppTheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _showFriendsOnly ? l10n.friends : l10n.globalLeaderboard,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      _buildToggleButton(l10n.global, !_showFriendsOnly, () {
-                        setState(() {
-                          _showFriendsOnly = false;
-                        });
-                        _loadLeaderboard();
-                      }),
-                      _buildToggleButton(l10n.friends, _showFriendsOnly, () {
-                        setState(() {
-                          _showFriendsOnly = true;
-                        });
-                        _loadLeaderboard();
-                      }),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              children: [
-                Expanded(child: _buildHeaderCell(l10n.rank.toUpperCase(), TextAlign.center)),
-                Expanded(flex: 3, child: _buildHeaderCell(l10n.player.toUpperCase(), TextAlign.left)),
-                Expanded(child: _buildHeaderCell(l10n.elo, TextAlign.right)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _entries.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final entry = _entries[index];
-                final isCurrentUser = entry.user.id == currentUserId;
-                final isTopThree = index < 3;
+          segment(l10n.global, Icons.public, !showFriendsOnly,
+              () => onChanged(false)),
+          segment(l10n.friends, Icons.people, showFriendsOnly,
+              () => onChanged(true)),
+        ],
+      ),
+    );
+  }
+}
 
-                return InkWell(
-                  onTap: () {
-                    AppNavigator.toScreen(
-                      context,
-                      PlayerStatsScreen(
-                        userId: entry.user.id,
-                        username: entry.user.username,
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isCurrentUser
-                          ? AppTheme.primary.withValues(alpha: 0.15)
-                          : AppTheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isCurrentUser
-                            ? AppTheme.primary
-                            : Colors.transparent,
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        if (isTopThree)
-                          BoxShadow(
-                            color: _getRankColor(index).withValues(alpha: 0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                      ],
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      leading: SizedBox(
-                        width: 40,
-                        child: Center(
-                          child: isTopThree
-                            ? Icon(
-                                Icons.emoji_events,
-                                color: _getRankColor(index),
-                                size: 32,
-                              )
-                            : Text(
-                                '${entry.rank}',
-                                style: TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          RankBadge(
-                            rank: entry.user.rank,
-                            size: 40,
-                            showLabel: false,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    entry.user.username,
-                                    style: TextStyle(
-                                      color: isCurrentUser ? AppTheme.primary : Colors.white,
-                                      fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.w500,
-                                      fontSize: 16,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                PremiumBadge(isPremium: entry.user.isPremiumActive, size: 14),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: Text(
-                        '${entry.wins}W - ${entry.losses}L',
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      ),
-                      trailing: Text(
-                        '${entry.user.elo}',
-                        style: TextStyle(
-                          color: isTopThree ? _getRankColor(index) : AppTheme.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+/// Top 3 staged on gold/silver/bronze pedestals, winner raised in the middle.
+class _Podium extends StatelessWidget {
+  final List<LeaderboardEntry> entries;
+  final void Function(LeaderboardEntry) onTap;
+
+  const _Podium({required this.entries, required this.onTap});
+
+  static const _gold = Color(0xFFFFD700);
+  static const _silver = Color(0xFFC0C0C0);
+  static const _bronze = Color(0xFFCD7F32);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: _PodiumSpot(
+              entry: entries[1],
+              place: 2,
+              color: _silver,
+              badgeSize: 44,
+              baseHeight: 34,
+              onTap: () => onTap(entries[1]),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _PodiumSpot(
+              entry: entries[0],
+              place: 1,
+              color: _gold,
+              badgeSize: 60,
+              baseHeight: 50,
+              crowned: true,
+              onTap: () => onTap(entries[0]),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _PodiumSpot(
+              entry: entries[2],
+              place: 3,
+              color: _bronze,
+              badgeSize: 40,
+              baseHeight: 26,
+              onTap: () => onTap(entries[2]),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildHeaderCell(String text, TextAlign align) {
-    return Text(
-      text.toUpperCase(),
-      textAlign: align,
-      style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
+class _PodiumSpot extends StatelessWidget {
+  final LeaderboardEntry entry;
+  final int place;
+  final Color color;
+  final double badgeSize;
+  final double baseHeight;
+  final bool crowned;
+  final VoidCallback onTap;
+
+  const _PodiumSpot({
+    required this.entry,
+    required this.place,
+    required this.color,
+    required this.badgeSize,
+    required this.baseHeight,
+    this.crowned = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (crowned)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('👑', style: TextStyle(fontSize: 14)),
+            ),
+          Container(
+            decoration: crowned
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.45),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  )
+                : null,
+            child: RankBadge(rank: entry.user.rank, size: badgeSize, showLabel: false),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  entry.user.username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              PremiumBadge(isPremium: entry.user.isPremiumActive, size: 11),
+            ],
+          ),
+          Text(
+            '${entry.user.elo}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: place == 1 ? color : AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Container(
+            height: baseHeight,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0.35),
+                  color.withValues(alpha: 0.07),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Text(
+                '$place',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  Color _getRankColor(int index) {
-    switch (index) {
-      case 0:
-        return const Color(0xFFFFD700);
-      case 1:
-        return const Color(0xFFC0C0C0);
-      case 2:
-        return const Color(0xFFCD7F32);
-      default:
-        return AppTheme.textSecondary;
-    }
-  }
+/// Dense list row from 4th place on.
+class _LeaderboardRow extends StatelessWidget {
+  final LeaderboardEntry entry;
+  final bool isCurrentUser;
+  final VoidCallback onTap;
 
-  Widget _buildToggleButton(String label, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
+  const _LeaderboardRow({
+    required this.entry,
+    required this.isCurrentUser,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : AppTheme.textSecondary,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 12,
+          color: isCurrentUser ? AppTheme.primary.withValues(alpha: 0.1) : null,
+          border: Border(
+            left: BorderSide(
+              color: isCurrentUser ? AppTheme.primary : Colors.transparent,
+              width: 3,
+            ),
+            bottom: BorderSide(
+              color: AppTheme.surfaceLight.withValues(alpha: 0.35),
+            ),
           ),
         ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 30,
+              // scaleDown keeps 3+ digit ranks ("100") on a single line.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${entry.rank}',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: isCurrentUser ? AppTheme.primary : AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            RankBadge(rank: entry.user.rank, size: 24, showLabel: false),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          entry.user.username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: isCurrentUser ? AppTheme.primary : Colors.white,
+                          ),
+                        ),
+                      ),
+                      PremiumBadge(
+                          isPremium: entry.user.isPremiumActive, size: 12),
+                    ],
+                  ),
+                  Text(
+                    '${entry.wins}${l10n.formWinLetter} - ${entry.losses}${l10n.formLossLetter}',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '${entry.user.elo}',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: isCurrentUser ? AppTheme.primary : AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Always-visible "your position" row docked under the list.
+class _PinnedPositionRow extends StatelessWidget {
+  final int position;
+  final String username;
+  final String rank;
+  final int elo;
+
+  const _PinnedPositionRow({
+    required this.position,
+    required this.username,
+    required this.rank,
+    required this.elo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFF12233B),
+        border: Border(
+          top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            l10n.positionOrdinal(position),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          RankBadge(rank: rank, size: 24, showLabel: false),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$username — ${l10n.yourPosition}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Text(
+            '$elo',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final bool showFriendsOnly;
+  final AppLocalizations l10n;
+
+  const _EmptyState({required this.showFriendsOnly, required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            showFriendsOnly ? Icons.people_outline : Icons.leaderboard_outlined,
+            size: 64,
+            color: AppTheme.textSecondary.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            showFriendsOnly ? 'No friends yet' : 'No leaderboard data available',
+            style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
+          ),
+          if (showFriendsOnly) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Add friends to see their rankings!',
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -2199,4 +2199,82 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoValidationHint => 'Remove your darts from the board to validate';
   @override
   String get confirmUpper => 'CONFIRM';
+
+  // Tournament detail screen (round-focused bracket)
+  @override
+  String get roundFinalLabel => 'Final';
+  @override
+  String get roundSemiFinals => 'Semi-finals';
+  @override
+  String get roundQuarterFinals => 'Quarter-finals';
+  @override
+  String get roundOf16Label => 'Round of 16';
+  @override
+  String get roundOf32Label => 'Round of 32';
+  @override
+  String get roundOf64Label => 'Round of 64';
+  @override
+  String roundNLabel(int n) => 'Round $n';
+  @override
+  String roundProgress(int current, int total) => 'Round $current of $total';
+  @override
+  String get yourMatchTag => 'YOUR MATCH';
+  @override
+  String get joinTournamentMatch => 'JOIN MATCH';
+  @override
+  String get otherMatchesLabel => 'Other matches';
+  @override
+  String get matchStatusCompleted => 'Completed';
+  @override
+  String get matchStatusInProgress => 'In progress';
+  @override
+  String get matchStatusWaitingPlayers => 'Waiting for players';
+  @override
+  String get matchStatusUpcoming => 'Upcoming';
+  @override
+  String get startsAfterPreviousRound => 'Starts when the previous round ends';
+  @override
+  String get tbdLabel => 'TBD';
+  @override
+  String get qualifiedLabel => 'Qualified';
+  @override
+  String championCrowned(String name) => '$name takes the title!';
+  @override
+  String get freeLabel => 'Free';
+  @override
+  String get tournamentStatusUpcoming => 'Upcoming';
+  @override
+  String get tournamentStatusRegistrationOpen => 'Registration open';
+  @override
+  String get tournamentStatusRegistrationClosed => 'Registration closed';
+  @override
+  String get tournamentStatusInProgress => 'In progress';
+  @override
+  String get tournamentStatusCompleted => 'Completed';
+  @override
+  String get tournamentStatusCancelled => 'Cancelled';
+
+  // Home (B2): ELO ring hero + form row
+  @override
+  String get nextRankConnector => 'in';
+  @override
+  String get maxRankReached => 'Highest rank reached';
+  @override
+  String get formLabel => 'FORM';
+  @override
+  String get formWinLetter => 'W';
+  @override
+  String get formLossLetter => 'L';
+  @override
+  String winStreak(int n) => '$n wins in a row';
+
+  // Leaderboard (option A: podium + pinned position)
+  @override
+  String get yourPosition => 'Your position';
+  @override
+  String positionOrdinal(int n) => '#$n';
+
+  // Friends (option A: single challenge CTA, swipe to remove)
+  @override
+  String get challengeFriend => 'Challenge';
 }

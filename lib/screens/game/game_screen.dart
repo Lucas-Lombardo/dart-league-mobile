@@ -6,10 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
-import '../../utils/score_converter.dart';
 import '../../services/auto_scoring_service.dart';
-import '../../widgets/auto_score_display.dart';
-import '../../widgets/local_camera_preview.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
@@ -62,16 +59,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   String get leaveWarningText =>
       AppLocalizations.of(context).forfeitMatchWarning;
 
-  // The BO3 series state is rendered inside the turn header / score bar
-  // centers (maquette), not as a separate bar above the screen.
+  // The screen was opened with the match's Agora channel; the provider only
+  // learns it from later payloads.
   @override
-  Widget? buildExtraHeader(dynamic game, AuthProvider auth) => null;
-
-  /// Center label for the BO3 series displays ("BO3 · Manche 2"), or null for
-  /// a single-leg match (the displays fall back to their BO1 layout).
-  String? _seriesTitle(GameProvider game) => game.isRankedSeries
-      ? 'BO${game.bestOf} · ${AppLocalizations.of(context).legNumber(game.currentLeg)}'
-      : null;
+  String? get fallbackAgoraChannelId => widget.agoraChannelName;
 
   @override
   Widget buildAppBarTitle() => Row(children: [
@@ -695,18 +686,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     );
   }
 
-  Widget _buildOpponentTurnScreen(GameProvider game, AuthProvider auth, double safeTop) {
-    return buildOpponentTurnScreenShared(
-      game,
-      auth,
-      safeTop,
-      channelId: game.agoraChannelName ?? widget.agoraChannelName ?? '',
-      seriesTitle: _seriesTitle(game),
-      myLegs: game.myLegsWon,
-      opponentLegs: game.opponentLegsWon,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (isLoading) return buildLoadingScreen();
@@ -714,7 +693,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     try {
       final game = context.watch<GameProvider>();
       final auth = context.watch<AuthProvider>();
-      
+
       // BO3 between-legs: after ranked_next_leg (_gameStarted=false, next leg
       // not started yet) keep the leg result + series score on screen instead
       // of the generic "INITIALIZING MATCH" spinner — the ~2s transition made
@@ -726,105 +705,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
         return _buildLegEndScreen(game, auth);
       }
 
-      if (game.matchId == null || !game.gameStarted) {
-        return PopScope(canPop: false, onPopInvokedWithResult: (didPop, _) async {
-          if (didPop) return;
-          if (await onWillPop() && context.mounted) Navigator.of(context).pop();
-        }, child: Scaffold(
-          backgroundColor: AppTheme.background,
-          appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
-          body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const CircularProgressIndicator(color: AppTheme.primary),
-            const SizedBox(height: 16),
-            Text(AppLocalizations.of(context).initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
-          ])),
-        ));
-      }
+      if (game.matchId == null || !game.gameStarted) return buildInitializingScreen();
       if (game.gameEnded && game.pendingType != 'forfeit') return buildEndScreen(game, auth);
 
-      final dartsThrown = game.dartsThrown;
-
-      final safeTop = MediaQuery.of(context).padding.top;
-
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          final shouldPop = await onWillPop();
-          if (shouldPop && context.mounted) {
-            Navigator.of(context).pop();
-          }
-        },
-        child: Scaffold(
-          backgroundColor: AppTheme.background,
-          body: Stack(
-            children: [
-              // Main content
-              autoScoringLoading && (game.isMyTurn || game.pendingConfirmation)
-                ? Container(
-                    color: AppTheme.background,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const CircularProgressIndicator(color: AppTheme.primary),
-                          const SizedBox(height: 16),
-                          Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  )
-                : (game.isMyTurn || game.pendingConfirmation)
-                  ? AutoScoreGameView(
-                      scoringService: autoScoringService!,
-                      onConfirm: () => submitAutoScoredDarts(game),
-                      onEndRoundEarly: () => submitAutoScoredDarts(game),
-                      pendingConfirmation: game.pendingConfirmation,
-                      myScore: game.myScore,
-                      opponentScore: game.opponentScore,
-                      opponentName: widget.opponentUsername,
-                      myName: auth.currentUser?.username ?? 'You',
-                      iAmPlayer2: game.iAmPlayer2,
-                      dartsThrown: dartsThrown,
-                      agoraEngine: agoraEngine,
-                      localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
-                          ? LocalCameraPreview(controller: cameraFrameService!.controller!)
-                          : null,
-                      remoteUid: game.remoteUid,
-                      isAudioMuted: isAudioMuted,
-                      onToggleAudio: toggleAudio,
-                      onSwitchCamera: switchCamera,
-                      onZoomIn: zoomIn,
-                      onZoomOut: zoomOut,
-                      currentZoom: cameraZoom,
-                      minZoom: cameraMinZoom,
-                      maxZoom: cameraMaxZoom,
-                      onEditDart: (index, dartScore) {
-                        final (base, mul) = dartScoreToBackend(dartScore);
-                        game.editDartThrow(index, base, mul);
-                      },
-                      onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
-                      onEditModalClosed: resumeCaptureAfterEdit,
-                      onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
-                      aiEnabled: !aiManuallyDisabled,
-                      myAverage: game.myAveragePerRound,
-                      opponentAverage: game.opponentAveragePerRound,
-                      roundNumber: game.myRounds.length + 1,
-                      onBack: handleBackPressed,
-                      seriesTitle: _seriesTitle(game),
-                      myLegs: game.myLegsWon,
-                      opponentLegs: game.opponentLegsWon,
-                    )
-                  // Opponent's turn
-                  : _buildOpponentTurnScreen(game, auth, safeTop),
-
-              // Own-connection banner (shows when OUR socket is down)
-              if (buildSelfDisconnectBanner(game, safeTop) case final banner?)
-                banner,
-            ],
-          ),
-        ),
-      );
+      return buildLiveMatchBody(game, auth);
     } catch (e, stackTrace) {
       return Scaffold(
         appBar: AppBar(title: Text(AppLocalizations.of(context).error)),
