@@ -7,6 +7,7 @@ import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
 import 'game_turn_ui.dart';
+import 'logo_watermark.dart';
 
 /// Full-screen auto-scoring layout for when it's the player's turn (maquette
 /// layout): blue-bordered camera on top — sized by gameCameraHeight() so it
@@ -148,6 +149,14 @@ class AutoScoreGameView extends StatelessWidget {
                   border: Border.all(color: AppTheme.playerBlue, width: 2),
                   borderRadius: BorderRadius.circular(22),
                 ),
+              ),
+
+              // ── Brand bug (top center), like a TV channel logo ──
+              const Positioned(
+                top: 12,
+                left: 0,
+                right: 0,
+                child: Center(child: LogoWatermark()),
               ),
 
               // ── Back button (top-left, styled like the other controls) ──

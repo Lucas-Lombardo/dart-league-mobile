@@ -196,6 +196,10 @@ abstract class AppLocalizations {
   String get cancelSearch;
   String get trainWhileWaiting;
   String get trainWhileWaitingSubtitle;
+  String get peakHours;
+  String get peakHoursNow;
+  String peakHoursHint(int hour);
+  String get peakHoursGrowing;
 
   // Camera Check / Camera Setup
   String get cameraSetupTitle;

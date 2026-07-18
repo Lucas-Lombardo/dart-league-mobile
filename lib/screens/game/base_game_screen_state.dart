@@ -21,6 +21,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
+import '../../widgets/logo_watermark.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
@@ -1330,6 +1331,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             DartHitFlash(throws: opponentThrows),
             // ── Pink border ──
             Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.opponentPink, width: 2), borderRadius: BorderRadius.circular(22))),
+            // ── Brand bug (top center), like a TV channel logo ──
+            const Positioned(
+              top: 12,
+              left: 0,
+              right: 0,
+              child: Center(child: LogoWatermark()),
+            ),
             // ── Live badge ──
             const Positioned(top: 12, left: 12, child: LiveBadge()),
             // ── Mic / camera controls ──

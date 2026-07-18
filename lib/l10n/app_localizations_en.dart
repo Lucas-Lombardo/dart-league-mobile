@@ -493,6 +493,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get trainWhileWaitingSubtitle =>
       'Practice now — we\'ll drop you into the match the moment an opponent is found.';
+  @override
+  String get peakHours => 'PEAK HOURS';
+  @override
+  String get peakHoursNow => 'now';
+  @override
+  String peakHoursHint(int hour) =>
+      'Dart Rivals just launched: players are still few — the peak is around $hour:00.';
+  @override
+  String get peakHoursGrowing =>
+      'Soon: matches in under 5 minutes, any time!';
 
   // Camera Check / Camera Setup
   @override
