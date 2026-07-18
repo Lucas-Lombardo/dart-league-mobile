@@ -38,20 +38,23 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   http: ^1.1.0
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^10.3.1
   provider: ^6.1.1
-  socket_io_client: ^2.0.3+1
-  connectivity_plus: ^6.1.0
+  socket_io_client: ^3.1.6
+  connectivity_plus: ^7.2.0
   intl: ^0.20.2
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.2.0
   agora_rtc_engine: ^6.3.0
-  permission_handler: ^11.0.0
-  camera: ^0.10.5+5
+  permission_handler: ^12.0.3
+  camera: ^0.12.0
+  # Keep the legacy Android camera implementation: camera 0.11+ defaults to
+  # CameraX, which changes image-stream behavior the AI dart detection relies on.
+  camera_android: ^0.10.10
   path_provider: ^2.1.1
   wakelock_plus: ^1.2.8
-  firebase_core: ^3.12.1
-  firebase_messaging: ^15.2.4
-  flutter_stripe: ^11.4.0
+  firebase_core: ^4.12.1
+  firebase_messaging: ^16.4.3
+  flutter_stripe: ^13.0.0
   in_app_purchase: ^3.2.0
   audioplayers: ^6.1.0
   tflite_flutter: ^0.12.0
@@ -74,6 +77,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Stay on CocoaPods for iOS/macOS: agora_rtc_engine's Swift Package Manager
+  # packaging is broken (AgoraRtcWrapper headers not found at build time).
+  config:
+    enable-swift-package-manager: false
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
