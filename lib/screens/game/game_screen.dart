@@ -13,6 +13,7 @@ import '../../utils/app_navigator.dart';
 import '../../widgets/rank_change_overlay.dart';
 import '../../widgets/elo_change_overlay.dart';
 import 'base_game_screen_state.dart';
+import 'match_end_view.dart';
 
 class GameScreen extends StatefulWidget {
   final String matchId;
@@ -340,131 +341,50 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     if (game.isRankedSeries == true && game.seriesEnded != true) {
       return _buildLegEndScreen(game as GameProvider, auth);
     }
+    final l10n = AppLocalizations.of(context);
     final didWin = game.winnerId == auth.currentUser?.id;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    final hero = Container(
-      padding: EdgeInsets.all(isLandscape ? 20 : 32),
-      decoration: BoxDecoration(
-        color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-        shape: BoxShape.circle,
-        border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
-        boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
-      ),
-      child: Icon(
-        didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-        color: didWin ? AppTheme.success : AppTheme.error,
-        size: isLandscape ? 56 : 80,
-      ),
-    );
+    final resultPanel = Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(l10n.matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+      const SizedBox(height: 8),
+      Text(l10n.pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center),
+      const SizedBox(height: 20),
+      SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+        onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
+        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        icon: const Icon(Icons.check_circle_outline),
+        label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+      )),
+      const SizedBox(height: 12),
+      SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+        onPressed: () {
+          HapticService.lightImpact();
+          showReportDialog(
+            onSubmit: (reason, comment) async {
+              if (game.matchId == null || auth.currentUser?.id == null) return;
+              final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason, comment: comment);
+              final msg = result['message'] as String? ?? 'Dispute submitted';
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
+              Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
+            },
+            onComplete: () {},
+          );
+        },
+        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        icon: const Icon(Icons.flag_outlined),
+        label: Text(l10n.reportPlayer, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+      )),
+    ]);
 
-    final headlineColumn = Column(
-      crossAxisAlignment: isLandscape ? CrossAxisAlignment.center : CrossAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        hero,
-        SizedBox(height: isLandscape ? 20 : 32),
-        Text(
-          didWin ? AppLocalizations.of(context).victory.toUpperCase() : AppLocalizations.of(context).defeat.toUpperCase(),
-          style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: isLandscape ? 36 : 48),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: isLandscape ? 6 : 12),
-        // Final legs score for a BO3 series (e.g. "2 – 1 · Best of 3").
-        if (game.isRankedSeries == true) ...[
-          Text(
-            '${game.myLegsWon} – ${game.opponentLegsWon}',
-            style: AppTheme.displayLarge.copyWith(color: Colors.white, fontSize: isLandscape ? 24 : 32),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            AppLocalizations.of(context).bestOfN(game.bestOf as int),
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: isLandscape ? 6 : 12),
-        ],
-        Text(
-          didWin ? AppLocalizations.of(context).provenLegend : AppLocalizations.of(context).trainingPath,
-          style: AppTheme.bodyLarge,
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-
-    final resultPanel = Container(
-      padding: EdgeInsets.all(isLandscape ? 16 : 24),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(AppLocalizations.of(context).matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Text(AppLocalizations.of(context).pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center),
-        SizedBox(height: isLandscape ? 16 : 24),
-        SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
-          onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-          icon: const Icon(Icons.check_circle_outline),
-          label: Text(AppLocalizations.of(context).acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        )),
-        const SizedBox(height: 12),
-        SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
-          onPressed: () {
-            HapticService.lightImpact();
-            showReportDialog(
-              onSubmit: (reason, comment) async {
-                if (game.matchId == null || auth.currentUser?.id == null) return;
-                final result = await MatchService.disputeMatchResult(game.matchId!, auth.currentUser!.id, reason, comment: comment);
-                final msg = result['message'] as String? ?? 'Dispute submitted';
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error, duration: const Duration(seconds: 2)));
-                Future.delayed(const Duration(seconds: 2), () { if (mounted) Navigator.of(context).pop(); });
-              },
-              onComplete: () {},
-            );
-          },
-          style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-          icon: const Icon(Icons.flag_outlined),
-          label: Text(AppLocalizations.of(context).reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        )),
-      ]),
-    );
-
-    // Friendly matches don't affect ELO — swap the accept/report panel for a
-    // "play again?" rematch panel.
-    final panel = game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel;
-
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: isLandscape
-              ? Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Expanded(child: Center(child: headlineColumn)),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: panel,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 32),
-                      headlineColumn,
-                      const SizedBox(height: 32),
-                      panel,
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-        ),
-      ),
+    return MatchEndView(
+      didWin: didWin,
+      title: didWin ? l10n.victory : l10n.defeat,
+      subtitle: didWin ? l10n.provenLegend : l10n.trainingPath,
+      scoreLine: game.isRankedSeries == true ? '${game.myLegsWon} – ${game.opponentLegsWon}' : null,
+      scoreCaption: game.isRankedSeries == true ? l10n.bestOfN(game.bestOf as int) : null,
+      // Friendly matches don't affect ELO — swap the accept/report panel for a
+      // "play again?" rematch panel.
+      panel: game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel,
     );
   }
 
@@ -667,23 +587,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       ]);
     }
 
-    return Container(
-      padding: EdgeInsets.all(isLandscape ? 16 : 24),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+    // No card chrome here: MatchEndView wraps the panel in the shared card.
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(
+        l10n.friendlyMatchLabel.toUpperCase(),
+        style: const TextStyle(
+            color: AppTheme.textSecondary, fontSize: 12, letterSpacing: 1.5),
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          l10n.friendlyMatchLabel.toUpperCase(),
-          style: const TextStyle(
-              color: AppTheme.textSecondary, fontSize: 12, letterSpacing: 1.5),
-        ),
-        SizedBox(height: isLandscape ? 12 : 16),
-        content,
-      ]),
-    );
+      SizedBox(height: isLandscape ? 12 : 16),
+      content,
+    ]);
   }
 
   @override

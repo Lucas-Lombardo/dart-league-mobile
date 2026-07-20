@@ -132,13 +132,12 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
       setState(() {
         final user = context.read<AuthProvider>().currentUser;
-        if (user?.id == widget.player1Id) {
-          _myReady = p1Ready;
-          _opponentReady = p2Ready;
-        } else {
-          _myReady = p2Ready;
-          _opponentReady = p1Ready;
-        }
+        final iAmPlayer1 = user?.id == widget.player1Id;
+        // Sticky for MY card (like the poll): an update snapshotted before our
+        // own POST landed must not un-set the optimistic local "prêt". The
+        // opponent's card follows the server truth (they can unready).
+        _myReady = _myReady || (iAmPlayer1 ? p1Ready : p2Ready);
+        _opponentReady = iAmPlayer1 ? p2Ready : p1Ready;
       });
     });
 
@@ -172,10 +171,13 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       }
     });
 
-    // NOW send the ready call, after listeners are in place
+    // NOW send the ready call, after listeners are in place. Paint MY card
+    // green immediately: the player already pressed "Prêt" on the camera
+    // screen, and waiting for the POST round-trip made the checkmark lag
+    // several seconds. If the POST is lost, the poll re-sends it (below).
+    if (mounted) setState(() => _myReady = true);
     try {
       await TournamentService.setMatchReady(widget.matchId);
-      if (mounted) setState(() => _myReady = true);
     } catch (e) {
       debugPrint('Error setting match ready: $e');
     }
@@ -345,7 +347,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     );
   }
 
-  void _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid}) {
+  Future<void> _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid}) async {
     if (!mounted || _navigating) return;
     _navigating = true;
 
@@ -353,6 +355,19 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
+
+    // The backend emits the final matchReadyUpdate and the start event in the
+    // same tick, so navigating right away pre-empted the frame where the
+    // opponent's card turns green — the lobby seemed to skip straight into
+    // the match. Paint both cards "prêt" and hold a beat instead. Kept well
+    // under the ~2s the backend waits before emitting game_started, so the
+    // game screen's listeners are still armed in time.
+    setState(() {
+      _myReady = true;
+      _opponentReady = true;
+    });
+    await Future.delayed(const Duration(milliseconds: 1100));
+    if (!mounted) return;
 
     // Initialize the tournament game provider
     final tournamentGame = context.read<TournamentGameProvider>();

@@ -1060,6 +1060,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportPlayer => 'REPORT PLAYER';
 
   @override
+  String get refuseResult => 'REFUSE RESULT';
+
+  @override
+  String get refuseResultReasonPrompt =>
+      'Select why you refuse this result. The match will be reviewed by an administrator.';
+
+  @override
+  String get submitRefusal => 'SUBMIT REFUSAL';
+
+  @override
   String get initializingMatch => 'INITIALIZING MATCH...';
 
   @override

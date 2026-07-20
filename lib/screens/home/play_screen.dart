@@ -517,89 +517,93 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// The big action card when a friend invite is pending. Mirrors the tournament
-  /// "Join match" card; tapping it asks the player to accept or decline.
-  Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
-    return ScaleTransition(
-      scale: _pulseAnimation,
-      child: GestureDetector(
-        onTap: () => _onFriendInviteTapped(invite),
-        child: Container(
-          height: 180,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF10B981), Color(0xFF059669)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                blurRadius: 20,
-                spreadRadius: 2,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                right: -20,
-                top: -20,
-                child: Icon(
-                  Icons.group,
-                  size: 150,
-                  color: Colors.white.withValues(alpha: 0.1),
+  /// Full-width CTA bar with the exact geometry and typography of the "Jouer"
+  /// bar (B2 redesign). Every state that takes the Play button's slot renders
+  /// through this so they all keep its size and design; [hint] is a small
+  /// centered line under the bar carrying the context the old tall cards
+  /// showed (opponent, tournament name, round).
+  Widget _playSlotBar({
+    required Gradient gradient,
+    required IconData icon,
+    required String label,
+    Color? glowColor,
+    VoidCallback? onTap,
+    String? hint,
+    Color textColor = Colors.white,
+    Color? iconColor,
+    BoxBorder? border,
+    bool pulse = true,
+  }) {
+    Widget bar = Container(
+      padding: const EdgeInsets.symmetric(vertical: 17),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(16),
+        border: border,
+        boxShadow: glowColor == null
+            ? null
+            : [
+                BoxShadow(
+                  color: glowColor.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
-              ),
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.sports_esports,
-                        size: 48,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      l10n.joinMatch,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        l10n.invitedYouToMatch
-                            .replaceAll('{username}', invite.inviterUsername),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+              ],
       ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 22, color: iconColor ?? textColor),
+          const SizedBox(width: 10),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (pulse) bar = ScaleTransition(scale: _pulseAnimation, child: bar);
+    if (onTap != null) bar = GestureDetector(onTap: onTap, child: bar);
+    if (hint == null) return bar;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        bar,
+        const SizedBox(height: 8),
+        Text(
+          hint,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+        ),
+      ],
+    );
+  }
+
+  /// Play-slot bar when a friend invite is pending; tapping it asks the
+  /// player to accept or decline.
+  Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
+    return _playSlotBar(
+      gradient: const LinearGradient(
+        colors: [Color(0xFF10B981), Color(0xFF059669)],
+      ),
+      glowColor: const Color(0xFF10B981),
+      icon: Icons.sports_esports,
+      label: l10n.joinMatch,
+      onTap: () => _onFriendInviteTapped(invite),
+      hint: l10n.invitedYouToMatch
+          .replaceAll('{username}', invite.inviterUsername),
     );
   }
 
@@ -855,189 +859,57 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             // A tournament leg is LIVE for this player (app was killed
             // mid-match) — resuming outranks everything: the disconnect grace
             // timer is running server-side.
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: _resumeTournamentLeg,
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.emoji_events,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.replay_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.resumeTournamentMatch,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _activeTournamentLeg!)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            _playSlotBar(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
               ),
+              glowColor: const Color(0xFF7C3AED),
+              icon: Icons.replay_rounded,
+              label: l10n.resumeTournamentMatch,
+              onTap: _resumeTournamentLeg,
+              hint:
+                  '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _activeTournamentLeg!)}',
             )
           else if (_pendingTournamentMatch != null)
             // Join Tournament Match button — a tournament commitment outranks
             // friend invites and placement.
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: () {
-                  HapticService.mediumImpact();
-                  final match = _pendingTournamentMatch!;
-                  final auth = context.read<AuthProvider>();
-                  final currentUserId = auth.currentUser?.id;
-                  final isPlayer1 = currentUserId == match.player1Id;
-                  final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
-                  final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
-
-                  if (context.mounted) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => TournamentCameraSetupScreen(
-                          matchId: match.id,
-                          tournamentId: match.tournamentId,
-                          tournamentName: match.tournamentName ?? 'Tournament',
-                          roundName: match.roundName,
-                          opponentUsername: opponentUsername,
-                          opponentId: opponentId,
-                          player1Id: match.player1Id ?? '',
-                          player2Id: match.player2Id ?? '',
-                          bestOf: match.bestOf,
-                          inviteSentAt: match.inviteSentAt,
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.emoji_events,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.joinMatch,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _pendingTournamentMatch!)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            _playSlotBar(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
               ),
+              glowColor: const Color(0xFF7C3AED),
+              icon: Icons.emoji_events,
+              label: l10n.joinMatch,
+              hint:
+                  '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _pendingTournamentMatch!)}',
+              onTap: () {
+                HapticService.mediumImpact();
+                final match = _pendingTournamentMatch!;
+                final auth = context.read<AuthProvider>();
+                final currentUserId = auth.currentUser?.id;
+                final isPlayer1 = currentUserId == match.player1Id;
+                final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
+                final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+
+                if (context.mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => TournamentCameraSetupScreen(
+                        matchId: match.id,
+                        tournamentId: match.tournamentId,
+                        tournamentName: match.tournamentName ?? 'Tournament',
+                        roundName: match.roundName,
+                        opponentUsername: opponentUsername,
+                        opponentId: opponentId,
+                        player1Id: match.player1Id ?? '',
+                        player2Id: match.player2Id ?? '',
+                        bestOf: match.bestOf,
+                        inviteSentAt: match.inviteSentAt,
+                      ),
+                    ),
+                  );
+                }
+              },
             )
           else if (matchInvite.incoming != null)
             // Friend invite — the whole Play button becomes "Join the match".
@@ -1048,60 +920,27 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           else if (isUnranked) ...[
             // Placement bar — same CTA language as the ranked play bar, in
             // gold (B2 redesign). The explanation lives in the hero above.
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: () {
-                  HapticService.mediumImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const PlacementHubScreen(),
-                    ),
-                  ).then((_) {
-                    if (!mounted) return;
-                    // Reload matches and user data after returning
-                    _loadRecentMatches();
-                    context.read<AuthProvider>().checkAuthStatus();
-                    context.read<PlacementProvider>().loadStatus();
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 17),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFEAB308).withValues(alpha: 0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.emoji_events, size: 22, color: Colors.white),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          l10n.placementMatches.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            _playSlotBar(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
               ),
+              glowColor: const Color(0xFFEAB308),
+              icon: Icons.emoji_events,
+              label: l10n.placementMatches,
+              onTap: () {
+                HapticService.mediumImpact();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PlacementHubScreen(),
+                  ),
+                ).then((_) {
+                  if (!mounted) return;
+                  // Reload matches and user data after returning
+                  _loadRecentMatches();
+                  context.read<AuthProvider>().checkAuthStatus();
+                  context.read<PlacementProvider>().loadStatus();
+                });
+              },
             ),
             if (!subscription.isPremiumActive) ...[
               const SizedBox(height: 12),
@@ -1110,149 +949,33 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           ]
           else if (_activeMatch != null)
             // Rejoin active ranked match
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: _rejoinMatch,
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF6B00), Color(0xFFFF9500)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.refresh,
-                          size: 150,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.arrow_forward_rounded,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.play,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            _playSlotBar(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF6B00), Color(0xFFFF9500)],
               ),
+              glowColor: const Color(0xFFFF6B00),
+              icon: Icons.arrow_forward_rounded,
+              label: l10n.play,
+              onTap: _rejoinMatch,
+              hint: '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
             )
           else if (_inActiveTournament)
-            // Blocked: In active tournament
-            Container(
-              height: 180,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.surfaceLight.withValues(alpha: 0.8),
-                    AppTheme.surface,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppTheme.surfaceLight),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: -20,
-                    top: -20,
-                    child: Icon(
-                      Icons.block,
-                      size: 150,
-                      color: Colors.white.withValues(alpha: 0.05),
-                    ),
-                  ),
-                  Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent.withValues(alpha: 0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.emoji_events,
-                            size: 40,
-                            color: AppTheme.accent,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          l10n.rankedLocked,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${l10n.activeTournament}: ${_activeTournamentName ?? l10n.tournament}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 13,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
+            // Blocked: In active tournament — same bar geometry, muted and
+            // not tappable.
+            _playSlotBar(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.surfaceLight.withValues(alpha: 0.8),
+                  AppTheme.surface,
                 ],
               ),
+              border: Border.all(color: AppTheme.surfaceLight),
+              icon: Icons.emoji_events,
+              iconColor: AppTheme.accent,
+              textColor: AppTheme.textSecondary,
+              label: l10n.rankedLocked,
+              pulse: false,
+              hint: '${l10n.activeTournament}: ${_activeTournamentName ?? l10n.tournament}',
             )
           else ...[
             // The play button is always shown for free users now; the
@@ -1270,41 +993,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ],
             // Play bar — full-width CTA; mode choice stays in the sheet
             // opened by _onPlayTapped (B2 redesign).
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: _onPlayTapped,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 17),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primary.withValues(alpha: 0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.track_changes, size: 22, color: Colors.white),
-                      const SizedBox(width: 10),
-                      Text(
-                        l10n.play.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            _playSlotBar(
+              gradient: AppTheme.primaryGradient,
+              glowColor: AppTheme.primary,
+              icon: Icons.track_changes,
+              label: l10n.play,
+              onTap: _onPlayTapped,
             ),
           ],
           const SizedBox(height: 16),

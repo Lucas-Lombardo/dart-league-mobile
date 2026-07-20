@@ -65,6 +65,10 @@ class TournamentGameProvider with ChangeNotifier {
   Timer? _selfDisconnectCountdownTimer;
   bool _connectionListenersRegistered = false;
 
+  // Pulls the game state until game_started arrives — see _armStartWatchdog.
+  Timer? _startWatchdog;
+  int _startWatchdogTries = 0;
+
   // Tournament series state
   int _player1LegsWon = 0;
   int _player2LegsWon = 0;
@@ -237,7 +241,43 @@ class TournamentGameProvider with ChangeNotifier {
     }
 
     _resetLegState();
+    _armStartWatchdog();
     notifyListeners();
+  }
+
+  /// The normal start path is a single, un-replayed `game_started` push
+  /// emitted to the match room ~2s after both players ready (and again between
+  /// legs). If that one packet is missed — socket churn during the handshake,
+  /// the server-side room join not finding our socket — nothing else ever
+  /// flips _gameStarted and the player is stranded on "INITIALISATION DU
+  /// MATCH…" until they quit and rejoin. Pull the state instead: the backend's
+  /// reconnect_to_match handler joins us to the room, re-runs the idempotent
+  /// startGameForMatch when the leg has no state yet, and replies with
+  /// game_state_sync.
+  void _armStartWatchdog() {
+    _startWatchdog?.cancel();
+    _startWatchdogTries = 0;
+    _startWatchdog =
+        Timer.periodic(const Duration(milliseconds: 2500), (timer) {
+      if (_disposed || _gameStarted || _gameEnded || _currentGameMatchId == null) {
+        timer.cancel();
+        return;
+      }
+      _startWatchdogTries++;
+      if (_startWatchdogTries > 12) {
+        // ~30s with no start: stop pulling — the player can leave manually
+        // and the resume flow recovers the match.
+        timer.cancel();
+        return;
+      }
+      debugPrint('TOURNAMENT: start not received — pulling state (try $_startWatchdogTries)');
+      reconnectToMatch();
+    });
+  }
+
+  void _cancelStartWatchdog() {
+    _startWatchdog?.cancel();
+    _startWatchdog = null;
   }
 
   void _resetLegState() {
@@ -298,7 +338,10 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   void _handleSelfDisconnected() {
-    if (_currentGameMatchId == null || !_gameStarted || _gameEnded) return;
+    // No !_gameStarted guard: a socket blip while still waiting for
+    // game_started must also arm the reconnect heal, otherwise the client
+    // never re-requests the start it missed and stays on the init screen.
+    if (_currentGameMatchId == null || _gameEnded) return;
 
     _selfDisconnected = true;
     _selfDisconnectGraceSeconds = _selfGracePeriodSeconds;
@@ -334,6 +377,7 @@ class TournamentGameProvider with ChangeNotifier {
 
   void _handleGameStarted(dynamic data) {
     debugPrint('TOURNAMENT: game_started received');
+    _cancelStartWatchdog();
     _gameStarted = true;
     _currentPlayerId = data['currentPlayerId'] as String?;
 
@@ -670,6 +714,7 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
 
+    _cancelStartWatchdog();
     _gameStarted = true;
     _tournamentState = TournamentGameState.playing;
     notifyListeners();
@@ -749,8 +794,11 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
 
-    // Reset leg state for next leg
+    // Reset leg state for next leg. _gameStarted goes false again here, so
+    // the next leg's game_started can be lost the same way as the first —
+    // re-arm the pull.
     _resetLegState();
+    _armStartWatchdog();
     _tournamentState = TournamentGameState.playing;
     notifyListeners();
   }
@@ -1249,6 +1297,7 @@ class TournamentGameProvider with ChangeNotifier {
     _disconnectCountdownTimer?.cancel();
     _disconnectCountdownTimer = null;
     _cancelSelfDisconnectCountdown();
+    _cancelStartWatchdog();
     _player1LegsWon = 0;
     _player2LegsWon = 0;
     _currentLeg = 1;
@@ -1276,6 +1325,7 @@ class TournamentGameProvider with ChangeNotifier {
     _clearPendingDarts();
     _disconnectCountdownTimer?.cancel();
     _selfDisconnectCountdownTimer?.cancel();
+    _startWatchdog?.cancel();
     super.dispose();
   }
 }

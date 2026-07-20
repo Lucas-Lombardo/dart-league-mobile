@@ -40,6 +40,143 @@ class TournamentMatchResultScreen extends StatelessWidget {
     final myUsername = auth.currentUser?.username ?? 'You';
     final didWin = seriesWinnerId == myUserId;
 
+    // Hero + headline + score card, shown in a scrollable centered region:
+    // the old Spacer-based layout overflowed on short Android screens and
+    // with a large system font scale.
+    final resultContent = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Trophy / defeat icon
+        Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: didWin ? AppTheme.success : AppTheme.error,
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.35),
+                blurRadius: 30,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: Icon(
+            didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+            color: didWin ? AppTheme.success : AppTheme.error,
+            size: 72,
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        Text(
+          didWin ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
+          style: TextStyle(
+            color: didWin ? AppTheme.success : AppTheme.error,
+            fontSize: 36,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          didWin
+              ? AppLocalizations.of(context).congratsWonSeries
+              : AppLocalizations.of(context).betterLuckNextTime,
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 16,
+          ),
+          textAlign: TextAlign.center,
+        ),
+
+        const SizedBox(height: 40),
+
+        // Match result card
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: didWin ? AppTheme.success.withValues(alpha: 0.3) : AppTheme.error.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  tournamentName,
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                localizedRoundName(roundName, AppLocalizations.of(context)).toUpperCase(),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Score
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildPlayerColumn(context, myUsername, myLegsWon, true, didWin),
+                  Column(
+                    children: [
+                      Text(
+                        AppLocalizations.of(context).finalScore,
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$myLegsWon - $opponentLegsWon',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${AppLocalizations.of(context).bestOf} $bestOf',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildPlayerColumn(context, opponentUsername, opponentLegsWon, false, !didWin),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -50,138 +187,13 @@ class TournamentMatchResultScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  const Spacer(flex: 1),
-
-                  // Trophy / defeat icon
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: didWin ? AppTheme.success : AppTheme.error,
-                        width: 4,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4),
-                          blurRadius: 40,
-                          spreadRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-                      color: didWin ? AppTheme.success : AppTheme.error,
-                      size: 80,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Text(
-                    didWin ? AppLocalizations.of(context).youAdvance : AppLocalizations.of(context).eliminated,
-                    style: TextStyle(
-                      color: didWin ? AppTheme.success : AppTheme.error,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    didWin
-                        ? AppLocalizations.of(context).congratsWonSeries
-                        : AppLocalizations.of(context).betterLuckNextTime,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 16,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // Match result card
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: didWin ? AppTheme.success.withValues(alpha: 0.3) : AppTheme.error.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            tournamentName,
-                            style: const TextStyle(
-                              color: AppTheme.primary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          localizedRoundName(roundName, AppLocalizations.of(context)).toUpperCase(),
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Score
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildPlayerColumn(context, myUsername, myLegsWon, true, didWin),
-                            Column(
-                              children: [
-                                Text(
-                                  AppLocalizations.of(context).finalScore,
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '$myLegsWon - $opponentLegsWon',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${AppLocalizations.of(context).bestOf} $bestOf',
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            _buildPlayerColumn(context, opponentUsername, opponentLegsWon, false, !didWin),
-                          ],
-                        ),
-                      ],
+                  Expanded(
+                    child: Center(
+                      child: SingleChildScrollView(child: resultContent),
                     ),
                   ),
 
-                  const Spacer(flex: 2),
+                  const SizedBox(height: 16),
 
                   // Return to home
                   SizedBox(

@@ -1128,25 +1128,37 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     ).then((_) { if (mounted) bustDialogShowing = false; });
   }
 
-  void showReportDialog({required Future<void> Function(String reason, String? comment) onSubmit, required VoidCallback onComplete}) {
+  /// Reason + optional comment dialog feeding the dispute endpoint. Defaults
+  /// to the "report player" wording; tournaments restyle it as "refuse result"
+  /// via the optional labels without changing the underlying call.
+  void showReportDialog({
+    required Future<void> Function(String reason, String? comment) onSubmit,
+    required VoidCallback onComplete,
+    String? title,
+    String? subtitle,
+    String? submitLabel,
+    List<String>? reasons,
+    IconData icon = Icons.flag,
+  }) {
     String? selectedReason;
     final commentController = TextEditingController();
     final l10n = AppLocalizations.of(context);
-    final reasons = [
-      l10n.reportReasonCheating,
-      l10n.reportReasonUnsportsmanlike,
-      l10n.reportReasonIncorrectScore,
-      l10n.reportReasonConnectionIssues,
-      l10n.reportReasonOther,
-    ];
+    final reasonList = reasons ??
+        [
+          l10n.reportReasonCheating,
+          l10n.reportReasonUnsportsmanlike,
+          l10n.reportReasonIncorrectScore,
+          l10n.reportReasonConnectionIssues,
+          l10n.reportReasonOther,
+        ];
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => gameDialogFrame(
       accent: AppTheme.opponentPink,
-      icon: Icons.flag,
-      title: l10n.reportPlayer,
+      icon: icon,
+      title: title ?? l10n.reportPlayer,
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(l10n.selectReasonReporting, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+        Text(subtitle ?? l10n.selectReasonReporting, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
         const SizedBox(height: 16),
-        ...reasons.map((r) => InkWell(
+        ...reasonList.map((r) => InkWell(
           onTap: () => setDlg(() => selectedReason = r),
           child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
             Icon(selectedReason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selectedReason == r ? AppTheme.opponentPink : AppTheme.textSecondary),
@@ -1194,7 +1206,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             onComplete();
           },
           style: gameFilledButtonStyle(AppTheme.opponentPink),
-          child: Text(l10n.submitReport),
+          child: Text(submitLabel ?? l10n.submitReport),
         ),
       ],
     ))).then((_) => commentController.dispose());

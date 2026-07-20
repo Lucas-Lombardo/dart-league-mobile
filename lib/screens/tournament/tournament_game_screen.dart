@@ -11,6 +11,7 @@ import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
+import '../game/match_end_view.dart';
 import 'tournament_leg_result_screen.dart';
 import 'tournament_match_result_screen.dart';
 
@@ -307,123 +308,71 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     final tGame = game as TournamentGameProvider;
     final didWin = tGame.winnerId == auth.currentUser?.id;
     final isSeriesOver = tGame.tournamentState == TournamentGameState.seriesEnded;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    final hero = Container(
-      padding: EdgeInsets.all(isLandscape ? 20 : 32),
-      decoration: BoxDecoration(
-        color: didWin ? AppTheme.success.withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-        shape: BoxShape.circle,
-        border: Border.all(color: didWin ? AppTheme.success : AppTheme.error, width: 4),
-        boxShadow: [BoxShadow(color: (didWin ? AppTheme.success : AppTheme.error).withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10)],
+    final panel = Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(
+        isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
+        style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
+        textAlign: TextAlign.center,
       ),
-      child: Icon(
-        didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-        color: didWin ? AppTheme.success : AppTheme.error,
-        size: isLandscape ? 56 : 80,
+      const SizedBox(height: 8),
+      Text(
+        isSeriesOver ? l10n.pleaseConfirmMatchResult : l10n.confirmNextLeg,
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+        textAlign: TextAlign.center,
       ),
-    );
+      const SizedBox(height: 20),
+      SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+        onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
+        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        icon: const Icon(Icons.check_circle_outline),
+        label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+      )),
+      const SizedBox(height: 12),
+      // Tournament matches get "refuse the result" (a dispute with a reason,
+      // reviewed by an admin), not the ranked "report player" wording.
+      SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+        onPressed: () {
+          HapticService.lightImpact();
+          showReportDialog(
+            title: l10n.refuseResult,
+            subtitle: l10n.refuseResultReasonPrompt,
+            submitLabel: l10n.submitRefusal,
+            icon: Icons.cancel_outlined,
+            reasons: [
+              l10n.reportReasonIncorrectScore,
+              l10n.reportReasonCheating,
+              l10n.reportReasonConnectionIssues,
+              l10n.reportReasonOther,
+            ],
+            onSubmit: (reason, comment) async {
+              if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
+              await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
+              // The tournament match is now frozen server-side pending admin
+              // review — do NOT continue as if the result stood (this used
+              // to show the ADVANCE/ELIMINATED ceremony right after
+              // contesting it).
+              if (mounted) _showResultUnderReviewAndExit();
+            },
+            onComplete: () {},
+          );
+        },
+        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        icon: const Icon(Icons.cancel_outlined),
+        label: Text(l10n.refuseResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+      )),
+    ]);
 
-    final headlineColumn = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        hero,
-        SizedBox(height: isLandscape ? 20 : 32),
-        Text(
-          isSeriesOver
-              ? (didWin ? l10n.matchWonTitle : l10n.matchLostTitle)
-              : (didWin ? l10n.legWonTitle(tGame.currentLeg) : l10n.legLostTitle(tGame.currentLeg)),
-          style: AppTheme.displayLarge.copyWith(color: didWin ? AppTheme.success : AppTheme.error, fontSize: isLandscape ? 36 : 48),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: isLandscape ? 6 : 12),
-        Text(
-          didWin ? l10n.wellPlayedConfirmResult : (isSeriesOver ? l10n.betterLuckNextTime : l10n.betterLuckNextLeg),
-          style: AppTheme.bodyLarge,
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-
-    final resultPanel = Container(
-      padding: EdgeInsets.all(isLandscape ? 16 : 24),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
-          style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isSeriesOver ? l10n.pleaseConfirmMatchResult : l10n.confirmNextLeg,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: isLandscape ? 16 : 24),
-        SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
-          onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-          icon: const Icon(Icons.check_circle_outline),
-          label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        )),
-        const SizedBox(height: 12),
-        SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
-          onPressed: () {
-            HapticService.lightImpact();
-            showReportDialog(
-              onSubmit: (reason, comment) async {
-                if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
-                await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
-                // The tournament match is now frozen server-side pending admin
-                // review — do NOT continue as if the result stood (this used
-                // to show the ADVANCE/ELIMINATED ceremony right after
-                // contesting it).
-                if (mounted) _showResultUnderReviewAndExit();
-              },
-              onComplete: () {},
-            );
-          },
-          style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-          icon: const Icon(Icons.flag_outlined),
-          label: Text(l10n.reportPlayer, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        )),
-      ]),
-    );
-
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: isLandscape
-              ? Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Expanded(child: Center(child: headlineColumn)),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: resultPanel,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 32),
-                      headlineColumn,
-                      const SizedBox(height: 32),
-                      resultPanel,
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-        ),
-      ),
+    return MatchEndView(
+      didWin: didWin,
+      title: isSeriesOver
+          ? (didWin ? l10n.matchWonTitle : l10n.matchLostTitle)
+          : (didWin ? l10n.legWonTitle(tGame.currentLeg) : l10n.legLostTitle(tGame.currentLeg)),
+      subtitle: didWin ? l10n.wellPlayedConfirmResult : (isSeriesOver ? l10n.betterLuckNextTime : l10n.betterLuckNextLeg),
+      scoreLine: '${tGame.myLegsWon} – ${tGame.opponentLegsWon}',
+      scoreCaption: l10n.bestOfN(widget.bestOf),
+      badgeText: widget.tournamentName,
+      panel: panel,
     );
   }
 

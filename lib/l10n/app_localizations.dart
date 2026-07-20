@@ -422,6 +422,9 @@ abstract class AppLocalizations {
   String get pleaseConfirmMatchResult;
   String get acceptResult;
   String get reportPlayer;
+  String get refuseResult;
+  String get refuseResultReasonPrompt;
+  String get submitRefusal;
   String get initializingMatch;
   String get initializingMatchError;
   String get legWonShort;
