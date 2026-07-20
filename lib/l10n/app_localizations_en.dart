@@ -2277,4 +2277,29 @@ class AppLocalizationsEn extends AppLocalizations {
   // Friends (option A: single challenge CTA, swipe to remove)
   @override
   String get challengeFriend => 'Challenge';
+
+  // Activity pulse (homescreen card + sheet)
+  @override
+  String activityActiveLabel(int hours) => 'active · $hours h';
+  @override
+  String activityNowChip(int count) => '$count now';
+  @override
+  String get activityPulseTitle => 'Pulse';
+  @override
+  String activitySheetSubtitle(int hours) =>
+      'Player activity · last $hours hours';
+  @override
+  String get activityOnlineNowLabel => 'Online now';
+  @override
+  String activityMatchesLabel(int hours) => 'Matches · $hours h';
+  @override
+  String get activityPeakLabel => 'Peak today';
+  @override
+  String activityPeakTip(String hour) =>
+      'Peak today: $hour. Queue during peaks to find ranked opponents faster.';
+  @override
+  String get activityQueueTip =>
+      'Queueing wakes players up: when you search for a match, active players get a notification and can join you.';
+  @override
+  String get activityNowAxisLabel => 'now';
 }

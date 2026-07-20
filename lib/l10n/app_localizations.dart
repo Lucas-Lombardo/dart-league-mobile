@@ -913,6 +913,18 @@ abstract class AppLocalizations {
 
   // Friends (option A: single challenge CTA, swipe to remove)
   String get challengeFriend;
+
+  // Activity pulse (homescreen card + sheet)
+  String activityActiveLabel(int hours);
+  String activityNowChip(int count);
+  String get activityPulseTitle;
+  String activitySheetSubtitle(int hours);
+  String get activityOnlineNowLabel;
+  String activityMatchesLabel(int hours);
+  String get activityPeakLabel;
+  String activityPeakTip(String hour);
+  String get activityQueueTip;
+  String get activityNowAxisLabel;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

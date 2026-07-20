@@ -7,7 +7,10 @@ import '../../providers/subscription_provider.dart';
 import '../../providers/match_invite_provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
+import '../../providers/presence_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
+import '../../widgets/activity_pulse_card.dart';
+import '../../services/presence_service.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
 import '../../services/tournament_service.dart';
@@ -48,6 +51,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   TournamentProvider? _tournamentProvider;
   bool _inActiveTournament = false;
   String? _activeTournamentName;
+  ActivitySnapshot? _activity;
 
   @override
   void initState() {
@@ -69,6 +73,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkActiveMatch();
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
+    _loadActivity();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshSubscription();
       // Live tournament state: the provider is refreshed by its 30s poll,
@@ -106,6 +111,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkActiveTournamentStatus();
     _refreshSubscription();
     _loadPlacementStatusIfUnranked();
+    _loadActivity();
+  }
+
+  /// Feeds the activity pulse card; the card stays hidden until (and unless)
+  /// a snapshot arrives, so failures cost nothing.
+  Future<void> _loadActivity() async {
+    final snapshot = await PresenceService.fetchActivity();
+    if (mounted && snapshot != null) {
+      setState(() => _activity = snapshot);
+    }
   }
 
   /// Feeds the placement-progress ring; only relevant while unranked.
@@ -801,6 +816,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           _checkActiveMatch(),
           _checkPendingTournamentMatch(),
           _checkActiveTournamentStatus(),
+          _loadActivity(),
         ]);
       },
       child: SingleChildScrollView(
@@ -826,76 +842,16 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               progress: progress,
             ),
           const SizedBox(height: 20),
-          if (matchInvite.incoming != null)
-            // Friend invite — the whole Play button becomes "Join the match".
-            // Highest priority: the inviter is actively waiting and the invite
-            // is short-lived. (The backend refuses to invite a busy player, so
-            // this can't collide with an active-match rejoin.)
-            _buildFriendInviteButton(matchInvite.incoming!, l10n)
-          else if (isUnranked) ...[
-            // Placement bar — same CTA language as the ranked play bar, in
-            // gold (B2 redesign). The explanation lives in the hero above.
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: GestureDetector(
-                onTap: () {
-                  HapticService.mediumImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const PlacementHubScreen(),
-                    ),
-                  ).then((_) {
-                    if (!mounted) return;
-                    // Reload matches and user data after returning
-                    _loadRecentMatches();
-                    context.read<AuthProvider>().checkAuthStatus();
-                    context.read<PlacementProvider>().loadStatus();
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 17),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFEAB308).withValues(alpha: 0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.emoji_events, size: 22, color: Colors.white),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          l10n.placementMatches.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          if (_activity != null) ...[
+            ActivityPulseCard(
+              snapshot: _activity!,
+              onlineNow: context.watch<PresenceProvider>().onlineCount,
             ),
-            if (!subscription.isPremiumActive) ...[
-              const SizedBox(height: 12),
-              _buildUnrankedFreeTierHint(),
-            ],
-          ]
-          else if (_activeTournamentLeg?.lastGameId != null)
+            const SizedBox(height: 14),
+          ],
+          // CTA priority: tournament match (live leg, then pending join) →
+          // friend invite → placement → play.
+          if (_activeTournamentLeg?.lastGameId != null)
             // A tournament leg is LIVE for this player (app was killed
             // mid-match) — resuming outranks everything: the disconnect grace
             // timer is running server-side.
@@ -977,7 +933,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               ),
             )
           else if (_pendingTournamentMatch != null)
-            // Join Tournament Match button (highest priority after placement)
+            // Join Tournament Match button — a tournament commitment outranks
+            // friend invites and placement.
             ScaleTransition(
               scale: _pulseAnimation,
               child: GestureDetector(
@@ -1082,6 +1039,75 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                 ),
               ),
             )
+          else if (matchInvite.incoming != null)
+            // Friend invite — the whole Play button becomes "Join the match".
+            // The inviter is actively waiting and the invite is short-lived.
+            // (The backend refuses to invite a busy player, so this can't
+            // collide with an active-match rejoin.)
+            _buildFriendInviteButton(matchInvite.incoming!, l10n)
+          else if (isUnranked) ...[
+            // Placement bar — same CTA language as the ranked play bar, in
+            // gold (B2 redesign). The explanation lives in the hero above.
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: GestureDetector(
+                onTap: () {
+                  HapticService.mediumImpact();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const PlacementHubScreen(),
+                    ),
+                  ).then((_) {
+                    if (!mounted) return;
+                    // Reload matches and user data after returning
+                    _loadRecentMatches();
+                    context.read<AuthProvider>().checkAuthStatus();
+                    context.read<PlacementProvider>().loadStatus();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 17),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFEAB308).withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.emoji_events, size: 22, color: Colors.white),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          l10n.placementMatches.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (!subscription.isPremiumActive) ...[
+              const SizedBox(height: 12),
+              _buildUnrankedFreeTierHint(),
+            ],
+          ]
           else if (_activeMatch != null)
             // Rejoin active ranked match
             ScaleTransition(

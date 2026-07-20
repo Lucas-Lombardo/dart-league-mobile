@@ -217,7 +217,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   // Bottom Navigation
   @override
-  String get stats => 'Statistiques';
+  String get stats => 'Stats';
 
   @override
   String get rankings => 'Classements';
@@ -2289,4 +2289,30 @@ class AppLocalizationsFr extends AppLocalizations {
   // Friends (option A: single challenge CTA, swipe to remove)
   @override
   String get challengeFriend => 'Défier';
+
+  // Activity pulse (homescreen card + sheet)
+  @override
+  String activityActiveLabel(int hours) =>
+      hours <= 1 ? 'actif · $hours h' : 'actifs · $hours h';
+  @override
+  String activityNowChip(int count) => '$count en ligne';
+  @override
+  String get activityPulseTitle => 'Pulse';
+  @override
+  String activitySheetSubtitle(int hours) =>
+      'Activité des joueurs · $hours dernières heures';
+  @override
+  String get activityOnlineNowLabel => 'En ligne';
+  @override
+  String activityMatchesLabel(int hours) => 'Matchs · $hours h';
+  @override
+  String get activityPeakLabel => 'Pic du jour';
+  @override
+  String activityPeakTip(String hour) =>
+      'Pic du jour : $hour. Lance une recherche pendant les pics pour trouver un adversaire plus vite.';
+  @override
+  String get activityQueueTip =>
+      'Lancer une recherche réveille les joueurs : les joueurs actifs reçoivent une notification et peuvent te rejoindre.';
+  @override
+  String get activityNowAxisLabel => 'maint.';
 }
