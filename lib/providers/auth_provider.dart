@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
+import '../services/socket_service.dart';
 import '../utils/error_messages.dart';
 import 'locale_provider.dart';
 import 'presence_provider.dart';
@@ -19,6 +20,19 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
+
+  /// Single place where the signed-in identity is published to the socket
+  /// layer — every sign-in / sign-out path goes through it. The socket bakes
+  /// its JWT in at construction and is reused for the whole process, so
+  /// without this an account switch left it authenticated as the PREVIOUS
+  /// user: the server then had no socket for the logged-in player and every
+  /// match event (invites, ready updates, game_started) was dropped while the
+  /// app still looked online. Profile edits keep assigning _currentUser
+  /// directly — same user, nothing to rebind.
+  void _setCurrentUser(User? user) {
+    _currentUser = user;
+    SocketService.setSessionUser(user?.id);
+  }
 
   void setLocaleProvider(LocaleProvider localeProvider) {
     _localeProvider = localeProvider;
@@ -42,7 +56,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final user = await AuthService.getCurrentUser();
-      _currentUser = user;
+      _setCurrentUser(user);
       if (user != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(user.language);
       }
@@ -52,7 +66,7 @@ class AuthProvider extends ChangeNotifier {
         _presenceProvider?.stop();
       }
     } catch (e) {
-      _currentUser = null;
+      _setCurrentUser(null);
       _presenceProvider?.stop();
       _errorMessage = ErrorMessages.getUserFriendlyMessage(e.toString());
     } finally {
@@ -78,7 +92,7 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         language: language,
       );
-      _currentUser = result['user'];
+      _setCurrentUser(result['user'] as User?);
       if (_currentUser != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(_currentUser!.language);
       }
@@ -112,7 +126,7 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
       );
-      _currentUser = result['user'];
+      _setCurrentUser(result['user'] as User?);
       if (_currentUser != null && _localeProvider != null) {
         _localeProvider!.setLocaleFromUser(_currentUser!.language);
       }
@@ -141,7 +155,7 @@ class AuthProvider extends ChangeNotifier {
       await PushNotificationService.unregisterToken();
       PushNotificationService.dispose();
       await AuthService.logout();
-      _currentUser = null;
+      _setCurrentUser(null);
       _errorMessage = null;
       _subscriptionProvider?.clear();
       _presenceProvider?.stop();
@@ -182,7 +196,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await AuthService.deleteAccount();
-      _currentUser = null;
+      _setCurrentUser(null);
       _isLoading = false;
       notifyListeners();
       return true;

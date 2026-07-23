@@ -306,35 +306,48 @@ class TournamentGameProvider with ChangeNotifier {
   // --- Socket listeners ---
 
   void _setupSocketListeners() {
-    SocketService.on('game_started', _handleGameStarted);
-    SocketService.on('score_updated', _handleScoreUpdated);
-    SocketService.on('round_ready_confirm', _handleRoundReadyConfirm);
-    SocketService.on('round_complete', _handleRoundComplete);
-    SocketService.on('game_won', _handleGameWon);
-    SocketService.on('match_ended', _handleMatchEnded);
-    SocketService.on('invalid_throw', _handleInvalidThrow);
-    SocketService.on('must_finish_double', _handleMustFinishDouble);
-    SocketService.on('pending_win', _handlePendingWin);
-    SocketService.on('pending_bust', _handlePendingBust);
-    SocketService.on('opponent_disconnected', _handleOpponentDisconnected);
-    SocketService.on('opponent_reconnected', _handleOpponentReconnected);
-    SocketService.on('game_state_sync', _handleGameStateSync);
-    SocketService.on('player_forfeited', _handlePlayerForfeited);
-    SocketService.on('dart_undone', _handleDartUndone);
-    SocketService.on('throw_dart_ack', _handleThrowDartAck);
-    SocketService.on('confirm_round_rejected', _handleConfirmRoundRejected);
+    SocketService.on('game_started', _handleGameStarted, owner: this);
+    SocketService.on('score_updated', _handleScoreUpdated, owner: this);
+    SocketService.on('round_ready_confirm', _handleRoundReadyConfirm, owner: this);
+    SocketService.on('round_complete', _handleRoundComplete, owner: this);
+    SocketService.on('game_won', _handleGameWon, owner: this);
+    SocketService.on('match_ended', _handleMatchEnded, owner: this);
+    SocketService.on('invalid_throw', _handleInvalidThrow, owner: this);
+    SocketService.on('must_finish_double', _handleMustFinishDouble, owner: this);
+    SocketService.on('pending_win', _handlePendingWin, owner: this);
+    SocketService.on('pending_bust', _handlePendingBust, owner: this);
+    SocketService.on('opponent_disconnected', _handleOpponentDisconnected, owner: this);
+    SocketService.on('opponent_reconnected', _handleOpponentReconnected, owner: this);
+    SocketService.on('game_state_sync', _handleGameStateSync, owner: this);
+    SocketService.on('player_forfeited', _handlePlayerForfeited, owner: this);
+    SocketService.on('dart_undone', _handleDartUndone, owner: this);
+    SocketService.on('throw_dart_ack', _handleThrowDartAck, owner: this);
+    SocketService.on('confirm_round_rejected', _handleConfirmRoundRejected, owner: this);
 
     // Tournament-specific events
-    SocketService.on('tournament_leg_won', _handleTournamentLegWon);
-    SocketService.on('tournament_next_leg', _handleTournamentNextLeg);
-    SocketService.on('tournament_match_won', _handleTournamentMatchWon);
+    SocketService.on('tournament_leg_won', _handleTournamentLegWon, owner: this);
+    SocketService.on('tournament_next_leg', _handleTournamentNextLeg, owner: this);
+    SocketService.on('tournament_match_won', _handleTournamentMatchWon, owner: this);
 
     // Observe our OWN connection (see GameProvider for rationale).
     if (!_connectionListenersRegistered) {
       _connectionListenersRegistered = true;
       SocketService.addDisconnectListener(_handleSelfDisconnected);
       SocketService.addReconnectListener(_handleSelfReconnected);
+      SocketService.addSessionChangeListener(_handleSessionChanged);
     }
+  }
+
+  /// The app switched account (or signed out). Everything here belongs to the
+  /// previous user: keeping it meant the start watchdog kept emitting
+  /// reconnect_to_match for the old account's leg on the new account's socket,
+  /// which the server rejected as "not a participant" every 2.5s.
+  /// Unconditional: even with no match in flight, the socket that carried our
+  /// handlers is gone, so _listenersSetUp must go back to false or the next
+  /// match registers nothing and never starts.
+  void _handleSessionChanged() {
+    debugPrint('TOURNAMENT: session changed — dropping match state for $_myUserId');
+    reset();
   }
 
   void _handleSelfDisconnected() {
@@ -1241,27 +1254,28 @@ class TournamentGameProvider with ChangeNotifier {
       _connectionListenersRegistered = false;
       SocketService.removeDisconnectListener(_handleSelfDisconnected);
       SocketService.removeReconnectListener(_handleSelfReconnected);
+      SocketService.removeSessionChangeListener(_handleSessionChanged);
     }
-    SocketService.off('game_started');
-    SocketService.off('score_updated');
-    SocketService.off('round_ready_confirm');
-    SocketService.off('round_complete');
-    SocketService.off('game_won');
-    SocketService.off('match_ended');
-    SocketService.off('invalid_throw');
-    SocketService.off('must_finish_double');
-    SocketService.off('pending_win');
-    SocketService.off('pending_bust');
-    SocketService.off('player_forfeited');
-    SocketService.off('dart_undone');
-    SocketService.off('opponent_disconnected');
-    SocketService.off('opponent_reconnected');
-    SocketService.off('game_state_sync');
-    SocketService.off('tournament_leg_won');
-    SocketService.off('tournament_next_leg');
-    SocketService.off('tournament_match_won');
-    SocketService.off('throw_dart_ack');
-    SocketService.off('confirm_round_rejected');
+    SocketService.off('game_started', owner: this);
+    SocketService.off('score_updated', owner: this);
+    SocketService.off('round_ready_confirm', owner: this);
+    SocketService.off('round_complete', owner: this);
+    SocketService.off('game_won', owner: this);
+    SocketService.off('match_ended', owner: this);
+    SocketService.off('invalid_throw', owner: this);
+    SocketService.off('must_finish_double', owner: this);
+    SocketService.off('pending_win', owner: this);
+    SocketService.off('pending_bust', owner: this);
+    SocketService.off('player_forfeited', owner: this);
+    SocketService.off('dart_undone', owner: this);
+    SocketService.off('opponent_disconnected', owner: this);
+    SocketService.off('opponent_reconnected', owner: this);
+    SocketService.off('game_state_sync', owner: this);
+    SocketService.off('tournament_leg_won', owner: this);
+    SocketService.off('tournament_next_leg', owner: this);
+    SocketService.off('tournament_match_won', owner: this);
+    SocketService.off('throw_dart_ack', owner: this);
+    SocketService.off('confirm_round_rejected', owner: this);
   }
 
   void reset() {

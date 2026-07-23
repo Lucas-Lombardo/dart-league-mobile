@@ -336,18 +336,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tournaments => 'Tournaments';
 
   @override
-  String get tournamentPlaying => 'Playing';
-
-  @override
-  String get tournamentRegister => 'Register';
-
-  @override
-  String get noActiveTournaments => 'No active tournaments';
-
-  @override
-  String get registerForTournamentHint => 'Register for an upcoming tournament to compete!';
-
-  @override
   String get noUpcomingTournaments => 'No upcoming tournaments';
 
   @override
@@ -1074,6 +1062,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get initializingMatchError => 'Error';
+
+  @override
+  String get matchNotStartingTitle => "The match isn't starting";
+
+  @override
+  String get matchNotStartingBody =>
+      'The start signal never arrived. Try again, or leave and rejoin the match from the home screen.';
+
+  @override
+  String get matchNotStartingOffline =>
+      "You're offline. Check your internet connection.";
 
   @override
   String get legWonShort => 'LEG WON!';
@@ -2242,6 +2241,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get matchStatusUpcoming => 'Upcoming';
   @override
+  String get matchStatusNotPlayed => 'Not played';
+  @override
+  String get matchNotPlayedBody =>
+      'Nobody joined in time — the match was cancelled with no winner.';
+  @override
   String get startsAfterPreviousRound => 'Starts when the previous round ends';
   @override
   String get tbdLabel => 'TBD';
@@ -2263,6 +2267,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tournamentStatusCompleted => 'Completed';
   @override
   String get tournamentStatusCancelled => 'Cancelled';
+
+  // Tournament agenda (chronological tournament tab)
+  @override
+  String get agendaToday => 'Today';
+  @override
+  String get agendaTomorrow => 'Tomorrow';
+  @override
+  String get agendaRegisteredChip => 'Registered';
+  @override
+  String get agendaFullChip => 'Full';
 
   // Home (B2): ELO ring hero + form row
   @override
@@ -2288,18 +2302,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get challengeFriend => 'Challenge';
 
-  // Activity pulse (homescreen card + sheet)
+  // Activity pill (homescreen) + detail sheet
   @override
   String activityActiveLabel(int hours) => 'active · $hours h';
-  @override
-  String activityNowChip(int count) => '$count now';
   @override
   String get activityPulseTitle => 'Pulse';
   @override
   String activitySheetSubtitle(int hours) =>
       'Player activity · last $hours hours';
-  @override
-  String get activityOnlineNowLabel => 'Online now';
   @override
   String activityMatchesLabel(int hours) => 'Matches · $hours h';
   @override

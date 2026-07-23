@@ -138,6 +138,62 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Timer? _autoScoringLoadingWatchdog;
   static const Duration _autoScoringLoadingMaxWait = Duration(seconds: 30);
 
+  // ─── "Match won't start" recovery ──────────────────────────────────────────
+  // game_started is a single un-replayed push to the match room. If this
+  // device isn't in that room when it fires — most bluntly, if its socket is
+  // dead or belongs to another account — nothing ever flips gameStarted and
+  // the player stared at "INITIALISATION DU MATCH…" forever, with no hint of
+  // what was wrong and no way out but killing the app. Shared by ranked,
+  // friendly and tournament: they all render buildInitializingScreen().
+  Timer? _startStallTimer;
+  bool startStalled = false;
+  bool retryingStart = false;
+  static const Duration _startStallDelay = Duration(seconds: 10);
+
+  /// Arm (once) the deadline after which the init spinner becomes an
+  /// actionable "the match isn't starting" screen. Called from the spinner's
+  /// own build, so it covers every entry path without each screen wiring it.
+  void _armStartStallTimer() {
+    if (_startStallTimer != null || startStalled) return;
+    _startStallTimer = Timer(_startStallDelay, () {
+      if (!mounted) return;
+      // Read the provider rather than trusting the cached flag: on the rejoin
+      // path the listener is attached after a multi-second camera/AI init.
+      bool started = gameStarted;
+      try { started = readGame().gameStarted as bool; } catch (_) {}
+      if (!started) setState(() => startStalled = true);
+    });
+  }
+
+  void _cancelStartStallTimer() {
+    _startStallTimer?.cancel();
+    _startStallTimer = null;
+  }
+
+  /// Manual recovery from the stalled screen: make sure we have a socket that
+  /// belongs to THIS user, re-attach the provider's listeners, then ask the
+  /// server to re-send the state. Same three steps for every match type.
+  Future<void> retryMatchStart() async {
+    if (retryingStart) return;
+    setState(() => retryingStart = true);
+    try {
+      await SocketService.ensureAuthenticated();
+      if (!mounted) return;
+      final game = readGame();
+      game.ensureListenersSetup();
+      game.reconnectToMatch();
+    } catch (e) {
+      debugPrint('[BaseGameScreen] retryMatchStart failed: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      retryingStart = false;
+      startStalled = false;
+    });
+    _cancelStartStallTimer();
+    _armStartStallTimer();
+  }
+
   /// (Re-)arm the deadline after which a still-true [autoScoringLoading] is
   /// force-cleared. Call whenever autoScoringLoading is set to true.
   void armAutoScoringLoadingWatchdog() {
@@ -187,6 +243,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     _autoScoringLoadingWatchdog = null;
     _remoteJoinedWatchdog?.cancel();
     _remoteJoinedWatchdog = null;
+    _cancelStartStallTimer();
     disposeScreenSpecific();
     scoreAnimationController.dispose();
     WakelockPlus.disable();
@@ -243,6 +300,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try {
       final game = readGame();
       gameStarted = game.gameStarted;
+      if (gameStarted) {
+        _cancelStartStallTimer();
+        startStalled = false;
+      }
       final wasGameEnded = gameEnded;
       gameEnded = game.gameEnded;
       if (game.gameEnded && !wasGameEnded && game.winnerId != null) {
@@ -1602,8 +1663,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   String? get fallbackAgoraChannelId => null;
 
   /// "INITIALISATION DU MATCH..." spinner, shown until game_started /
-  /// game_state_sync flips the provider's gameStarted.
+  /// game_state_sync flips the provider's gameStarted. After
+  /// [_startStallDelay] with no start it turns into a diagnosis + retry/leave
+  /// screen instead of spinning forever.
   Widget buildInitializingScreen() {
+    final l10n = AppLocalizations.of(context);
+    _armStartStallTimer();
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -1614,16 +1680,88 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         backgroundColor: AppTheme.background,
         appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(color: AppTheme.primary),
-              const SizedBox(height: 16),
-              Text(AppLocalizations.of(context).initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: startStalled
+                ? _buildStartStalledBody(l10n)
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(color: AppTheme.primary),
+                      const SizedBox(height: 16),
+                      Text(l10n.initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStartStalledBody(AppLocalizations l10n) {
+    // Distinguish "no network" from "connected but the start never came" —
+    // they need different things from the player.
+    final offline = !SocketService.isConnected;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          offline ? Icons.wifi_off_rounded : Icons.hourglass_disabled_rounded,
+          size: 48,
+          color: AppTheme.error,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          l10n.matchNotStartingTitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          offline ? l10n.matchNotStartingOffline : l10n.matchNotStartingBody,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+        ),
+        const SizedBox(height: 28),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: retryingStart ? null : retryMatchStart,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            icon: retryingStart
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(l10n.retry, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            // Through onWillPop: the match may still be live server-side, so
+            // leaving must go through the same forfeit warning as the board.
+            onPressed: () async {
+              if (await onWillPop() && mounted) Navigator.of(context).pop();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              side: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.6), width: 2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(l10n.leave, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+      ],
     );
   }
 

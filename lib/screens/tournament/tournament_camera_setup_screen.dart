@@ -77,6 +77,28 @@ class _TournamentCameraSetupScreenState
     await prepareForNavigation();
     if (!mounted) return;
 
+    // A tournament match is entirely socket-driven once it starts
+    // (matchReadyUpdate, tournamentMatchStart, game_started). Walking in with
+    // a dead socket — or one still authenticated as a previously signed-in
+    // account — used to succeed: the HTTP ready-poll carried the lobby all the
+    // way into the game screen, which then spun on "initialising match"
+    // forever because no socket event could reach this device. Refuse to
+    // start instead, and say why.
+    try {
+      await SocketService.ensureAuthenticated();
+    } catch (_) {}
+    if (!mounted) return;
+    if (!SocketService.belongsToSession) {
+      setState(() => _readyingSent = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).connectionLostReconnecting),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
     // Resume path: the leg is already running — skip the ready screen and
     // re-enter the game. State + Agora tokens arrive via game_state_sync when
     // the socket rejoins the match room.
@@ -85,7 +107,10 @@ class _TournamentCameraSetupScreenState
       final user = context.read<AuthProvider>().currentUser;
       if (user == null) return;
       final tournamentGame = context.read<TournamentGameProvider>();
-      tournamentGame.ensureListenersSetup();
+      // Awaited: the reply to the reconnect_to_match below is useless if the
+      // handlers aren't attached yet.
+      await tournamentGame.ensureListenersSetup();
+      if (!mounted) return;
       tournamentGame.initTournamentGame(
         tournamentMatchId: widget.matchId,
         gameMatchId: rejoinGameId,
@@ -98,11 +123,8 @@ class _TournamentCameraSetupScreenState
       // Ask the server for the state explicitly (mirrors the friendly rejoin
       // in camera_setup_screen.dart): on a cold start the fresh socket is in
       // no room, so without this emit no game_state_sync ever arrives and the
-      // game screen spins on "initializing match" forever.
-      try {
-        await SocketService.ensureConnected();
-      } catch (_) {}
-      if (!mounted) return;
+      // game screen spins on "initializing match" forever. The socket is
+      // already known good — checked above.
       tournamentGame.reconnectToMatch();
       AppNavigator.replaceWith(
         context,

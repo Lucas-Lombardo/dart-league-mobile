@@ -22,8 +22,22 @@ class SocketService {
   static final List<Function()> _reconnectListeners = [];
   static final List<Function()> _connectFailedListeners = [];
 
+  // Fired when the socket stops belonging to the user it used to belong to
+  // (account switch / logout). Consumers holding per-user state — the game
+  // providers' matchId + myUserId — must drop it: see [setSessionUser].
+  static final List<Function()> _sessionChangeListeners = [];
+
   // Registered handlers keyed by event name — enables targeted removal
   static final Map<String, Function(dynamic)> _handlers = {};
+
+  // Who registered each handler. The registry is one slot per event and
+  // GameProvider / TournamentGameProvider listen to the SAME event names, so
+  // whichever registers last owns the slot — that part is fine, the loser is
+  // idle. What was NOT fine: an off() from the idle provider (its reset()
+  // clears the same event list) tore out the ACTIVE provider's handler, and
+  // the running match went deaf. off() now only removes what its caller
+  // actually registered.
+  static final Map<String, Object> _handlerOwners = {};
 
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   static Timer? _reconnectRestartTimer;
@@ -36,6 +50,9 @@ class SocketService {
   // Rate-limits the refresh-token + socket-rebuild recovery so an
   // unrecoverable auth problem can't loop it.
   static DateTime? _lastAuthRebuild;
+
+  // Same idea for the identity-mismatch rebuild (see _handleAuthenticated).
+  static DateTime? _lastIdentityRebuild;
 
   // Capability announced by the server in its `authenticated` payload.
   //
@@ -62,6 +79,22 @@ class SocketService {
   // CURRENT socket.
   static bool _isAuthenticated = false;
 
+  // Who the app is logged in as (set by AuthProvider), and who the LIVE socket
+  // is actually authenticated as (echoed by the server's `authenticated`
+  // payload).
+  //
+  // These used to be able to disagree, and silently: the JWT is baked into the
+  // socket at construction, connect() short-circuits on an existing socket, and
+  // nothing tore the socket down on logout. Logging out and back in as another
+  // account therefore kept a socket authenticated as the PREVIOUS user, while
+  // every HTTP call used the new one. The server then had no socket for the
+  // logged-in user — `emitToUser: No socket found` — so match_invite,
+  // matchReadyUpdate, tournamentMatchStart and game_started all went nowhere,
+  // and the emits this app sent were attributed to the old account. The app
+  // looked online the whole time.
+  static String? _sessionUserId;
+  static String? _authenticatedUserId;
+
   /// Whether the server this socket is authenticated against acknowledges and
   /// deduplicates individual darts. See [_supportsDartAck].
   static bool get supportsDartAck => _supportsDartAck;
@@ -72,8 +105,82 @@ class SocketService {
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
 
+  /// The user the LIVE socket is authenticated as, per the server. Null until
+  /// the handshake lands. Never assume it equals the logged-in user — compare
+  /// with [belongsToSession] instead.
+  static String? get authenticatedUserId => _authenticatedUserId;
+
+  /// True when the socket is connected AND authenticated as the user the app
+  /// is currently logged in as. Anything that starts a match must check this:
+  /// a socket belonging to someone else delivers none of the match events.
+  static bool get belongsToSession =>
+      isConnected &&
+      _isAuthenticated &&
+      _sessionUserId != null &&
+      _authenticatedUserId == _sessionUserId;
+
+  /// Bind the socket to the logged-in user. Called by AuthProvider on login,
+  /// register, session restore and logout.
+  ///
+  /// A change of user tears the socket down and rebuilds it with the new
+  /// token (handlers are preserved and re-attached), and notifies the session
+  /// listeners so per-user state is dropped. `null` (logout) is a full
+  /// teardown, handlers included.
+  static void setSessionUser(String? userId) {
+    if (userId == _sessionUserId) return;
+    final previous = _sessionUserId;
+    _sessionUserId = userId;
+    if (previous == null && userId != null && _socket == null) {
+      // First login of the process — nothing to rebuild.
+      return;
+    }
+    debugPrint('SocketService: session user $previous -> $userId');
+    if (userId == null) {
+      _disconnectInternal();
+    } else {
+      _rebuildWithCurrentToken();
+    }
+    for (final l in List.of(_sessionChangeListeners)) {
+      l();
+    }
+  }
+
+  /// Drop the current socket and build a new one from the token in storage,
+  /// keeping every registered handler (connect() re-attaches them). Fire and
+  /// forget — callers reach the socket through ensureConnected().
+  static void _rebuildWithCurrentToken() {
+    _disconnectInternal(preserveHandlers: true);
+    _connectCompleter = null;
+    connect().catchError((Object e) {
+      debugPrint('SocketService: rebuild failed: $e');
+    });
+  }
+
   static void _handleAuthenticated(dynamic data) {
     _isAuthenticated = true;
+    _authenticatedUserId = data is Map ? data['userId'] as String? : null;
+    if (_sessionUserId != null &&
+        _authenticatedUserId != null &&
+        _authenticatedUserId != _sessionUserId) {
+      // Stale socket: it authenticated as somebody else. Rebuild with the
+      // token currently in storage rather than staying silently mis-bound.
+      // Rate-limited: if storage still holds the other account's token this
+      // must not spin.
+      final now = DateTime.now();
+      if (_lastIdentityRebuild != null &&
+          now.difference(_lastIdentityRebuild!) < const Duration(seconds: 10)) {
+        return;
+      }
+      _lastIdentityRebuild = now;
+      debugPrint(
+        'SocketService: socket authenticated as $_authenticatedUserId '
+        'but session is $_sessionUserId — rebuilding',
+      );
+      // Deliberately NOT adopting this socket's capability flags: they
+      // describe a connection this user will never receive events on.
+      _rebuildWithCurrentToken();
+      return;
+    }
     final supports = data is Map && data['supportsDartAck'] == true;
     if (supports != _supportsDartAck) {
       debugPrint('SocketService: server supportsDartAck=$supports');
@@ -192,6 +299,7 @@ class SocketService {
         // Re-derived from the next 'authenticated'. Until then we assume the
         // server cannot dedup darts nor run BO3, the safe assumptions.
         _isAuthenticated = false;
+        _authenticatedUserId = null;
         _supportsDartAck = false;
         _supportsRankedBo3 = false;
         _onDisconnectHandler?.call();
@@ -281,6 +389,16 @@ class SocketService {
   /// Reconnect immediately when the network comes back (wifi↔cellular switch,
   /// airplane mode off, …) instead of waiting for the next backoff attempt.
   static void _startConnectivityMonitoring() {
+    // Never let a connectivity-plugin failure abort connect(): this is only a
+    // "reconnect sooner" optimisation, the socket's own backoff still works.
+    try {
+      _listenToConnectivity();
+    } catch (e) {
+      debugPrint('SocketService: connectivity monitoring unavailable: $e');
+    }
+  }
+
+  static void _listenToConnectivity() {
     _connectivitySub ??= Connectivity().onConnectivityChanged.listen((results) {
       final hasNetwork =
           results.any((r) => r != ConnectivityResult.none);
@@ -298,6 +416,7 @@ class SocketService {
     _reconnectRestartTimer?.cancel();
     _reconnectRestartTimer = null;
     _isAuthenticated = false;
+    _authenticatedUserId = null;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
     if (_socket != null) {
@@ -336,12 +455,17 @@ class SocketService {
   static void debugReset() {
     debugEmitOverride = null;
     _isAuthenticated = false;
+    _authenticatedUserId = null;
+    _sessionUserId = null;
+    _lastIdentityRebuild = null;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
     _handlers.clear();
+    _handlerOwners.clear();
     _disconnectListeners.clear();
     _reconnectListeners.clear();
     _connectFailedListeners.clear();
+    _sessionChangeListeners.clear();
   }
 
   static void emit(String event, dynamic data) {
@@ -356,21 +480,36 @@ class SocketService {
     _socket!.emit(event, data);
   }
 
-  static void on(String event, Function(dynamic) handler) {
+  /// Register [handler] for [event], replacing any previous one.
+  ///
+  /// Pass [owner] (typically `this`) so [off] can tell your handler apart from
+  /// another consumer's — see [_handlerOwners].
+  static void on(String event, Function(dynamic) handler, {Object? owner}) {
     // Remove any previously registered handler for this event before adding the new one
     final existing = _handlers[event];
     if (existing != null && _socket != null) {
       _socket!.off(event, existing);
     }
     _handlers[event] = handler;
+    if (owner != null) {
+      _handlerOwners[event] = owner;
+    } else {
+      _handlerOwners.remove(event);
+    }
     // Socket may be mid-rebuild (token refresh); connect() attaches every
     // tracked handler to the new instance, so storing it is enough.
     _socket?.on(event, handler);
   }
 
-  static void off(String event) {
-    if (_socket == null) return;
+  /// Remove the handler for [event]. With [owner] set, this is a no-op unless
+  /// the live handler was registered by that same owner — so a provider
+  /// tearing down its listeners can never unhook the provider that displaced
+  /// it and is currently driving a live match.
+  static void off(String event, {Object? owner}) {
+    if (owner != null && !identical(_handlerOwners[event], owner)) return;
+    _handlerOwners.remove(event);
     final handler = _handlers.remove(event);
+    if (_socket == null) return;
     if (handler != null) {
       _socket!.off(event, handler);
     }
@@ -413,9 +552,13 @@ class SocketService {
   }) async {
     await ensureConnected(timeout: timeout, pollInterval: pollInterval);
     final deadline = DateTime.now().add(authTimeout);
-    while (!_isAuthenticated &&
-        isConnected &&
-        DateTime.now().isBefore(deadline)) {
+    // Wait for the handshake AND for it to name the logged-in user: a socket
+    // left over from a previous account answers `authenticated` immediately,
+    // so keying only off _isAuthenticated declared success on a socket that
+    // receives none of this user's events. isConnected is deliberately not a
+    // loop condition — the identity rebuild bounces the connection.
+    bool settled() => _sessionUserId == null ? _isAuthenticated : belongsToSession;
+    while (!settled() && DateTime.now().isBefore(deadline)) {
       await Future.delayed(pollInterval);
     }
   }
@@ -463,6 +606,20 @@ class SocketService {
 
   static void removeReconnectListener(Function() listener) {
     _reconnectListeners.remove(listener);
+  }
+
+  /// Notified when the socket stops belonging to the previous user (account
+  /// switch or logout). Providers holding a matchId + myUserId must drop them:
+  /// a stale tournament provider kept firing reconnect_to_match for the old
+  /// account's match on the new account's socket.
+  static void addSessionChangeListener(Function() listener) {
+    if (!_sessionChangeListeners.contains(listener)) {
+      _sessionChangeListeners.add(listener);
+    }
+  }
+
+  static void removeSessionChangeListener(Function() listener) {
+    _sessionChangeListeners.remove(listener);
   }
 
   static void addConnectFailedListener(Function() listener) {

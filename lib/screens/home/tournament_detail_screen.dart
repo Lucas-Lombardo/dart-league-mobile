@@ -8,43 +8,10 @@ import '../../services/tournament_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/tournament_registration_gate.dart';
+import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/round_labels.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
-
-String _localizedTournamentStatus(AppLocalizations l10n, String status) {
-  switch (status) {
-    case 'upcoming':
-      return l10n.tournamentStatusUpcoming;
-    case 'registration_open':
-      return l10n.tournamentStatusRegistrationOpen;
-    case 'registration_closed':
-      return l10n.tournamentStatusRegistrationClosed;
-    case 'in_progress':
-      return l10n.tournamentStatusInProgress;
-    case 'completed':
-      return l10n.tournamentStatusCompleted;
-    case 'cancelled':
-      return l10n.tournamentStatusCancelled;
-    default:
-      return status;
-  }
-}
-
-Color _tournamentStatusColor(String status) {
-  switch (status) {
-    case 'registration_open':
-      return AppTheme.success;
-    case 'in_progress':
-      return AppTheme.primary;
-    case 'completed':
-      return AppTheme.textSecondary;
-    case 'cancelled':
-      return AppTheme.error;
-    default:
-      return AppTheme.accent;
-  }
-}
 
 String _initials(String? username) {
   final name = (username ?? '').trim();
@@ -219,18 +186,18 @@ class _DetailScaffold extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _tournamentStatusColor(t.status).withValues(alpha: 0.15),
+                    color: tournamentStatusColor(t.status).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: _tournamentStatusColor(t.status).withValues(alpha: 0.4),
+                      color: tournamentStatusColor(t.status).withValues(alpha: 0.4),
                     ),
                   ),
                   child: Text(
-                    _localizedTournamentStatus(l10n, t.status),
+                    localizedTournamentStatus(l10n, t.status),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: _tournamentStatusColor(t.status),
+                      color: tournamentStatusColor(t.status),
                     ),
                   ),
                 ),
@@ -785,6 +752,11 @@ class _YourMatchCard extends StatelessWidget {
 
     final won = match.isCompleted && match.winnerId == currentUserId;
     final lost = match.isCompleted && match.winnerId != null && !won;
+    // Double forfeit (nobody joined before the invite window closed): over,
+    // but with no winner. It used to fall through to the "upcoming" branch, so
+    // a match that had been cancelled 5 minutes earlier still read "À venir"
+    // with no button and no explanation.
+    final notPlayed = match.isCompleted && match.winnerId == null;
     final isFinal = match.roundName == 'final' || match.nextMatchId == null;
 
     String statusText;
@@ -800,6 +772,9 @@ class _YourMatchCard extends StatelessWidget {
       statusColor = AppTheme.success;
     } else if (lost) {
       statusText = l10n.eliminatedTitle;
+      statusColor = AppTheme.error;
+    } else if (notPlayed) {
+      statusText = l10n.matchStatusNotPlayed;
       statusColor = AppTheme.error;
     } else if (match.isInProgress) {
       statusText = l10n.matchStatusInProgress;
@@ -897,6 +872,13 @@ class _YourMatchCard extends StatelessWidget {
               ),
             ],
           ),
+          if (notPlayed) ...[
+            const SizedBox(height: 12),
+            Text(
+              l10n.matchNotPlayedBody,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ],
           if (joinable || resumable) ...[
             const SizedBox(height: 14),
             SizedBox(

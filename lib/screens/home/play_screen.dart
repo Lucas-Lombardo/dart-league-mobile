@@ -7,9 +7,8 @@ import '../../providers/subscription_provider.dart';
 import '../../providers/match_invite_provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
-import '../../providers/presence_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
-import '../../widgets/activity_pulse_card.dart';
+import '../../widgets/activity_pill.dart';
 import '../../services/presence_service.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
@@ -847,10 +846,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
             ),
           const SizedBox(height: 20),
           if (_activity != null) ...[
-            ActivityPulseCard(
-              snapshot: _activity!,
-              onlineNow: context.watch<PresenceProvider>().onlineCount,
-            ),
+            ActivityPill(snapshot: _activity!),
             const SizedBox(height: 14),
           ],
           // CTA priority: tournament match (live leg, then pending join) →

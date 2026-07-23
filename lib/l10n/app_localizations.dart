@@ -138,10 +138,6 @@ abstract class AppLocalizations {
   // Tournament Screen
   String get tournament;
   String get tournaments;
-  String get tournamentPlaying;
-  String get tournamentRegister;
-  String get noActiveTournaments;
-  String get registerForTournamentHint;
   String get noUpcomingTournaments;
   String get matchInvites;
   String get activeTournaments;
@@ -427,6 +423,9 @@ abstract class AppLocalizations {
   String get submitRefusal;
   String get initializingMatch;
   String get initializingMatchError;
+  String get matchNotStartingTitle;
+  String get matchNotStartingBody;
+  String get matchNotStartingOffline;
   String get legWonShort;
   String get legLostShort;
 
@@ -890,6 +889,8 @@ abstract class AppLocalizations {
   String get matchStatusInProgress;
   String get matchStatusWaitingPlayers;
   String get matchStatusUpcoming;
+  String get matchStatusNotPlayed;
+  String get matchNotPlayedBody;
   String get startsAfterPreviousRound;
   String get tbdLabel;
   String get qualifiedLabel;
@@ -901,6 +902,12 @@ abstract class AppLocalizations {
   String get tournamentStatusInProgress;
   String get tournamentStatusCompleted;
   String get tournamentStatusCancelled;
+
+  // Tournament agenda (chronological tournament tab)
+  String get agendaToday;
+  String get agendaTomorrow;
+  String get agendaRegisteredChip;
+  String get agendaFullChip;
 
   // Home (B2): ELO ring hero + form row
   String get nextRankConnector;
@@ -917,12 +924,10 @@ abstract class AppLocalizations {
   // Friends (option A: single challenge CTA, swipe to remove)
   String get challengeFriend;
 
-  // Activity pulse (homescreen card + sheet)
+  // Activity pill (homescreen) + detail sheet
   String activityActiveLabel(int hours);
-  String activityNowChip(int count);
   String get activityPulseTitle;
   String activitySheetSubtitle(int hours);
-  String get activityOnlineNowLabel;
   String activityMatchesLabel(int hours);
   String get activityPeakLabel;
   String activityPeakTip(String hour);

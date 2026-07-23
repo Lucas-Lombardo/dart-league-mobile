@@ -7,6 +7,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/tournament_round.dart';
 import '../../models/tournament.dart';
+import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
 import '../../providers/tournament_game_provider.dart';
 import '../../providers/tournament_provider.dart';
@@ -60,8 +61,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   StreamSubscription<Map<String, dynamic>>? _startSub;
   StreamSubscription<Map<String, dynamic>>? _resultSub;
 
-  // 5-minute join window (mirrors the backend MATCH_INVITE_TIMEOUT_MS).
-  static const Duration _joinWindow = Duration(minutes: 5);
+  // Join window — mirrors the backend MATCH_INVITE_TIMEOUT_MS. Past it the
+  // sweep decides the match without the absentees (the stronger ELO advances
+  // when neither showed), so this countdown must not run short of the server's.
+  static const Duration _joinWindow = Duration(minutes: 15);
   Timer? _windowTimer;
   Duration _remaining = Duration.zero;
   bool _expired = false;
@@ -123,6 +126,17 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   }
 
   Future<void> _setupListeners() async {
+    // The lobby's own events (matchReadyUpdate / tournamentMatchStart) travel
+    // over the socket; the poll below is only a safety net. If the socket
+    // isn't ours, get one before readying rather than running the whole match
+    // on HTTP alone.
+    if (!SocketService.belongsToSession) {
+      try {
+        await SocketService.ensureAuthenticated();
+      } catch (_) {}
+      if (!mounted) return;
+    }
+
     final tournamentProvider = context.read<TournamentProvider>();
 
     _readySub = tournamentProvider.readyUpdates.listen((data) {

@@ -299,96 +299,96 @@ class GameProvider with ChangeNotifier {
   void _setupSocketListeners() {
     SocketService.on('game_started', (data) {
       _handleGameStarted(data);
-    });
+    }, owner: this);
 
     SocketService.on('score_updated', (data) {
       _handleScoreUpdated(data);
-    });
+    }, owner: this);
 
     SocketService.on('round_ready_confirm', (data) {
       _handleRoundReadyConfirm(data);
-    });
+    }, owner: this);
 
     SocketService.on('round_complete', (data) {
       _handleRoundComplete(data);
-    });
+    }, owner: this);
 
     SocketService.on('game_won', (data) {
       _handleGameWon(data);
-    });
+    }, owner: this);
 
     SocketService.on('match_ended', (data) {
       _handleMatchEnded(data);
-    });
+    }, owner: this);
 
     SocketService.on('invalid_throw', (data) {
       _handleInvalidThrow(data);
-    });
+    }, owner: this);
 
     SocketService.on('must_finish_double', (data) {
       _handleMustFinishDouble(data);
-    });
+    }, owner: this);
 
     SocketService.on('pending_win', (data) {
       _handlePendingWin(data);
-    });
+    }, owner: this);
 
     SocketService.on('pending_bust', (data) {
       _handlePendingBust(data);
-    });
+    }, owner: this);
 
     SocketService.on('opponent_disconnected', (data) {
       _handleOpponentDisconnected(data);
-    });
+    }, owner: this);
 
     SocketService.on('opponent_reconnected', (data) {
       _handleOpponentReconnected(data);
-    });
+    }, owner: this);
 
     SocketService.on('game_state_sync', (data) {
       _handleGameStateSync(data);
-    });
+    }, owner: this);
 
     SocketService.on('player_forfeited', (data) {
       _handlePlayerForfeited(data);
-    });
+    }, owner: this);
 
     SocketService.on('dart_undone', (data) {
       _handleDartUndone(data);
-    });
+    }, owner: this);
 
     SocketService.on('reconnect_failed', (data) {
       _handleReconnectFailed(data);
-    });
+    }, owner: this);
 
     SocketService.on('rematch_requested', (data) {
       _handleRematchRequested(data);
-    });
+    }, owner: this);
 
     SocketService.on('rematch_declined', (data) {
       _handleRematchDeclined(data);
-    });
+    }, owner: this);
 
     SocketService.on('throw_dart_ack', (data) {
       _handleThrowDartAck(data);
-    });
+    }, owner: this);
 
     SocketService.on('confirm_round_rejected', (data) {
       _handleConfirmRoundRejected(data);
-    });
+    }, owner: this);
 
     // Ranked BO3 series events (mirrors tournament_leg_won/next_leg/match_won).
     SocketService.on('ranked_leg_won', (data) {
       _handleRankedLegWon(data);
-    });
+    }, owner: this);
 
     SocketService.on('ranked_next_leg', (data) {
       _handleRankedNextLeg(data);
-    });
+    }, owner: this);
 
     SocketService.on('ranked_match_won', (data) {
       _handleRankedMatchWon(data);
-    });
+    }, owner: this);
 
     // Observe our OWN connection so the player learns about a drop instead of
     // throwing darts into a dead socket. Uses the additive listener API so
@@ -397,7 +397,18 @@ class GameProvider with ChangeNotifier {
       _connectionListenersRegistered = true;
       SocketService.addDisconnectListener(_handleSelfDisconnected);
       SocketService.addReconnectListener(_handleSelfReconnected);
+      SocketService.addSessionChangeListener(_handleSessionChanged);
     }
+  }
+
+  /// The app switched account (or signed out): every id held here belongs to
+  /// the previous user, so acting on it would target someone else's match.
+  /// Unconditional: even with no match in flight, the socket that carried our
+  /// handlers is gone, so _listenersSetUp must go back to false or the next
+  /// match registers nothing and never starts.
+  void _handleSessionChanged() {
+    debugPrint('GAME DEBUG: session changed — dropping match state for $_myUserId');
+    reset();
   }
 
   void _handleSelfDisconnected() {
@@ -1708,30 +1719,31 @@ class GameProvider with ChangeNotifier {
       _connectionListenersRegistered = false;
       SocketService.removeDisconnectListener(_handleSelfDisconnected);
       SocketService.removeReconnectListener(_handleSelfReconnected);
+      SocketService.removeSessionChangeListener(_handleSessionChanged);
     }
-    SocketService.off('game_started');
-    SocketService.off('score_updated');
-    SocketService.off('round_ready_confirm');
-    SocketService.off('round_complete');
-    SocketService.off('game_won');
-    SocketService.off('match_ended');
-    SocketService.off('invalid_throw');
-    SocketService.off('must_finish_double');
-    SocketService.off('pending_win');
-    SocketService.off('pending_bust');
-    SocketService.off('player_forfeited');
-    SocketService.off('dart_undone');
-    SocketService.off('opponent_disconnected');
-    SocketService.off('opponent_reconnected');
-    SocketService.off('game_state_sync');
-    SocketService.off('reconnect_failed');
-    SocketService.off('rematch_requested');
-    SocketService.off('rematch_declined');
-    SocketService.off('throw_dart_ack');
-    SocketService.off('confirm_round_rejected');
-    SocketService.off('ranked_leg_won');
-    SocketService.off('ranked_next_leg');
-    SocketService.off('ranked_match_won');
+    SocketService.off('game_started', owner: this);
+    SocketService.off('score_updated', owner: this);
+    SocketService.off('round_ready_confirm', owner: this);
+    SocketService.off('round_complete', owner: this);
+    SocketService.off('game_won', owner: this);
+    SocketService.off('match_ended', owner: this);
+    SocketService.off('invalid_throw', owner: this);
+    SocketService.off('must_finish_double', owner: this);
+    SocketService.off('pending_win', owner: this);
+    SocketService.off('pending_bust', owner: this);
+    SocketService.off('player_forfeited', owner: this);
+    SocketService.off('dart_undone', owner: this);
+    SocketService.off('opponent_disconnected', owner: this);
+    SocketService.off('opponent_reconnected', owner: this);
+    SocketService.off('game_state_sync', owner: this);
+    SocketService.off('reconnect_failed', owner: this);
+    SocketService.off('rematch_requested', owner: this);
+    SocketService.off('rematch_declined', owner: this);
+    SocketService.off('throw_dart_ack', owner: this);
+    SocketService.off('confirm_round_rejected', owner: this);
+    SocketService.off('ranked_leg_won', owner: this);
+    SocketService.off('ranked_next_leg', owner: this);
+    SocketService.off('ranked_match_won', owner: this);
   }
 
   void setRemoteUser(int? uid) {

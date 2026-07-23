@@ -5,129 +5,115 @@ import '../services/presence_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 
-/// Homescreen "pulse" card (design option 3): the day's activity curve drawn
-/// directly on the card, with the active count and a live online chip.
-/// Tapping opens the detail sheet.
-class ActivityPulseCard extends StatelessWidget {
+/// Homescreen activity pill: a pulsing dot and the match count over the last
+/// 24 h — nothing else. Tapping opens the detail sheet.
+class ActivityPill extends StatefulWidget {
   final ActivitySnapshot snapshot;
 
-  /// Live count from PresenceProvider; falls back to the snapshot's value.
-  final int? onlineNow;
+  const ActivityPill({super.key, required this.snapshot});
 
-  const ActivityPulseCard({
-    super.key,
-    required this.snapshot,
-    this.onlineNow,
-  });
+  @override
+  State<ActivityPill> createState() => _ActivityPillState();
+}
+
+class _ActivityPillState extends State<ActivityPill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final online = onlineNow ?? snapshot.onlineNow;
-    final counts = snapshot.hourly.map((h) => h.count).toList();
+    final snapshot = widget.snapshot;
 
-    return GestureDetector(
-      onTap: () {
-        HapticService.lightImpact();
-        showActivitySheet(context, snapshot: snapshot, onlineNow: online);
-      },
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.18),
-              blurRadius: 26,
-              spreadRadius: -12,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  '${snapshot.matches24h}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    height: 1,
-                    letterSpacing: -0.5,
-                  ),
+    return Center(
+      child: GestureDetector(
+        onTap: () {
+          HapticService.lightImpact();
+          showActivitySheet(context, snapshot: snapshot);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RepaintBoundary(child: _PulsingDot(animation: _pulse)),
+              const SizedBox(width: 9),
+              Text(
+                '${snapshot.matches24h}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
                 ),
-                const SizedBox(width: 7),
-                Text(
-                  l10n.activityMatchesLabel(24).toLowerCase(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const Spacer(),
-                if (online > 0) ...[
-                  const _LiveDot(),
-                  const SizedBox(width: 5),
-                  Text(
-                    l10n.activityNowChip(online),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.success,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 42,
-              child: CustomPaint(
-                painter: _PulsePainter(counts: counts),
-                size: Size.infinite,
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Text(
+                l10n.activityMatchesLabel(snapshot.windowHours).toLowerCase(),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _LiveDot extends StatelessWidget {
-  const _LiveDot();
+/// The pill's dot: primary-colored (not the presence green — it signals match
+/// activity, not players online), with an expanding fading ring.
+class _PulsingDot extends StatelessWidget {
+  final Animation<double> animation;
+
+  const _PulsingDot({required this.animation});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 7,
-      height: 7,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppTheme.success,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.success.withValues(alpha: 0.55),
-            blurRadius: 6,
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final t = Curves.easeOut.transform(animation.value);
+        return Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.primary,
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primary.withValues(alpha: 0.45 * (1 - t)),
+                spreadRadius: 7 * t,
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-/// Area-line chart of the hourly activity counts. Used small on the card and
-/// larger (with baseline) in the sheet.
+/// Area-line chart of the hourly activity counts, drawn large in the sheet.
 class _PulsePainter extends CustomPainter {
   final List<int> counts;
-  final bool showBaseline;
 
-  const _PulsePainter({required this.counts, this.showBaseline = false});
+  const _PulsePainter({required this.counts});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -135,7 +121,7 @@ class _PulsePainter extends CustomPainter {
 
     final maxCount = counts.fold(1, (m, c) => c > m ? c : m);
     // Insets keep the stroke, dots and halo inside the paint area instead of
-    // hugging the card edges (a flat stretch otherwise reads as a border).
+    // hugging the edges (a flat stretch otherwise reads as a border).
     const leftPad = 4.0;
     const rightPad = 4.0;
     const topPad = 9.0;
@@ -167,15 +153,13 @@ class _PulsePainter extends CustomPainter {
       ..lineTo(points.first.dx, size.height)
       ..close();
 
-    if (showBaseline) {
-      canvas.drawLine(
-        Offset(0, baseY),
-        Offset(size.width, baseY),
-        Paint()
-          ..color = AppTheme.surfaceLight
-          ..strokeWidth = 1,
-      );
-    }
+    canvas.drawLine(
+      Offset(0, baseY),
+      Offset(size.width, baseY),
+      Paint()
+        ..color = AppTheme.surfaceLight
+        ..strokeWidth = 1,
+    );
 
     canvas.drawPath(
       area,
@@ -226,7 +210,6 @@ class _PulsePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PulsePainter oldDelegate) =>
-      oldDelegate.showBaseline != showBaseline ||
       !_listEquals(oldDelegate.counts, counts);
 
   static bool _listEquals(List<int> a, List<int> b) {
@@ -243,21 +226,19 @@ class _PulsePainter extends CustomPainter {
 Future<void> showActivitySheet(
   BuildContext context, {
   required ActivitySnapshot snapshot,
-  required int onlineNow,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (_) => _ActivitySheet(snapshot: snapshot, onlineNow: onlineNow),
+    builder: (_) => _ActivitySheet(snapshot: snapshot),
   );
 }
 
 class _ActivitySheet extends StatelessWidget {
   final ActivitySnapshot snapshot;
-  final int onlineNow;
 
-  const _ActivitySheet({required this.snapshot, required this.onlineNow});
+  const _ActivitySheet({required this.snapshot});
 
   String _hourLabel(DateTime hourUtc) => '${hourUtc.toLocal().hour}h';
 
@@ -292,13 +273,7 @@ class _ActivitySheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Text(l10n.activityPulseTitle, style: AppTheme.titleLarge),
-                  const SizedBox(width: 8),
-                  const _LiveChip(),
-                ],
-              ),
+              Text(l10n.activityPulseTitle, style: AppTheme.titleLarge),
               const SizedBox(height: 4),
               Text(
                 l10n.activitySheetSubtitle(snapshot.windowHours),
@@ -313,7 +288,7 @@ class _ActivitySheet extends StatelessWidget {
                   SizedBox(
                     height: 120,
                     child: CustomPaint(
-                      painter: _PulsePainter(counts: counts, showBaseline: true),
+                      painter: _PulsePainter(counts: counts),
                       size: Size.infinite,
                     ),
                   ),
@@ -353,9 +328,8 @@ class _ActivitySheet extends StatelessWidget {
               Row(
                 children: [
                   _StatTile(
-                    value: '$onlineNow',
-                    label: l10n.activityOnlineNowLabel,
-                    showDot: onlineNow > 0,
+                    value: '${snapshot.matches24h}',
+                    label: l10n.activityMatchesLabel(snapshot.windowHours),
                   ),
                   const SizedBox(width: 8),
                   _StatTile(
@@ -381,44 +355,6 @@ class _ActivitySheet extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _LiveChip extends StatelessWidget {
-  const _LiveChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppTheme.success.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.success,
-            ),
-          ),
-          const SizedBox(width: 5),
-          const Text(
-            'LIVE',
-            style: TextStyle(
-              fontSize: 8.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
-              color: AppTheme.success,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -458,13 +394,8 @@ class _AxisLabels extends StatelessWidget {
 class _StatTile extends StatelessWidget {
   final String value;
   final String label;
-  final bool showDot;
 
-  const _StatTile({
-    required this.value,
-    required this.label,
-    this.showDot = false,
-  });
+  const _StatTile({required this.value, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -479,20 +410,12 @@ class _StatTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                if (showDot) ...[
-                  const _LiveDot(),
-                  const SizedBox(width: 5),
-                ],
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 2),
             Text(

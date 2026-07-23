@@ -176,25 +176,6 @@ class Tournament {
   bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled';
 
-  String get statusDisplay {
-    switch (status) {
-      case 'upcoming':
-        return 'Upcoming';
-      case 'registration_open':
-        return 'Registration Open';
-      case 'registration_closed':
-        return 'Registration Closed';
-      case 'in_progress':
-        return 'In Progress';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return status;
-    }
-  }
-
   @override
   bool operator ==(Object other) =>
       identical(this, other) || other is Tournament && runtimeType == other.runtimeType && id == other.id;

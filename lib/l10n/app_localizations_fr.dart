@@ -336,18 +336,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tournaments => 'Tournois';
 
   @override
-  String get tournamentPlaying => 'En cours';
-
-  @override
-  String get tournamentRegister => 'Inscription';
-
-  @override
-  String get noActiveTournaments => 'Aucun tournoi actif';
-
-  @override
-  String get registerForTournamentHint => 'Inscrivez-vous à un tournoi pour participer !';
-
-  @override
   String get noUpcomingTournaments => 'Aucun tournoi à venir';
 
   @override
@@ -1074,6 +1062,17 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get initializingMatchError => 'Erreur';
+
+  @override
+  String get matchNotStartingTitle => 'Le match ne démarre pas';
+
+  @override
+  String get matchNotStartingBody =>
+      "Le signal de démarrage n'est pas arrivé. Réessaie, ou quitte et rejoins le match depuis l'accueil.";
+
+  @override
+  String get matchNotStartingOffline =>
+      'Tu es hors ligne. Vérifie ta connexion internet.';
 
   @override
   String get legWonShort => 'MANCHE GAGNÉE !';
@@ -2254,6 +2253,11 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get matchStatusUpcoming => 'À venir';
   @override
+  String get matchStatusNotPlayed => 'Non joué';
+  @override
+  String get matchNotPlayedBody =>
+      "Personne n'a rejoint à temps — le match a été annulé, sans vainqueur.";
+  @override
   String get startsAfterPreviousRound => 'Démarre à la fin du tour précédent';
   @override
   String get tbdLabel => 'À déterminer';
@@ -2275,6 +2279,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tournamentStatusCompleted => 'Terminé';
   @override
   String get tournamentStatusCancelled => 'Annulé';
+
+  // Tournament agenda (chronological tournament tab)
+  @override
+  String get agendaToday => 'Aujourd\'hui';
+  @override
+  String get agendaTomorrow => 'Demain';
+  @override
+  String get agendaRegisteredChip => 'Inscrit';
+  @override
+  String get agendaFullChip => 'Complet';
 
   // Home (B2): ELO ring hero + form row
   @override
@@ -2300,19 +2314,15 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get challengeFriend => 'Défier';
 
-  // Activity pulse (homescreen card + sheet)
+  // Activity pill (homescreen) + detail sheet
   @override
   String activityActiveLabel(int hours) =>
       hours <= 1 ? 'actif · $hours h' : 'actifs · $hours h';
-  @override
-  String activityNowChip(int count) => '$count en ligne';
   @override
   String get activityPulseTitle => 'Pulse';
   @override
   String activitySheetSubtitle(int hours) =>
       'Activité des joueurs · $hours dernières heures';
-  @override
-  String get activityOnlineNowLabel => 'En ligne';
   @override
   String activityMatchesLabel(int hours) => 'Matchs · $hours h';
   @override
