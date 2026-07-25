@@ -14,6 +14,9 @@ analyzer:
     # Swift Package Manager copies pub package sources (including their tests)
     # under build/, which the analyzer would otherwise scan.
     - build/**
+    # Vendored (patched) pub packages — upstream code with its own tests and
+    # lint config; analyzing it here only produces noise.
+    - packages/**
 
 linter:
   # The lint rules applied to this project can be customized in the

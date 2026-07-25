@@ -49,6 +49,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   String? storedPlayerId;
   bool gameStarted = false;
   bool gameEnded = false;
+  // Tracks the seriesEnded transition (D7): the final BO3 leg must tear the
+  // Agora call down when ranked_match_won lands, not on its game_won.
+  bool _sawSeriesEnded = false;
   RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
   int? customVideoTrackId;
@@ -319,9 +322,34 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // keeps burning Agora minutes, battery and bandwidth while the user reads
       // their ELO result. dispose() in the widget lifecycle remains as a safety
       // net for the back-arrow / app-kill paths.
-      if (game.gameEnded && !wasGameEnded) {
+      //
+      // EXCEPT between BO3 legs (D7): the series continues against the same
+      // opponent within seconds, and the old teardown + full rebuild (engine,
+      // camera, model reload) on an already-hot phone was exactly the CoreML
+      // recompile scenario of the July regression. Keep the session alive;
+      // reconnectAgora re-keys the new leg's channel on the live engine.
+      // Tournament providers don't expose these getters (try/catch), so
+      // tournaments keep the historical full teardown per leg. A forfeit ends
+      // the series no matter what the leg counters say.
+      bool seriesGoesOn = false;
+      try {
+        seriesGoesOn = (game.isRankedSeries as bool) &&
+            !(game.seriesEnded as bool) &&
+            game.pendingType != 'forfeit';
+      } catch (_) {}
+      final toreDownNow = game.gameEnded && !wasGameEnded && !seriesGoesOn;
+      if (toreDownNow) {
         _endAgoraCall();
       }
+      // The FINAL leg ends while the series still reads as ongoing (game_won
+      // arrives moments before ranked_match_won), so the branch above skips
+      // it — tear down on the seriesEnded transition instead.
+      bool seriesEndedNow = false;
+      try { seriesEndedNow = game.seriesEnded as bool; } catch (_) {}
+      if (seriesEndedNow && !_sawSeriesEnded && !toreDownNow) {
+        _endAgoraCall();
+      }
+      _sawSeriesEnded = seriesEndedNow;
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();
@@ -470,7 +498,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           else if (game.pendingType == 'bust' && !bustDialogShowing) { DartSoundService.playBust(); showPendingBustDialog(game); }
         });
       }
-      if (game.needsAgoraReconnect) { game.clearAgoraReconnectFlag(); reconnectAgora(game); }
+      if (game.needsAgoraReconnect) {
+        // Leg transitions (D7) reuse the live session; every other reconnect
+        // keeps the full rebuild — there the fresh engine IS the recovery.
+        bool legTransition = false;
+        try { legTransition = game.agoraLegTransition as bool; } catch (_) {}
+        game.clearAgoraReconnectFlag();
+        reconnectAgora(game, reuseSession: legTransition);
+      }
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted && !forfeitDialogShowing) showForfeitDialog(game);
@@ -745,7 +780,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
-  Future<void> reconnectAgora(dynamic game) async {
+  Future<void> reconnectAgora(dynamic game, {bool reuseSession = false}) async {
     final appId = game.agoraAppId;
     final channelName = game.agoraChannelName;
     // Strict path (uid=hash(userId) + matching token) when available,
@@ -785,6 +820,87 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // from-background or a screenshot-induced reconnect doesn't silently
     // re-mute the mic.
     final wasUnmuted = !isAudioMuted;
+
+    // Restore mic state: if user had unmuted before the reconnect, re-publish
+    // the mic track. joinChannel always defaults to publishMicrophoneTrack:
+    // false, so without this the mic UI flips to muted on every reconnect.
+    Future<void> restoreMicState() async {
+      if (wasUnmuted && agoraEngine != null) {
+        try {
+          await agoraEngine!.updateChannelMediaOptions(
+            const ChannelMediaOptions(publishMicrophoneTrack: true),
+          );
+          await agoraEngine!.muteLocalAudioStream(false);
+          isAudioMuted = false;
+        } catch (e) {
+          debugPrint('[BaseGameScreen] restore mic error: $e');
+          isAudioMuted = true;
+        }
+      } else {
+        isAudioMuted = true;
+      }
+    }
+
+    // Re-assert publishing flags after a join — see the full path below for
+    // why this needs the retry (silently no-ops when racing Agora's state
+    // machine → "audio works but video is a black tile").
+    Future<void> reassertVideoPublish() async {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
+            publishCustomVideoTrack: true,
+            customVideoTrackId: customVideoTrackId,
+            publishCameraTrack: false,
+          ));
+          break;
+        } catch (e) {
+          debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) attempt ${attempt + 1} error: $e');
+          if (attempt == 2) {
+            debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) gave up after 3 attempts');
+          } else {
+            await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+          }
+        }
+      }
+    }
+
+    // D7 fast path — BO3 leg transition: engine, camera, custom track and
+    // loaded model are all healthy, only the CHANNEL changes (the server
+    // issues one per leg). Leave + join on the live engine instead of the
+    // multi-second teardown/rebuild whose model reload was the July
+    // hot-phone CoreML-recompile scenario. Any failure falls through to the
+    // full rebuild below, which recovers from arbitrary state.
+    if (reuseSession && !kIsWeb && agoraEngine != null &&
+        cameraFrameService != null && customVideoTrackId != null &&
+        autoScoringService != null) {
+      try {
+        await AgoraService.leaveChannel(agoraEngine!);
+        await AgoraService.joinChannel(
+          engine: agoraEngine!,
+          token: token,
+          channelName: channelName,
+          uid: agoraUid,
+          customVideoTrackId: customVideoTrackId,
+        );
+        await reassertVideoPublish();
+        autoScoringService!.stopCapture();
+        // New leg always starts with a clean round server-side; resetTurn +
+        // gate arming mirror the leg-change handling in the game listener.
+        final roundEmpty = ((readGame().currentRoundThrows as List).isEmpty) &&
+            ((readGame().unackedDartCount as int?) ?? 0) == 0;
+        if (roundEmpty) autoScoringService!.resetTurn();
+        initAutoScoring(armEmptyBoardGate: roundEmpty);
+        if (opponentUidForRecovery != null && opponentUidForRecovery != 0) {
+          try { game.setRemoteUser(opponentUidForRecovery); } catch (_) {}
+        }
+        _armRemoteVideoWatchdog();
+        await restoreMicState();
+        return;
+      } catch (e) {
+        debugPrint('[BaseGameScreen] leg-transition fast path failed, falling back to full rebuild: $e');
+      }
+    }
+
     try {
       // Tear down camera and Agora
       await cameraFrameService?.dispose();
@@ -827,23 +943,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // Retry with exponential backoff: the first call sometimes races with
         // Agora's internal state machine and silently no-ops, which is the
         // "audio works but video is a black tile" symptom.
-        for (var attempt = 0; attempt < 3; attempt++) {
-          try {
-            await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
-              publishCustomVideoTrack: true,
-              customVideoTrackId: customVideoTrackId,
-              publishCameraTrack: false,
-            ));
-            break;
-          } catch (e) {
-            debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) attempt ${attempt + 1} error: $e');
-            if (attempt == 2) {
-              debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) gave up after 3 attempts');
-            } else {
-              await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
-            }
-          }
-        }
+        await reassertVideoPublish();
         cameraZoomInitialized = false;
         await initCameraZoom();
         autoScoringService!.stopCapture();
@@ -864,23 +964,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         try { game.setRemoteUser(opponentUidForRecovery); } catch (_) {}
       }
       _armRemoteVideoWatchdog();
-      // Restore mic state: if user had unmuted before the reconnect, re-publish
-      // the mic track. joinChannel always defaults to publishMicrophoneTrack:
-      // false, so without this the mic UI flips to muted on every reconnect.
-      if (wasUnmuted && agoraEngine != null) {
-        try {
-          await agoraEngine!.updateChannelMediaOptions(
-            const ChannelMediaOptions(publishMicrophoneTrack: true),
-          );
-          await agoraEngine!.muteLocalAudioStream(false);
-          isAudioMuted = false;
-        } catch (e) {
-          debugPrint('[BaseGameScreen] restore mic error: $e');
-          isAudioMuted = true;
-        }
-      } else {
-        isAudioMuted = true;
-      }
+      await restoreMicState();
     } catch (_) {
       if (mounted) setState(() => autoScoringLoading = false);
     }

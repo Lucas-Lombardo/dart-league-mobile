@@ -20,6 +20,17 @@ class DartDetectionService {
     return ScoringResult(calibrationPoints: [], dartTips: [], scores: [], totalScore: 0, error: 'Not supported on web');
   }
 
+  ScoringResult scoreParsedDetections(
+    List<Detection> detections,
+    int imgW,
+    int imgH, {
+    int preprocessMs = 0,
+    int inferenceMs = 0,
+    int parseMs = 0,
+  }) {
+    return ScoringResult(calibrationPoints: [], dartTips: [], scores: [], totalScore: 0, error: 'Not supported on web');
+  }
+
   void dispose() {}
 
   Future<ScoringResult> analyzeRgba(Uint8List rgba, int imgW, int imgH) async {

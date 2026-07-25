@@ -148,6 +148,11 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var outputElementCount: Int = 0
     // Reusable 1024x1024 IntArray for pulling pixels out of squareBitmap
     private val tensorPixels: IntArray = IntArray(modelInputSize * modelInputSize)
+    // Staging array for pixel→tensor conversion: plain JIT-compiled array
+    // stores + ONE bulk FloatBuffer.put() replace the old ~3.1M individual
+    // put() calls per frame. norm[] folds the /255 into a table lookup.
+    private val tensorFloats: FloatArray = FloatArray(modelInputSize * modelInputSize * 3)
+    private val norm: FloatArray = FloatArray(256) { it / 255.0f }
 
     // ---- Reusable raw-frame buffers (sized to the camera frame) ----
     // rawBitmap keeps ARGB_8888 pixels of the incoming YUV frame; re-created only
@@ -594,7 +599,6 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 90, 270 -> { bw = height; bh = width }
                 else -> { bw = width; bh = height }
             }
-            squareCanvas.drawColor(Color.BLACK)
             if (rotation != cachedRotation || bw != lastBitmapWidth || bh != lastBitmapHeight) {
                 cachedRotation = rotation
                 lastBitmapWidth = bw
@@ -610,6 +614,10 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     else -> { /* identity */ }
                 }
                 scaleMatrix.postScale(s, s)
+                // The scaled frame covers the exact same region every frame;
+                // the black letterbox only needs repainting when the geometry
+                // changes — not the old full-canvas clear per frame.
+                squareCanvas.drawColor(Color.BLACK)
             }
             squareCanvas.drawBitmap(bmp, scaleMatrix, scalePaint)
             val preprocessMs = System.currentTimeMillis() - startTime
@@ -622,13 +630,16 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val floatBuffer = inBuf.asFloatBuffer()
             val n = sz * sz
             var i = 0
+            var j = 0
             while (i < n) {
                 val p = tensorPixels[i]
-                floatBuffer.put(((p shr 16) and 0xFF) / 255.0f)
-                floatBuffer.put(((p shr 8) and 0xFF) / 255.0f)
-                floatBuffer.put((p and 0xFF) / 255.0f)
+                tensorFloats[j] = norm[(p shr 16) and 0xFF]
+                tensorFloats[j + 1] = norm[(p shr 8) and 0xFF]
+                tensorFloats[j + 2] = norm[p and 0xFF]
                 i++
+                j += 3
             }
+            floatBuffer.put(tensorFloats)
             inBuf.rewind()
 
             // Step 4: Run TFLite inference into reused output buffer
@@ -710,28 +721,35 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         buffer.rewind()
         val floatBuffer = buffer.asFloatBuffer()
 
+        // Stage into tensorFloats (plain array stores + bulk put at the end)
+        // instead of ~3.1M individual FloatBuffer.put() calls.
+        val rowFloats = sz * 3
+        var j = 0
         for (y in 0 until sz) {
             if (y >= newH) {
                 // Black padding rows
-                for (x in 0 until sz * 3) floatBuffer.put(0.0f)
+                tensorFloats.fill(0.0f, j, j + rowFloats)
+                j += rowFloats
                 continue
             }
             val srcY = min((y * invNewH).toInt(), origH - 1)
             val rowOffset = srcY * srcStride
 
-            for (x in 0 until sz) {
-                if (x >= newW) {
-                    floatBuffer.put(0.0f); floatBuffer.put(0.0f); floatBuffer.put(0.0f)
-                    continue
-                }
+            for (x in 0 until newW) {
                 val srcX = min((x * invNewW).toInt(), origW - 1)
                 val pxOff = rowOffset + srcX * 4
-                floatBuffer.put((rgba[pxOff].toInt() and 0xFF) / 255.0f)
-                floatBuffer.put((rgba[pxOff + 1].toInt() and 0xFF) / 255.0f)
-                floatBuffer.put((rgba[pxOff + 2].toInt() and 0xFF) / 255.0f)
+                tensorFloats[j] = norm[rgba[pxOff].toInt() and 0xFF]
+                tensorFloats[j + 1] = norm[rgba[pxOff + 1].toInt() and 0xFF]
+                tensorFloats[j + 2] = norm[rgba[pxOff + 2].toInt() and 0xFF]
+                j += 3
+            }
+            if (newW < sz) {
+                // Black padding columns — one fill for the row remainder.
+                tensorFloats.fill(0.0f, j, j + (sz - newW) * 3)
+                j += (sz - newW) * 3
             }
         }
-
+        floatBuffer.put(tensorFloats)
         buffer.rewind()
     }
 

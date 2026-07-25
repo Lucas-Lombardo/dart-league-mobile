@@ -342,8 +342,10 @@ class AutoScoringService extends ChangeNotifier {
   // (reattach / demote / assign / emit). Each line is prefixed "[AS f<frame>]"
   // so it greps cleanly and stays correctly ordered. Lines go through
   // debugPrintSynchronously so Flutter's debugPrint rate-limiter cannot drop
-  // them (that limiter is a common cause of gappy logs). Toggle off to silence.
-  static bool verboseScoringLog = true;
+  // them (that limiter is a common cause of gappy logs). Debug builds only:
+  // the synchronous, unbuffered print per analysed frame is measurable CPU
+  // in release and ran there for weeks unnoticed.
+  static bool verboseScoringLog = kDebugMode;
   int _logFrameSeq = 0;
 
   void _trace(String line) {

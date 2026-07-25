@@ -89,6 +89,13 @@ class GameProvider with ChangeNotifier {
   int? _remoteUid;
   bool _localUserJoined = false;
   bool _needsAgoraReconnect = false;
+  // True when the pending Agora reconnect is a BO3 leg transition (same
+  // opponent, new server-issued channel). The screen then re-keys the channel
+  // on the LIVE engine/camera/model instead of tearing everything down — a
+  // full rebuild on a hot phone was the exact CoreML-recompile scenario of
+  // the July regression. Recovery reconnects (game_state_sync path) keep the
+  // full rebuild: there the fresh engine IS the fix.
+  bool _agoraLegTransition = false;
 
   bool _disposed = false;
 
@@ -173,6 +180,7 @@ class GameProvider with ChangeNotifier {
   int? get remoteUid => _remoteUid;
   bool get localUserJoined => _localUserJoined;
   bool get needsAgoraReconnect => _needsAgoraReconnect;
+  bool get agoraLegTransition => _agoraLegTransition;
 
   /// Whether we have everything needed to use the strict (uid-bound) token.
   /// When false, callers should fall back to the legacy token + uid=0 so we
@@ -862,6 +870,7 @@ class GameProvider with ChangeNotifier {
       _agoraToken = newAgoraToken;
       _agoraChannelName = newAgoraChannelName;
       _needsAgoraReconnect = true;
+      _agoraLegTransition = true;
     }
     if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
       _agoraTokenStrict = newAgoraTokenStrict;
@@ -1160,6 +1169,7 @@ class GameProvider with ChangeNotifier {
 
   void clearAgoraReconnectFlag() {
     _needsAgoraReconnect = false;
+    _agoraLegTransition = false;
   }
 
   void _handleGameStateSync(dynamic data) {
@@ -1800,6 +1810,7 @@ class GameProvider with ChangeNotifier {
     _remoteUid = null;
     _localUserJoined = false;
     _needsAgoraReconnect = false;
+    _agoraLegTransition = false;
     _reconnectFailed = false;
     _reconnectFailedReason = null;
     _isFriendly = false;

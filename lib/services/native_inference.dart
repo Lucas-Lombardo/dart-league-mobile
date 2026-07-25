@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'model_selector.dart';
+import 'output_parse_isolate.dart';
 
 /// Wraps the native iOS/Android TFLite inference plugin.
 ///
@@ -79,6 +80,33 @@ class NativeInference {
 
   /// Parser instance — reuses calibration cache across frames.
   final DartDetectionService _parser = DartDetectionService(useNativeDecode: false);
+
+  /// Parse + NMS on the worker isolate when available (the ~194k-float tensor
+  /// scan used to run on the UI isolate every inference), inline as fallback —
+  /// scoring must never stall on the worker's health.
+  Future<ScoringResult> _parseResponse(
+    Uint8List outputBytes,
+    double xScale,
+    double yScale,
+    int imageWidth,
+    int imageHeight,
+  ) async {
+    // Both bundled models (t223/t225) output [1, 13, 21504]; derive the
+    // element count from the byte length so a retrained variant still parses.
+    final dets = await OutputParseIsolate.instance.tryParse(
+      outputBytes,
+      numChannels: 13,
+      numElements: outputBytes.lengthInBytes ~/ (4 * 13),
+      xScale: xScale,
+      yScale: yScale,
+    );
+    if (dets != null) {
+      return _parser.scoreParsedDetections(dets, imageWidth, imageHeight);
+    }
+    return _parser.parseRawOutput(
+      _outputFloats(outputBytes), xScale, yScale, imageWidth, imageHeight,
+    );
+  }
 
   // ---- Wedge recovery ------------------------------------------------------
   // A hung GPU/CoreML call leaves the single native inference thread blocked
@@ -260,10 +288,8 @@ class NativeInference {
       final imageWidth = response['imageWidth'] as int;
       final imageHeight = response['imageHeight'] as int;
 
-      final outputFloats = _outputFloats(outputBytes);
-
-      final result = _parser.parseRawOutput(
-        outputFloats, xScale, yScale, imageWidth, imageHeight,
+      final result = await _parseResponse(
+        outputBytes, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
       if (verboseTiming) {
@@ -323,10 +349,8 @@ class NativeInference {
       final imageWidth = response['imageWidth'] as int;
       final imageHeight = response['imageHeight'] as int;
 
-      final outputFloats = _outputFloats(outputBytes);
-
-      final result = _parser.parseRawOutput(
-        outputFloats, xScale, yScale, imageWidth, imageHeight,
+      final result = await _parseResponse(
+        outputBytes, xScale, yScale, imageWidth, imageHeight,
       );
       final parseMs = sw.elapsedMilliseconds;
       if (verboseTiming) {

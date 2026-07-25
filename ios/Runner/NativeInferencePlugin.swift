@@ -43,6 +43,10 @@ class NativeInferencePlugin: NSObject {
     private var loadedCpuOnly = false
     private let modelInputSize = 1024
     private var isBusy = false
+    // Per-frame timing log gate, mirroring Kotlin's `verboseTiming`. Rare
+    // events (model load, rebuild, delegate choice) always print; the
+    // per-inference line must not — it fired on every frame in release.
+    private let verboseTiming = false
     // Name (e.g. "t225") of the currently loaded model; nil before first load.
     private var loadedModelName: String?
 
@@ -57,6 +61,18 @@ class NativeInferencePlugin: NSObject {
     private var bF: [Float] = []
     // Fixed 1024×1024×3 input tensor canvas — always the same size.
     private lazy var inputCanvas: [Float] = [Float](repeating: 0, count: modelInputSize * modelInputSize * 3)
+    // Set when the letterboxed image region changes size: the canvas padding
+    // must be re-zeroed. The per-frame pixels always overwrite the exact same
+    // region, so the old unconditional 12 MB memset per frame was pure waste.
+    private var canvasNeedsClear = false
+    // Double-buffered output transfer Data (mirrors Kotlin's outputXfer):
+    // frame N's reply is serialized asynchronously after result(), so frame
+    // N+1 writes the other slot. By the time a slot is reused its reply has
+    // been released and the write is in-place; if not, Data's copy-on-write
+    // makes a defensive copy — safe either way, allocation-free in steady
+    // state instead of ~1.1 MB per inference.
+    private var outputXfer = [Data(), Data()]
+    private var outputXferIdx = 0
 
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
@@ -320,21 +336,28 @@ class NativeInferencePlugin: NSObject {
         }
         let inferenceMs = Int((CFAbsoluteTimeGetCurrent() - inferSw) * 1000)
 
-        // 3. Read output tensor. Allocate fresh Data here so the bytes Flutter
-        // sends back aren't mutated by a concurrent next-frame inference.
+        // 3. Read output tensor into the double-buffered transfer Data. Frame
+        // N's reply serializes after result() returns, so frame N+1 writes
+        // the other slot; copy-on-write covers the pathological overlap.
         let outputTensor = TfLiteInterpreterGetOutputTensor(interpreter, 0)
         let outputByteSize = TfLiteTensorByteSize(outputTensor)
-        var outputData = Data(count: outputByteSize)
-        outputData.withUnsafeMutableBytes { buf in
+        outputXferIdx = (outputXferIdx + 1) % 2
+        if outputXfer[outputXferIdx].count != outputByteSize {
+            outputXfer[outputXferIdx] = Data(count: outputByteSize)
+        }
+        outputXfer[outputXferIdx].withUnsafeMutableBytes { buf in
             TfLiteTensorCopyToBuffer(outputTensor, buf.baseAddress!, outputByteSize)
         }
+        let outputData = outputXfer[outputXferIdx]
 
         // 4. Scale factors for coordinate remapping
         let xScale: Double = width >= height ? 1.0 : Double(height) / Double(width)
         let yScale: Double = width >= height ? Double(width) / Double(height) : 1.0
 
         let totalMs = Int((CFAbsoluteTimeGetCurrent() - sw) * 1000)
-        print("[NativeInference-iOS] \(totalMs)ms (preprocess=\(preprocessMs) inference=\(inferenceMs))")
+        if verboseTiming {
+            print("[NativeInference-iOS] \(totalMs)ms (preprocess=\(preprocessMs) inference=\(inferenceMs))")
+        }
 
         result([
             "output": FlutterStandardTypedData(bytes: outputData),
@@ -408,6 +431,7 @@ class NativeInferencePlugin: NSObject {
             rF = [Float](repeating: 0, count: pix)
             gF = [Float](repeating: 0, count: pix)
             bF = [Float](repeating: 0, count: pix)
+            canvasNeedsClear = true
         }
 
         // 1. vImage resize RGBA (hardware-accelerated, no manual loops)
@@ -448,33 +472,32 @@ class NativeInferencePlugin: NSObject {
         vDSP_vsdiv(bF, 1, &div, &bF, 1, vDSP_Length(pixelCount))
 
         // 3. Interleave R,G,B into 1024×1024×3 canvas (zero-padded on right/bottom).
-        // Use raw pointers to skip Swift's bounds-checked subscripting per element.
         let rowFloats = sz * 3
         inputCanvas.withUnsafeMutableBufferPointer { outPtr in
-            // Zero pre-existing content only where this frame won't overwrite.
-            // Padding columns (x >= newW within first newH rows) and padding
-            // rows (y >= newH) need zeros. Simplest correct approach: zero the
-            // whole canvas before writing. memset on the underlying floats is
-            // ~1ms for 12MB on modern iPhones.
-            outPtr.baseAddress!.update(repeating: 0, count: sz * sz * 3)
+            let outBase = outPtr.baseAddress!
+            // The image overwrites the exact same region every frame, so the
+            // padding only needs zeroing when the region size changes (once
+            // per session) — not the old 12 MB memset per frame.
+            if canvasNeedsClear {
+                outBase.update(repeating: 0, count: sz * sz * 3)
+                canvasNeedsClear = false
+            }
 
+            // Strided vector copies (one per channel per row) replace the old
+            // per-pixel Swift loop (~590k scalar iterations per frame).
             rF.withUnsafeBufferPointer { rPtr in
                 gF.withUnsafeBufferPointer { gPtr in
                     bF.withUnsafeBufferPointer { bPtr in
                         let rBase = rPtr.baseAddress!
                         let gBase = gPtr.baseAddress!
                         let bBase = bPtr.baseAddress!
-                        let outBase = outPtr.baseAddress!
+                        let n = Int32(newW)
                         for y in 0..<newH {
                             let srcOff = y * newW
-                            var dst = outBase + y * rowFloats
-                            for x in 0..<newW {
-                                let s = srcOff + x
-                                dst[0] = rBase[s]
-                                dst[1] = gBase[s]
-                                dst[2] = bBase[s]
-                                dst += 3
-                            }
+                            let dst = outBase + y * rowFloats
+                            cblas_scopy(n, rBase + srcOff, 1, dst, 3)
+                            cblas_scopy(n, gBase + srcOff, 1, dst + 1, 3)
+                            cblas_scopy(n, bBase + srcOff, 1, dst + 2, 3)
                         }
                     }
                 }

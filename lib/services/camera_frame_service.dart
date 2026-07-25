@@ -25,9 +25,27 @@ class CameraFrameService {
   bool _isStreaming = false;
   bool _disposed = false;
 
-  // Throttle: only push every other frame to keep at ~15fps
-  int _frameCount = 0;
-  static const int _frameSkip = 1; // push every 2nd frame (30fps camera -> 15fps push)
+  // Session-wide camera frame-rate cap (D8). The AI pulls ≤4 frames/s and the
+  // Agora encoder runs at 15 fps, so anything above 15 was pure per-frame
+  // waste (callback + copies at ~30/s).
+  static const int _cameraFps = 15;
+
+  // Push cadence into Agora: time-based (~16 fps max), robust to whatever
+  // rate the camera actually delivers. The old skip-every-2nd-frame counter
+  // assumed a 30 fps stream, which the D8 cap makes wrong.
+  DateTime? _lastPushAt;
+  static const Duration _minPushInterval = Duration(milliseconds: 60);
+
+  // Reusable push buffers. Allocating 1.4 MB (Android YUV) / 3.7 MB (iOS
+  // BGRA) per pushed frame, 15×/s for a whole match, was a constant GC feed —
+  // the same allocation pressure behind the June "5s per dart" regression.
+  // Two slots alternate; a slot stays busy until its pushVideoFrame future
+  // completes (the Agora SDK has copied the bytes to native memory by then).
+  // Both busy → the frame is dropped, which is the back-pressure this path
+  // never had: the old fire-and-forget push queued unbounded copies when the
+  // channel fell behind.
+  final List<Uint8List?> _pushBuffers = [null, null];
+  final List<bool> _pushBufferBusy = [false, false];
 
   // Cache the latest frame for AI scoring capture
   CameraImage? _latestFrame;
@@ -158,6 +176,13 @@ class CameraFrameService {
           selected,
           ResolutionPreset.high, // 720p
           enableAudio: false, // Agora handles audio — avoid iOS AVAudioSession conflict
+          // DartsMind caps its camera at 8–16 fps; the sensor default (~30)
+          // doubles the whole per-frame pipeline for nothing: the AI consumes
+          // ≤4 frames/s and the Agora encoder is configured for 15 fps.
+          // iOS: applied by camera_avfoundation via activeVideoM{in,ax}FrameDuration.
+          // Android: applied by our vendored camera_android patch (see
+          // packages/camera_android — stock only applies fps while recording).
+          fps: _cameraFps,
           imageFormatGroup: Platform.isAndroid
               ? ImageFormatGroup.yuv420
               : ImageFormatGroup.bgra8888,
@@ -256,9 +281,15 @@ class CameraFrameService {
       // Cache latest frame for AI capture
       _latestFrame = image;
 
-      // Throttle frame push to ~15fps
-      _frameCount++;
-      if (_frameCount % (_frameSkip + 1) != 0) return;
+      // Cap the push cadence at ~16 fps regardless of the actual camera rate
+      // (the encoder runs at 15 fps; a device that ignores the fps cap must
+      // not double the copy work).
+      final now = DateTime.now();
+      if (_lastPushAt != null &&
+          now.difference(_lastPushAt!) < _minPushInterval) {
+        return;
+      }
+      _lastPushAt = now;
 
       _pushFrameToAgora(image);
     });
@@ -280,6 +311,11 @@ class CameraFrameService {
     if (_agoraEngine == null || _videoTrackId == null) return;
 
     try {
+      // Both pooled buffers still in flight → the channel is behind; drop
+      // this frame rather than queue another multi-MB copy.
+      final int slot = !_pushBufferBusy[0] ? 0 : (!_pushBufferBusy[1] ? 1 : -1);
+      if (slot == -1) return;
+
       final Uint8List buffer;
       final VideoPixelFormat format;
       final int stride;
@@ -290,12 +326,15 @@ class CameraFrameService {
         // pixelStride == 1 → planar I420
         // pixelStride == 2 → interleaved NV21/NV12
         final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        final ySize = image.width * image.height;
+        final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
+        buffer = _pushBuffer(slot, ySize + uvSize * 2);
 
         if (uvPixelStride == 1) {
-          buffer = _buildI420Buffer(image);
+          _fillI420Buffer(image, buffer);
           format = VideoPixelFormat.videoPixelI420;
         } else {
-          buffer = _buildNv21Buffer(image);
+          _fillNv21Buffer(image, buffer);
           format = VideoPixelFormat.videoPixelNv21;
         }
         stride = image.width;
@@ -305,7 +344,9 @@ class CameraFrameService {
         // is set to adaptive orientation mode so it won't add its own
         // rotation pass on top of ours (fixedPortrait mode was stacking
         // rotations and producing wrong orientation on Android receivers).
-        buffer = Uint8List.fromList(image.planes[0].bytes);
+        final bytes = image.planes[0].bytes;
+        buffer = _pushBuffer(slot, bytes.length);
+        buffer.setRange(0, bytes.length, bytes);
         format = VideoPixelFormat.videoPixelBgra;
         stride = image.planes[0].bytesPerRow ~/ 4;
         height = image.height;
@@ -337,18 +378,33 @@ class CameraFrameService {
             'pushed=${stride}x$height rotation=$frameRotation format=$format');
       }
 
+      // The slot stays busy until the SDK call completes — by then Agora has
+      // copied the bytes to native memory and the buffer is safe to overwrite.
+      _pushBufferBusy[slot] = true;
       AgoraService.pushVideoFrame(
         frame: frame,
         videoTrackId: _videoTrackId!,
-      );
+      ).whenComplete(() => _pushBufferBusy[slot] = false);
     } catch (e) {
       debugPrint('[CameraFrameService] pushFrame error: $e');
     }
   }
 
-  /// Build a proper I420 buffer (planar Y + U + V) with padding removed.
-  /// Used when pixelStride == 1 (true planar YUV420).
-  Uint8List _buildI420Buffer(CameraImage image) {
+  /// Return the pooled buffer for [slot], reallocating only when the frame
+  /// size changed (camera resolution is fixed within a session).
+  Uint8List _pushBuffer(int slot, int length) {
+    var buf = _pushBuffers[slot];
+    if (buf == null || buf.length != length) {
+      buf = Uint8List(length);
+      _pushBuffers[slot] = buf;
+    }
+    return buf;
+  }
+
+  /// Fill [buffer] with planar I420 (Y + U + V), padding removed.
+  /// Used when pixelStride == 1 (true planar YUV420). [buffer] comes from the
+  /// push pool and is already sized ySize + 2*uvSize.
+  void _fillI420Buffer(CameraImage image, Uint8List buffer) {
     final w = image.width;
     final h = image.height;
     final yPlane = image.planes[0];
@@ -357,7 +413,6 @@ class CameraFrameService {
 
     final ySize = w * h;
     final uvSize = (w ~/ 2) * (h ~/ 2);
-    final buffer = Uint8List(ySize + uvSize * 2);
 
     // Copy Y plane, removing row padding
     final yRowStride = yPlane.bytesPerRow;
@@ -389,14 +444,12 @@ class CameraFrameService {
         buffer.setRange(ySize + uvSize + row * uvW, ySize + uvSize + row * uvW + uvW, vPlane.bytes, row * uvRowStride);
       }
     }
-
-    return buffer;
   }
 
-  /// Build NV21 buffer (Y plane + interleaved VU) from interleaved UV planes.
-  /// Used when pixelStride == 2 (NV21/NV12 from Android camera).
+  /// Fill [buffer] with NV21 (Y plane + interleaved VU) from interleaved UV
+  /// planes. Used when pixelStride == 2 (NV21/NV12 from Android camera).
   /// DartsMind's YUVHelper handles this case explicitly.
-  Uint8List _buildNv21Buffer(CameraImage image) {
+  void _fillNv21Buffer(CameraImage image, Uint8List buffer) {
     final w = image.width;
     final h = image.height;
     final yPlane = image.planes[0];
@@ -405,7 +458,6 @@ class CameraFrameService {
     final ySize = w * h;
     // NV21: Y plane followed by interleaved V,U pairs
     final vuSize = (w ~/ 2) * (h ~/ 2) * 2;
-    final buffer = Uint8List(ySize + vuSize);
 
     // Copy Y plane
     final yRowStride = yPlane.bytesPerRow;
@@ -424,15 +476,22 @@ class CameraFrameService {
     if (vuRowStride == w) {
       final copyLen = min(vuSize, vPlane.bytes.length);
       buffer.setRange(ySize, ySize + copyLen, vPlane.bytes);
+      // A short V plane used to leave zeros here (fresh allocation); with a
+      // pooled buffer, clear the tail explicitly so no stale chroma leaks in.
+      if (copyLen < vuSize) buffer.fillRange(ySize + copyLen, ySize + vuSize, 0);
     } else {
       for (int row = 0; row < uvH; row++) {
         final rowBytes = min(w, vPlane.bytes.length - row * vuRowStride);
-        if (rowBytes <= 0) break;
+        if (rowBytes <= 0) {
+          buffer.fillRange(ySize + row * w, ySize + vuSize, 0);
+          break;
+        }
         buffer.setRange(ySize + row * w, ySize + row * w + rowBytes, vPlane.bytes, row * vuRowStride);
+        if (rowBytes < w) {
+          buffer.fillRange(ySize + row * w + rowBytes, ySize + (row + 1) * w, 0);
+        }
       }
     }
-
-    return buffer;
   }
 
   /// Capture the latest frame as a JPEG file for AI scoring.
