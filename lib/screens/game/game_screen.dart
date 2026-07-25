@@ -13,6 +13,7 @@ import '../../utils/app_navigator.dart';
 import '../../widgets/rank_change_overlay.dart';
 import '../../widgets/elo_change_overlay.dart';
 import 'base_game_screen_state.dart';
+import 'leg_end_view.dart';
 import 'match_end_view.dart';
 
 class GameScreen extends StatefulWidget {
@@ -389,82 +390,18 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   }
 
 
-  /// Between-legs screen for ranked BO3: leg result + series score + a
-  /// "next leg" spinner. No buttons — ranked_next_leg drives the transition
-  /// (gameEnded flips back to false and the board returns), and leaving here
-  /// would forfeit the series, exactly like leaving mid-leg.
+  /// Between-legs screen for ranked BO3 — the shared [LegEndView]. No buttons:
+  /// ranked_next_leg drives the transition (gameEnded flips back to false and
+  /// the board returns).
   Widget _buildLegEndScreen(GameProvider game, AuthProvider auth) {
-    final l10n = AppLocalizations.of(context);
     final wonLeg = game.legWinnerId == auth.currentUser?.id ||
         (game.legWinnerId == null && game.winnerId == auth.currentUser?.id);
-    final accent = wonLeg ? AppTheme.success : AppTheme.error;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
-    // PopScope: the series is still live here — a bare back press silently
-    // abandoned it (no dialog, no leave_match). Route through onWillPop like
-    // the live board does.
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        // `mounted`, not `context.mounted`: no build param here, so `context`
-        // is the State getter, which throws once the screen has unmounted.
-        if (await onWillPop() && mounted) Navigator.of(context).pop();
-      },
-      child: Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(isLandscape ? 16 : 24),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: accent, width: 3),
-                    ),
-                    child: Icon(
-                      wonLeg ? Icons.check_circle_outline : Icons.close,
-                      color: accent,
-                      size: isLandscape ? 40 : 56,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    wonLeg ? l10n.legWon.toUpperCase() : l10n.legLost.toUpperCase(),
-                    style: AppTheme.displayLarge.copyWith(color: accent, fontSize: isLandscape ? 28 : 36),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '${game.myLegsWon} – ${game.opponentLegsWon}',
-                    style: AppTheme.displayLarge.copyWith(color: Colors.white, fontSize: isLandscape ? 32 : 44),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    l10n.firstToNLegs(game.legsNeeded),
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  const CircularProgressIndicator(color: AppTheme.primary),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.nextLeg,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14, letterSpacing: 1),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      ),
+    return LegEndView(
+      wonLeg: wonLeg,
+      myLegsWon: game.myLegsWon,
+      opponentLegsWon: game.opponentLegsWon,
+      legsNeeded: game.legsNeeded,
+      onAttemptPop: onWillPop,
     );
   }
 

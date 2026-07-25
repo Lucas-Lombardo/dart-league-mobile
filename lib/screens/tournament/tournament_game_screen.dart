@@ -11,8 +11,8 @@ import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
+import '../game/leg_end_view.dart';
 import '../game/match_end_view.dart';
-import 'tournament_leg_result_screen.dart';
 import 'tournament_match_result_screen.dart';
 
 class TournamentGameScreen extends StatefulWidget {
@@ -76,11 +76,10 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       _resultAccepted = false;
       _navigatingToResult = false;
     }
+    // legEnded needs no navigation: build renders the shared LegEndView
+    // inline (same as ranked BO3) and the next leg's game_started swaps the
+    // board back in.
     if (_resultAccepted) {
-      if (tGame.tournamentState == TournamentGameState.legEnded && !_navigatingToResult) {
-        _navigatingToResult = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _navigateToLegResult(tGame); });
-      }
       if (tGame.tournamentState == TournamentGameState.seriesEnded && !_navigatingToResult) {
         _navigatingToResult = true;
         WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _navigateToMatchResult(tGame); });
@@ -138,28 +137,6 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
 
-
-  void _navigateToLegResult(TournamentGameProvider game) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => TournamentLegResultScreen(
-          tournamentMatchId: widget.tournamentMatchId,
-          tournamentName: widget.tournamentName,
-          roundName: widget.roundName,
-          opponentUsername: widget.opponentUsername,
-          legWinnerId: game.legWinnerId,
-          myLegsWon: game.myLegsWon,
-          opponentLegsWon: game.opponentLegsWon,
-          legsNeeded: game.legsNeeded,
-          bestOf: widget.bestOf,
-          currentLeg: game.currentLeg,
-        ),
-      ),
-    ).then((_) {
-      // When leg result screen is dismissed, reset navigation flag
-      _navigatingToResult = false;
-    });
-  }
 
   void _navigateToMatchResult(TournamentGameProvider game) {
     AppNavigator.replaceWith(
@@ -383,6 +360,24 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     try {
       final game = context.watch<TournamentGameProvider>();
       final auth = context.watch<AuthProvider>();
+
+      // Between-legs, result accepted: the shared LegEndView, exactly like
+      // ranked BO3 — no button, tournament_next_leg + game_started flip the
+      // provider back to a live leg and this build returns the board. Checked
+      // BEFORE the gameStarted gate: the inter-leg window has gameStarted
+      // false and would otherwise flash "initializing match".
+      if (_resultAccepted &&
+          game.tournamentState == TournamentGameState.legEnded) {
+        return LegEndView(
+          // No legWinnerId==null fallback here (unlike ranked): the state
+          // only reaches legEnded via tournament_leg_won, which carries it.
+          wonLeg: game.legWinnerId == auth.currentUser?.id,
+          myLegsWon: game.myLegsWon,
+          opponentLegsWon: game.opponentLegsWon,
+          legsNeeded: game.legsNeeded,
+          onAttemptPop: onWillPop,
+        );
+      }
 
       if (!game.gameStarted) return buildInitializingScreen();
       if (game.gameEnded && !_resultAccepted && game.pendingType != 'forfeit') return buildEndScreen(game, auth);

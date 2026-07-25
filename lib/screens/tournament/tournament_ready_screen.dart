@@ -64,7 +64,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   // Join window — mirrors the backend MATCH_INVITE_TIMEOUT_MS. Past it the
   // sweep decides the match without the absentees (the stronger ELO advances
   // when neither showed), so this countdown must not run short of the server's.
-  static const Duration _joinWindow = Duration(minutes: 15);
+  static const Duration _joinWindow = Duration(minutes: 7);
   Timer? _windowTimer;
   Duration _remaining = Duration.zero;
   bool _expired = false;

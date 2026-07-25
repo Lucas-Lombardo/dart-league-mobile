@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -209,6 +210,55 @@ class SocketService {
     _supportsChat = supportsChat;
   }
 
+  /// Supplies the CONNECT-packet auth payload, called by socket.io on every
+  /// connection attempt (first connect, auto-reconnects, and rebuilds alike).
+  ///
+  /// The token must be resolved here, at send time, and never baked into the
+  /// socket options: socket_io_client caches the Manager AND the Socket per
+  /// URL (Manager.destroy never removes the namespace entry), so every
+  /// "rebuild" gets the same Socket instance back and its construction-time
+  /// `auth` map would outlive every token refresh. With the 15-minute access
+  /// token, any socket older than that reconnected in a `jwt expired` loop
+  /// forever while HTTP kept working on refreshed tokens — the 2026-07-25
+  /// tournament outage.
+  static Future<void> _authPayload(dynamic cb) async {
+    String? token;
+    try {
+      token = await StorageService.getToken();
+      if (token != null && _tokenLooksExpired(token)) {
+        debugPrint('SocketService: token expired/expiring, refreshing');
+        await ApiService.refreshAccessToken();
+        token = await StorageService.getToken();
+      }
+    } catch (e) {
+      debugPrint('SocketService: auth payload error: $e');
+    }
+    // A null/stale token still gets sent: the server answers auth_error and
+    // the recovery paths below take over (refresh is backoff-limited).
+    cb({'token': token});
+  }
+
+  /// Local expiry check (30s skew) so we refresh BEFORE the server rejects us,
+  /// saving the reject-refresh-reconnect round trip. Unparseable tokens are
+  /// treated as valid — the server stays the authority.
+  static bool _tokenLooksExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final payload = json.decode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final exp = payload is Map ? payload['exp'] : null;
+      if (exp is! num) return false;
+      final expiry =
+          DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+      return DateTime.now()
+          .isAfter(expiry.subtract(const Duration(seconds: 30)));
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Refresh the access token and rebuild the socket with it, keeping every
   /// registered event handler. Used when the server signals an auth problem —
   /// a server-initiated disconnect turns off socket.io auto-reconnect, so
@@ -294,6 +344,12 @@ class SocketService {
             .setAuth({'token': token})
             .build(),
       );
+
+      // io.io() may have handed back the cached Socket from a previous
+      // (dispose+rebuild) cycle, options ignored — see _authPayload. Assigning
+      // the auth callback directly is the only per-attempt token path that
+      // survives the cache, and it must be (re)set on every connect() build.
+      _socket!.auth = _authPayload;
 
       _socket!.onConnect((_) {
         debugPrint('SocketService: Connected! socketId=${_socket?.id}');
@@ -452,6 +508,17 @@ class SocketService {
     }
     _disconnectInternal();
   }
+
+  /// Test seam for the per-attempt auth payload ([_authPayload]): must always
+  /// complete and hand the callback a `{'token': …}` map, even with storage
+  /// unavailable — a throwing payload would silently drop the CONNECT packet.
+  @visibleForTesting
+  static Future<void> debugAuthPayload(void Function(dynamic) cb) =>
+      _authPayload(cb);
+
+  /// Test seam for the local expiry check backing [_authPayload].
+  @visibleForTesting
+  static bool debugTokenLooksExpired(String token) => _tokenLooksExpired(token);
 
   /// Test seam: when set, [emit] routes here instead of touching a real socket,
   /// and [debugDispatch] feeds server events back to the registered handlers.

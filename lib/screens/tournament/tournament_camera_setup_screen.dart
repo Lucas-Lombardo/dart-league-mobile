@@ -4,14 +4,17 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart';
 import '../../services/socket_service.dart';
-import '../../utils/app_theme.dart';
-import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
-import '../shared/camera_setup_mixin.dart';
+import '../../utils/app_theme.dart';
+import '../../utils/tournament_round.dart';
+import '../matchmaking/camera_setup_screen.dart';
 import 'tournament_game_screen.dart';
 import 'tournament_ready_screen.dart';
 
-class TournamentCameraSetupScreen extends StatefulWidget {
+/// Tournament entry into the shared [CameraSetupScreen]: same camera gate, AI
+/// board detection and button behavior as ranked/friendly — this wrapper only
+/// contributes the match-info banner and what happens after the tap.
+class TournamentCameraSetupScreen extends StatelessWidget {
   final String matchId;
   final String tournamentId;
   final String tournamentName;
@@ -43,316 +46,106 @@ class TournamentCameraSetupScreen extends StatefulWidget {
     this.rejoinGameMatchId,
   });
 
-  @override
-  State<TournamentCameraSetupScreen> createState() =>
-      _TournamentCameraSetupScreenState();
-}
-
-class _TournamentCameraSetupScreenState
-    extends State<TournamentCameraSetupScreen> with CameraSetupMixin {
-  bool _readyingSent = false;
-
-  @override
-  CameraSetupConfig get cameraSetupConfig => const CameraSetupConfig(
-        requireMicrophone: true,
-        enableAiDetection: false,
-        restoreSavedZoom: true,
-        enableGestureZoom: false,
-      );
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) initializeCamera();
-    });
-    initCamera();
-  }
-
-  Future<void> _onReadyPressed() async {
-    if (!cameraReady || !permissionsGranted || _readyingSent) return;
-
-    setState(() => _readyingSent = true);
-    HapticService.mediumImpact();
-    await prepareForNavigation();
-    if (!mounted) return;
-
-    // A tournament match is entirely socket-driven once it starts
-    // (matchReadyUpdate, tournamentMatchStart, game_started). Walking in with
-    // a dead socket — or one still authenticated as a previously signed-in
-    // account — used to succeed: the HTTP ready-poll carried the lobby all the
-    // way into the game screen, which then spun on "initialising match"
-    // forever because no socket event could reach this device. Refuse to
-    // start instead, and say why.
+  /// A tournament match is entirely socket-driven once it starts
+  /// (matchReadyUpdate, tournamentMatchStart, game_started). Walking in with
+  /// a dead socket — or one still authenticated as a previously signed-in
+  /// account — used to succeed: the HTTP ready-poll carried the lobby all the
+  /// way into the game screen, which then spun on "initialising match"
+  /// forever because no socket event could reach this device. Refuse to
+  /// proceed instead, and say why. Runs before the camera is torn down, so a
+  /// refusal leaves a live preview behind it.
+  Future<bool> _validateSocket(BuildContext context) async {
     try {
       await SocketService.ensureAuthenticated();
     } catch (_) {}
-    if (!mounted) return;
+    if (!context.mounted) return false;
     if (!SocketService.belongsToSession) {
-      setState(() => _readyingSent = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(AppLocalizations.of(context).connectionLostReconnecting),
+          content:
+              Text(AppLocalizations.of(context).connectionLostReconnecting),
           backgroundColor: AppTheme.error,
         ),
       );
-      return;
+      return false;
     }
+    return true;
+  }
 
+  Future<bool> _navigate(BuildContext context) async {
     // Resume path: the leg is already running — skip the ready screen and
     // re-enter the game. State + Agora tokens arrive via game_state_sync when
     // the socket rejoins the match room.
-    final rejoinGameId = widget.rejoinGameMatchId;
+    final rejoinGameId = rejoinGameMatchId;
     if (rejoinGameId != null) {
       final user = context.read<AuthProvider>().currentUser;
-      if (user == null) return;
+      if (user == null) return false;
       final tournamentGame = context.read<TournamentGameProvider>();
       // Awaited: the reply to the reconnect_to_match below is useless if the
       // handlers aren't attached yet.
       await tournamentGame.ensureListenersSetup();
-      if (!mounted) return;
+      if (!context.mounted) return true;
       tournamentGame.initTournamentGame(
-        tournamentMatchId: widget.matchId,
+        tournamentMatchId: matchId,
         gameMatchId: rejoinGameId,
-        tournamentId: widget.tournamentId,
+        tournamentId: tournamentId,
         myUserId: user.id,
-        opponentUserId: widget.opponentId,
-        bestOf: widget.bestOf,
-        roundName: widget.roundName,
+        opponentUserId: opponentId,
+        bestOf: bestOf,
+        roundName: roundName,
       );
       // Ask the server for the state explicitly (mirrors the friendly rejoin
       // in camera_setup_screen.dart): on a cold start the fresh socket is in
       // no room, so without this emit no game_state_sync ever arrives and the
       // game screen spins on "initializing match" forever. The socket is
-      // already known good — checked above.
+      // already known good — checked in _validateSocket.
       tournamentGame.reconnectToMatch();
       AppNavigator.replaceWith(
         context,
         TournamentGameScreen(
-          tournamentMatchId: widget.matchId,
+          tournamentMatchId: matchId,
           gameMatchId: rejoinGameId,
-          tournamentId: widget.tournamentId,
-          tournamentName: widget.tournamentName,
-          roundName: widget.roundName,
-          opponentUsername: widget.opponentUsername,
-          opponentId: widget.opponentId,
-          bestOf: widget.bestOf,
+          tournamentId: tournamentId,
+          tournamentName: tournamentName,
+          roundName: roundName,
+          opponentUsername: opponentUsername,
+          opponentId: opponentId,
+          bestOf: bestOf,
         ),
       );
-      return;
+      return true;
     }
 
     AppNavigator.replaceWith(
       context,
       TournamentReadyScreen(
-        matchId: widget.matchId,
-        tournamentId: widget.tournamentId,
-        tournamentName: widget.tournamentName,
-        roundName: widget.roundName,
-        opponentUsername: widget.opponentUsername,
-        opponentId: widget.opponentId,
-        player1Id: widget.player1Id,
-        player2Id: widget.player2Id,
-        bestOf: widget.bestOf,
-        inviteSentAt: widget.inviteSentAt,
+        matchId: matchId,
+        tournamentId: tournamentId,
+        tournamentName: tournamentName,
+        roundName: roundName,
+        opponentUsername: opponentUsername,
+        opponentId: opponentId,
+        player1Id: player1Id,
+        player2Id: player2Id,
+        bestOf: bestOf,
+        inviteSentAt: inviteSentAt,
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    disposeCamera();
-    super.dispose();
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: buildCameraAppBar(l10n.cameraSetupTitle),
-      body: SafeArea(
-        child: OrientationBuilder(
-          builder: (context, orientation) {
-            final body = isLoading
-                ? buildLoadingView()
-                : errorMessage != null
-                    ? buildErrorView()
-                    : _buildCameraPreview();
-            if (orientation == Orientation.landscape) {
-              return Column(
-                children: [
-                  _buildMatchInfoBar(),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(flex: 3, child: body),
-                        Expanded(
-                          flex: 2,
-                          child: SingleChildScrollView(
-                            child: _buildBottomSection(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
-            return Column(
-              children: [
-                _buildMatchInfoBar(),
-                Expanded(child: body),
-                _buildBottomSection(),
-              ],
-            );
-          },
-        ),
+    return CameraSetupScreen(
+      matchInfo: CameraSetupMatchInfo(
+        pill: localizedRoundName(roundName, l10n).toUpperCase(),
+        title: tournamentName,
+        subtitle: 'vs $opponentUsername • ${l10n.bestOf} $bestOf',
       ),
-    );
-  }
-
-  Widget _buildMatchInfoBar() {
-    final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.1),
-        border: Border(
-          bottom:
-              BorderSide(color: AppTheme.primary.withValues(alpha: 0.3)),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              widget.roundName.replaceAll('_', ' ').toUpperCase(),
-              style: const TextStyle(
-                color: AppTheme.primary,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.tournamentName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'vs ${widget.opponentUsername} • ${l10n.bestOf} ${widget.bestOf}',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCameraPreview() {
-    final l10n = AppLocalizations.of(context);
-    return buildCameraPreview(
-      overlayChildren: [
-        const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                l10n.positionDeviceInstruction,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBottomSection() {
-    final l10n = AppLocalizations.of(context);
-    final isReady = permissionsGranted && cameraReady;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          top: BorderSide(
-              color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-            ),
-            child: Column(
-              children: [
-                buildInfoRow(Icons.videocam, l10n.cameraOnDuringMatchInfo),
-                const SizedBox(height: 8),
-                buildInfoRow(Icons.mic_off, l10n.micOffByDefault),
-                const SizedBox(height: 8),
-                buildInfoRow(
-                    Icons.my_location, l10n.makeSureDartboardVisibleInfo),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed:
-                  isReady && !_readyingSent ? _onReadyPressed : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    isReady ? AppTheme.success : AppTheme.surfaceLight,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: isReady ? 4 : 0,
-              ),
-              child: Text(
-                isReady ? l10n.ready : l10n.cameraRequiredButton,
-                style: TextStyle(
-                  color: isReady ? Colors.white : AppTheme.textSecondary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      actionLabel: l10n.ready,
+      onValidate: _validateSocket,
+      onConfirm: _navigate,
     );
   }
 }
