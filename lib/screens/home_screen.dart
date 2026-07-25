@@ -9,9 +9,12 @@ import '../l10n/app_localizations.dart';
 import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
+import '../providers/chat_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/tournament_provider.dart';
 import '../main.dart' show routeObserver;
+import 'chat/received_messages_screen.dart';
+import 'chat/chat_thread_screen.dart';
 import 'home/play_screen.dart';
 import 'home/stats_screen.dart';
 import 'home/leaderboard_screen.dart';
@@ -49,6 +52,21 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       final tp = context.read<TournamentProvider>();
       _tournamentProvider = tp;
       tp.startRealtime(myUserId: context.read<AuthProvider>().currentUser?.id);
+
+      // Chat: unread badge + realtime routing, and "new message" push taps
+      // deep-link straight into the thread.
+      final chat = context.read<ChatProvider>();
+      chat.init();
+      chat.onOpenThreadFromPush = (counterpartId, username) {
+        if (!mounted) return;
+        AppNavigator.toScreen(
+          context,
+          ChatThreadScreen(
+            counterpartId: counterpartId,
+            username: username ?? AppLocalizations.of(context).teamDartRivals,
+          ),
+        );
+      };
     });
   }
 
@@ -120,6 +138,44 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           ),
         ),
         actions: [
+          Consumer<ChatProvider>(
+            builder: (context, chat, _) => IconButton(
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.chat_bubble_outline),
+                  if (chat.unreadTotal > 0)
+                    Positioned(
+                      top: -4,
+                      right: -6,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 15),
+                        height: 15,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          chat.unreadTotal > 99 ? '99+' : '${chat.unreadTotal}',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              onPressed: () {
+                HapticService.lightImpact();
+                AppNavigator.toScreen(context, const ReceivedMessagesScreen());
+              },
+              tooltip: l10n.receivedMessagesTitle,
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () {

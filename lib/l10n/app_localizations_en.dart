@@ -1685,6 +1685,52 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get unrankedFreeTierHint => 'After placement, free players get 1 ranked match per day';
 
+  // --- Chat (friend/support messaging) ---
+  @override
+  String get receivedMessagesTitle => 'Received messages';
+  @override
+  String get unreadSection => 'Unread';
+  @override
+  String get earlierSection => 'Earlier';
+  @override
+  String get noReceivedMessages => 'No messages received yet';
+  @override
+  String get writeViaFriendsHint =>
+      'To start a new conversation, use the 💬 button on a friend in the Friends tab.';
+  @override
+  String get teamDartRivals => 'Dart Rivals Team';
+  @override
+  String get teamBadge => 'TEAM';
+  @override
+  String get teamConversationSubtitle => 'A question, a bug? Write to us here — we read everything.';
+  @override
+  String get teamReplyDelay => 'Usually replies within 24 hours';
+  @override
+  String get messageHint => 'Message…';
+  @override
+  String get chatRetentionNotice => 'Messages are kept for 30 days';
+  @override
+  String get chatEmpty => 'No messages yet — say hi! 🎯';
+  @override
+  String get chatMessageAction => 'Message';
+  @override
+  String get reportConversationAction => 'Report conversation';
+  @override
+  String get reportConversationSubtitle =>
+      'Sent to the team with the latest messages of this conversation.';
+  @override
+  String get reportSentConfirmation => 'Report sent to the team';
+  @override
+  String get blockAction => 'Block';
+  @override
+  String get unblockAction => 'Unblock';
+  @override
+  String get blockedBanner => 'You blocked this player — they can no longer message you.';
+  @override
+  String get todayLabel => 'Today';
+  @override
+  String get yesterdayLabel => 'Yesterday';
+
   @override
   String get tapToLearnAboutPremium => 'Tap to learn about Premium · Unlimited matches';
 

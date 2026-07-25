@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../models/chat_message.dart';
 import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -12,6 +14,7 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/friendly_match_launcher.dart';
 import '../../utils/haptic_service.dart';
+import '../chat/chat_thread_screen.dart';
 import '../profile/player_stats_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -717,21 +720,32 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       ...friends.where((f) => provider.isOnline(f.id)),
       ...friends.where((f) => !provider.isOnline(f.id)),
     ];
+    final chat = context.watch<ChatProvider>();
 
+    // Row 0 is the pinned "Équipe Dart Rivals" — everyone can write to the
+    // team, without it being a friendship (and without being challengeable).
     return RefreshIndicator(
       onRefresh: () => provider.loadFriends(),
       color: AppTheme.primary,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: sorted.length,
+        itemCount: sorted.length + 1,
         separatorBuilder: (context, index) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
-          final friend = sorted[index];
+          if (index == 0) {
+            return _TeamRow(
+              unreadCount: chat.unreadSupport,
+              onTap: () => _openThread(kSupportConversationId, l10n.teamDartRivals),
+            );
+          }
+          final friend = sorted[index - 1];
           final isOnline = provider.isOnline(friend.id);
           return _FriendRow(
             friend: friend,
             isOnline: isOnline,
+            unreadCount: chat.unreadFrom(friend.id),
             onChallenge: () => FriendlyMatchLauncher.invite(context, friend),
+            onMessage: () => _openThread(friend.id, friend.username),
             onRemove: () => _removeFriend(friend.id, friend.username),
             onTap: () {
               AppNavigator.toScreen(
@@ -744,6 +758,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       ),
     );
   }
+
+  void _openThread(String counterpartId, String username) {
+    HapticService.lightImpact();
+    AppNavigator.toScreen(
+      context,
+      ChatThreadScreen(counterpartId: counterpartId, username: username),
+    );
+  }
 }
 
 /// Dense friend row: presence dot on the rank badge, one "Challenge" CTA
@@ -752,14 +774,18 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
 class _FriendRow extends StatelessWidget {
   final User friend;
   final bool isOnline;
+  final int unreadCount;
   final VoidCallback onChallenge;
+  final VoidCallback onMessage;
   final Future<void> Function() onRemove;
   final VoidCallback onTap;
 
   const _FriendRow({
     required this.friend,
     required this.isOnline,
+    required this.unreadCount,
     required this.onChallenge,
+    required this.onMessage,
     required this.onRemove,
     required this.onTap,
   });
@@ -890,6 +916,8 @@ class _FriendRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                _MessageButton(unreadCount: unreadCount, onTap: onMessage),
+                const SizedBox(width: 8),
                 Material(
                   color: isOnline ? AppTheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
@@ -933,6 +961,167 @@ class _FriendRow extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Round 💬 button on a friend row; a red bubble shows this friend's unread
+/// count (same counter that feeds the AppBar badge).
+class _MessageButton extends StatelessWidget {
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  const _MessageButton({required this.unreadCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () {
+              HapticService.lightImpact();
+              onTap();
+            },
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.45)),
+              ),
+              child: Semantics(
+                label: l10n.chatMessageAction,
+                child: const Icon(Icons.chat_bubble_outline,
+                    size: 15, color: AppTheme.primary),
+              ),
+            ),
+          ),
+        ),
+        if (unreadCount > 0)
+          Positioned(
+            top: -4,
+            right: -4,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16),
+              height: 16,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.error,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppTheme.surface, width: 2),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                unreadCount > 9 ? '9+' : '$unreadCount',
+                style: const TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Pinned "Équipe Dart Rivals" row at the top of the friends list. Not a
+/// friendship: message-only (no challenge), available to every player.
+class _TeamRow extends StatelessWidget {
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  const _TeamRow({required this.unreadCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(13),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                    colors: [AppTheme.primary, AppTheme.primaryDark]),
+              ),
+              alignment: Alignment.center,
+              child: const Text('🎯', style: TextStyle(fontSize: 16)),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          l10n.teamDartRivals,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.15),
+                          border: Border.all(
+                              color: AppTheme.accent.withValues(alpha: 0.4)),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          l10n.teamBadge,
+                          style: const TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    l10n.teamConversationSubtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _MessageButton(unreadCount: unreadCount, onTap: onTap),
+          ],
         ),
       ),
     );

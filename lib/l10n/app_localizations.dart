@@ -637,6 +637,29 @@ abstract class AppLocalizations {
   String get freePlayBannerTitle;
   String get freePlayBannerSubtitle;
   String get unrankedFreeTierHint;
+
+  // --- Chat (friend/support messaging) ---
+  String get receivedMessagesTitle;
+  String get unreadSection;
+  String get earlierSection;
+  String get noReceivedMessages;
+  String get writeViaFriendsHint;
+  String get teamDartRivals;
+  String get teamBadge;
+  String get teamConversationSubtitle;
+  String get teamReplyDelay;
+  String get messageHint;
+  String get chatRetentionNotice;
+  String get chatEmpty;
+  String get chatMessageAction;
+  String get reportConversationAction;
+  String get reportConversationSubtitle;
+  String get reportSentConfirmation;
+  String get blockAction;
+  String get unblockAction;
+  String get blockedBanner;
+  String get todayLabel;
+  String get yesterdayLabel;
   String get tapToLearnAboutPremium;
 
   // Tournament & verification

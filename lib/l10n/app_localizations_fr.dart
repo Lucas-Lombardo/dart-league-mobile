@@ -1692,6 +1692,54 @@ class AppLocalizationsFr extends AppLocalizations {
   String get unrankedFreeTierHint =>
       'Après le placement, les joueurs gratuits ont 1 match classé par jour';
 
+  // --- Chat (messagerie amis/support) ---
+  @override
+  String get receivedMessagesTitle => 'Messages reçus';
+  @override
+  String get unreadSection => 'Non lus';
+  @override
+  String get earlierSection => 'Plus tôt';
+  @override
+  String get noReceivedMessages => 'Aucun message reçu pour le moment';
+  @override
+  String get writeViaFriendsHint =>
+      'Pour démarrer une discussion, utilise le bouton 💬 sur un ami dans l\'onglet Amis.';
+  @override
+  String get teamDartRivals => 'Équipe Dart Rivals';
+  @override
+  String get teamBadge => 'ÉQUIPE';
+  @override
+  String get teamConversationSubtitle =>
+      'Une question, un bug ? Écris-nous ici, on lit tout.';
+  @override
+  String get teamReplyDelay => 'Réponse en général sous 24 h';
+  @override
+  String get messageHint => 'Message…';
+  @override
+  String get chatRetentionNotice => 'Les messages sont conservés 30 jours';
+  @override
+  String get chatEmpty => 'Aucun message — dis bonjour ! 🎯';
+  @override
+  String get chatMessageAction => 'Message';
+  @override
+  String get reportConversationAction => 'Signaler la conversation';
+  @override
+  String get reportConversationSubtitle =>
+      'Transmise à l\'équipe avec les derniers messages de cette conversation.';
+  @override
+  String get reportSentConfirmation => 'Signalement envoyé à l\'équipe';
+  @override
+  String get blockAction => 'Bloquer';
+  @override
+  String get unblockAction => 'Débloquer';
+  @override
+  String get blockedBanner =>
+      'Tu as bloqué ce joueur — il ne peut plus t\'écrire.';
+  @override
+  String get todayLabel => 'Aujourd\'hui';
+  @override
+  String get yesterdayLabel => 'Hier';
+
   @override
   String get tapToLearnAboutPremium => 'Appuyez pour découvrir Premium · Matchs illimités';
 

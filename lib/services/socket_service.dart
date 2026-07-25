@@ -73,6 +73,12 @@ class SocketService {
   // like supportsDartAck, so a backend rollback degrades us safely.
   static bool _supportsRankedBo3 = false;
 
+  // Server capability: friend/support chat (/chat REST routes + chat:message
+  // socket event). The chat UI stays functional without it (REST errors are
+  // surfaced), but realtime delivery needs it. Reset on every disconnect,
+  // like the flags above, so a backend rollback degrades us safely.
+  static bool _supportsChat = false;
+
   // True once the current socket has received the server's `authenticated`
   // handshake — the event that carries the capability flags above. Reset on
   // every disconnect, like the flags themselves, so it always describes the
@@ -101,6 +107,9 @@ class SocketService {
 
   /// Whether the server can run ranked matches as best-of-3 series.
   static bool get supportsRankedBo3 => _supportsRankedBo3;
+
+  /// Whether the server has the friend/support chat (REST + `chat:message`).
+  static bool get supportsChat => _supportsChat;
 
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
@@ -192,6 +201,12 @@ class SocketService {
       debugPrint('SocketService: server supportsRankedBo3=$supportsBo3');
     }
     _supportsRankedBo3 = supportsBo3;
+
+    final supportsChat = data is Map && data['supportsChat'] == true;
+    if (supportsChat != _supportsChat) {
+      debugPrint('SocketService: server supportsChat=$supportsChat');
+    }
+    _supportsChat = supportsChat;
   }
 
   /// Refresh the access token and rebuild the socket with it, keeping every
@@ -302,6 +317,7 @@ class SocketService {
         _authenticatedUserId = null;
         _supportsDartAck = false;
         _supportsRankedBo3 = false;
+        _supportsChat = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -419,6 +435,7 @@ class SocketService {
     _authenticatedUserId = null;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
+    _supportsChat = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
@@ -460,6 +477,7 @@ class SocketService {
     _lastIdentityRebuild = null;
     _supportsDartAck = false;
     _supportsRankedBo3 = false;
+    _supportsChat = false;
     _handlers.clear();
     _handlerOwners.clear();
     _disconnectListeners.clear();
