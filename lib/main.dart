@@ -31,6 +31,8 @@ import 'services/api_service.dart';
 import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
 import 'utils/dart_caller_service.dart';
+import 'utils/dart_sound_service.dart';
+import 'utils/haptic_service.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
 import 'widgets/friend_match_gate.dart';
 
@@ -80,15 +82,18 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   
-  // Load the voice-caller on/off preference so it's ready before any match.
-  // Guarded like the Firebase/IAP inits above: this reads flutter_secure_
+  // Load the sound & haptics preferences so they're ready before any match.
+  // Guarded like the Firebase/IAP inits above: these read flutter_secure_
   // storage, which throws a PlatformException on a corrupted Android keystore
   // (and after some backup restores). Unguarded, it aborted startup before
-  // runApp — the whole app failed to boot over a caller preference.
+  // runApp — the whole app failed to boot over a caller preference. On
+  // failure everything stays at its default (enabled).
   try {
     await DartCallerService.loadPreference();
+    await DartSoundService.loadPreferences();
+    await HapticService.loadPreference();
   } catch (e) {
-    debugPrint('⚠️ DartCallerService.loadPreference failed: $e');
+    debugPrint('⚠️ Sound preferences load failed: $e');
   }
 
   // Create GameProvider eagerly at app startup so listeners are ready

@@ -94,6 +94,19 @@ class StorageService {
     return value == 'true';
   }
 
+  // Per-category sound & haptics toggles (Settings > Sounds). The keys are
+  // owned by DartSoundService/HapticService since the categories map 1:1 to
+  // their play methods. Default on, like the caller.
+  static Future<void> saveSoundEnabled(String key, bool enabled) async {
+    await _storage.write(key: key, value: enabled.toString());
+  }
+
+  static Future<bool> getSoundEnabled(String key) async {
+    final value = await _storage.read(key: key);
+    if (value == null) return true;
+    return value == 'true';
+  }
+
   // Whether to use the front (selfie) camera instead of the back one for the
   // dartboard feed. Remembered across screens and app launches so the last
   // choice sticks. Defaults off (back camera).

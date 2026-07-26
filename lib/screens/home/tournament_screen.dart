@@ -11,6 +11,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/tournament_registration_gate.dart';
 import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/trophy_image.dart';
 import 'tournament_detail_screen.dart';
 import 'tournament_history_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
@@ -327,11 +328,17 @@ class _AgendaRowState extends State<_AgendaRow> {
     final timeLabel =
         DateFormat('HH:mm').format(tournament.scheduledDate.toLocal());
 
+    // A tournament awarding a physical trophy gets a "showcase" row: gold
+    // border, faint gold sheen and the trophy render itself. Live/registered
+    // borders keep priority — they carry state, the gold is only dressing.
+    final showTrophy = tournament.hasTrophyImage;
     final borderColor = isLive
         ? AppTheme.primary.withValues(alpha: 0.6)
         : widget.isRegistered
             ? AppTheme.success.withValues(alpha: 0.45)
-            : AppTheme.surfaceLight.withValues(alpha: 0.5);
+            : showTrophy
+                ? AppTheme.accent.withValues(alpha: 0.5)
+                : AppTheme.surfaceLight.withValues(alpha: 0.5);
 
     return GestureDetector(
       onTap: () {
@@ -345,7 +352,17 @@ class _AgendaRowState extends State<_AgendaRow> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: showTrophy ? null : AppTheme.surface,
+          gradient: showTrophy
+              ? LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    AppTheme.surface,
+                    AppTheme.accent.withValues(alpha: 0.08),
+                  ],
+                )
+              : null,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: borderColor),
         ),
@@ -410,6 +427,10 @@ class _AgendaRowState extends State<_AgendaRow> {
                 ],
               ),
             ),
+            if (showTrophy) ...[
+              const SizedBox(width: 8),
+              TrophyImage(url: tournament.trophyThumbUrl, size: 54),
+            ],
             const SizedBox(width: 10),
             _trailing(l10n, isLive: isLive, isFull: isFull, canJoin: canJoin, canLeave: canLeave),
           ],
@@ -434,7 +455,9 @@ class _AgendaRowState extends State<_AgendaRow> {
               : tournament.formattedPrice,
       if (tournament.premiumRequired) 'Premium',
       if (tournament.hasRankRequirement) tournament.rankRequirementLabel,
-      if (tournament.hasPrize) '🏆 ${tournament.formattedPrize}',
+      // The trophy render next to the row already says it — no text twin.
+      if (tournament.hasPrize && !tournament.hasTrophyImage)
+        '🏆 ${tournament.formattedPrize}',
     ];
     return parts.join(' · ');
   }

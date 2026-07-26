@@ -121,6 +121,24 @@ abstract class AppLocalizations {
   String get voiceCaller;
   String get voiceCallerDescription;
 
+  // Settings > Sounds & vibrations
+  String get soundsSection;
+  String get soundDartHit;
+  String get soundDartHitDescription;
+  String get soundTurn;
+  String get soundTurnDescription;
+  String get soundGameEffects;
+  String get soundGameEffectsDescription;
+  String get soundMatchFound;
+  String get soundMatchFoundDescription;
+  String get haptics;
+  String get hapticsDescription;
+
+  // Settings > profile hero & account
+  String get editProfile;
+  String get accountSection;
+  String get logoutConfirm;
+
   // Friends Screen
   String get add;
   String get requests;
@@ -586,15 +604,6 @@ abstract class AppLocalizations {
   String get trainingGames;
   String get trainingNotYetPlayed;
 
-  // Content Creator
-  String get contentCreator;
-  String get enterCreatorCode;
-  String get creatorCodeHint;
-  String get supporting;
-  String get clearCreatorCode;
-  String get creatorCodeSet;
-  String get creatorCodeCleared;
-  String get invalidCreatorCode;
   String get submit;
 
   // Premium / subscription
@@ -669,6 +678,9 @@ abstract class AppLocalizations {
   String get close;
   String get resendEmail;
   String get prizeLabel;
+  String get prizeToWin;
+  String get trophyLabel;
+  String get trophyShippedToWinner;
 
   // Game dialogs
   String get stayInMatch;

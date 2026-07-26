@@ -1,3 +1,4 @@
+import '../utils/api_config.dart';
 import '../utils/rank_utils.dart';
 
 DateTime? _tryParseDateTime(String? value) {
@@ -35,6 +36,7 @@ class Tournament {
   final int prizeAmount;
   final String prizeCurrency;
   final String? prizeDescription;
+  final String? trophyModel;
   final bool premiumRequired;
   final String? minRank;
   final String? maxRank;
@@ -60,6 +62,7 @@ class Tournament {
     this.prizeAmount = 0,
     this.prizeCurrency = 'eur',
     this.prizeDescription,
+    this.trophyModel,
     this.premiumRequired = false,
     this.minRank,
     this.maxRank,
@@ -87,6 +90,7 @@ class Tournament {
       prizeAmount: json['prizeAmount'] as int? ?? 0,
       prizeCurrency: json['prizeCurrency'] as String? ?? 'eur',
       prizeDescription: json['prizeDescription'] as String?,
+      trophyModel: json['trophyModel'] as String?,
       premiumRequired: json['premiumRequired'] as bool? ?? false,
       minRank: json['minRank'] as String?,
       maxRank: json['maxRank'] as String?,
@@ -132,6 +136,17 @@ class Tournament {
   bool get hasPrize => prizeType != 'none';
   bool get hasCashPrize => prizeType == 'cash';
   bool get hasTrophyPrize => prizeType == 'trophy';
+
+  /// True when a physical trophy model was picked by the admin, i.e. a
+  /// picture of the actual prize exists on the backend.
+  bool get hasTrophyImage =>
+      hasTrophyPrize && trophyModel != null && trophyModel!.isNotEmpty;
+
+  /// Full-size render (1024 px, transparent background).
+  String get trophyImageUrl => '$baseUrl/trophies/$trophyModel.png';
+
+  /// Small render (320 px) for list rows and cards.
+  String get trophyThumbUrl => '$baseUrl/trophies/$trophyModel-thumb.png';
 
   String get formattedPrize {
     if (!hasPrize) return '';
@@ -382,6 +397,7 @@ class TournamentHistory {
   final int prizeAmount;
   final String prizeCurrency;
   final String? prizeDescription;
+  final String? trophyModel;
 
   TournamentHistory({
     required this.id,
@@ -403,6 +419,7 @@ class TournamentHistory {
     this.prizeAmount = 0,
     this.prizeCurrency = 'eur',
     this.prizeDescription,
+    this.trophyModel,
   });
 
   factory TournamentHistory.fromJson(Map<String, dynamic> json) {
@@ -426,6 +443,7 @@ class TournamentHistory {
       prizeAmount: json['prizeAmount'] as int? ?? 0,
       prizeCurrency: json['prizeCurrency'] as String? ?? 'eur',
       prizeDescription: json['prizeDescription'] as String?,
+      trophyModel: json['trophyModel'] as String?,
     );
   }
 

@@ -296,6 +296,50 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get voiceCallerDescription => 'Announce scores aloud';
 
+  // Settings > Sounds & vibrations
+  @override
+  String get soundsSection => 'Sounds & vibrations';
+
+  @override
+  String get soundDartHit => 'Dart sounds';
+
+  @override
+  String get soundDartHitDescription => 'Impact sound for every dart';
+
+  @override
+  String get soundTurn => 'Turn announcements';
+
+  @override
+  String get soundTurnDescription => 'Sound when your turn starts or ends';
+
+  @override
+  String get soundGameEffects => 'Game effects';
+
+  @override
+  String get soundGameEffectsDescription => 'Bust, win and lose sounds';
+
+  @override
+  String get soundMatchFound => 'Match found';
+
+  @override
+  String get soundMatchFoundDescription => 'Sound when an opponent is found';
+
+  @override
+  String get haptics => 'Vibrations';
+
+  @override
+  String get hapticsDescription => 'Haptic feedback on actions';
+
+  // Settings > profile hero & account
+  @override
+  String get editProfile => 'Edit profile';
+
+  @override
+  String get accountSection => 'Account';
+
+  @override
+  String get logoutConfirm => 'Log out of this account?';
+
   // Friends Screen
   @override
   String get add => 'Add';
@@ -1536,31 +1580,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get trainingNotYetPlayed => 'Not played yet.';
 
-  // Content Creator
-  @override
-  String get contentCreator => 'Content Creator';
-
-  @override
-  String get enterCreatorCode => 'Enter Creator Code';
-
-  @override
-  String get creatorCodeHint => 'e.g. FORTNITE';
-
-  @override
-  String get supporting => 'Supporting';
-
-  @override
-  String get clearCreatorCode => 'Clear';
-
-  @override
-  String get creatorCodeSet => 'Creator code set! They have been added as a friend.';
-
-  @override
-  String get creatorCodeCleared => 'Creator code cleared';
-
-  @override
-  String get invalidCreatorCode => 'Invalid creator code';
-
   @override
   String get submit => 'Submit';
 
@@ -1753,6 +1772,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get prizeLabel => 'Prize';
+
+  @override
+  String get prizeToWin => 'To win';
+
+  @override
+  String get trophyLabel => 'Trophy';
+
+  @override
+  String get trophyShippedToWinner => 'Shipped to the winner';
 
   // Game dialogs
   @override

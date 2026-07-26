@@ -296,6 +296,50 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get voiceCallerDescription => 'Annonce les scores à voix haute';
 
+  // Settings > Sounds & vibrations
+  @override
+  String get soundsSection => 'Sons et vibrations';
+
+  @override
+  String get soundDartHit => 'Bruit des fléchettes';
+
+  @override
+  String get soundDartHitDescription => 'Son d\'impact à chaque fléchette';
+
+  @override
+  String get soundTurn => 'Annonces de tour';
+
+  @override
+  String get soundTurnDescription => 'Son en début et fin de votre tour';
+
+  @override
+  String get soundGameEffects => 'Effets de partie';
+
+  @override
+  String get soundGameEffectsDescription => 'Sons de bust, victoire et défaite';
+
+  @override
+  String get soundMatchFound => 'Match trouvé';
+
+  @override
+  String get soundMatchFoundDescription => 'Son quand un adversaire est trouvé';
+
+  @override
+  String get haptics => 'Vibrations';
+
+  @override
+  String get hapticsDescription => 'Retours haptiques sur les actions';
+
+  // Settings > profile hero & account
+  @override
+  String get editProfile => 'Modifier le profil';
+
+  @override
+  String get accountSection => 'Compte';
+
+  @override
+  String get logoutConfirm => 'Vous déconnecter de ce compte ?';
+
   // Friends Screen
   @override
   String get add => 'Ajouter';
@@ -1540,31 +1584,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get trainingNotYetPlayed => 'Jamais joué.';
 
-  // Content Creator
-  @override
-  String get contentCreator => 'Créateur de contenu';
-
-  @override
-  String get enterCreatorCode => 'Entrer un code créateur';
-
-  @override
-  String get creatorCodeHint => 'ex. FORTNITE';
-
-  @override
-  String get supporting => 'Vous soutenez';
-
-  @override
-  String get clearCreatorCode => 'Retirer';
-
-  @override
-  String get creatorCodeSet => 'Code créateur activé ! Il a été ajouté en ami.';
-
-  @override
-  String get creatorCodeCleared => 'Code créateur retiré';
-
-  @override
-  String get invalidCreatorCode => 'Code créateur invalide';
-
   @override
   String get submit => 'Valider';
 
@@ -1762,6 +1781,15 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get prizeLabel => 'Récompense';
+
+  @override
+  String get prizeToWin => 'À gagner';
+
+  @override
+  String get trophyLabel => 'Trophée';
+
+  @override
+  String get trophyShippedToWinner => 'Expédié chez le vainqueur';
 
   // Game dialogs
   @override

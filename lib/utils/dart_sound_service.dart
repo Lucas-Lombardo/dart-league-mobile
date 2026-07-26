@@ -1,6 +1,17 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import '../providers/game_provider.dart';
+import 'storage_service.dart';
+
+/// User-facing sound categories (Settings > Sounds). Each play method below
+/// belongs to exactly one category; disabling a category mutes its sounds
+/// everywhere without touching call sites.
+enum SoundCategory {
+  dartHit, // dart_hit
+  turn, // your_turn + turn_finished
+  gameEffects, // bust + win + lose
+  matchFound, // match_sound
+}
 
 /// Why one AudioPlayer per asset (not a single shared player):
 /// the previous implementation called `stop()` then `play()` on a single
@@ -32,6 +43,24 @@ class DartSoundService {
 
   static final Map<String, AudioPlayer> _players = {};
   static Future<void>? _initFuture;
+
+  static final Map<SoundCategory, bool> _categoryEnabled = {
+    for (final c in SoundCategory.values) c: true,
+  };
+
+  static bool isEnabled(SoundCategory category) => _categoryEnabled[category]!;
+
+  static Future<void> setEnabled(SoundCategory category, bool enabled) async {
+    _categoryEnabled[category] = enabled;
+    await StorageService.saveSoundEnabled('sound_${category.name}', enabled);
+  }
+
+  /// Called once at startup (main.dart), like DartCallerService.loadPreference.
+  static Future<void> loadPreferences() async {
+    for (final c in SoundCategory.values) {
+      _categoryEnabled[c] = await StorageService.getSoundEnabled('sound_${c.name}');
+    }
+  }
 
   /// Idempotent. Concurrent callers share the same in-flight init Future, so
   /// a burst of first-play calls won't race on setReleaseMode/setAudioContext.
@@ -89,14 +118,25 @@ class DartSoundService {
     }
   }
 
+  static Future<void> _playIfEnabled(SoundCategory category, String asset) {
+    if (!isEnabled(category)) return Future.value();
+    return _play(asset);
+  }
+
   static Future<void> playDartHit(int baseScore, ScoreMultiplier multiplier) =>
-      _play(_dartHit);
-  static Future<void> playYourTurn() => _play(_yourTurn);
-  static Future<void> playTurnFinished() => _play(_turnFinished);
-  static Future<void> playBust() => _play(_bust);
-  static Future<void> playWin() => _play(_win);
-  static Future<void> playLose() => _play(_lose);
-  static Future<void> playMatchFound() => _play(_matchFound);
+      _playIfEnabled(SoundCategory.dartHit, _dartHit);
+  static Future<void> playYourTurn() =>
+      _playIfEnabled(SoundCategory.turn, _yourTurn);
+  static Future<void> playTurnFinished() =>
+      _playIfEnabled(SoundCategory.turn, _turnFinished);
+  static Future<void> playBust() =>
+      _playIfEnabled(SoundCategory.gameEffects, _bust);
+  static Future<void> playWin() =>
+      _playIfEnabled(SoundCategory.gameEffects, _win);
+  static Future<void> playLose() =>
+      _playIfEnabled(SoundCategory.gameEffects, _lose);
+  static Future<void> playMatchFound() =>
+      _playIfEnabled(SoundCategory.matchFound, _matchFound);
 
   static Future<void> dispose() async {
     for (final player in _players.values) {

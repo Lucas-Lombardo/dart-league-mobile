@@ -8,6 +8,7 @@ import '../../services/tournament_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/trophy_image.dart';
 import '../../l10n/app_localizations.dart';
 
 class TournamentEndScreen extends StatefulWidget {
@@ -51,6 +52,11 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
   bool _loading = true;
   late final int _placement;
 
+  // Render of the physical trophy the champion just won, when the tournament
+  // awards one. Null (no model picked, fetch failed, not the champion) keeps
+  // the generic medal exactly as before.
+  String? _trophyImageUrl;
+
   @override
   void initState() {
     super.initState();
@@ -92,9 +98,22 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _confettiCtrl.repeat();
       });
+      _loadTrophy();
     }
 
     _loadBracket();
+  }
+
+  // The screen only receives ids — whether a physical trophy is at stake
+  // comes from the tournament detail. Silent on failure: the medal stays.
+  Future<void> _loadTrophy() async {
+    try {
+      final tournament =
+          await TournamentService.getTournament(widget.tournamentId);
+      if (mounted && tournament.hasTrophyImage) {
+        setState(() => _trophyImageUrl = tournament.trophyImageUrl);
+      }
+    } catch (_) {}
   }
 
   bool _reducedMotionApplied = false;
@@ -183,6 +202,26 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     return l10n.tournamentParticipant;
   }
 
+  Widget _medalCircle() {
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        color: _medalColor.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+        border: Border.all(color: _medalColor, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: _medalColor.withValues(alpha: 0.25 + 0.25 * _glowCtrl.value),
+            blurRadius: 24 + 20 * _glowCtrl.value,
+            spreadRadius: 4 + 8 * _glowCtrl.value,
+          ),
+        ],
+      ),
+      child: Icon(_medalIcon, color: _medalColor, size: 60),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -211,30 +250,35 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
                     children: [
                       const SizedBox(height: 32),
 
-                      // Medal / trophy
+                      // Medal — or, for a champion whose tournament awards a
+                      // physical trophy, the render of the trophy itself.
                       FadeTransition(
                         opacity: _medalFade,
                         child: ScaleTransition(
                           scale: _medalScale,
                           child: AnimatedBuilder(
                             animation: _glowCtrl,
-                            builder: (_, __) => Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                color: _medalColor.withValues(alpha: 0.12),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: _medalColor, width: 3),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _medalColor.withValues(alpha: 0.25 + 0.25 * _glowCtrl.value),
-                                    blurRadius: 24 + 20 * _glowCtrl.value,
-                                    spreadRadius: 4 + 8 * _glowCtrl.value,
-                                  ),
-                                ],
-                              ),
-                              child: Icon(_medalIcon, color: _medalColor, size: 60),
-                            ),
+                            builder: (_, __) => _trophyImageUrl != null
+                                ? Container(
+                                    width: 150,
+                                    height: 150,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _medalColor.withValues(alpha: 0.25 + 0.25 * _glowCtrl.value),
+                                          blurRadius: 30 + 20 * _glowCtrl.value,
+                                          spreadRadius: 6 + 8 * _glowCtrl.value,
+                                        ),
+                                      ],
+                                    ),
+                                    child: TrophyImage(
+                                      url: _trophyImageUrl!,
+                                      size: 150,
+                                      fallback: _medalCircle(),
+                                    ),
+                                  )
+                                : _medalCircle(),
                           ),
                         ),
                       ),

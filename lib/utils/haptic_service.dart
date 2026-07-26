@@ -1,10 +1,19 @@
 import 'package:flutter/services.dart';
+import 'storage_service.dart';
 
 class HapticService {
+  static const _prefKey = 'haptics_enabled';
+
   static bool _enabled = true;
 
-  static void setEnabled(bool enabled) {
+  static Future<void> setEnabled(bool enabled) async {
     _enabled = enabled;
+    await StorageService.saveSoundEnabled(_prefKey, enabled);
+  }
+
+  /// Called once at startup (main.dart), like DartCallerService.loadPreference.
+  static Future<void> loadPreference() async {
+    _enabled = await StorageService.getSoundEnabled(_prefKey);
   }
 
   static bool get isEnabled => _enabled;

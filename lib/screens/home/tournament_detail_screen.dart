@@ -11,6 +11,7 @@ import '../../utils/tournament_registration_gate.dart';
 import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/round_labels.dart';
+import '../../widgets/trophy_image.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 
 String _initials(String? username) {
@@ -256,6 +257,11 @@ class _CompactHeader extends StatelessWidget {
               style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
             ),
           ),
+        if (tournament.hasTrophyImage)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _TrophyPrizeCard(tournament: tournament),
+          ),
         SizedBox(
           height: 46,
           child: ListView(
@@ -275,7 +281,9 @@ class _CompactHeader extends StatelessWidget {
                 text: '+${tournament.winnerEloReward} ELO',
                 color: AppTheme.accent,
               ),
-              if (tournament.hasPrize)
+              // The prize card above already shows the trophy — the chip only
+              // remains for cash prizes and trophies without a picked model.
+              if (tournament.hasPrize && !tournament.hasTrophyImage)
                 _InfoChip(
                   icon: Icons.emoji_events,
                   text: tournament.formattedPrize,
@@ -336,6 +344,92 @@ class _CompactHeader extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// "À gagner" banner for tournaments awarding a physical trophy. Shows the
+/// render of the actual prize and nothing about the object itself (no model
+/// name, no specs) — the picture does the selling; the admin's
+/// prizeDescription, when set, is the only text besides the shipping note.
+class _TrophyPrizeCard extends StatelessWidget {
+  final Tournament tournament;
+
+  const _TrophyPrizeCard({required this.tournament});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final description = tournament.prizeDescription;
+    final title = (description != null && description.isNotEmpty)
+        ? description
+        : l10n.trophyLabel;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            AppTheme.accent.withValues(alpha: 0.10),
+            AppTheme.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.prizeToWin.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    color: AppTheme.accent,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  l10n.trophyShippedToWinner,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          TrophyImage(
+            url: tournament.trophyThumbUrl,
+            size: 84,
+            fallback: const SizedBox(
+              width: 84,
+              height: 84,
+              child: Icon(Icons.emoji_events, size: 40, color: AppTheme.accent),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
