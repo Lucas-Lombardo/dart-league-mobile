@@ -416,12 +416,17 @@ abstract class AppLocalizations {
 
   // Tournament history / states
   String get tournamentHistoryTitle;
+  String get historyFilterAll;
+  String get historyFilterMine;
   String get noTournamentHistory;
   String get noTournamentHistoryHint;
+  String get noParticipatedTournaments;
   String get players;
   String get tournamentLoadError;
   String get matchWindowExpiredTitle;
   String get matchWindowExpiredHint;
+  String get opponentNoShowTitle;
+  String get opponentNoShowHint;
 
   // Tournament Game
   String get forfeitTournamentWarning;

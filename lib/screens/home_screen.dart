@@ -380,7 +380,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                 if (isTournamentTab)
                   Consumer<TournamentProvider>(
                     builder: (context, tournamentProvider, _) {
-                      if (!tournamentProvider.hasPendingInvite) {
+                      // A pending match invite is the urgent signal — it keeps
+                      // the plain dot. Otherwise the bubble counts tournaments
+                      // open for registration.
+                      final openCount = tournamentProvider.openRegistrationCount;
+                      if (!tournamentProvider.hasPendingInvite && openCount == 0) {
                         return const SizedBox.shrink();
                       }
                       return Positioned(
@@ -393,10 +397,22 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                             shape: BoxShape.circle,
                             border: Border.all(color: AppTheme.background, width: 2),
                           ),
-                          constraints: const BoxConstraints(
-                            minWidth: 14,
-                            minHeight: 14,
+                          constraints: BoxConstraints(
+                            minWidth: tournamentProvider.hasPendingInvite ? 14 : 20,
+                            minHeight: tournamentProvider.hasPendingInvite ? 14 : 20,
                           ),
+                          child: tournamentProvider.hasPendingInvite
+                              ? null
+                              : Center(
+                                  child: Text(
+                                    openCount > 9 ? '9+' : openCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
                         ),
                       );
                     },

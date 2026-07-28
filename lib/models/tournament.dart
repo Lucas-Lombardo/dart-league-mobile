@@ -389,6 +389,7 @@ class TournamentHistory {
   final String? winnerId;
   final String? winnerUsername;
   final int? placement;
+  final bool participated;
   final String registrationStatus;
   final int roundReached;
   final int entryFee;
@@ -411,6 +412,7 @@ class TournamentHistory {
     this.winnerId,
     this.winnerUsername,
     this.placement,
+    this.participated = true,
     required this.registrationStatus,
     required this.roundReached,
     this.entryFee = 0,
@@ -435,6 +437,7 @@ class TournamentHistory {
       winnerId: json['winnerId'] as String?,
       winnerUsername: json['winnerUsername'] as String?,
       placement: json['placement'] as int?,
+      participated: json['participated'] as bool? ?? true,
       registrationStatus: json['registrationStatus'] as String? ?? 'unknown',
       roundReached: json['roundReached'] as int? ?? 0,
       entryFee: json['entryFee'] as int? ?? 0,

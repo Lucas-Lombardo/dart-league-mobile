@@ -16,6 +16,10 @@ class TournamentHistoryScreen extends StatefulWidget {
 }
 
 class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
+  // Default view is every completed tournament; the toggle narrows the list
+  // to the ones the user actually played.
+  bool _showOnlyMine = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,65 +56,122 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
           },
         ),
       ),
-      body: Consumer<TournamentProvider>(
-        builder: (context, provider, _) {
-          if (provider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                _buildFilterSegment(l10n.historyFilterAll, false),
+                _buildFilterSegment(l10n.historyFilterMine, true),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Consumer<TournamentProvider>(
+              builder: (context, provider, _) {
+                if (provider.isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          final history = provider.tournamentHistory;
+                final history = _showOnlyMine
+                    ? provider.tournamentHistory
+                        .where((t) => t.participated)
+                        .toList()
+                    : provider.tournamentHistory;
 
-          if (history.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: _loadHistory,
-              child: ListView(
-                children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                  Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                if (history.isEmpty) {
+                  return RefreshIndicator(
+                    onRefresh: _loadHistory,
+                    child: ListView(
                       children: [
-                        Icon(
-                          Icons.history,
-                          size: 64,
-                          color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          l10n.noTournamentHistory,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 16,
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 64,
+                                color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _showOnlyMine
+                                    ? l10n.noParticipatedTournaments
+                                    : l10n.noTournamentHistory,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                l10n.noTournamentHistoryHint,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          l10n.noTournamentHistoryHint,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            );
-          }
+                  );
+                }
 
-          return RefreshIndicator(
-            onRefresh: _loadHistory,
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: history.length,
-              itemBuilder: (context, index) {
-                return _TournamentHistoryCard(tournament: history[index]);
+                return RefreshIndicator(
+                  onRefresh: _loadHistory,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: history.length,
+                    itemBuilder: (context, index) {
+                      return _TournamentHistoryCard(tournament: history[index]);
+                    },
+                  ),
+                );
               },
             ),
-          );
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterSegment(String label, bool mine) {
+    final isSelected = _showOnlyMine == mine;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (_showOnlyMine == mine) return;
+          HapticService.lightImpact();
+          setState(() => _showOnlyMine = mine);
         },
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -219,42 +280,43 @@ class _TournamentHistoryCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          _getPlacementColor(tournament.placement).withValues(alpha: 0.2),
-                          _getPlacementColor(tournament.placement).withValues(alpha: 0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getPlacementColor(tournament.placement).withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (tournament.placement != null && tournament.placement! <= 3) ...[
-                          Icon(
-                            Icons.emoji_events,
-                            size: 14,
-                            color: _getPlacementColor(tournament.placement),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Text(
-                          tournament.placementDisplay,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _getPlacementColor(tournament.placement),
-                          ),
+                  if (tournament.participated)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            _getPlacementColor(tournament.placement).withValues(alpha: 0.2),
+                            _getPlacementColor(tournament.placement).withValues(alpha: 0.1),
+                          ],
                         ),
-                      ],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _getPlacementColor(tournament.placement).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (tournament.placement != null && tournament.placement! <= 3) ...[
+                            Icon(
+                              Icons.emoji_events,
+                              size: 14,
+                              color: _getPlacementColor(tournament.placement),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            tournament.placementDisplay,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: _getPlacementColor(tournament.placement),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),

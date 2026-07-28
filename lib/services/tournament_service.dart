@@ -134,7 +134,8 @@ class TournamentService {
   }
 
   static Future<List<TournamentHistory>> getTournamentHistory() async {
-    final response = await ApiService.get('/tournaments/history');
+    // scope=all: every completed tournament, with `participated` flagging ours.
+    final response = await ApiService.get('/tournaments/history?scope=all');
     final list = response?['tournaments'] as List<dynamic>? ?? [];
     return list
         .whereType<Map<String, dynamic>>()

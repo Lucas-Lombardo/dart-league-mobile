@@ -69,7 +69,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   Duration _remaining = Duration.zero;
   bool _expired = false;
 
-  // After expiry the backend sweep (runs every minute) settles the match;
+  // After expiry the backend sweep (runs every 10 seconds) settles the match;
   // poll the bracket until we can tell the player what actually happened.
   Timer? _outcomePoll;
   int _outcomePollTries = 0;
@@ -251,19 +251,19 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     });
   }
 
-  // The backend sweep runs every minute after the 5-minute deadline. Poll the
-  // bracket a few times to tell the player how it ended instead of leaving
-  // them staring at "expired" forever.
+  // The backend sweep settles the match within ~10s of the deadline. Poll the
+  // bracket to tell the player how it ended instead of leaving them staring
+  // at "expired" forever (the socket result event usually beats this poll).
   void _startOutcomePolling() {
     _outcomePoll?.cancel();
     _outcomePollTries = 0;
-    _outcomePoll = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _outcomePoll = Timer.periodic(const Duration(seconds: 4), (_) async {
       if (!mounted || _navigating) {
         _outcomePoll?.cancel();
         return;
       }
       _outcomePollTries++;
-      if (_outcomePollTries > 18) {
+      if (_outcomePollTries > 45) {
         // ~3 minutes with no verdict — stop polling, leave the manual exit.
         _outcomePoll?.cancel();
         return;
@@ -520,8 +520,45 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
 
             const SizedBox(height: 48),
 
-            // Waiting indicator / expired state
-            if (_expired)
+            // Waiting indicator / expired state. Everyone on this screen has
+            // already readied, so when the window closes with the opponent
+            // still absent the verdict is "they no-showed, you advance" — the
+            // red "YOU didn't join" copy would read as a loss. Reserve it for
+            // the odd case where the opponent did ready (lost start event).
+            if (_expired && _myReady && !_opponentReady)
+              Column(
+                children: [
+                  const Icon(Icons.hourglass_bottom, size: 44, color: AppTheme.accent),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.opponentNoShowTitle,
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      l10n.opponentNoShowHint,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: AppTheme.textSecondary,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ],
+              )
+            else if (_expired)
               Column(
                 children: [
                   const Icon(Icons.timer_off_outlined, size: 44, color: AppTheme.error),

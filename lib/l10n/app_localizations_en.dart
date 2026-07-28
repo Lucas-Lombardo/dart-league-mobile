@@ -1024,11 +1024,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tournamentHistoryTitle => 'Tournament History';
 
   @override
+  String get historyFilterAll => 'All';
+
+  @override
+  String get historyFilterMine => 'My tournaments';
+
+  @override
   String get noTournamentHistory => 'No Tournament History';
 
   @override
   String get noTournamentHistoryHint =>
       'Complete tournaments to see your history here';
+
+  @override
+  String get noParticipatedTournaments =>
+      'You haven\'t played any tournaments yet';
 
   @override
   String get players => 'players';
@@ -1042,6 +1052,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get matchWindowExpiredHint =>
       'You didn\'t join your match in time';
+
+  @override
+  String get opponentNoShowTitle => 'Your opponent didn\'t show up';
+
+  @override
+  String get opponentNoShowHint =>
+      'You were ready on time. Confirming your qualification…';
 
   @override
   String get tbd => 'TBD';

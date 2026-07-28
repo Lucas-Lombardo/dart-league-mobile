@@ -59,6 +59,11 @@ class TournamentProvider extends ChangeNotifier {
 
   bool get hasPendingInvite => _pendingMatches.isNotEmpty;
 
+  /// Tournaments currently open for registration — drives the count bubble on
+  /// the Tournament tab of the bottom bar.
+  int get openRegistrationCount =>
+      _upcomingTournaments.where((t) => t.isRegistrationOpen).length;
+
   Future<void> loadAllTournaments() async {
     _isLoading = true;
     _error = null;
@@ -355,6 +360,18 @@ class TournamentProvider extends ChangeNotifier {
   Future<void> _pollOnce() async {
     await loadPendingMatches();
     await loadActiveMatch();
+    await _refreshUpcomingQuietly();
+  }
+
+  // Same data as loadUpcomingTournaments() but without touching _isLoading —
+  // keeps the tab-bar bubble fresh without flashing spinners on open screens.
+  Future<void> _refreshUpcomingQuietly() async {
+    try {
+      _upcomingTournaments = await TournamentService.getUpcomingTournaments();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error refreshing upcoming tournaments: $e');
+    }
   }
 
   void setupSocketListeners() {
