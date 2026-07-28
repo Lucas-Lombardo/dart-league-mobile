@@ -20,6 +20,14 @@ class AgoraService {
       await _engine!.initialize(RtcEngineContext(
         appId: appId,
         channelProfile: ChannelProfileType.channelProfileCommunication,
+        // gameStreaming = media volume instead of in-call volume. With the
+        // default scenario, the communication profile switches the device to
+        // the call volume stream (iOS: floor of ~6%, can never be muted;
+        // Android: STREAM_VOICE_CALL while sound effects play on
+        // STREAM_MUSIC), so during a cam match the hardware volume buttons
+        // couldn't turn the app down. Media volume goes to 0 and is the same
+        // stream the audioplayers clips use.
+        audioScenario: AudioScenarioType.audioScenarioGameStreaming,
       ));
 
       // Suppress excessive debug logs - only show errors
