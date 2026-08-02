@@ -7,12 +7,10 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
 
-  static const List<Locale> supportedLocales = [
-    Locale('en'),
-    Locale('fr'),
-  ];
+  static const List<Locale> supportedLocales = [Locale('en'), Locale('fr')];
 
   String get appName;
   String get login;
@@ -596,6 +594,25 @@ abstract class AppLocalizations {
   String trainingHighestRound(int score);
   String get trainingNextTarget;
   String get trainingBullLabel;
+
+  // Important Doubles drill.
+  String get trainingImportantDoubles;
+  String get trainingImportantDoublesDescription;
+  String get trainingRulesImportantDoubles;
+  String get trainingImportantDoublesPickTitle;
+  String get trainingImportantDoublesPickHint;
+  String get trainingImportantDoublesPickEmpty;
+  String trainingImportantDoublesPickSummary(int darts);
+  String get trainingTargetLabel;
+  String get trainingHitRate;
+  String get trainingHitRatePercent;
+  String trainingBlockProgress(int current, int total);
+  String trainingDartsProgress(int thrown, int total);
+  String get trainingProgressTitle;
+  String get trainingProgressEmpty;
+  String trainingProgressSessionsDarts(int sessions, int darts);
+  String get trainingViewProgress;
+
   String get trainingBustedOut;
   String get trainingResultSaved;
   String get trainingPlayAgain;
@@ -973,9 +990,57 @@ abstract class AppLocalizations {
   String activityPeakTip(String hour);
   String get activityQueueTip;
   String get activityNowAxisLabel;
+
+  // ---- Stats, onglet Matchs (flow A) ----
+  String get matchStatsTab;
+  String get statsFilters;
+  String get statsPeriod;
+  String get statsMode;
+  String get statsPeriod7;
+  String get statsPeriod30;
+  String get statsPeriod90;
+  String get statsPeriodAll;
+  String get statsModeRanked;
+  String get statsModeFriendly;
+  String get statsModeTournament;
+  String get statsModeBot;
+  String get statsSubtabForm;
+  String get statsSubtabScoring;
+  String get statsSubtabFinishing;
+  String get statsSubtabConsistency;
+  String get statsAtAGlance;
+  String get statsFirstNine;
+  String get statsTrebleTwentyRate;
+  String get statsBestVisit;
+  String get statsCheckout;
+  String get statsByRemaining;
+  String get statsDoubleLadder;
+  String get statsDartsToWinLeg;
+  String get statsBestLeg;
+  String get statsBustRate;
+  String get statsRecords;
+  String get statsRecordBestCheckout;
+  String get statsRecordBestLeg;
+  String get statsRecordBestLegAverage;
+  String get statsRecordLongestStreak;
+  String get statsHowCalculated;
+  String get statsAverageExplainer;
+  String get statsCheckoutExplainer;
+  String get statsNoDataForFilter;
+  String get statsNoDataHint;
+  String get statsNoRecordsYet;
+  String get statsApply;
+  String statsLastNLegs(int count);
+  String statsPreviousBlock(String value);
+  String statsVisitBreakdown(int count);
+  String statsUnlockCurve(int count);
+  String statsCheckoutAttempts(int hits, int attempts);
+  String statsVersus(String name);
+  String statsDartsUnit(String value);
 }
 
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override

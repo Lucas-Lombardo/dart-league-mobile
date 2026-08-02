@@ -14,9 +14,15 @@ import 'logic/bobs_27_strategy.dart';
 import 'logic/checkout_50_strategy.dart';
 import 'logic/checkout_finish_strategy.dart';
 import 'logic/high_score_strategy.dart';
+import 'logic/important_doubles_strategy.dart';
 import 'logic/jdc_challenge_strategy.dart';
 import 'logic/training_strategy.dart';
 import 'training_ai_screen.dart';
+
+/// Accent of the Important Doubles drill — the green the key doubles are
+/// charted in, so the drill, its tile and its progress screen all read as one
+/// thing.
+const Color kImportantDoublesColor = Color(0xFF199E70);
 
 class TrainingSelectScreen extends StatelessWidget {
   const TrainingSelectScreen({super.key});
@@ -41,6 +47,21 @@ class TrainingSelectScreen extends StatelessWidget {
               body: l10n.trainingRulesBotTraining,
               color: AppTheme.accent,
               icon: Icons.smart_toy,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _TrainingTile(
+            title: l10n.trainingImportantDoubles,
+            description: l10n.trainingImportantDoublesDescription,
+            icon: Icons.my_location,
+            color: kImportantDoublesColor,
+            onTap: () => openImportantDoublesPicker(context),
+            onInfo: () => showTrainingRulesSheet(
+              context,
+              title: l10n.trainingImportantDoubles,
+              body: l10n.trainingRulesImportantDoubles,
+              color: kImportantDoublesColor,
+              icon: Icons.my_location,
             ),
           ),
           const SizedBox(height: 12),
@@ -203,18 +224,13 @@ class TrainingSelectScreen extends StatelessWidget {
       ),
     );
     if (start == null || !context.mounted) return;
-    _startWithStrategy(
-      context,
-      CheckoutFinishStrategy(startScore: start),
-    );
+    _startWithStrategy(context, CheckoutFinishStrategy(startScore: start));
   }
 
   void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
     HapticService.mediumImpact();
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TrainingAiScreen(strategy: strategy),
-      ),
+      MaterialPageRoute(builder: (_) => TrainingAiScreen(strategy: strategy)),
     );
   }
 }
@@ -317,15 +333,219 @@ Future<void> openBotTrainingPicker(BuildContext context) async {
   );
   if (startingScore == null || !context.mounted) return;
   HapticService.mediumImpact();
-  context
-      .read<PlacementProvider>()
-      .startBotTrainingMatch(rank, startingScore: startingScore);
+  context.read<PlacementProvider>().startBotTrainingMatch(
+    rank,
+    startingScore: startingScore,
+  );
   if (!context.mounted) return;
+  await Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const PlacementCameraSetupScreen()));
+}
+
+/// Opens the double picker and, if the player validates a selection, starts an
+/// Important Doubles run on those targets (one 60-dart block each).
+Future<void> openImportantDoublesPicker(BuildContext context) async {
+  HapticService.mediumImpact();
+  final targets = await showModalBottomSheet<List<int>>(
+    context: context,
+    backgroundColor: AppTheme.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => const _ImportantDoublesSheet(),
+  );
+  if (targets == null || targets.isEmpty || !context.mounted) return;
+  HapticService.mediumImpact();
   await Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => const PlacementCameraSetupScreen(),
+      builder: (_) => TrainingAiScreen(
+        strategy: ImportantDoublesStrategy(targets: targets),
+      ),
     ),
   );
+}
+
+/// Grid of the eight key doubles. The player picks one or two; picking a third
+/// drops the oldest so the selection never has to be cleared by hand.
+class _ImportantDoublesSheet extends StatefulWidget {
+  const _ImportantDoublesSheet();
+
+  @override
+  State<_ImportantDoublesSheet> createState() => _ImportantDoublesSheetState();
+}
+
+class _ImportantDoublesSheetState extends State<_ImportantDoublesSheet> {
+  final List<int> _selected = [];
+
+  void _toggle(int target) {
+    HapticService.lightImpact();
+    setState(() {
+      if (_selected.remove(target)) return;
+      if (_selected.length == 2) _selected.removeAt(0);
+      _selected.add(target);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final dartCount =
+        _selected.length * ImportantDoublesStrategy.dartsPerDouble;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                l10n.trainingImportantDoublesPickTitle,
+                style: AppTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.trainingImportantDoublesPickHint,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: ImportantDoublesStrategy.keyDoubles.map((t) {
+                      final order = _selected.indexOf(t);
+                      return _DoubleChip(
+                        target: t,
+                        order: order < 0 ? null : order + 1,
+                        showOrder: _selected.length > 1,
+                        onTap: () => _toggle(t),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                _selected.isEmpty
+                    ? l10n.trainingImportantDoublesPickEmpty
+                    : l10n.trainingImportantDoublesPickSummary(dartCount),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _selected.isEmpty
+                    ? null
+                    : () =>
+                          Navigator.of(context).pop(List<int>.from(_selected)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kImportantDoublesColor,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: AppTheme.surfaceLight,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(l10n.trainingStartButton),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DoubleChip extends StatelessWidget {
+  final int target;
+
+  /// 1-based position in the selection, null when unselected.
+  final int? order;
+
+  /// Only worth showing the order once two doubles are queued.
+  final bool showOrder;
+  final VoidCallback onTap;
+
+  const _DoubleChip({
+    required this.target,
+    required this.order,
+    required this.showOrder,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = order != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 76,
+          height: 66,
+          decoration: BoxDecoration(
+            color: selected
+                ? kImportantDoublesColor.withValues(alpha: 0.18)
+                : AppTheme.surfaceLight.withValues(alpha: 0.25),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? kImportantDoublesColor
+                  : AppTheme.surfaceLight.withValues(alpha: 0.8),
+              width: selected ? 1.8 : 1,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: Text(
+                  'D$target',
+                  style: TextStyle(
+                    color: selected ? kImportantDoublesColor : Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (selected && showOrder)
+                Positioned(
+                  top: 5,
+                  right: 6,
+                  child: Text(
+                    '$order',
+                    style: const TextStyle(
+                      color: kImportantDoublesColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Opens a modal bottom sheet that explains the rules of a training.
@@ -345,12 +565,8 @@ Future<void> showTrainingRulesSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (ctx) => _RulesSheet(
-      title: title,
-      body: body,
-      color: color,
-      icon: icon,
-    ),
+    builder: (ctx) =>
+        _RulesSheet(title: title, body: body, color: color, icon: icon),
   );
 }
 
@@ -392,12 +608,7 @@ class _RulesSheet extends StatelessWidget {
                     child: Icon(icon, color: color, size: 22),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: AppTheme.titleLarge,
-                    ),
-                  ),
+                  Expanded(child: Text(title, style: AppTheme.titleLarge)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -450,6 +661,8 @@ String trainingDisplayName(AppLocalizations l10n, TrainingType type) {
       return l10n.trainingBotTraining;
     case TrainingType.jdcChallenge:
       return l10n.trainingJdcChallenge;
+    case TrainingType.importantDoubles:
+      return l10n.trainingImportantDoubles;
   }
 }
 
@@ -558,17 +771,23 @@ class _ModeSheet<T> extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(title, style: AppTheme.titleLarge, textAlign: TextAlign.center),
+              Text(
+                title,
+                style: AppTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 16),
               Flexible(
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: options
-                        .map((o) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _SheetButton(option: o),
-                            ))
+                        .map(
+                          (o) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _SheetButton(option: o),
+                          ),
+                        )
                         .toList(),
                   ),
                 ),

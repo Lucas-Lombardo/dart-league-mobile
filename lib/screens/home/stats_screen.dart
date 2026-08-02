@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
-import 'ranked_stats_tab.dart';
+import 'stats/matches_stats_tab.dart';
 import 'training_stats_tab.dart';
 
-enum StatsTab { ranked, training }
+enum StatsTab { matches, training }
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -15,7 +15,7 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  StatsTab _tab = StatsTab.ranked;
+  StatsTab _tab = StatsTab.matches;
 
   @override
   Widget build(BuildContext context) {
@@ -28,10 +28,12 @@ class _StatsScreenState extends State<StatsScreen> {
             children: [
               Expanded(
                 child: _TabButton(
-                  label: l10n.rankedStatsTab,
-                  icon: Icons.military_tech_outlined,
-                  selected: _tab == StatsTab.ranked,
-                  onTap: () => _selectTab(StatsTab.ranked),
+                  // "Classé" is no longer a tab — it moved into the Mode filter,
+                  // alongside friendly, tournament and bot legs.
+                  label: l10n.matchStatsTab,
+                  icon: Icons.sports_esports_outlined,
+                  selected: _tab == StatsTab.matches,
+                  onTap: () => _selectTab(StatsTab.matches),
                 ),
               ),
               const SizedBox(width: 12),
@@ -47,8 +49,8 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
         ),
         Expanded(
-          child: _tab == StatsTab.ranked
-              ? const RankedStatsTab()
+          child: _tab == StatsTab.matches
+              ? const MatchesStatsTab()
               : const TrainingStatsTab(),
         ),
       ],

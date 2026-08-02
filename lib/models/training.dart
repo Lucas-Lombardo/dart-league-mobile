@@ -9,6 +9,7 @@ enum TrainingType {
   checkout121,
   botTraining,
   jdcChallenge,
+  importantDoubles,
 }
 
 extension TrainingTypeX on TrainingType {
@@ -34,6 +35,8 @@ extension TrainingTypeX on TrainingType {
         return 'bot_training';
       case TrainingType.jdcChallenge:
         return 'jdc_challenge';
+      case TrainingType.importantDoubles:
+        return 'important_doubles';
     }
   }
 
@@ -59,6 +62,8 @@ extension TrainingTypeX on TrainingType {
         return TrainingType.botTraining;
       case 'jdc_challenge':
         return TrainingType.jdcChallenge;
+      case 'important_doubles':
+        return TrainingType.importantDoubles;
     }
     throw ArgumentError('Unknown training type: $value');
   }
@@ -77,6 +82,9 @@ extension TrainingTypeX on TrainingType {
       case TrainingType.checkout121:
       case TrainingType.botTraining:
       case TrainingType.jdcChallenge:
+      // Hit rate in percent — higher is better whether one or two doubles
+      // were trained.
+      case TrainingType.importantDoubles:
         return true;
     }
   }
@@ -116,7 +124,8 @@ class TrainingSessionRecord {
       completedAt: json['completedAt'] != null
           ? DateTime.tryParse(json['completedAt'] as String)
           : null,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.now(),
     );
   }
@@ -162,14 +171,14 @@ class TrainingTypeStats {
   }
 
   factory TrainingTypeStats.empty(TrainingType type) => TrainingTypeStats(
-        type: type,
-        sessions: 0,
-        bestScore: null,
-        averageScore: null,
-        lastScore: null,
-        lastPlayedAt: null,
-        totalDarts: 0,
-        higherIsBetter: type.higherIsBetter,
-        winRate: null,
-      );
+    type: type,
+    sessions: 0,
+    bestScore: null,
+    averageScore: null,
+    lastScore: null,
+    lastPlayedAt: null,
+    totalDarts: 0,
+    higherIsBetter: type.higherIsBetter,
+    winRate: null,
+  );
 }

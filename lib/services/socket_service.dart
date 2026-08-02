@@ -66,14 +66,6 @@ class SocketService {
   // corrupting scores.
   static bool _supportsDartAck = false;
 
-  // Server capability: ranked matches may run as best-of-3 series
-  // (ranked_leg_won / ranked_next_leg / ranked_match_won + legs fields in
-  // game_started and game_state_sync). We only DECLARE our own support in the
-  // matchmaking join body when this is true, so an older backend simply never
-  // sees the flag and keeps pairing us into BO1. Reset on every disconnect,
-  // like supportsDartAck, so a backend rollback degrades us safely.
-  static bool _supportsRankedBo3 = false;
-
   // Server capability: friend/support chat (/chat REST routes + chat:message
   // socket event). The chat UI stays functional without it (REST errors are
   // surfaced), but realtime delivery needs it. Reset on every disconnect,
@@ -105,9 +97,6 @@ class SocketService {
   /// Whether the server this socket is authenticated against acknowledges and
   /// deduplicates individual darts. See [_supportsDartAck].
   static bool get supportsDartAck => _supportsDartAck;
-
-  /// Whether the server can run ranked matches as best-of-3 series.
-  static bool get supportsRankedBo3 => _supportsRankedBo3;
 
   /// Whether the server has the friend/support chat (REST + `chat:message`).
   static bool get supportsChat => _supportsChat;
@@ -196,12 +185,6 @@ class SocketService {
       debugPrint('SocketService: server supportsDartAck=$supports');
     }
     _supportsDartAck = supports;
-
-    final supportsBo3 = data is Map && data['supportsRankedBo3'] == true;
-    if (supportsBo3 != _supportsRankedBo3) {
-      debugPrint('SocketService: server supportsRankedBo3=$supportsBo3');
-    }
-    _supportsRankedBo3 = supportsBo3;
 
     final supportsChat = data is Map && data['supportsChat'] == true;
     if (supportsChat != _supportsChat) {
@@ -368,11 +351,10 @@ class SocketService {
         debugPrint('SocketService: Disconnected - reason: $reason');
         _wasDisconnected = true;
         // Re-derived from the next 'authenticated'. Until then we assume the
-        // server cannot dedup darts nor run BO3, the safe assumptions.
+        // server cannot dedup darts, the safe assumption.
         _isAuthenticated = false;
         _authenticatedUserId = null;
         _supportsDartAck = false;
-        _supportsRankedBo3 = false;
         _supportsChat = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
@@ -490,7 +472,6 @@ class SocketService {
     _isAuthenticated = false;
     _authenticatedUserId = null;
     _supportsDartAck = false;
-    _supportsRankedBo3 = false;
     _supportsChat = false;
     if (_socket != null) {
       _socket!.disconnect();
@@ -543,7 +524,6 @@ class SocketService {
     _sessionUserId = null;
     _lastIdentityRebuild = null;
     _supportsDartAck = false;
-    _supportsRankedBo3 = false;
     _supportsChat = false;
     _handlers.clear();
     _handlerOwners.clear();

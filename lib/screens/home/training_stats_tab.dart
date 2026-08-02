@@ -13,6 +13,7 @@ import '../training/logic/checkout_finish_strategy.dart';
 import '../training/logic/high_score_strategy.dart';
 import '../training/logic/jdc_challenge_strategy.dart';
 import '../training/logic/training_strategy.dart';
+import '../training/important_doubles_progress_screen.dart';
 import '../training/training_ai_screen.dart';
 import '../training/training_select_screen.dart';
 
@@ -96,16 +97,36 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
             if (!hasAny)
               _buildEmpty(l10n)
             else
-              ..._stats.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _TrainingStatCard(stats: s, onTap: () => _openTraining(s.type)),
-                  )),
+              ..._stats.map(
+                (s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TrainingStatCard(
+                    stats: s,
+                    onTap: () => _openTraining(s.type),
+                    // Only Important Doubles records a per-target breakdown
+                    // worth charting session over session.
+                    onProgress:
+                        s.type == TrainingType.importantDoubles &&
+                            s.sessions > 0
+                        ? () {
+                            HapticService.lightImpact();
+                            AppNavigator.toScreen(
+                              context,
+                              const ImportantDoublesProgressScreen(),
+                            );
+                          }
+                        : null,
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () {
                 HapticService.mediumImpact();
-                AppNavigator.toScreen(context, const TrainingSelectScreen())
-                    .then((_) => _load());
+                AppNavigator.toScreen(
+                  context,
+                  const TrainingSelectScreen(),
+                ).then((_) => _load());
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
@@ -158,6 +179,10 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
       case TrainingType.jdcChallenge:
         strategy = JdcChallengeStrategy();
         break;
+      case TrainingType.importantDoubles:
+        // Needs its targets picked first, like bot training needs a rank.
+        openImportantDoublesPicker(context).then((_) => _load());
+        return;
     }
     AppNavigator.toScreen(
       context,
@@ -175,8 +200,11 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
       ),
       child: Column(
         children: [
-          const Icon(Icons.fitness_center,
-              size: 48, color: AppTheme.textSecondary),
+          const Icon(
+            Icons.fitness_center,
+            size: 48,
+            color: AppTheme.textSecondary,
+          ),
           const SizedBox(height: 16),
           Text(
             l10n.trainingNoSessionsYet,
@@ -199,7 +227,14 @@ class _TrainingStatCard extends StatelessWidget {
   final TrainingTypeStats stats;
   final VoidCallback onTap;
 
-  const _TrainingStatCard({required this.stats, required this.onTap});
+  /// Opens a drill-specific progression view. Null when the drill has none.
+  final VoidCallback? onProgress;
+
+  const _TrainingStatCard({
+    required this.stats,
+    required this.onTap,
+    this.onProgress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -225,14 +260,17 @@ class _TrainingStatCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(_iconFor(stats.type),
-                      color: _colorFor(stats.type), size: 24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(name, style: AppTheme.titleLarge),
+                  Icon(
+                    _iconFor(stats.type),
+                    color: _colorFor(stats.type),
+                    size: 24,
                   ),
-                  const Icon(Icons.chevron_right,
-                      color: AppTheme.textSecondary),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(name, style: AppTheme.titleLarge)),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: AppTheme.textSecondary,
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -246,8 +284,26 @@ class _TrainingStatCard extends StatelessWidget {
                 )
               else if (stats.type == TrainingType.botTraining)
                 _botTrainingRow(l10n)
+              else if (stats.type == TrainingType.importantDoubles)
+                _percentRow(l10n)
               else
                 _defaultRow(l10n),
+              if (onProgress != null) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: onProgress,
+                    style: TextButton.styleFrom(
+                      foregroundColor: kImportantDoublesColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.show_chart, size: 18),
+                    label: Text(l10n.trainingViewProgress),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -255,9 +311,51 @@ class _TrainingStatCard extends StatelessWidget {
     );
   }
 
+  /// Best/average/last as percentages — Important Doubles scores a hit rate,
+  /// so a bare "21" would read as points.
+  Widget _percentRow(AppLocalizations l10n) {
+    String pct(num? v) => v == null ? '—' : '${_formatNum(v)} %';
+    return Row(
+      children: [
+        Expanded(
+          child: _metric(
+            label: l10n.trainingBest,
+            value: pct(stats.bestScore),
+            color: AppTheme.success,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAverage,
+            value: pct(stats.averageScore),
+            color: AppTheme.primary,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingLast,
+            value: pct(stats.lastScore),
+            color: AppTheme.accent,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAttempts,
+            value: '${stats.sessions}',
+            color: AppTheme.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _defaultRow(AppLocalizations l10n) {
-    final bestLabel =
-        stats.higherIsBetter ? l10n.trainingBest : l10n.trainingBestLow;
+    final bestLabel = stats.higherIsBetter
+        ? l10n.trainingBest
+        : l10n.trainingBestLow;
     return Row(
       children: [
         Expanded(
@@ -297,9 +395,7 @@ class _TrainingStatCard extends StatelessWidget {
 
   Widget _botTrainingRow(AppLocalizations l10n) {
     final winRate = stats.winRate;
-    final winValue = winRate == null
-        ? '—'
-        : '${(winRate * 100).round()}%';
+    final winValue = winRate == null ? '—' : '${(winRate * 100).round()}%';
     return Row(
       children: [
         Expanded(
@@ -329,11 +425,8 @@ class _TrainingStatCard extends StatelessWidget {
     );
   }
 
-  Widget _divider() => Container(
-        width: 1,
-        height: 36,
-        color: AppTheme.surfaceLight,
-      );
+  Widget _divider() =>
+      Container(width: 1, height: 36, color: AppTheme.surfaceLight);
 
   Widget _metric({
     required String label,
@@ -389,6 +482,8 @@ class _TrainingStatCard extends StatelessWidget {
         return Icons.smart_toy;
       case TrainingType.jdcChallenge:
         return Icons.emoji_events;
+      case TrainingType.importantDoubles:
+        return Icons.my_location;
     }
   }
 
@@ -414,6 +509,8 @@ class _TrainingStatCard extends StatelessWidget {
         return AppTheme.accent;
       case TrainingType.jdcChallenge:
         return const Color(0xFFEAB308);
+      case TrainingType.importantDoubles:
+        return kImportantDoublesColor;
     }
   }
 }

@@ -120,10 +120,10 @@ class MatchmakingProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Wait for the capability handshake, not just the transport: the join
-      // body only declares supportsRankedBo3 once `authenticated` has landed,
-      // and a join POSTed in the gap queues this player as BO1-only — even a
-      // rejoin can then only upgrade the entry until it gets matched.
+      // Wait for the server handshake, not just the transport: a join POSTed
+      // in the gap can be matched instantly, and the server would emit
+      // match_found at a socket it hasn't identified as this user yet — the
+      // event would go nowhere.
       await SocketService.ensureAuthenticated();
     } catch (e) {
       // Socket not ready yet. Keep the searching UI up (the connection banner
@@ -166,9 +166,9 @@ class MatchmakingProvider with ChangeNotifier {
     }
     try {
       // This runs from onConnect, which always fires BEFORE the server's
-      // `authenticated` event is processed — POSTing right away would build
-      // the join body with supportsRankedBo3 still false (it resets on every
-      // disconnect) and queue this player as BO1-only. Wait for the handshake.
+      // `authenticated` event is processed — POSTing right away could get us
+      // matched while the server still can't route match_found to the fresh
+      // socket. Wait for the handshake.
       await SocketService.ensureAuthenticated();
       if (!_isSearching || _matchFound || _leaving) return;
       final response = await MatchmakingService.joinQueue(_currentUserId!);

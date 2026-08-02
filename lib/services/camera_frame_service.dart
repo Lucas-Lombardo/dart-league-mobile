@@ -144,7 +144,7 @@ class CameraFrameService {
     if (_disposed) return;
 
     // Start the image stream — each frame goes to Agora + cached for AI
-    _startImageStream();
+    await _awaitStream(_startImageStream());
   }
 
   /// Open (or re-open) the physical camera for the given [requested] lens.
@@ -250,7 +250,9 @@ class CameraFrameService {
       // Tear down the current controller. Null it out FIRST so any widget
       // rebuild that races with us reads a null controller (and renders its
       // placeholder) instead of touching a disposed one.
-      _stopImageStream();
+      // Await the stop: the controller must be out of streaming state before
+      // it is disposed, and before the new lens starts its own stream.
+      await _awaitStream(_stopImageStream());
       final old = _controller;
       _controller = null;
       _latestFrame = null;
@@ -260,7 +262,7 @@ class CameraFrameService {
 
       if (!await _openCamera(target)) return;
       if (_disposed) return;
-      _startImageStream();
+      await _awaitStream(_startImageStream());
 
       // Persist the lens actually opened (the target may have fallen back to
       // back when the device has no camera for that direction).
@@ -271,36 +273,86 @@ class CameraFrameService {
     }
   }
 
-  void _startImageStream() {
-    if (_controller == null || !_controller!.value.isInitialized || _isStreaming) return;
+  // Serialises every image-stream transition, and records the DESIRED state
+  // rather than acting on it immediately.
+  //
+  // CameraController.start/stopImageStream are async, and both plugins
+  // (camera_android, camera_avfoundation) keep a SINGLE platform-side frame
+  // controller. Fire-and-forget calls could therefore overlap: a stop still in
+  // flight when the next start ran finished last and tore down the freshly
+  // started stream (its cancel nulls the plugin's frame controller and cancels
+  // the new platform subscription). The camera then delivered no frames at all,
+  // silently. A hot-seat turn change did exactly that — stopCapture() then
+  // startCapture() in the same event-loop turn — so auto-scoring was dead for
+  // the next player until an unrelated clean stop/start (a manual dart edit)
+  // rebuilt the stream.
+  //
+  // Queueing the transitions also coalesces that stop→start pair into a no-op:
+  // the stream simply keeps running across the turn change.
+  Future<void> _streamQueue = Future<void>.value();
+  bool _wantStreaming = false;
 
-    _isStreaming = true;
-    _controller!.startImageStream((CameraImage image) {
-      if (_disposed) return;
+  Future<void> _startImageStream() => _setStreaming(true);
 
-      // Cache latest frame for AI capture
-      _latestFrame = image;
+  Future<void> _stopImageStream() => _setStreaming(false);
 
-      // Cap the push cadence at ~16 fps regardless of the actual camera rate
-      // (the encoder runs at 15 fps; a device that ignores the fps cap must
-      // not double the copy work).
-      final now = DateTime.now();
-      if (_lastPushAt != null &&
-          now.difference(_lastPushAt!) < _minPushInterval) {
-        return;
-      }
-      _lastPushAt = now;
-
-      _pushFrameToAgora(image);
-    });
+  Future<void> _setStreaming(bool want) {
+    _wantStreaming = want;
+    final op = _streamQueue.then((_) => _applyStreamingState()).catchError(
+        (Object e) =>
+            debugPrint('[CameraFrameService] stream transition failed: $e'));
+    _streamQueue = op;
+    return op;
   }
 
-  void _stopImageStream() {
-    if (!_isStreaming || _controller == null) return;
-    _isStreaming = false;
-    try {
-      _controller!.stopImageStream();
-    } catch (_) {}
+  /// Await a queued transition without letting a wedged platform call block
+  /// teardown: a camera plugin that never answers must not freeze a lens
+  /// switch, nor keep the device locked for the next screen (which retries
+  /// "camera already in use" for a limited window — see [_openCamera]).
+  Future<void> _awaitStream(Future<void> op) =>
+      op.timeout(const Duration(seconds: 2), onTimeout: () {});
+
+  Future<void> _applyStreamingState() async {
+    final controller = _controller;
+    final want = _wantStreaming &&
+        !_disposed &&
+        controller != null &&
+        controller.value.isInitialized;
+    if (want == _isStreaming) return;
+
+    if (want) {
+      _isStreaming = true;
+      try {
+        await controller.startImageStream(_onCameraImage);
+      } catch (e) {
+        _isStreaming = false;
+        debugPrint('[CameraFrameService] startImageStream failed: $e');
+      }
+    } else {
+      _isStreaming = false;
+      try {
+        await controller?.stopImageStream();
+      } catch (_) {}
+    }
+  }
+
+  void _onCameraImage(CameraImage image) {
+    if (_disposed || !_isStreaming) return;
+
+    // Cache latest frame for AI capture
+    _latestFrame = image;
+
+    // Cap the push cadence at ~16 fps regardless of the actual camera rate
+    // (the encoder runs at 15 fps; a device that ignores the fps cap must
+    // not double the copy work).
+    final now = DateTime.now();
+    if (_lastPushAt != null &&
+        now.difference(_lastPushAt!) < _minPushInterval) {
+      return;
+    }
+    _lastPushAt = now;
+
+    _pushFrameToAgora(image);
   }
 
   /// Push a camera frame to Agora as an external video frame.
@@ -752,10 +804,9 @@ class CameraFrameService {
 
   /// Resume the camera (e.g. when app comes back to foreground).
   void resume() {
-    if (_controller != null && _controller!.value.isInitialized && !_isStreaming && !_disposed) {
-      // Don't resurrect a stream that [setAiActive] deliberately stopped.
-      if (_aiActive || _agoraEngine != null) _startImageStream();
-    }
+    if (_disposed) return;
+    // Don't resurrect a stream that [setAiActive] deliberately stopped.
+    if (_aiActive || _agoraEngine != null) _startImageStream();
   }
 
   /// Gate the image stream on AI activity — DartsMind never burns pixel work
@@ -773,11 +824,9 @@ class CameraFrameService {
     _aiActive = active;
     if (_disposed) return;
     if (active) {
-      if (_controller != null &&
-          _controller!.value.isInitialized &&
-          !_isStreaming) {
-        _startImageStream();
-      }
+      // Always record the intent — gating on the CURRENT stream state would
+      // drop this start when a stop is still queued, leaving the stream off.
+      _startImageStream();
     } else if (_agoraEngine == null) {
       _stopImageStream();
       _latestFrame = null;
@@ -787,7 +836,7 @@ class CameraFrameService {
   /// Release all resources.
   Future<void> dispose() async {
     _disposed = true;
-    _stopImageStream();
+    await _awaitStream(_stopImageStream());
     _latestFrame = null;
 
     if (_videoTrackId != null) {

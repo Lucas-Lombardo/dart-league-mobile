@@ -128,7 +128,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get deleteAccountConfirm => 'Êtes-vous sûr ?';
 
   @override
-  String get deleteAccountWarning => 'Cette action est irréversible. Toutes vos données seront définitivement supprimées.';
+  String get deleteAccountWarning =>
+      'Cette action est irréversible. Toutes vos données seront définitivement supprimées.';
 
   @override
   String get yes => 'Oui';
@@ -192,10 +193,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get usernameRequired => 'Veuillez entrer un nom d\'utilisateur';
 
   @override
-  String get usernameTooShort => 'Le nom d\'utilisateur doit contenir au moins 3 caractères';
+  String get usernameTooShort =>
+      'Le nom d\'utilisateur doit contenir au moins 3 caractères';
 
   @override
-  String get usernameInvalid => 'Le nom d\'utilisateur ne peut contenir que des lettres, chiffres et underscores';
+  String get usernameInvalid =>
+      'Le nom d\'utilisateur ne peut contenir que des lettres, chiffres et underscores';
 
   @override
   String get emailRequired => 'Veuillez entrer votre email';
@@ -207,7 +210,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get passwordRequired => 'Veuillez entrer un mot de passe';
 
   @override
-  String get passwordTooShort => 'Le mot de passe doit contenir au moins 6 caractères';
+  String get passwordTooShort =>
+      'Le mot de passe doit contenir au moins 6 caractères';
 
   @override
   String get confirmPasswordRequired => 'Veuillez confirmer votre mot de passe';
@@ -450,7 +454,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get forgotPasswordTitle => 'Réinitialiser le mot de passe';
 
   @override
-  String get forgotPasswordDescription => 'Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.';
+  String get forgotPasswordDescription =>
+      'Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.';
 
   @override
   String get sendResetLink => 'Envoyer le lien';
@@ -459,7 +464,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get resetLinkSent => 'Lien envoyé';
 
   @override
-  String get resetLinkSentDescription => 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation sous peu.';
+  String get resetLinkSentDescription =>
+      'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation sous peu.';
 
   @override
   String get backToLogin => 'Retour à la connexion';
@@ -468,7 +474,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get checkYourEmail => 'Vérifiez votre email';
 
   @override
-  String get checkYourEmailDescription => 'Nous avons envoyé un lien de vérification à votre adresse email. Veuillez vérifier votre boîte de réception.';
+  String get checkYourEmailDescription =>
+      'Nous avons envoyé un lien de vérification à votre adresse email. Veuillez vérifier votre boîte de réception.';
 
   @override
   String get resendVerificationEmail => 'Renvoyer l\'email de vérification';
@@ -481,10 +488,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get placementMatches => 'Matchs de placement';
 
   @override
-  String get placementDescription => 'Jouez 4 matchs contre des bots de difficulté croissante pour obtenir votre premier rang !';
+  String get placementDescription =>
+      'Jouez 4 matchs contre des bots de difficulté croissante pour obtenir votre premier rang !';
 
   @override
-  String get completePlacementToUnlock => 'Terminez le placement pour débloquer le classement';
+  String get completePlacementToUnlock =>
+      'Terminez le placement pour débloquer le classement';
 
   @override
   String get matchesCompleted => 'matchs terminés';
@@ -553,10 +562,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get cameraRequired => 'Caméra requise';
 
   @override
-  String get cannotJoinWithoutCamera => 'Vous ne pouvez pas rejoindre la file sans accès à la caméra';
+  String get cannotJoinWithoutCamera =>
+      'Vous ne pouvez pas rejoindre la file sans accès à la caméra';
 
   @override
-  String get enablePermissionsInSettings => 'Veuillez activer les permissions caméra et microphone dans les paramètres de votre appareil pour continuer.';
+  String get enablePermissionsInSettings =>
+      'Veuillez activer les permissions caméra et microphone dans les paramètres de votre appareil pour continuer.';
 
   @override
   String get tryAgain => 'RÉESSAYER';
@@ -574,7 +585,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get micOffByDefault => 'Le microphone sera DÉSACTIVÉ par défaut';
 
   @override
-  String get makeSureDartboardVisible => 'Assurez-vous que la cible est visible';
+  String get makeSureDartboardVisible =>
+      'Assurez-vous que la cible est visible';
 
   @override
   String get joinQueue => 'REJOINDRE LA FILE';
@@ -583,26 +595,31 @@ class AppLocalizationsFr extends AppLocalizations {
   String get permissionsRequired => 'PERMISSIONS REQUISES';
 
   @override
-  String get positionDartboard => 'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
+  String get positionDartboard =>
+      'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
 
   // Camera Setup - Additional keys
   @override
   String get placementBadge => 'PLACEMENT';
 
   @override
-  String get positionPhoneInstruction => 'Positionnez votre téléphone pour que la cible soit entièrement visible';
+  String get positionPhoneInstruction =>
+      'Positionnez votre téléphone pour que la cible soit entièrement visible';
 
   @override
-  String get cameraAndMicPermissionRequired => 'Les permissions caméra et microphone sont nécessaires pour rejoindre un match';
+  String get cameraAndMicPermissionRequired =>
+      'Les permissions caméra et microphone sont nécessaires pour rejoindre un match';
 
   @override
-  String get micPermissionRequired => 'La permission microphone est nécessaire pour rejoindre un match';
+  String get micPermissionRequired =>
+      'La permission microphone est nécessaire pour rejoindre un match';
 
   @override
   String get noCamerasFound => 'Aucune caméra trouvée sur cet appareil';
 
   @override
-  String get failedToInitializeCamera => 'Échec de l\'initialisation de la caméra';
+  String get failedToInitializeCamera =>
+      'Échec de l\'initialisation de la caméra';
 
   @override
   String get unknownError => 'Erreur inconnue';
@@ -635,16 +652,20 @@ class AppLocalizationsFr extends AppLocalizations {
   String get scanningButton => 'RECHERCHE...';
 
   @override
-  String get cameraOnDuringMatchInfo => 'La caméra sera utilisée pour la détection IA des fléchettes';
+  String get cameraOnDuringMatchInfo =>
+      'La caméra sera utilisée pour la détection IA des fléchettes';
 
   @override
-  String get aiWillScoreDartsInfo => 'L\'IA comptabilisera automatiquement vos fléchettes';
+  String get aiWillScoreDartsInfo =>
+      'L\'IA comptabilisera automatiquement vos fléchettes';
 
   @override
-  String get makeSureDartboardVisibleInfo => 'Assurez-vous que la cible est entièrement visible';
+  String get makeSureDartboardVisibleInfo =>
+      'Assurez-vous que la cible est entièrement visible';
 
   @override
-  String get removeDartsFromBoardHint => 'Retirez vos fléchettes de la cible pour commencer';
+  String get removeDartsFromBoardHint =>
+      'Retirez vos fléchettes de la cible pour commencer';
 
   @override
   String get cameraSetupTitle => 'CONFIGURATION CAMÉRA';
@@ -653,10 +674,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get cameraRequiredError => 'Caméra Requise';
 
   @override
-  String get cameraPermissionRequired => 'La permission caméra est nécessaire pour rejoindre un match';
+  String get cameraPermissionRequired =>
+      'La permission caméra est nécessaire pour rejoindre un match';
 
   @override
-  String get positionDeviceInstruction => 'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
+  String get positionDeviceInstruction =>
+      'Positionnez votre appareil pour que la cible soit clairement visible à l\'écran';
 
   @override
   String get tryAgainButton => 'RÉESSAYER';
@@ -705,7 +728,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get leaveMatch => 'Quitter le match ?';
 
   @override
-  String get leaveMatchWarning => 'Si vous quittez, ce match de placement comptera comme une défaite.';
+  String get leaveMatchWarning =>
+      'Si vous quittez, ce match de placement comptera comme une défaite.';
 
   @override
   String get stay => 'Rester';
@@ -788,7 +812,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get eliminated => 'ÉLIMINÉ';
 
   @override
-  String get congratsWonSeries => 'Félicitations ! Vous avez remporté la série.';
+  String get congratsWonSeries =>
+      'Félicitations ! Vous avez remporté la série.';
 
   @override
   String get betterLuckNextTime => 'Bonne chance la prochaine fois.';
@@ -850,7 +875,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get profileUpdated => 'Profil mis à jour';
 
   @override
-  String get emailChangedVerifyHint => 'Un email de vérification a été envoyé à votre nouvelle adresse.';
+  String get emailChangedVerifyHint =>
+      'Un email de vérification a été envoyé à votre nouvelle adresse.';
 
   // Login
   @override
@@ -886,7 +912,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get searchByUsernameHint => 'Rechercher par nom d\'utilisateur...';
 
   @override
-  String get searchForUsersByUsername => 'Rechercher des utilisateurs par nom d\'utilisateur';
+  String get searchForUsersByUsername =>
+      'Rechercher des utilisateurs par nom d\'utilisateur';
 
   @override
   String get noUsersFound => 'Aucun utilisateur trouvé';
@@ -904,7 +931,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get removeFriendTitle => 'Supprimer l\'ami';
 
   @override
-  String get removeFriendMessage => 'Êtes-vous sûr de vouloir supprimer {username} de vos amis ?';
+  String get removeFriendMessage =>
+      'Êtes-vous sûr de vouloir supprimer {username} de vos amis ?';
 
   @override
   String get removeButton => 'Supprimer';
@@ -931,7 +959,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get friendRequestSent => 'Demande d\'ami envoyée à {username} !';
 
   @override
-  String get friendRequestAccepted => 'Vous êtes maintenant amis avec {username} !';
+  String get friendRequestAccepted =>
+      'Vous êtes maintenant amis avec {username} !';
 
   @override
   String get friendRequestDeclined => 'Demande d\'ami de {username} refusée';
@@ -944,7 +973,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noFriendsYetHint => 'Pas encore d\'amis';
 
   @override
-  String get addFriendsToSeeRankings => 'Ajoutez des amis pour voir leurs classements !';
+  String get addFriendsToSeeRankings =>
+      'Ajoutez des amis pour voir leurs classements !';
 
   @override
   String get noLeaderboardData => 'Aucune donnée de classement disponible';
@@ -978,11 +1008,11 @@ class AppLocalizationsFr extends AppLocalizations {
   String get inactivityPenaltyTitle => 'Pénalité d\'inactivité';
 
   @override
-  String get inactivityPenaltyDescription =>
-      '1 semaine sans match classé';
+  String get inactivityPenaltyDescription => '1 semaine sans match classé';
 
   @override
-  String get playGameToSeeHistory => 'Jouez une partie pour voir votre historique !';
+  String get playGameToSeeHistory =>
+      'Jouez une partie pour voir votre historique !';
 
   @override
   String get youLabel => 'Vous';
@@ -1037,8 +1067,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Termine des tournois pour voir ton historique ici';
 
   @override
-  String get noParticipatedTournaments =>
-      'Tu n\'as encore joué aucun tournoi';
+  String get noParticipatedTournaments => 'Tu n\'as encore joué aucun tournoi';
 
   @override
   String get players => 'joueurs';
@@ -1050,8 +1079,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get matchWindowExpiredTitle => 'Temps écoulé';
 
   @override
-  String get matchWindowExpiredHint =>
-      'Tu n\'as pas rejoint ton match à temps';
+  String get matchWindowExpiredHint => 'Tu n\'as pas rejoint ton match à temps';
 
   @override
   String get opponentNoShowTitle => 'Ton adversaire ne s\'est pas présenté';
@@ -1074,33 +1102,40 @@ class AppLocalizationsFr extends AppLocalizations {
 
   // Tournament Game
   @override
-  String get forfeitTournamentWarning => 'Si vous quittez maintenant, vous allez abandonner le match de tournoi et être éliminé.';
+  String get forfeitTournamentWarning =>
+      'Si vous quittez maintenant, vous allez abandonner le match de tournoi et être éliminé.';
 
   @override
   String get tournamentAppBarTitle => 'TOURNOI';
 
   @override
-  String get unableToAcceptResult => 'Impossible d\'accepter le résultat : Données manquantes';
+  String get unableToAcceptResult =>
+      'Impossible d\'accepter le résultat : Données manquantes';
 
   // Note: 'youAdvance' and 'eliminated' already defined at lines 632 and 651
 
   @override
-  String get opponentLeftForfeitAdvance => 'Votre adversaire a quitté. Vous gagnez par forfait et avancez !';
+  String get opponentLeftForfeitAdvance =>
+      'Votre adversaire a quitté. Vous gagnez par forfait et avancez !';
 
   @override
-  String get youLeftEliminated => 'Vous avez quitté la partie. Vous êtes éliminé du tournoi.';
+  String get youLeftEliminated =>
+      'Vous avez quitté la partie. Vous êtes éliminé du tournoi.';
 
   @override
   String get returnToHome => 'Retour à l\'accueil';
 
   @override
-  String get wellPlayedConfirmResult => 'Bien joué ! Confirmez le résultat pour continuer.';
+  String get wellPlayedConfirmResult =>
+      'Bien joué ! Confirmez le résultat pour continuer.';
 
   @override
-  String get betterLuckNextLeg => 'Bonne chance pour la prochaine manche. Confirmez le résultat pour continuer.';
+  String get betterLuckNextLeg =>
+      'Bonne chance pour la prochaine manche. Confirmez le résultat pour continuer.';
 
   @override
-  String get pleaseConfirmMatchResult => 'Veuillez confirmer le résultat du match';
+  String get pleaseConfirmMatchResult =>
+      'Veuillez confirmer le résultat du match';
 
   @override
   String get acceptResult => 'ACCEPTER LE RÉSULTAT';
@@ -1154,7 +1189,8 @@ class AppLocalizationsFr extends AppLocalizations {
 
   // Game Screen
   @override
-  String get forfeitMatchWarning => 'Si vous quittez maintenant, vous allez abandonner le match et perdre des points ELO.';
+  String get forfeitMatchWarning =>
+      'Si vous quittez maintenant, vous allez abandonner le match et perdre des points ELO.';
 
   @override
   String get liveMatch => 'MATCH EN DIRECT';
@@ -1171,10 +1207,12 @@ class AppLocalizationsFr extends AppLocalizations {
   // Note: 'victory', 'gameOver', 'defeat' already defined at lines 89, 107, 92
 
   @override
-  String get opponentLeftForfeit => 'Votre adversaire a quitté la partie.\\nVous gagnez par forfait !';
+  String get opponentLeftForfeit =>
+      'Votre adversaire a quitté la partie.\\nVous gagnez par forfait !';
 
   @override
-  String get youLeftForfeited => 'Vous avez quitté la partie.\\nMatch perdu par forfait.';
+  String get youLeftForfeited =>
+      'Vous avez quitté la partie.\\nMatch perdu par forfait.';
 
   @override
   String get continuePlaying => 'Continuer à jouer';
@@ -1228,7 +1266,8 @@ class AppLocalizationsFr extends AppLocalizations {
 
   // Play Screen - additional
   @override
-  String get playFirstGameToSeeHistory => 'Jouez votre première partie pour voir votre historique ici.';
+  String get playFirstGameToSeeHistory =>
+      'Jouez votre première partie pour voir votre historique ici.';
 
   @override
   String get viewAll => 'Voir tout';
@@ -1496,12 +1535,10 @@ class AppLocalizationsFr extends AppLocalizations {
       'Terminé à zéro sans avoir touché un double.';
 
   @override
-  String get trainingBustLeftOne =>
-      'Il reste 1 — aucune finition possible.';
+  String get trainingBustLeftOne => 'Il reste 1 — aucune finition possible.';
 
   @override
-  String get trainingBustOutOfDarts =>
-      'Fléchettes épuisées avant la finition.';
+  String get trainingBustOutOfDarts => 'Fléchettes épuisées avant la finition.';
 
   @override
   String get trainingPlayCardTitle => 'Entraînement';
@@ -1563,6 +1600,73 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trainingBullLabel => 'BULL';
+
+  @override
+  String get trainingImportantDoubles => 'Doubles importants';
+
+  @override
+  String get trainingImportantDoublesDescription =>
+      '60 fléchettes sur chacun des doubles qui ferment vraiment tes manches.';
+
+  @override
+  String get trainingRulesImportantDoubles =>
+      'Choisis un ou deux doubles, puis lance 60 fléchettes sur chacun — '
+      '20 volées de 3 fléchettes, une cible à la fois.\n\n'
+      'Seul l\'anneau double de la cible en cours compte. Un simple, un triple, '
+      'le mauvais numéro ou un raté ne rapportent rien.\n\n'
+      'Ton score de session est ton taux de réussite en pourcentage : une '
+      'séance de 60 fléchettes et une de 120 restent comparables. Chaque '
+      'double garde son propre historique, session après session.\n\n'
+      'Les huit cibles proposées sont les doubles qui ont fermé 79 % des '
+      'manches classées jouées sur Dart Rivals — les treize autres se '
+      'partagent le reste. C\'est ici que l\'entraînement paie.';
+
+  @override
+  String get trainingImportantDoublesPickTitle => 'Choisis 1 ou 2 doubles';
+
+  @override
+  String get trainingImportantDoublesPickHint =>
+      'Ces huit doubles ferment 79 % des manches réelles. 60 fléchettes sur '
+      'chacun.';
+
+  @override
+  String get trainingImportantDoublesPickEmpty => 'Choisis au moins un double.';
+
+  @override
+  String trainingImportantDoublesPickSummary(int darts) =>
+      '$darts fléchettes au total';
+
+  @override
+  String get trainingTargetLabel => 'Cible';
+
+  @override
+  String get trainingHitRate => 'Réussite';
+
+  @override
+  String get trainingHitRatePercent => 'Taux de réussite (%)';
+
+  @override
+  String trainingBlockProgress(int current, int total) =>
+      'Double $current sur $total';
+
+  @override
+  String trainingDartsProgress(int thrown, int total) =>
+      '$thrown/$total fléchettes';
+
+  @override
+  String get trainingProgressTitle => 'Progression par double';
+
+  @override
+  String get trainingProgressEmpty =>
+      'Aucune session Doubles importants enregistrée. Termine une séance pour '
+      'commencer à suivre chaque double.';
+
+  @override
+  String trainingProgressSessionsDarts(int sessions, int darts) =>
+      '$sessions sessions · $darts fléchettes';
+
+  @override
+  String get trainingViewProgress => 'Voir la progression';
 
   @override
   String get trainingBustedOut => 'Éliminé — le score est tombé à zéro.';
@@ -1705,17 +1809,20 @@ class AppLocalizationsFr extends AppLocalizations {
   String get dailyLimitReachedShort => 'Limite quotidienne atteinte';
 
   @override
-  String get goPremiumUnlimited => 'Passez Premium pour des matchs classés illimités';
+  String get goPremiumUnlimited =>
+      'Passez Premium pour des matchs classés illimités';
 
   @override
   String get freeTierMatchAvailable =>
       'Vous pouvez jouer 1 match classé aujourd\'hui avec l\'offre gratuite';
 
   @override
-  String get freeTierMatchUsed => 'Vous avez utilisé votre match classé gratuit pour aujourd\'hui';
+  String get freeTierMatchUsed =>
+      'Vous avez utilisé votre match classé gratuit pour aujourd\'hui';
 
   @override
-  String get tapToUpgradeForUnlimited => 'Appuyez pour passer à l\'offre illimitée';
+  String get tapToUpgradeForUnlimited =>
+      'Appuyez pour passer à l\'offre illimitée';
 
   @override
   String get freePlayBannerTitle => 'Soirée gratuite !';
@@ -1777,7 +1884,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get yesterdayLabel => 'Hier';
 
   @override
-  String get tapToLearnAboutPremium => 'Appuyez pour découvrir Premium · Matchs illimités';
+  String get tapToLearnAboutPremium =>
+      'Appuyez pour découvrir Premium · Matchs illimités';
 
   // Tournament & verification
   @override
@@ -2173,8 +2281,7 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get doubleOutLabel => 'Double pour finir';
   @override
-  String get doubleOutHint =>
-      'La manche doit se terminer sur un double';
+  String get doubleOutHint => 'La manche doit se terminer sur un double';
   @override
   String get startMatchButton => 'Commencer le match';
   @override
@@ -2229,7 +2336,8 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get updateAvailableTitle => 'Mise à jour disponible';
   @override
-  String get updateAvailableBody => 'Une nouvelle version de Dart Rivals est disponible.';
+  String get updateAvailableBody =>
+      'Une nouvelle version de Dart Rivals est disponible.';
   @override
   String get updateNow => 'Mettre à jour';
 
@@ -2238,45 +2346,55 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get updateRequiredTitle => 'Mise à jour requise';
   @override
-  String get tournamentUpdateRequiredBody => 'Mets à jour Dart Rivals pour participer aux tournois. Ta version est trop ancienne pour entrer.';
+  String get tournamentUpdateRequiredBody =>
+      'Mets à jour Dart Rivals pour participer aux tournois. Ta version est trop ancienne pour entrer.';
   @override
   String get tournamentFullTitle => 'Tournoi complet';
   @override
-  String get tournamentFullBody => 'Toutes les places de ce tournoi sont prises.';
+  String get tournamentFullBody =>
+      'Toutes les places de ce tournoi sont prises.';
   @override
   String get notEligibleTitle => 'Participation impossible';
   @override
   String get requiredRank => 'Rang requis';
   @override
-  String get profileUnavailable => 'Impossible de vérifier ton compte — vérifie ta connexion et réessaie.';
+  String get profileUnavailable =>
+      'Impossible de vérifier ton compte — vérifie ta connexion et réessaie.';
   @override
-  String get verificationEmailFailed => "Impossible d'envoyer l'email de vérification. Réessaie.";
+  String get verificationEmailFailed =>
+      "Impossible d'envoyer l'email de vérification. Réessaie.";
   @override
-  String get registrationNotOpenError => 'Les inscriptions ne sont pas ouvertes pour ce tournoi.';
+  String get registrationNotOpenError =>
+      'Les inscriptions ne sont pas ouvertes pour ce tournoi.';
   @override
   String get paymentRefunded => 'Ton paiement a été remboursé.';
   @override
   String get resultUnderReviewTitle => "Résultat en cours d'examen";
   @override
-  String get resultUnderReviewBody => "Tu as contesté ce résultat. Un admin désignera le vainqueur et le match reste gelé d'ici là. Tu seras prévenu.";
+  String get resultUnderReviewBody =>
+      "Tu as contesté ce résultat. Un admin désignera le vainqueur et le match reste gelé d'ici là. Tu seras prévenu.";
   @override
   String get youAdvanceTitle => 'Tu es qualifié !';
   @override
-  String get youAdvanceOpponentNoShow => "Ton adversaire ne s'est pas présenté à temps. Tu passes au tour suivant !";
+  String get youAdvanceOpponentNoShow =>
+      "Ton adversaire ne s'est pas présenté à temps. Tu passes au tour suivant !";
   @override
   String get eliminatedTitle => 'Éliminé';
   @override
-  String get eliminatedNoShowBody => "Tu n'as pas rejoint ton match à temps et tu as été éliminé du tournoi.";
+  String get eliminatedNoShowBody =>
+      "Tu n'as pas rejoint ton match à temps et tu as été éliminé du tournoi.";
   @override
   String get matchPostponedTitle => 'Match reporté';
   @override
-  String get matchPostponedBody => "Un résultat du tour précédent est en cours d'examen. Tu seras prévenu quand ton match sera prêt.";
+  String get matchPostponedBody =>
+      "Un résultat du tour précédent est en cours d'examen. Tu seras prévenu quand ton match sera prêt.";
   @override
   String get resumeTournamentMatch => 'REPRENDRE LE MATCH';
   @override
   String get underReviewBadge => 'EN EXAMEN';
   @override
-  String get disputedMatchBanner => "Le résultat de ton match est en cours d'examen — un admin va désigner le vainqueur. Tu seras prévenu.";
+  String get disputedMatchBanner =>
+      "Le résultat de ton match est en cours d'examen — un admin va désigner le vainqueur. Tu seras prévenu.";
   @override
   String get liveBadge => 'EN DIRECT';
   @override
@@ -2310,7 +2428,8 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get autoValidation => 'VALIDATION AUTO';
   @override
-  String get autoValidationHint => 'Retirez vos fléchettes de la cible pour valider';
+  String get autoValidationHint =>
+      'Retirez vos fléchettes de la cible pour valider';
   @override
   String get confirmUpper => 'CONFIRMER';
 
@@ -2428,4 +2547,103 @@ class AppLocalizationsFr extends AppLocalizations {
       'Lancer une recherche réveille les joueurs : les joueurs actifs reçoivent une notification et peuvent te rejoindre.';
   @override
   String get activityNowAxisLabel => 'maint.';
+
+  @override
+  String get matchStatsTab => 'Matchs';
+  @override
+  String get statsFilters => 'Filtres';
+  @override
+  String get statsPeriod => 'Période';
+  @override
+  String get statsMode => 'Mode';
+  @override
+  String get statsPeriod7 => '7 j';
+  @override
+  String get statsPeriod30 => '30 j';
+  @override
+  String get statsPeriod90 => '90 j';
+  @override
+  String get statsPeriodAll => 'Tout';
+  @override
+  String get statsModeRanked => 'Classé';
+  @override
+  String get statsModeFriendly => 'Amical';
+  @override
+  String get statsModeTournament => 'Tournoi';
+  @override
+  String get statsModeBot => 'Bot';
+  @override
+  String get statsSubtabForm => 'Forme';
+  @override
+  String get statsSubtabScoring => 'Scoring';
+  @override
+  String get statsSubtabFinishing => 'Finition';
+  @override
+  String get statsSubtabConsistency => 'Régularité';
+  @override
+  String get statsAtAGlance => "En un coup d'oeil";
+  @override
+  String get statsFirstNine => '9 premières fléchettes';
+  @override
+  String get statsTrebleTwentyRate => 'Visites avec un T20';
+  @override
+  String get statsBestVisit => 'Meilleure visite';
+  @override
+  String get statsCheckout => 'Checkout';
+  @override
+  String get statsByRemaining => 'Par reliquat restant';
+  @override
+  String get statsDoubleLadder => 'Échelle des doubles';
+  @override
+  String get statsDartsToWinLeg => 'Fléchettes pour gagner un leg';
+  @override
+  String get statsBestLeg => 'Meilleur leg';
+  @override
+  String get statsBustRate => 'Taux de bust';
+  @override
+  String get statsRecords => 'Records';
+  @override
+  String get statsRecordBestCheckout => 'Meilleur checkout';
+  @override
+  String get statsRecordBestLeg => 'Meilleur leg';
+  @override
+  String get statsRecordBestLegAverage => 'Meilleure moyenne sur un leg';
+  @override
+  String get statsRecordLongestStreak => 'Plus longue série';
+  @override
+  String get statsHowCalculated => "Comment c'est calculé";
+  @override
+  String get statsAverageExplainer =>
+      'Total des points marqués divisé par le nombre de fléchettes lancées, multiplié par 3. Les visites bustées comptent comme des fléchettes sans points.';
+  @override
+  String get statsCheckoutExplainer =>
+      'Une fléchette compte dès que le reliquat se finit en un seul double. Le pourcentage est le nombre de doubles réussis sur ce total.';
+  @override
+  String get statsNoDataForFilter => 'Aucun leg sur cette période.';
+  @override
+  String get statsNoDataHint =>
+      'Change de période ou de mode, ou lance un match pour commencer à remplir tes stats.';
+  @override
+  String get statsNoRecordsYet =>
+      'Pas encore de record. Finis un leg au double pour en débloquer un.';
+  @override
+  String get statsApply => 'Appliquer';
+  @override
+  String statsLastNLegs(int count) =>
+      count <= 1 ? 'Dernier leg' : '$count derniers legs';
+  @override
+  String statsPreviousBlock(String value) => 'Bloc précédent : $value';
+  @override
+  String statsVisitBreakdown(int count) => 'Répartition des $count visites';
+  @override
+  String statsUnlockCurve(int count) => count <= 1
+      ? 'Encore un leg et ta courbe de progression apparaît ici.'
+      : 'Encore $count legs et ta courbe de progression apparaît ici.';
+  @override
+  String statsCheckoutAttempts(int hits, int attempts) =>
+      '$hits doubles réussis sur $attempts fléchettes lancées à un double';
+  @override
+  String statsVersus(String name) => 'vs $name';
+  @override
+  String statsDartsUnit(String value) => '$value fl.';
 }

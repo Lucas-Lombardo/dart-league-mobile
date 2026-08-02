@@ -17,18 +17,25 @@ class AgoraService {
 
     try {
       _engine = createAgoraRtcEngine();
+      // liveBroadcasting + gameStreaming = media volume instead of in-call
+      // volume. gameStreaming alone (previous fix) was not enough: on iOS the
+      // COMMUNICATION profile keeps the hardware-AEC voice-processing unit, so
+      // the device stays on in-call volume no matter the scenario — hardware
+      // volume buttons and the Control Center slider stop affecting the app
+      // (in-call volume also has a ~6% floor, can never be muted; Android:
+      // STREAM_VOICE_CALL while sound effects play on STREAM_MUSIC). Media
+      // volume goes to 0 and is the same stream the audioplayers clips use.
+      // Both players join as broadcasters, so liveBroadcasting behaves the
+      // same as communication for a 1v1 call.
       await _engine!.initialize(RtcEngineContext(
         appId: appId,
-        channelProfile: ChannelProfileType.channelProfileCommunication,
-        // gameStreaming = media volume instead of in-call volume. With the
-        // default scenario, the communication profile switches the device to
-        // the call volume stream (iOS: floor of ~6%, can never be muted;
-        // Android: STREAM_VOICE_CALL while sound effects play on
-        // STREAM_MUSIC), so during a cam match the hardware volume buttons
-        // couldn't turn the app down. Media volume goes to 0 and is the same
-        // stream the audioplayers clips use.
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
         audioScenario: AudioScenarioType.audioScenarioGameStreaming,
       ));
+
+      // Belt and braces: re-assert the scenario through the dedicated setter
+      // in case the RtcEngineContext field is dropped by the platform binding.
+      await _engine!.setAudioScenario(AudioScenarioType.audioScenarioGameStreaming);
 
       // Suppress excessive debug logs - only show errors
       await _engine!.setLogLevel(LogLevel.logLevelError);
@@ -84,7 +91,8 @@ class AgoraService {
       _engine = createAgoraRtcEngine();
       await _engine!.initialize(RtcEngineContext(
         appId: appId,
-        channelProfile: ChannelProfileType.channelProfileCommunication,
+        // Same profile as mobile: all users in a channel must share it.
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
       ));
 
       await _engine!.setLogLevel(LogLevel.logLevelError);
@@ -162,7 +170,9 @@ class AgoraService {
         uid: uid,
         options: ChannelMediaOptions(
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
-          channelProfile: ChannelProfileType.channelProfileCommunication,
+          // Must match initializeEngine: COMMUNICATION here would drag iOS
+          // back to in-call volume (see the volume comment up there).
+          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
           publishMicrophoneTrack: false,
           autoSubscribeAudio: true,
           autoSubscribeVideo: true,

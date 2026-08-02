@@ -759,6 +759,12 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
           _startAiCapture();
         }
       },
+      // The edit modal stops capture so detections can't overwrite the manual
+      // correction. Restart it even when the edit was cancelled (no onEditDart
+      // then) — otherwise the AI stays dead for the rest of the visit.
+      onEditModalClosed: () {
+        if (!_isWin && !_isBust) _startAiCapture();
+      },
       onToggleAi: (_autoScoringService?.modelLoaded ?? false) ? _toggleAi : null,
       aiEnabled: !_aiManuallyDisabled,
     );

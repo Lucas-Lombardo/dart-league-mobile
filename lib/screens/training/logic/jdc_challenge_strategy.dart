@@ -21,8 +21,26 @@ class JdcChallengeStrategy extends TrainingStrategy {
 
   /// 21 sequential targets for Part 2. Doubles 1-20 then BULL (25 = bull).
   static const List<int> _part2Targets = [
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
     25,
   ];
 
@@ -223,8 +241,9 @@ class JdcChallengeStrategy extends TrainingStrategy {
       _totalDarts++;
     }
 
-    final shanghai =
-        (part == 1 || part == 3) ? _shanghaiBonus(darts, targets[0]) : 0;
+    final shanghai = (part == 1 || part == 3)
+        ? _shanghaiBonus(darts, targets[0])
+        : 0;
     final visitTotal = dartScoreSum + shanghai;
     _totalScore += visitTotal;
     _visits.add({

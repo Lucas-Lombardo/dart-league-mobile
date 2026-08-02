@@ -28,7 +28,7 @@ class CheckoutFinishStrategy extends TrainingStrategy {
   final List<Map<String, Object>> _history = [];
 
   CheckoutFinishStrategy({required this.startScore})
-      : assert(startScore == 81 || startScore == 121);
+    : assert(startScore == 81 || startScore == 121);
 
   /// Live remaining score within the current visit after applying [pending]
   /// under standard X01 rules. Returns the pre-visit remaining if pending
@@ -66,15 +66,18 @@ class CheckoutFinishStrategy extends TrainingStrategy {
       '$_highestReached';
 
   @override
-  double progress(List<TrainingDart> pending) =>
-      _attemptIndex / _attemptsTotal;
+  double progress(List<TrainingDart> pending) => _attemptIndex / _attemptsTotal;
 
   @override
   String? progressCaption(AppLocalizations l10n, List<TrainingDart> pending) {
-    final attempt =
-        l10n.trainingAttemptProgress(_attemptIndex + 1, _attemptsTotal);
+    final attempt = l10n.trainingAttemptProgress(
+      _attemptIndex + 1,
+      _attemptsTotal,
+    );
     final visit = l10n.trainingVisitProgress(
-        _visitsUsedInAttempt + 1, _visitsPerAttempt);
+      _visitsUsedInAttempt + 1,
+      _visitsPerAttempt,
+    );
     return '$attempt · $visit';
   }
 

@@ -23,14 +23,12 @@ void main() {
       SocketService.debugDispatch('authenticated', {
         'userId': 'user-b',
         'supportsDartAck': true,
-        'supportsRankedBo3': true,
       });
 
       expect(SocketService.belongsToSession, isFalse);
       // Capabilities of a socket this user will never receive events on must
       // not be adopted either.
       expect(SocketService.supportsDartAck, isFalse);
-      expect(SocketService.supportsRankedBo3, isFalse);
     });
 
     test('a handshake naming the signed-in user is adopted', () {
@@ -39,12 +37,10 @@ void main() {
       SocketService.debugDispatch('authenticated', {
         'userId': 'user-a',
         'supportsDartAck': true,
-        'supportsRankedBo3': true,
       });
 
       expect(SocketService.authenticatedUserId, 'user-a');
       expect(SocketService.supportsDartAck, isTrue);
-      expect(SocketService.supportsRankedBo3, isTrue);
     });
 
     test('switching account notifies session listeners so per-user state drops',

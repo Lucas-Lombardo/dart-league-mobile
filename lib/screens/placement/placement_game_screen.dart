@@ -414,6 +414,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
           _botRoundScores.add(botRoundScore);
           _lastBotScore = placement.player2Score;
         });
+        // Caller: announce the bot's visit like a human opponent's in a ranked
+        // match. The total matches what the bot panel shows — 0 on a bust,
+        // which the caller reads as "no score".
+        DartCallerService.callScore(botRoundScore);
       } else {
         _lastBotScore = placement.player2Score;
       }

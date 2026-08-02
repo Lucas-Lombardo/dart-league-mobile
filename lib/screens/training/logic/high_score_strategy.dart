@@ -53,10 +53,7 @@ class HighScoreStrategy extends TrainingStrategy {
   @override
   VisitOutcome submitVisit(List<TrainingDart> darts) {
     final roundThrows = darts
-        .map((d) => {
-              'notation': d.notation,
-              'points': d.points,
-            })
+        .map((d) => {'notation': d.notation, 'points': d.points})
         .toList();
     final roundTotal = _pendingPoints(darts);
     _rounds.add(roundThrows);

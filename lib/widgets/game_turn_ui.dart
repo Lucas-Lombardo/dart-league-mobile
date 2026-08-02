@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import 'logo_watermark.dart';
 
 /// Shared building blocks for the in-match maquette UI (July 2026 redesign).
 /// Both turn layouts — AutoScoreGameView (your turn) and the opponent-turn
@@ -76,23 +77,29 @@ class LiveBadge extends StatelessWidget {
         color: AppTheme.opponentPink,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          AppLocalizations.of(context).liveBadge,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
           ),
-        ),
-      ]),
+          const SizedBox(width: 6),
+          Text(
+            AppLocalizations.of(context).liveBadge,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -148,25 +155,263 @@ class ZoomPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget btn(IconData icon, VoidCallback? onTap) => GestureDetector(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Icon(icon, size: 18, color: onTap != null ? Colors.white : Colors.white30),
-          ),
-        );
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Icon(
+          icon,
+          size: 18,
+          color: onTap != null ? Colors.white : Colors.white30,
+        ),
+      ),
+    );
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.gameBackground.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        btn(Icons.remove, zoom > minZoom ? onZoomOut : null),
-        Text(
-          '${zoom.toStringAsFixed(1)}×',
-          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-        ),
-        btn(Icons.add, zoom < maxZoom ? onZoomIn : null),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          btn(Icons.remove, zoom > minZoom ? onZoomOut : null),
+          Text(
+            '${zoom.toStringAsFixed(1)}×',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          btn(Icons.add, zoom < maxZoom ? onZoomIn : null),
+        ],
+      ),
+    );
+  }
+}
+
+/// The camera panel every AI-scored mode renders on top of its layout: the
+/// video feed, the colored border, the brand bug, a back button, the top-right
+/// controls, the camera guidance pills and the zoom pill.
+///
+/// Shared by [AutoScoreGameView] (ranked / friendly / bot training) and
+/// TrainingGameView (solo drills) so the feed looks identical everywhere.
+///
+/// [videoView] stays a plain widget — the caller builds the Agora view or the
+/// local preview — so this file never has to depend on the RTC engine.
+class GameCameraPanel extends StatelessWidget {
+  final Widget? videoView;
+  final Color borderColor;
+  final VoidCallback? onBack;
+
+  /// Top-right controls (mic, camera flip, AI toggle…). Spacing is inserted
+  /// between them here so callers just list the buttons they want.
+  final List<Widget> controls;
+
+  /// Amber "take your darts off the board" pill — only shown once the AI has
+  /// actually seen leftover darts.
+  final bool showRemoveDartsHint;
+
+  /// The AI's zoom/detection hint, shown under the remove-darts pill.
+  final String? hint;
+
+  final double zoom;
+  final double minZoom;
+  final double maxZoom;
+  final VoidCallback? onZoomIn;
+  final VoidCallback? onZoomOut;
+
+  const GameCameraPanel({
+    super.key,
+    this.videoView,
+    this.borderColor = AppTheme.playerBlue,
+    this.onBack,
+    this.controls = const [],
+    this.showRemoveDartsHint = false,
+    this.hint,
+    this.zoom = 1.0,
+    this.minZoom = 1.0,
+    this.maxZoom = 1.0,
+    this.onZoomIn,
+    this.onZoomOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // The native camera preview is a platform view that renders ABOVE sibling
+    // Flutter widgets earlier in the tree, so every control has to live inside
+    // this Stack (after the video Container) to be visible.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            color: Colors.black,
+            child:
+                videoView ??
+                const Center(
+                  child: Icon(
+                    Icons.videocam_off,
+                    color: Colors.white24,
+                    size: 48,
+                  ),
+                ),
+          ),
+
+          // ── Colored border (whose turn / which mode) ──
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: borderColor, width: 2),
+              borderRadius: BorderRadius.circular(22),
+            ),
+          ),
+
+          // ── Brand bug (top center), like a TV channel logo ──
+          const Positioned(
+            top: 12,
+            left: 0,
+            right: 0,
+            child: Center(child: LogoWatermark()),
+          ),
+
+          // ── Back button (top-left, styled like the other controls) ──
+          if (onBack != null)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: GameControlButton(
+                icon: Icons.arrow_back_ios_new,
+                color: AppTheme.textSecondary,
+                onTap: onBack,
+              ),
+            ),
+
+          // ── Mic / camera / AI controls (top-right) ──
+          if (controls.isNotEmpty)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Row(
+                children: [
+                  for (var i = 0; i < controls.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    controls[i],
+                  ],
+                ],
+              ),
+            ),
+
+          // ── Camera guidance pills (bottom center, above the zoom pill):
+          // "remove your darts" while the empty-board gate is armed, and the
+          // AI's zoom/detection hint. Compact centered pills so they read as
+          // status, not as a blocking banner.
+          Positioned(
+            bottom: 60,
+            left: 16,
+            right: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showRemoveDartsHint)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.black87,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            l10n.removeDartsFromBoardHint,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (showRemoveDartsHint && hint != null)
+                  const SizedBox(height: 8),
+                if (hint != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.gameBackground.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppTheme.accent.withValues(alpha: 0.6),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.camera_alt,
+                          color: AppTheme.accent,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            hint!,
+                            style: const TextStyle(
+                              color: AppTheme.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // ── Zoom pill (bottom center) ──
+          if (onZoomIn != null && onZoomOut != null)
+            Positioned(
+              bottom: 12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: ZoomPill(
+                  zoom: zoom,
+                  minZoom: minZoom,
+                  maxZoom: maxZoom,
+                  onZoomIn: onZoomIn,
+                  onZoomOut: onZoomOut,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -209,7 +454,8 @@ class _AlternatingAverageState extends State<AlternatingAverage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     // Fall back to whichever side has data while the other is still null.
-    final bool mine = widget.myAverage != null &&
+    final bool mine =
+        widget.myAverage != null &&
         (_showMine || widget.opponentAverage == null);
     final double? value = mine ? widget.myAverage : widget.opponentAverage;
     if (value == null) return const SizedBox.shrink();
@@ -232,7 +478,9 @@ class _AlternatingAverageState extends State<AlternatingAverage> {
           Text(
             value.toStringAsFixed(1),
             style: TextStyle(
-              color: mine ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright,
+              color: mine
+                  ? AppTheme.playerBlueBright
+                  : AppTheme.opponentPinkBright,
               fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
@@ -300,17 +548,22 @@ class TurnScoreHeader extends StatelessWidget {
               children: [
                 SizedBox(
                   height: badgeRowHeight,
-                  child: Row(children: [
-                    if (leading != null) ...[leading!, const SizedBox(width: 8)],
-                    GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                    if (seriesTitle != null && roundNumber != null) ...[
-                      const SizedBox(width: 8),
-                      GameChip(
-                        text: l10n.roundChip(roundNumber!),
-                        color: AppTheme.textSecondary,
-                      ),
+                  child: Row(
+                    children: [
+                      if (leading != null) ...[
+                        leading!,
+                        const SizedBox(width: 8),
+                      ],
+                      GameChip(text: l10n.you, color: AppTheme.playerBlue),
+                      if (seriesTitle != null && roundNumber != null) ...[
+                        const SizedBox(width: 8),
+                        GameChip(
+                          text: l10n.roundChip(roundNumber!),
+                          color: AppTheme.textSecondary,
+                        ),
+                      ],
                     ],
-                  ]),
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -324,47 +577,55 @@ class TurnScoreHeader extends StatelessWidget {
                     letterSpacing: 0.5,
                   ),
                 ),
-                Text('$myScore', style: scoreStyle.copyWith(color: AppTheme.playerBlueBright)),
+                Text(
+                  '$myScore',
+                  style: scoreStyle.copyWith(color: AppTheme.playerBlueBright),
+                ),
               ],
             ),
           ),
-          Column(children: [
-            SizedBox(
-              height: badgeRowHeight,
-              child: Center(
-                child: seriesTitle == null && roundNumber != null
-                    ? GameChip(text: l10n.roundChip(roundNumber!), color: AppTheme.textSecondary)
-                    : const SizedBox.shrink(),
-              ),
-            ),
-            // Series mode: title sits on the names line, legs score on the
-            // scores line (mirrors the two side columns).
-            if (seriesTitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                seriesTitle!.toUpperCase(),
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+          Column(
+            children: [
+              SizedBox(
+                height: badgeRowHeight,
+                child: Center(
+                  child: seriesTitle == null && roundNumber != null
+                      ? GameChip(
+                          text: l10n.roundChip(roundNumber!),
+                          color: AppTheme.textSecondary,
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
-              const SizedBox(height: 6),
-              SeriesLegsScore(
-                myLegs: myLegs,
-                opponentLegs: opponentLegs,
-                fontSize: 26,
-              ),
+              // Series mode: title sits on the names line, legs score on the
+              // scores line (mirrors the two side columns).
+              if (seriesTitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  seriesTitle!.toUpperCase(),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SeriesLegsScore(
+                  myLegs: myLegs,
+                  opponentLegs: opponentLegs,
+                  fontSize: 26,
+                ),
+              ],
+              if (myAverage != null || opponentAverage != null) ...[
+                const SizedBox(height: 4),
+                AlternatingAverage(
+                  myAverage: myAverage,
+                  opponentAverage: opponentAverage,
+                ),
+              ],
             ],
-            if (myAverage != null || opponentAverage != null) ...[
-              const SizedBox(height: 4),
-              AlternatingAverage(
-                myAverage: myAverage,
-                opponentAverage: opponentAverage,
-              ),
-            ],
-          ]),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -407,7 +668,12 @@ class TurnScoreHeader extends StatelessWidget {
                     letterSpacing: 0.5,
                   ),
                 ),
-                Text('$opponentScore', style: scoreStyle.copyWith(color: AppTheme.opponentPinkBright)),
+                Text(
+                  '$opponentScore',
+                  style: scoreStyle.copyWith(
+                    color: AppTheme.opponentPinkBright,
+                  ),
+                ),
               ],
             ),
           ),
@@ -452,7 +718,10 @@ class SeriesLegsScore extends StatelessWidget {
             ),
           ),
         ),
-        Text('$opponentLegs', style: style.copyWith(color: AppTheme.opponentPink)),
+        Text(
+          '$opponentLegs',
+          style: style.copyWith(color: AppTheme.opponentPink),
+        ),
       ],
     );
   }
@@ -493,7 +762,9 @@ class DartVisitChip extends StatelessWidget {
           color: AppTheme.gamePanel,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: highlighted ? AppTheme.opponentPink : accent.withValues(alpha: 0.75),
+            color: highlighted
+                ? AppTheme.opponentPink
+                : accent.withValues(alpha: 0.75),
             width: highlighted ? 1.8 : 1.4,
           ),
         ),
@@ -834,8 +1105,9 @@ class _OpponentWarningBannerState extends State<OpponentWarningBanner>
       animation: _pulse,
       builder: (context, _) {
         final t = _pulse.value;
-        final titleColor = AppTheme.opponentPinkBright
-            .withValues(alpha: 0.45 + 0.55 * t);
+        final titleColor = AppTheme.opponentPinkBright.withValues(
+          alpha: 0.45 + 0.55 * t,
+        );
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -847,39 +1119,42 @@ class _OpponentWarningBannerState extends State<OpponentWarningBanner>
               width: 1.4,
             ),
           ),
-          child: Row(children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: AppTheme.opponentPink.withValues(alpha: 0.45 + 0.55 * t),
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.doNotThrowTitle,
-                    style: TextStyle(
-                      color: titleColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    l10n.opponentTurnWait,
-                    style: TextStyle(
-                      color: AppTheme.opponentPinkBright
-                          .withValues(alpha: 0.35 + 0.3 * t),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+          child: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: AppTheme.opponentPink.withValues(alpha: 0.45 + 0.55 * t),
+                size: 20,
               ),
-            ),
-          ]),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.doNotThrowTitle,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      l10n.opponentTurnWait,
+                      style: TextStyle(
+                        color: AppTheme.opponentPinkBright.withValues(
+                          alpha: 0.35 + 0.3 * t,
+                        ),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -926,145 +1201,156 @@ class UserScoreBar extends StatelessWidget {
         color: AppTheme.gamePanelEmpty,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                const SizedBox(width: 8),
-                Flexible(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    GameChip(text: l10n.you, color: AppTheme.playerBlue),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        myName.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.playerBlue,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
                   child: Text(
-                    myName.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+                    '$myScore',
+                    style: scoreStyle.copyWith(
+                      color: AppTheme.playerBlueBright,
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.playerBlue,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 2),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text('$myScore', style: scoreStyle.copyWith(color: AppTheme.playerBlueBright)),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        seriesTitle != null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    seriesTitle!.toUpperCase(),
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
+          seriesTitle != null
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      seriesTitle!.toUpperCase(),
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    SeriesLegsScore(
+                      myLegs: myLegs,
+                      opponentLegs: opponentLegs,
+                      fontSize: 24,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      l10n.legsShort.toUpperCase(),
+                      style: TextStyle(
+                        color: AppTheme.textSecondary.withValues(alpha: 0.7),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                )
+              : Text(
+                  l10n.vsLabel,
+                  style: TextStyle(
+                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  opponentName.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.opponentPinkBright,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '$opponentScore',
+                    style: scoreStyle.copyWith(
+                      color: AppTheme.opponentPinkBright.withValues(
+                        alpha: 0.65,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  SeriesLegsScore(
-                    myLegs: myLegs,
-                    opponentLegs: opponentLegs,
-                    fontSize: 24,
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    l10n.legsShort.toUpperCase(),
-                    style: TextStyle(
-                      color: AppTheme.textSecondary.withValues(alpha: 0.7),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ],
-              )
-            : Text(
-                l10n.vsLabel,
-                style: TextStyle(
-                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
                 ),
-              ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                opponentName.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.opponentPinkBright,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '$opponentScore',
-                  style: scoreStyle.copyWith(
-                    color: AppTheme.opponentPinkBright.withValues(alpha: 0.65),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
 
 /// Pill button styles matching the maquette ("CONFIRMER" & dialog actions).
 ButtonStyle gameOutlineButtonStyle(Color accent) => OutlinedButton.styleFrom(
-      foregroundColor: accent,
-      side: BorderSide(color: accent.withValues(alpha: 0.9), width: 1.5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      textStyle: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.5,
-      ),
-    );
+  foregroundColor: accent,
+  side: BorderSide(color: accent.withValues(alpha: 0.9), width: 1.5),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  textStyle: const TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 1.5,
+  ),
+);
 
 ButtonStyle gameFilledButtonStyle(Color accent) => ElevatedButton.styleFrom(
-      backgroundColor: accent,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      textStyle: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.5,
-      ),
-    );
+  backgroundColor: accent,
+  foregroundColor: Colors.white,
+  elevation: 0,
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  textStyle: const TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 1.5,
+  ),
+);
 
 /// Maquette-styled dialog shell shared by every in-match popup (win, bust,
 /// leave, forfeit, report): deep navy panel, accent border, uppercase
@@ -1107,21 +1393,23 @@ Widget gameDialogFrame({
       borderRadius: BorderRadius.circular(22),
       side: BorderSide(color: accent.withValues(alpha: 0.7), width: 1.5),
     ),
-    title: Row(children: [
-      Icon(icon, color: accent, size: 26),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Text(
-          title.toUpperCase(),
-          style: TextStyle(
-            color: accent,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
+    title: Row(
+      children: [
+        Icon(icon, color: accent, size: 26),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: accent,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
           ),
         ),
-      ),
-    ]),
+      ],
+    ),
     content: content,
     actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
     actions: actions,

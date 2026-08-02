@@ -50,8 +50,7 @@ class Checkout50Strategy extends TrainingStrategy {
       '$_successes / $_attemptsTotal';
 
   @override
-  double progress(List<TrainingDart> pending) =>
-      _attemptIndex / _attemptsTotal;
+  double progress(List<TrainingDart> pending) => _attemptIndex / _attemptsTotal;
 
   @override
   String? progressCaption(AppLocalizations l10n, List<TrainingDart> pending) =>
