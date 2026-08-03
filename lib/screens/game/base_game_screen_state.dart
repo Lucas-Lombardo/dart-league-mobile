@@ -1619,7 +1619,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       ]),
       actionsBuilder: (ctx) => [
         OutlinedButton(
-          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
           style: gameOutlineButtonStyle(AppTheme.playerBlue),
           child: Text(l10n.editDarts),
         ),
@@ -1652,7 +1652,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       ]),
       actionsBuilder: (ctx) => [
         OutlinedButton(
-          onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
           style: gameOutlineButtonStyle(AppTheme.playerBlue),
           child: Text(l10n.editDarts),
         ),
@@ -2313,7 +2313,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                       final (base, mul) = dartScoreToBackend(dartScore);
                       game.editDartThrow(index, base, mul);
                     },
-                    onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); },
+                    onRemoveDart: (index) { autoScoringService?.removeDart(index); game.undoLastDart(); if (_turnDartTimes.isNotEmpty) _turnDartTimes.removeLast(); },
                     onEditModalClosed: resumeCaptureAfterEdit,
                     onToggleAi: autoScoringService!.modelLoaded ? toggleAiScoring : null,
                     aiEnabled: !aiManuallyDisabled,
