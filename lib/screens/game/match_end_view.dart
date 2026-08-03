@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-
 import '../../l10n/app_localizations.dart';
 import '../../services/replay_clips_store.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
-import '../profile/replay_player_screen.dart';
+import '../profile/replay_library_screen.dart';
 
 /// Redesigned end-of-match screen shared by ranked, friendly and tournament
 /// matches: animated hero + headline, optional series score and tournament
@@ -322,84 +320,32 @@ class _MatchEndViewState extends State<MatchEndView>
     );
   }
 
-  /// « Moments du match » — one row per captured clip, share on tap. The
-  /// native share sheet uses the LOCAL file, so this works offline and
-  /// independently of any upload.
+  /// One compact line when clips were captured this match — the end screen
+  /// must stay scroll-free down to the confirm/report panel, so the list
+  /// itself lives in « Mes replays » (2026-08-03 feedback: the inline rows
+  /// pushed the actions below the fold).
   Widget _buildMomentsCard() {
     final l10n = AppLocalizations.of(context);
     return SlideTransition(
       position: _panelSlide,
       child: FadeTransition(
         opacity: _panelFade,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+        child: OutlinedButton.icon(
+          onPressed: () =>
+              AppNavigator.toScreen(context, const ReplayLibraryScreen()),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.accent,
+            side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.5)),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '🎬 ${l10n.replayMoments.toUpperCase()}',
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(height: 6),
-              for (final clip in widget.replayClips) _momentRow(clip, l10n),
-            ],
+          icon: const Icon(Icons.movie_outlined, size: 18),
+          label: Text(
+            '${l10n.replayViewMine} (${widget.replayClips.length})',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _momentRow(ReplayClip clip, AppLocalizations l10n) {
-    final accent = clip.hot ? AppTheme.accent : AppTheme.playerBlue;
-    final total = clip.turnTotal;
-    final label = total != null && total > 0
-        ? (total == 180 ? '180 🔥' : l10n.ptsLabel(total))
-        : TimeOfDay.fromDateTime(clip.createdAt).format(context);
-    return InkWell(
-      onTap: () => AppNavigator.toScreen(
-        context,
-        ReplayPlayerScreen(source: clip.path, isLocal: true),
-      ),
-      child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(clip.hot ? Icons.local_fire_department : Icons.videocam,
-              color: accent, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: clip.hot ? AppTheme.accent : Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => SharePlus.instance
-                .share(ShareParams(files: [XFile(clip.path)])),
-            icon: const Icon(Icons.ios_share, size: 16),
-            label: Text(l10n.replayShare),
-            style: TextButton.styleFrom(
-              foregroundColor: accent,
-              textStyle: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
       ),
     );
   }

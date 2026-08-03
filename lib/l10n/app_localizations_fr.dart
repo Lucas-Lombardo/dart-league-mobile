@@ -2450,6 +2450,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get replayNameHint => 'Nom du clip';
 
   @override
+  String get replayViewMine => 'Voir mes replays';
+
+  @override
   String get replaysSection => 'Replays';
 
   @override

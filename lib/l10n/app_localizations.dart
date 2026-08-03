@@ -931,6 +931,7 @@ abstract class AppLocalizations {
   String get replayDelete;
   String get replayRename;
   String get replayNameHint;
+  String get replayViewMine;
   String get replaysSection;
   String get myReplaysSubtitle;
   String replayClipsCount(int count);

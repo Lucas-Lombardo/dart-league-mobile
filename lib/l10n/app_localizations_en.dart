@@ -2423,6 +2423,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get replayNameHint => 'Clip name';
 
   @override
+  String get replayViewMine => 'View my replays';
+
+  @override
   String get replaysSection => 'Replays';
 
   @override
