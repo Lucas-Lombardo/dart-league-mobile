@@ -64,6 +64,16 @@ class P2pRtcSession {
   /// Poll cadence for the outage deadline while the link is down.
   static const Duration outageTick = Duration(seconds: 1);
 
+  /// How often the decoded-frame counter is sampled once connected.
+  static const Duration mediaCheckInterval = Duration(seconds: 3);
+
+  /// No new decoded frame for this long = the remote video is frozen even
+  /// though ICE still reports Connected. Happens after a network blip: the
+  /// decoder waits for a keyframe that never comes, or media flows one way
+  /// only. Neither the outage budget nor the socket-return kick can see it
+  /// (connectionState never leaves Connected) — this is the only detector.
+  static const Duration mediaStallTimeout = Duration(seconds: 6);
+
   /// How long a `Disconnected` state may self-heal before we force an ICE
   /// restart. Short: a real transient blip recovers in ~1-2s, and beyond
   /// that only a restart converges.
@@ -122,6 +132,9 @@ class P2pRtcSession {
   Timer? _recoveryTimer;
   Timer? _disconnectedTimer;
   Timer? _offerRetryTimer;
+  Timer? _mediaWatchdog;
+  int? _lastFramesDecoded;
+  DateTime? _lastFrameProgressAt;
   // When the media link first went down in the CURRENT outage — the origin
   // of [outageBudget]. Null while the link is up.
   DateTime? _linkDownSince;
@@ -388,7 +401,53 @@ class P2pRtcSession {
       _connectTimeMs = DateTime.now().difference(started).inMilliseconds;
     }
     debugPrint('P2P: connected in ${_connectTimeMs}ms');
+    _startMediaWatchdog();
     onConnected?.call();
+  }
+
+  /// Watches the DECODED-FRAME counter, not the ICE state: after a blip the
+  /// connection can stay Connected while the remote picture is frozen for
+  /// good (keyframe starvation / one-way media). On a stall we drive the
+  /// normal recovery chain — ICE restart, then the outage budget's fallback.
+  void _startMediaWatchdog() {
+    _mediaWatchdog?.cancel();
+    _lastFramesDecoded = null;
+    _lastFrameProgressAt = DateTime.now();
+    _mediaWatchdog = Timer.periodic(mediaCheckInterval, (_) async {
+      if (_disposed || _failed) return;
+      final pc = _pc;
+      if (pc == null) return;
+      int? frames;
+      try {
+        final stats = await pc.getStats().timeout(const Duration(seconds: 2));
+        for (final report in stats) {
+          if (report.type != 'inbound-rtp') continue;
+          final values = report.values;
+          final kind = values['kind'] ?? values['mediaType'];
+          if (kind != 'video') continue;
+          final counter = values['framesDecoded'] ?? values['bytesReceived'];
+          if (counter is num) frames = counter.toInt();
+        }
+      } catch (_) {
+        return;
+      }
+      if (frames == null || _disposed || _failed) return;
+      final now = DateTime.now();
+      if (_lastFramesDecoded == null || frames > _lastFramesDecoded!) {
+        _lastFramesDecoded = frames;
+        _lastFrameProgressAt = now;
+        return;
+      }
+      final since = _lastFrameProgressAt;
+      if (since == null || now.difference(since) < mediaStallTimeout) return;
+      debugPrint('P2P: remote video stalled (no decoded frame for '
+          '${now.difference(since).inSeconds}s) — forcing recovery');
+      // Re-baseline so the chain isn't re-triggered every tick while the
+      // restart converges.
+      _lastFrameProgressAt = now;
+      _linkUp = false;
+      _handleIceFailure();
+    });
   }
 
   /// Start (or keep) the current outage's clock and run the deadline poll —
@@ -441,6 +500,7 @@ class P2pRtcSession {
     _recoveryTimer?.cancel();
     _disconnectedTimer?.cancel();
     _offerRetryTimer?.cancel();
+    _mediaWatchdog?.cancel();
     debugPrint('P2P: failed ($reason)');
     onFailed?.call(reason);
   }
@@ -689,6 +749,7 @@ class P2pRtcSession {
     _recoveryTimer?.cancel();
     _disconnectedTimer?.cancel();
     _offerRetryTimer?.cancel();
+    _mediaWatchdog?.cancel();
     SocketService.off('rtc_signal', owner: this);
     await sendReport(fellBack: fellBack, reason: reason);
     try {
