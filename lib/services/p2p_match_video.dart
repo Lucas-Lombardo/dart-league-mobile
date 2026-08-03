@@ -125,8 +125,29 @@ class P2pMatchVideo {
     _loop = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     // Initial roles come from the server so both sides agree with no
     // round-trip: the impolite peer offers, the polite peer answers.
-    _connecting = _connect(offerer: !configProvider().polite);
-    await _connecting;
+    final offerer = !configProvider().polite;
+    _connecting = _connect(offerer: offerer);
+    try {
+      // Same bound as the swap path: a hung native call must not also hang
+      // the screen's camera/AI init that awaits start() — the loop replaces
+      // the session on its own schedule.
+      await _connecting?.timeout(const Duration(seconds: 20));
+    } catch (e) {
+      debugPrint('P2P: initial connect failed: $e');
+    }
+    // The initial offer has no retry: when OUR screen came up after the
+    // offerer already sent it (entry skew — the 2026-08-03 test lost a
+    // 67-signal batch this way and took 24s to converge), it is gone and
+    // nobody re-sends it. An answerer that has heard NOTHING shortly after
+    // its setup completed is exactly that case: claim the offerer role on
+    // a fresh generation now instead of waiting out the rebuild interval.
+    // 3.2s > fastRebuildSpacing, so the fast path can't swallow it.
+    if (!offerer && !_stopped) {
+      Timer(const Duration(milliseconds: 3200), () {
+        if (_stopped || isLinkUp || _lastProgressAt != null) return;
+        _rebuild('no_initial_offer', fast: true);
+      });
+    }
   }
 
   Future<void> _connect({required bool offerer}) async {
