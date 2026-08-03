@@ -21,6 +21,26 @@ class ReplayBufferService {
   static bool _armed = false;
   static bool get armed => _armed;
 
+  // Encode ONLY during MY turn: the local camera films my own board, so the
+  // opponent's turn produces dead footage — skipping it halves the encoder's
+  // duty cycle (heat/battery) and the ring then holds ~60s of pure throwing.
+  static bool _myTurn = true;
+
+  /// Turn gate, driven by the game screen on every state change. Flipping to
+  /// the opponent's turn closes the open segment so the ring stays tidy;
+  /// flipping back simply lets frames flow again (the native side reopens on
+  /// a fresh keyframe).
+  static void setMyTurn(bool myTurn) {
+    if (!_armed || myTurn == _myTurn) return;
+    _myTurn = myTurn;
+    if (!myTurn) {
+      _channel.invokeMethod('pause').catchError((Object e) {
+        debugPrint('[ReplayBufferService] pause failed: $e');
+        return null;
+      });
+    }
+  }
+
   // Same backpressure contract as RtcFramesService: the native side answers
   // AFTER consuming the frame; more than 2 in flight means it is behind and
   // the frame is dropped client-side (never queued).
@@ -29,6 +49,7 @@ class ReplayBufferService {
 
   static void arm() {
     _armed = true;
+    _myTurn = true;
   }
 
   /// Push one camera frame into the ring. Fire-and-forget by design: drops
@@ -46,7 +67,7 @@ class ReplayBufferService {
     String format = 'nv21',
     int? bytesPerRow,
   }) {
-    if (!_armed || !isSupported) return;
+    if (!_armed || !_myTurn || !isSupported) return;
     if (_inFlight >= 2) return;
     _inFlight++;
     _channel.invokeMethod('pushFrame', {

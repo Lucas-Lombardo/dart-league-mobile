@@ -60,6 +60,14 @@ class ReplayBufferPlugin: NSObject {
       pushFrame(call, result: result)
     case "capture":
       capture(call, result: result)
+    case "pause":
+      // Turn gate: the Dart side stops sending frames for the opponent's
+      // turn; finalize the open segment so the ring only holds tidy my-turn
+      // footage (the next pushFrame starts a fresh writer).
+      queue.async { [weak self] in
+        self?.finishCurrentSegment()
+        DispatchQueue.main.async { result(nil) }
+      }
     case "stop":
       queue.async { [weak self] in
         self?.teardown(deleteRing: true)

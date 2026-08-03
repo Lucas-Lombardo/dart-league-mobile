@@ -101,6 +101,24 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         when (call.method) {
             "pushFrame" -> pushFrame(call, result)
             "capture" -> capture(call, result)
+            "pause" -> {
+                // Turn gate: the Dart side stops sending frames for the
+                // opponent's turn; close the open segment so the ring only
+                // holds tidy my-turn footage, and make the next one start on
+                // a fresh IDR (its P-frames would reference the old GOP).
+                handler.post {
+                    if (muxer != null) {
+                        closeSegment()
+                        awaitingIdr = true
+                        try {
+                            codec?.setParameters(Bundle().apply {
+                                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                            })
+                        } catch (_: Exception) {}
+                    }
+                    mainHandler.post { result.success(null) }
+                }
+            }
             "stop" -> {
                 handler.post {
                     teardown(deleteRing = true)

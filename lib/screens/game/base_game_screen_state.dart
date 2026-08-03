@@ -456,6 +456,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         _endAgoraCall();
       }
       _sawTournamentSeriesEnded = tournamentSeriesEndedNow;
+      // Replay ring turn gate: encode only while I throw (the local camera
+      // films MY board — the opponent's turn is dead footage and half the
+      // encoder heat). Idempotent, safe on every notify.
+      ReplayBufferService.setMyTurn(game.isMyTurn);
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();
