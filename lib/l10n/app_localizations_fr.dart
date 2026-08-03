@@ -2411,10 +2411,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get yourVisit => 'VOTRE VOLÉE';
 
   @override
-  String get replayCapture => 'Enregistrer';
+  String get replayCapture => 'SAUVEGARDER LA VOLÉE';
 
   @override
-  String get replayCaptureHot => 'Enregistrer ce moment';
+  String get replayCaptureHot => 'SAUVEGARDER CE MOMENT';
 
   @override
   String get replaySaved => 'Clip enregistré';

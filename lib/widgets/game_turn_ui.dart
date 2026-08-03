@@ -221,9 +221,9 @@ class GameCameraPanel extends StatelessWidget {
   final VoidCallback? onZoomIn;
   final VoidCallback? onZoomOut;
 
-  /// Bottom-right overlay (the replay "record" pill lives here — the zoom
-  /// pill keeps the bottom center).
-  final Widget? cornerAction;
+  /// Full-width bar docked to the panel's bottom edge (the replay capture
+  /// button). When present, the zoom pill slides up above it.
+  final Widget? bottomBar;
 
   const GameCameraPanel({
     super.key,
@@ -238,7 +238,7 @@ class GameCameraPanel extends StatelessWidget {
     this.maxZoom = 1.0,
     this.onZoomIn,
     this.onZoomOut,
-    this.cornerAction,
+    this.bottomBar,
   });
 
   @override
@@ -400,10 +400,10 @@ class GameCameraPanel extends StatelessWidget {
             ),
           ),
 
-          // ── Zoom pill (bottom center) ──
+          // ── Zoom pill (bottom center; above the capture bar when docked) ──
           if (onZoomIn != null && onZoomOut != null)
             Positioned(
-              bottom: 12,
+              bottom: bottomBar != null ? 56 : 12,
               left: 0,
               right: 0,
               child: Center(
@@ -417,20 +417,20 @@ class GameCameraPanel extends StatelessWidget {
               ),
             ),
 
-          // ── Corner action (bottom right) ──
-          if (cornerAction != null)
-            Positioned(bottom: 12, right: 12, child: cornerAction!),
+          // ── Capture bar docked to the bottom edge (piste D, 2026-08-03) ──
+          if (bottomBar != null)
+            Positioned(bottom: 0, left: 0, right: 0, child: bottomBar!),
         ],
       ),
     );
   }
 }
 
-/// The replay "record this turn" pill, shown on MY camera panel while my
-/// turn has something to record. [hot] switches to the gold celebration
-/// styling (180, checkout, bull finish) so the auto-suggestion is the same
-/// gesture, just impossible to miss. Manages its own tap lifecycle:
-/// idle → saving (spinner) → saved (check, 2.5s) → idle.
+/// The replay capture bar, docked full-width to the bottom edge of MY
+/// camera panel while my turn has something to record (piste D of the
+/// 2026-08-03 design round: the floating pill was invisible over video).
+/// [hot] switches to the gold celebration gradient (180). Manages its own
+/// tap lifecycle: idle → saving (spinner) → saved (check, 2.5s) → idle.
 class ReplayCaptureButton extends StatefulWidget {
   final bool hot;
 
@@ -469,38 +469,32 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final accent = widget.hot ? AppTheme.accent : AppTheme.playerBlue;
     final saved = _state == _CaptureState.saved;
+    final gradient = saved
+        ? const LinearGradient(
+            colors: [AppTheme.success, Color(0xFF15803D)])
+        : widget.hot
+            ? const LinearGradient(
+                colors: [AppTheme.accent, Color(0xFFD97706)])
+            : AppTheme.primaryGradient;
+    final foreground = widget.hot && !saved
+        ? const Color(0xFF1A1608)
+        : Colors.white;
     return GestureDetector(
       onTap: _tap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: AppTheme.gamePanel.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: accent.withValues(alpha: widget.hot ? 0.9 : 0.5),
-            width: 1.2,
-          ),
-          boxShadow: widget.hot
-              ? [
-                  BoxShadow(
-                    color: AppTheme.accent.withValues(alpha: 0.35),
-                    blurRadius: 12,
-                  ),
-                ]
-              : null,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(gradient: gradient),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (_state == _CaptureState.saving)
-              const SizedBox(
-                width: 13,
-                height: 13,
+              SizedBox(
+                width: 15,
+                height: 15,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppTheme.textSecondary,
+                  color: foreground,
                 ),
               )
             else
@@ -509,21 +503,20 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
                     ? Icons.check_circle
                     : (widget.hot
                         ? Icons.local_fire_department
-                        : Icons.save_alt),
-                size: 14,
-                color: saved ? AppTheme.success : accent,
+                        : Icons.movie_outlined),
+                size: 17,
+                color: foreground,
               ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               saved
                   ? l10n.replaySaved
                   : (widget.hot ? l10n.replayCaptureHot : l10n.replayCapture),
               style: TextStyle(
-                color: saved
-                    ? AppTheme.success
-                    : (widget.hot ? AppTheme.accent : Colors.white),
-                fontSize: 12,
+                color: foreground,
+                fontSize: 13,
                 fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
               ),
             ),
           ],

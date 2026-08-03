@@ -2384,10 +2384,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourVisit => 'YOUR VISIT';
 
   @override
-  String get replayCapture => 'Save moment';
+  String get replayCapture => 'SAVE THIS TURN';
 
   @override
-  String get replayCaptureHot => 'Save this moment';
+  String get replayCaptureHot => 'SAVE THIS MOMENT';
 
   @override
   String get replaySaved => 'Clip saved';

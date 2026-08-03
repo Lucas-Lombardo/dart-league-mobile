@@ -155,7 +155,7 @@ class AutoScoreGameView extends StatelessWidget {
           maxZoom: maxZoom,
           onZoomIn: onZoomIn,
           onZoomOut: onZoomOut,
-          cornerAction: captureButton,
+          bottomBar: captureButton,
         );
 
         // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──
