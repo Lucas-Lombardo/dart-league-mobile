@@ -7,7 +7,7 @@ import '../utils/storage_service.dart';
 /// Two-model speed/accuracy ladder, ported from DartsMind
 /// (Detector.changeAIModelIfNeed + DVSpeedChecker persistence).
 ///
-/// - Default is the SMALL model (t225 — DartsMind's MODEL_SMALLER strategy).
+/// - Default is the SMALL model (ia-light — DartsMind's MODEL_SMALLER strategy).
 /// - The mean of the last [windowSize] real inference times decides switches:
 ///   small → big when the mean is ≤ [upgradeAtMs] (device can afford accuracy),
 ///   big → small when the mean is > [downgradeAtMs] (device can't keep up /
@@ -34,8 +34,8 @@ import '../utils/storage_service.dart';
 class ModelSelector {
   ModelSelector._();
 
-  static const String smallModelAsset = 'assets/models/t225.tflite';
-  static const String bigModelAsset = 'assets/models/t223.tflite';
+  static const String smallModelAsset = 'assets/models/dart-rival-ia-light.tflite';
+  static const String bigModelAsset = 'assets/models/dart-rival-ia-heavy.tflite';
   static const int upgradeAtMs = 260; // DartsMind: ≤260 → MODEL_BETTER
   static const int downgradeAtMs = 500; // DartsMind: >500 → MODEL_SMALLER
   static const int windowSize = 16; // DartsMind: inferenceTimeArray >= 16

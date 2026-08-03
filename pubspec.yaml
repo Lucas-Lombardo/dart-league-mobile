@@ -111,8 +111,14 @@ flutter:
     - assets/logo/
     - assets/ranks/
     - assets/sounds/
-    - assets/models/
     - assets/caller/
+    # Listed file-by-file, NOT as a directory: a directory entry bundles
+    # everything inside it, including the .DS_Store the Finder keeps
+    # recreating (.gitignore does not filter what Flutter bundles). These
+    # files are ~16 MB, so nothing unwanted should ride along.
+    - assets/models/dart-rival-ia-light.tflite
+    - assets/models/dart-rival-ia-heavy.tflite
+    - assets/models/check_inference.jpg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

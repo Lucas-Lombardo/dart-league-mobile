@@ -2386,8 +2386,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get replayCapture => 'SAVE THIS TURN';
 
-  @override
-  String get replayCaptureHot => 'SAVE THIS MOMENT';
 
   @override
   String get replaySaved => 'Clip saved';
@@ -2436,6 +2434,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String replayFreeLeft(int left) => '$left left on free plan';
+
+  @override
+  String replayVs(String opponent) => 'vs $opponent';
+
+  @override
+  String replayRetentionNotice(int days) =>
+      'Your clips are kept for $days days, then deleted automatically.';
+
+  @override
+  String replayExpiresIn(int days) => '${days}d';
+
+  @override
+  String get replayExpiresToday => '0d';
+
+  @override
+  String get replayNoMatch => 'Outside a match';
+
+  @override
+  String get replayOutcomeWon => 'Won';
+
+  @override
+  String get replayOutcomeLost => 'Lost';
+
+  @override
+  String get replayOutcomePending => 'In progress';
+
+  @override
+  String get replayFormatFriendly => 'Friendly';
+
+  @override
+  String get replayFormatRanked => 'Ranked';
+
+  @override
+  String get replayFormatPlacement => 'Placement';
   @override
   String get totalLabel => 'TOTAL';
   @override

@@ -5,16 +5,12 @@ class ReplayClip {
   ReplayClip({
     required this.path,
     required this.createdAt,
-    required this.hot,
     this.matchId,
     this.turnTotal,
   });
 
   final String path;
   final DateTime createdAt;
-
-  /// Captured on a highlight (180 / checkout) — drives the gold badge.
-  final bool hot;
   final String? matchId;
   final int? turnTotal;
 }

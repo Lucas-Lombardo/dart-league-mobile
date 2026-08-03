@@ -919,7 +919,6 @@ abstract class AppLocalizations {
   String visitOf(String name);
   String get yourVisit;
   String get replayCapture;
-  String get replayCaptureHot;
   String get replaySaved;
   String get replayShare;
   String get replayNothingToCapture;
@@ -936,6 +935,17 @@ abstract class AppLocalizations {
   String get myReplaysSubtitle;
   String replayClipsCount(int count);
   String replayFreeLeft(int left);
+  String replayVs(String opponent);
+  String replayRetentionNotice(int days);
+  String replayExpiresIn(int days);
+  String get replayExpiresToday;
+  String get replayNoMatch;
+  String get replayOutcomeWon;
+  String get replayOutcomeLost;
+  String get replayOutcomePending;
+  String get replayFormatFriendly;
+  String get replayFormatRanked;
+  String get replayFormatPlacement;
   String get totalLabel;
   String get upcomingDart;
   String get editShort;

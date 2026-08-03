@@ -324,14 +324,15 @@ class ReplayBufferPlugin: NSObject {
 
 // MARK: - Broadcast overlay burn-in
 //
-// Interprets the four timeline primitives (scoreboard, dart, banner, outro)
+// Interprets the three timeline primitives (scoreboard, banner, outro)
 // with CoreAnimation layers composited by AVFoundation during a short
 // re-encode — see replay_overlay_timeline.dart for the contract. Layout runs
 // in a 720-wide design grid scaled to the render size; `isGeometryFlipped`
 // gives the same top-left coordinates as the Android painter.
 extension ReplayBufferPlugin {
 
-  private var navy: CGColor { UIColor(red: 0.094, green: 0.133, blue: 0.212, alpha: 0.95).cgColor }
+  private var card: CGColor { UIColor(red: 0.063, green: 0.102, blue: 0.169, alpha: 0.95).cgColor }
+  private var pill: CGColor { UIColor(red: 0.039, green: 0.063, blue: 0.110, alpha: 0.95).cgColor }
   private var bg: CGColor { UIColor(red: 0.047, green: 0.075, blue: 0.129, alpha: 1).cgColor }
   private var blue: CGColor { UIColor(red: 0.361, green: 0.643, blue: 0.902, alpha: 1).cgColor }
   private var pink: CGColor { UIColor(red: 0.863, green: 0.376, blue: 0.412, alpha: 1).cgColor }
@@ -418,86 +419,46 @@ extension ReplayBufferPlugin {
     into parent: CALayer, timeline: [String: Any], size: CGSize, durationS: Double
   ) {
     let s = size.width / 720.0
-    let darts = (timeline["darts"] as? [[String: Any]]) ?? []
-    let dartAt = { (d: [String: Any]) -> Double in ((d["atMs"] as? NSNumber)?.doubleValue ?? 0) / 1000.0 }
 
-    // ── Scoreboard (slide in at 0.3s) — DartCounter-style lower third:
-    // logo block left, slim rows, SMALL static scores (the countdown was
-    // cut 2026-08-03: unreliable impact timing read worse than a still
-    // number, and two switching layers even overlapped on device). ──
-    let panelW = size.width - 32 * s
-    let panelH = 92 * s
-    let logoW = 86 * s
-    let panel = CALayer()
-    panel.frame = CGRect(x: 16 * s, y: size.height - 84 * s - panelH, width: panelW, height: panelH)
-    panel.backgroundColor = navy
-    panel.cornerRadius = 12 * s
-    panel.masksToBounds = true
-    panel.opacity = 0
-
-    let logoBlock = CALayer()
-    logoBlock.frame = CGRect(x: 0, y: 0, width: logoW, height: panelH)
-    logoBlock.backgroundColor = bg
-    panel.addSublayer(logoBlock)
-    if let logoPath = timeline["logoPath"] as? String,
-       let shield = UIImage(contentsOfFile: logoPath)?.cgImage {
-      let h = 56 * s
-      let w = h * CGFloat(shield.width) / CGFloat(shield.height)
-      let shieldLayer = CALayer()
-      shieldLayer.contents = shield
-      shieldLayer.frame = CGRect(
-        x: (logoW - w) / 2, y: (panelH - h) / 2, width: w, height: h)
-      logoBlock.addSublayer(shieldLayer)
-    }
-
-    let band = CALayer()
-    band.frame = CGRect(x: logoW, y: 0, width: panelW - logoW, height: 26 * s)
-    band.backgroundColor = UIColor(cgColor: sky).withAlphaComponent(0.16).cgColor
-    panel.addSublayer(band)
-    panel.addSublayer(textLayer(
-      timeline["format"] as? String ?? "RANKED",
-      x: logoW + 12 * s, y: 5 * s, w: panelW - logoW - 24 * s, size: 12 * s,
-      color: UIColor(red: 0.729, green: 0.902, blue: 0.992, alpha: 1).cgColor,
-      align: .left))
-
+    // ── Scoreboard (slide in at 0.3s) — two facing cards under a centered
+    // brand lockup: at feed-thumbnail size a pair of big centered numbers
+    // still reads, which the old single-line lower third did not. Scores are
+    // static (everything per-dart was cut 2026-08-03: unreliable impact
+    // timing read worse than a still number). ──
     let me = timeline["me"] as? String ?? "YOU"
     let opp = timeline["opp"] as? String ?? ""
     let startScore = (timeline["startScore"] as? NSNumber)?.intValue ?? 0
     let oppScore = (timeline["oppScore"] as? NSNumber)?.intValue ?? 0
     let myLegs = (timeline["myLegs"] as? NSNumber)?.intValue ?? 0
     let oppLegs = (timeline["oppLegs"] as? NSNumber)?.intValue ?? 0
-
-    addRow(panel, y: 30 * s, s: s, x: logoW, w: panelW - logoW,
-           dot: blue, name: me, legs: myLegs, score: startScore,
-           textColor: UIColor.white.cgColor)
-    addRow(panel, y: 62 * s, s: s, x: logoW, w: panelW - logoW,
-           dot: pink, name: opp, legs: oppLegs, score: oppScore,
-           textColor: muted)
-    parent.addSublayer(panel)
-    animate(panel, key: "opacity", from: 0, to: 1, begin: 0.3, dur: 0.5)
-    animate(panel, key: "position.y", from: Double(panel.position.y + 70 * s),
-            to: Double(panel.position.y), begin: 0.3, dur: 0.5)
-
-    // ── Dart chips ──
-    for d in darts {
-      let at = dartAt(d)
-      let label = d["label"] as? String ?? ""
-      let chipText = textLayer(
-        label, x: 0, y: 8 * s, w: 120 * s, size: 30 * s,
-        color: UIColor(red: 0.102, green: 0.086, blue: 0.031, alpha: 1).cgColor,
-        align: .center)
-      let chip = CALayer()
-      chip.frame = CGRect(x: size.width - 156 * s, y: 140 * s, width: 120 * s, height: 52 * s)
-      chip.backgroundColor = gold
-      chip.cornerRadius = 10 * s
-      chip.opacity = 0
-      chip.setAffineTransform(CGAffineTransform(rotationAngle: -4 * .pi / 180))
-      chip.addSublayer(chipText)
-      parent.addSublayer(chip)
-      switchOpacity(chip, to: 1, at: at)
-      animate(chip, key: "transform.scale", from: 0.6, to: 1.0, begin: at, dur: 0.22)
-      switchOpacity(chip, to: 0, at: at + 1.5)
+    let legsTarget = min(max((timeline["legsTarget"] as? NSNumber)?.intValue ?? 2, 1), 5)
+    let shield = (timeline["logoPath"] as? String).flatMap {
+      UIImage(contentsOfFile: $0)?.cgImage
     }
+
+    let cardH = 96 * s
+    let cardW = (size.width - 32 * s - 14 * s) / 2
+    let cardsTop = size.height - 84 * s - cardH
+
+    // One animated group: the whole scoreboard slides in as a single block.
+    let board = CALayer()
+    board.frame = CGRect(origin: .zero, size: size)
+    board.opacity = 0
+    parent.addSublayer(board)
+
+    board.addSublayer(brandPill(
+      bottom: cardsTop - 10 * s, s: s, width: size.width,
+      format: timeline["format"] as? String ?? "RANKED", shield: shield))
+    board.addSublayer(scoreCard(
+      x: 16 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: blue,
+      name: me, legs: myLegs, legsTarget: legsTarget, score: startScore, mine: true))
+    board.addSublayer(scoreCard(
+      x: 16 * s + cardW + 14 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: pink,
+      name: opp, legs: oppLegs, legsTarget: legsTarget, score: oppScore, mine: false))
+
+    animate(board, key: "opacity", from: 0, to: 1, begin: 0.3, dur: 0.5)
+    animate(board, key: "position.y", from: Double(board.position.y + 70 * s),
+            to: Double(board.position.y), begin: 0.3, dur: 0.5)
 
     // ── Banner ──
     if let banner = timeline["banner"] as? [String: Any],
@@ -548,38 +509,117 @@ extension ReplayBufferPlugin {
     switchOpacity(card, to: 1, at: outroAt, dur: 0.35)
   }
 
-  private func addRow(
-    _ panel: CALayer, y: CGFloat, s: CGFloat, x: CGFloat, w: CGFloat,
-    dot: CGColor, name: String, legs: Int, score: Int, textColor: CGColor
-  ) {
-    let dotLayer = CALayer()
-    dotLayer.frame = CGRect(x: x + 12 * s, y: y + 12 * s, width: 9 * s, height: 9 * s)
-    dotLayer.cornerRadius = 4.5 * s
-    dotLayer.backgroundColor = dot
-    panel.addSublayer(dotLayer)
-    panel.addSublayer(textLayer(
-      name, x: x + 30 * s, y: y + 6 * s, w: w * 0.5, size: 15 * s,
-      color: textColor, align: .left))
-    let legsBox = CALayer()
-    legsBox.frame = CGRect(x: x + w - 96 * s, y: y + 5 * s, width: 24 * s, height: 22 * s)
-    legsBox.cornerRadius = 6 * s
-    legsBox.backgroundColor = UIColor(cgColor: dot).withAlphaComponent(0.22).cgColor
-    panel.addSublayer(legsBox)
-    panel.addSublayer(textLayer(
-      "\(legs)", x: x + w - 96 * s, y: y + 7 * s, w: 24 * s, size: 13 * s,
-      color: dot, align: .center))
-    panel.addSublayer(textLayer(
-      "\(score)", x: x + w - 76 * s, y: y + 6 * s, w: 60 * s, size: 16 * s,
-      color: textColor, align: .right))
+  /// Shield + DART RIVALS + format, centered above the cards: the brand is
+  /// on screen for the whole clip, not only on the 1.6s end card.
+  private func brandPill(
+    bottom: CGFloat, s: CGFloat, width: CGFloat, format: String, shield: CGImage?
+  ) -> CALayer {
+    let h = 46 * s
+    let shieldH = 34 * s
+    let shieldW = shield.map { shieldH * CGFloat($0.width) / CGFloat($0.height) } ?? 0
+    let brandW = textWidth("DART RIVALS", size: 13 * s, tracking: 0.12)
+    let formatW = textWidth(format, size: 11 * s, tracking: 0.08)
+    let gap: CGFloat = shieldW > 0 ? 11 * s : 0
+    let w = 36 * s + shieldW + gap + max(brandW, formatW)
+
+    let layer = CALayer()
+    layer.frame = CGRect(x: (width - w) / 2, y: bottom - h, width: w, height: h)
+    layer.backgroundColor = pill
+    layer.cornerRadius = h / 2
+    layer.borderWidth = 1.5 * s
+    layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+
+    var tx = 18 * s
+    if let shield = shield {
+      let shieldLayer = CALayer()
+      shieldLayer.contents = shield
+      shieldLayer.frame = CGRect(x: tx, y: (h - shieldH) / 2, width: shieldW, height: shieldH)
+      layer.addSublayer(shieldLayer)
+      tx += shieldW + gap
+    }
+    layer.addSublayer(textLayer(
+      "DART RIVALS", x: tx, y: 8 * s, w: w - tx, size: 13 * s,
+      color: UIColor.white.cgColor, align: .left, tracking: 0.12))
+    layer.addSublayer(textLayer(
+      format, x: tx, y: 25 * s, w: w - tx, size: 11 * s,
+      color: muted, align: .left, tracking: 0.08))
+    return layer
   }
 
+  private func scoreCard(
+    x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, s: CGFloat, accent: CGColor,
+    name: String, legs: Int, legsTarget: Int, score: Int, mine: Bool
+  ) -> CALayer {
+    let layer = CALayer()
+    layer.frame = CGRect(x: x, y: y, width: w, height: h)
+    layer.backgroundColor = card
+    layer.cornerRadius = 14 * s
+    layer.masksToBounds = true
+
+    let accentBar = CALayer()
+    accentBar.frame = CGRect(x: 0, y: 0, width: w, height: 4 * s)
+    accentBar.backgroundColor = accent
+    layer.addSublayer(accentBar)
+
+    layer.addSublayer(textLayer(
+      name, x: 10 * s, y: 11 * s, w: w - 20 * s, size: 14 * s,
+      color: mine
+        ? UIColor(red: 0.894, green: 0.929, blue: 0.980, alpha: 1).cgColor : muted,
+      align: .center, tracking: 0.1))
+    layer.addSublayer(textLayer(
+      "\(score)", x: 0, y: 34 * s, w: w, size: 40 * s,
+      color: mine
+        ? UIColor.white.cgColor
+        : UIColor(red: 0.725, green: 0.776, blue: 0.855, alpha: 1).cgColor,
+      align: .center))
+
+    // Legs as pips: in a BO3 "one leg left to take" reads without counting.
+    let r = 4.5 * s
+    let pipGap = 6 * s
+    let total = CGFloat(legsTarget) * 2 * r + CGFloat(legsTarget - 1) * pipGap
+    var px = (w - total) / 2
+    for i in 0..<legsTarget {
+      let pip = CALayer()
+      pip.frame = CGRect(x: px, y: 86 * s - r, width: 2 * r, height: 2 * r)
+      pip.cornerRadius = r
+      pip.backgroundColor = i < legs
+        ? accent : UIColor.white.withAlphaComponent(0.18).cgColor
+      layer.addSublayer(pip)
+      px += 2 * r + pipGap
+    }
+    return layer
+  }
+
+  private func textWidth(_ string: String, size: CGFloat, tracking: CGFloat) -> CGFloat {
+    var attrs: [NSAttributedString.Key: Any] =
+      [.font: UIFont.systemFont(ofSize: size, weight: .heavy)]
+    if tracking > 0 { attrs[.kern] = size * tracking }
+    return (string as NSString).size(withAttributes: attrs).width
+  }
+
+  /// `tracking` mirrors the Android painter's letterSpacing (in ems);
+  /// CATextLayer only honours it through an attributed string.
   private func textLayer(
     _ string: String, x: CGFloat, y: CGFloat, w: CGFloat,
-    size: CGFloat, color: CGColor, align: CATextLayerAlignmentMode
+    size: CGFloat, color: CGColor, align: CATextLayerAlignmentMode,
+    tracking: CGFloat = 0
   ) -> CATextLayer {
     let layer = CATextLayer()
-    layer.string = string
-    layer.font = UIFont.systemFont(ofSize: size, weight: .heavy)
+    let font = UIFont.systemFont(ofSize: size, weight: .heavy)
+    if tracking > 0 {
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = align == .center ? .center : (align == .right ? .right : .left)
+      paragraph.lineBreakMode = .byTruncatingTail
+      layer.string = NSAttributedString(string: string, attributes: [
+        .font: font,
+        .foregroundColor: UIColor(cgColor: color),
+        .kern: size * tracking,
+        .paragraphStyle: paragraph,
+      ])
+    } else {
+      layer.string = string
+    }
+    layer.font = font
     layer.fontSize = size
     layer.foregroundColor = color
     layer.alignmentMode = align

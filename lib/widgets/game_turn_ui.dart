@@ -429,19 +429,13 @@ class GameCameraPanel extends StatelessWidget {
 /// The replay capture bar, docked full-width to the bottom edge of MY
 /// camera panel while my turn has something to record (piste D of the
 /// 2026-08-03 design round: the floating pill was invisible over video).
-/// [hot] switches to the gold celebration gradient (180). Manages its own
-/// tap lifecycle: idle → saving (spinner) → saved (check, 2.5s) → idle.
+/// Manages its own tap lifecycle: idle → saving (spinner) → saved (check,
+/// 2.5s) → idle.
 class ReplayCaptureButton extends StatefulWidget {
-  final bool hot;
-
   /// Cuts the clip; returns true when a clip file was produced.
   final Future<bool> Function() onCapture;
 
-  const ReplayCaptureButton({
-    super.key,
-    required this.onCapture,
-    this.hot = false,
-  });
+  const ReplayCaptureButton({super.key, required this.onCapture});
 
   @override
   State<ReplayCaptureButton> createState() => _ReplayCaptureButtonState();
@@ -473,13 +467,8 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
     final gradient = saved
         ? const LinearGradient(
             colors: [AppTheme.success, Color(0xFF15803D)])
-        : widget.hot
-            ? const LinearGradient(
-                colors: [AppTheme.accent, Color(0xFFD97706)])
-            : AppTheme.primaryGradient;
-    final foreground = widget.hot && !saved
-        ? const Color(0xFF1A1608)
-        : Colors.white;
+        : AppTheme.primaryGradient;
+    const foreground = Colors.white;
     return GestureDetector(
       onTap: _tap,
       child: Container(
@@ -499,19 +488,13 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
               )
             else
               Icon(
-                saved
-                    ? Icons.check_circle
-                    : (widget.hot
-                        ? Icons.local_fire_department
-                        : Icons.movie_outlined),
+                saved ? Icons.check_circle : Icons.movie_outlined,
                 size: 17,
                 color: foreground,
               ),
             const SizedBox(width: 8),
             Text(
-              saved
-                  ? l10n.replaySaved
-                  : (widget.hot ? l10n.replayCaptureHot : l10n.replayCapture),
+              saved ? l10n.replaySaved : l10n.replayCapture,
               style: TextStyle(
                 color: foreground,
                 fontSize: 13,

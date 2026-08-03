@@ -91,7 +91,7 @@ class NativeInference {
     int imageWidth,
     int imageHeight,
   ) async {
-    // Both bundled models (t223/t225) output [1, 13, 21504]; derive the
+    // Both bundled models (ia-heavy/ia-light) output [1, 13, 21504]; derive the
     // element count from the byte length so a retrained variant still parses.
     final dets = await OutputParseIsolate.instance.tryParse(
       outputBytes,

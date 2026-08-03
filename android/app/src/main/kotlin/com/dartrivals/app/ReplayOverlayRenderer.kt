@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.RadialGradient
 import android.graphics.RectF
@@ -43,9 +44,9 @@ import java.nio.FloatBuffer
  * rotation logic at all — the output MP4 keeps the source's orientation
  * hint, exactly like the raw clip.
  *
- * The renderer interprets the four timeline primitives (scoreboard, dart,
- * banner, outro) and knows nothing about darts — see
- * replay_overlay_timeline.dart for the contract.
+ * The renderer interprets the three timeline primitives (scoreboard, banner,
+ * outro) and knows nothing about darts — see replay_overlay_timeline.dart
+ * for the contract.
  */
 class ReplayOverlayRenderer(private val timeline: JSONObject) {
 
@@ -423,10 +424,10 @@ private class OverlayPainter(
     private val opp = timeline.optString("opp", "")
     private val myLegs = timeline.optInt("myLegs", 0)
     private val oppLegs = timeline.optInt("oppLegs", 0)
+    private val legsTarget = timeline.optInt("legsTarget", 2)
     private val startScore = timeline.optInt("startScore", 0)
     private val oppScore = timeline.optInt("oppScore", 0)
     private val handle = timeline.optString("handle", "")
-    private val darts: List<Pair<Long, String>>
     private val bannerAtMs: Long
     private val bannerText: String
     private val logo: Bitmap? =
@@ -440,7 +441,9 @@ private class OverlayPainter(
     }
 
     companion object {
-        private const val NAVY = 0xFF182236.toInt()
+        private const val BRAND = "DART RIVALS"
+        private const val CARD = 0xFF101A2B.toInt()
+        private const val PILL = 0xFF0A101C.toInt()
         private const val BG = 0xFF0C1321.toInt()
         private const val BLUE = 0xFF5CA4E6.toInt()
         private const val PINK = 0xFFDC6069.toInt()
@@ -464,11 +467,6 @@ private class OverlayPainter(
         }
         canvas.setMatrix(m)
 
-        val list = timeline.optJSONArray("darts")
-        darts = (0 until (list?.length() ?: 0)).map { i ->
-            val d = list!!.getJSONObject(i)
-            Pair(d.getLong("atMs"), d.getString("label"))
-        }
         val banner = timeline.optJSONObject("banner")
         bannerAtMs = banner?.optLong("atMs", -1L) ?: -1L
         bannerText = banner?.optString("text", "") ?: ""
@@ -478,7 +476,6 @@ private class OverlayPainter(
     fun frame(tMs: Long): Bitmap {
         bitmap.eraseColor(Color.TRANSPARENT)
         drawScoreboard(tMs)
-        drawDartChip(tMs)
         drawBanner(tMs)
         drawOutro(tMs)
         return bitmap
@@ -486,126 +483,146 @@ private class OverlayPainter(
 
     private fun s(v: Float) = v * scale
 
+    /**
+     * Two facing cards under a centered brand lockup: at feed-thumbnail size
+     * a pair of big centered numbers still reads, which the old single-line
+     * lower third did not.
+     */
     private fun drawScoreboard(tMs: Long) {
         val slide = ease(((tMs - 300) / 500f))
         if (slide <= 0f) return
         val alpha = (slide * 255).toInt()
-        val panelW = displayW - s(32f)
-        val panelH = s(92f)
-        val x = s(16f)
-        val y = displayH - s(84f) - panelH + (1f - slide) * s(70f)
-        val logoW = s(86f)
+        val lift = (1f - slide) * s(70f)
+        val cardH = s(96f)
+        val cardW = (displayW - s(32f) - s(14f)) / 2f
+        val cardsTop = displayH - s(84f) - cardH + lift
 
-        // Panel
+        drawBrandPill(cardsTop - s(10f), alpha)
+        drawCard(s(16f), cardsTop, cardW, cardH, alpha, BLUE, me, myLegs, startScore, true)
+        drawCard(
+            s(16f) + cardW + s(14f), cardsTop, cardW, cardH, alpha,
+            PINK, opp, oppLegs, oppScore, false,
+        )
+    }
+
+    /**
+     * Shield + DART RIVALS + format, centered above the cards: the brand is
+     * on screen for the whole clip, not only on the 1.6s end card.
+     */
+    private fun drawBrandPill(bottom: Float, alpha: Int) {
+        val h = s(46f)
+        val top = bottom - h
+        val shieldH = s(34f)
+        val shieldW = logo?.let { shieldH * it.width / it.height } ?: 0f
+        text.textAlign = Paint.Align.LEFT
+        text.textSize = s(13f)
+        text.letterSpacing = 0.12f
+        val brandW = text.measureText(BRAND)
+        text.textSize = s(11f)
+        text.letterSpacing = 0.08f
+        val formatW = text.measureText(format)
+        text.letterSpacing = 0f
+        val gap = if (shieldW > 0f) s(11f) else 0f
+        val w = s(36f) + shieldW + gap + kotlin.math.max(brandW, formatW)
+        val x = (displayW - w) / 2f
+        val pill = RectF(x, top, x + w, top + h)
+
         fill.shader = null
         fill.style = Paint.Style.FILL
-        fill.color = NAVY
-        fill.alpha = (alpha * 0.96f).toInt()
-        val panel = RectF(x, y, x + panelW, y + panelH)
-        canvas.drawRoundRect(panel, s(12f), s(12f), fill)
+        fill.color = PILL
+        fill.alpha = (alpha * 0.95f).toInt()
+        canvas.drawRoundRect(pill, h / 2, h / 2, fill)
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = s(1.5f)
+        fill.color = Color.WHITE
+        fill.alpha = (alpha * 0.14f).toInt()
+        canvas.drawRoundRect(pill, h / 2, h / 2, fill)
+        fill.style = Paint.Style.FILL
 
-        // Logo block (left, darker, squared right edge) — the DartCounter
-        // reference layout, with our shield instead of text.
-        fill.color = BG
-        fill.alpha = alpha
-        val block = RectF(x, y, x + logoW, y + panelH)
-        canvas.drawRoundRect(block, s(12f), s(12f), fill)
-        canvas.drawRect(RectF(x + logoW - s(12f), y, x + logoW, y + panelH), fill)
+        var tx = x + s(18f)
         logo?.let {
-            val h = s(56f)
-            val w = h * it.width / it.height
+            fill.color = Color.WHITE
             fill.alpha = alpha
             canvas.drawBitmap(
                 it, null,
-                RectF(
-                    x + (logoW - w) / 2, y + (panelH - h) / 2,
-                    x + (logoW + w) / 2, y + (panelH + h) / 2,
-                ),
+                RectF(tx, top + (h - shieldH) / 2, tx + shieldW, top + (h + shieldH) / 2),
                 fill,
             )
+            tx += shieldW + gap
         }
-
-        // Format band
-        val contentX = x + logoW
-        fill.color = SKY
-        fill.alpha = (alpha * 0.16f).toInt()
-        canvas.drawRect(RectF(contentX, y, x + panelW - s(12f), y + s(26f)), fill)
-        fill.color = SKY
-        fill.alpha = (alpha * 0.16f).toInt()
-        canvas.drawRoundRect(
-            RectF(x + panelW - s(24f), y, x + panelW, y + s(26f)), s(12f), s(12f), fill,
-        )
-        canvas.drawRect(RectF(x + panelW - s(24f), y + s(13f), x + panelW, y + s(26f)), fill)
-        text.color = 0xFFBAE6FD.toInt()
+        text.color = Color.WHITE
         text.alpha = alpha
-        text.textSize = s(12f)
-        text.textAlign = Paint.Align.LEFT
+        text.textSize = s(13f)
+        text.letterSpacing = 0.12f
+        canvas.drawText(BRAND, tx, top + s(21f), text)
+        text.color = MUTED
+        text.alpha = alpha
+        text.textSize = s(11f)
         text.letterSpacing = 0.08f
-        canvas.drawText(format, contentX + s(12f), y + s(18f), text)
+        canvas.drawText(format, tx, top + s(36f), text)
         text.letterSpacing = 0f
-
-        // Player rows — static scores (the countdown was cut: unreliable
-        // impact timing read worse than a still number).
-        drawRow(contentX, y + s(26f), x + panelW - contentX, alpha, BLUE, me, myLegs, startScore, true)
-        drawRow(contentX, y + s(59f), x + panelW - contentX, alpha, PINK, opp, oppLegs, oppScore, false)
     }
 
-    private fun drawRow(
-        x: Float, y: Float, w: Float, alpha: Int,
+    private fun drawCard(
+        x: Float, y: Float, w: Float, h: Float, alpha: Int,
         color: Int, name: String, legs: Int, score: Int, mine: Boolean,
     ) {
-        fill.style = Paint.Style.FILL
+        val rect = RectF(x, y, x + w, y + h)
+        // Clip to the rounded card so the accent keeps the top corners.
+        val path = Path().apply { addRoundRect(rect, s(14f), s(14f), Path.Direction.CW) }
+        canvas.save()
+        canvas.clipPath(path)
         fill.shader = null
+        fill.style = Paint.Style.FILL
+        fill.color = CARD
+        fill.alpha = (alpha * 0.95f).toInt()
+        canvas.drawRect(rect, fill)
         fill.color = color
         fill.alpha = alpha
-        canvas.drawCircle(x + s(16f), y + s(16f), s(4.5f), fill)
-        text.textAlign = Paint.Align.LEFT
-        text.textSize = s(15f)
-        text.color = if (mine) Color.WHITE else MUTED
-        text.alpha = alpha
-        canvas.drawText(name, x + s(30f), y + s(21f), text)
-        // Legs chip
-        fill.color = color
-        fill.alpha = (alpha * 0.22f).toInt()
-        val legsBox = RectF(x + w - s(96f), y + s(5f), x + w - s(72f), y + s(27f))
-        canvas.drawRoundRect(legsBox, s(6f), s(6f), fill)
+        canvas.drawRect(RectF(x, y, x + w, y + s(4f)), fill)
+        canvas.restore()
+
+        val cx = x + w / 2
         text.textAlign = Paint.Align.CENTER
-        text.textSize = s(13f)
-        text.color = color
+        text.textSize = s(14f)
+        text.letterSpacing = 0.1f
+        text.color = if (mine) 0xFFE4EDFA.toInt() else MUTED
         text.alpha = alpha
-        canvas.drawText(legs.toString(), legsBox.centerX(), y + s(20.5f), text)
-        // Remaining score — deliberately small (broadcast reference)
-        text.textAlign = Paint.Align.RIGHT
-        text.textSize = s(16f)
-        text.color = if (mine) Color.WHITE else MUTED
+        canvas.drawText(ellipsize(name, w - s(20f)), cx, y + s(25f), text)
+        text.letterSpacing = 0f
+
+        text.textSize = s(40f)
+        text.color = if (mine) Color.WHITE else 0xFFB9C6DA.toInt()
         text.alpha = alpha
-        canvas.drawText(score.toString(), x + w - s(16f), y + s(21f), text)
+        canvas.drawText(score.toString(), cx, y + s(74f), text)
+
+        // Legs as pips: in a BO3 "one leg left to take" reads without counting.
+        val count = legsTarget.coerceIn(1, 5)
+        val r = s(4.5f)
+        val pipGap = s(6f)
+        val totalW = count * 2 * r + (count - 1) * pipGap
+        var px = cx - totalW / 2 + r
+        for (i in 0 until count) {
+            if (i < legs) {
+                fill.color = color
+                fill.alpha = alpha
+            } else {
+                fill.color = Color.WHITE
+                fill.alpha = (alpha * 0.18f).toInt()
+            }
+            canvas.drawCircle(px, y + s(86f), r, fill)
+            px += 2 * r + pipGap
+        }
     }
 
-    private fun drawDartChip(tMs: Long) {
-        val dart = darts.lastOrNull { tMs >= it.first && tMs < it.first + 1500 } ?: return
-        val age = tMs - dart.first
-        val pop = overshoot((age / 220f).coerceAtMost(1f))
-        val fade = if (age > 1200) 1f - (age - 1200) / 300f else 1f
-        val alpha = (255 * fade).toInt().coerceIn(0, 255)
-        val cx = displayW - s(96f)
-        val cy = s(170f)
-        canvas.save()
-        canvas.translate(cx, cy)
-        canvas.rotate(-4f)
-        canvas.scale(pop, pop)
-        text.textSize = s(30f)
-        text.textAlign = Paint.Align.CENTER
-        val tw = text.measureText(dart.second)
-        fill.color = GOLD
-        fill.alpha = alpha
-        canvas.drawRoundRect(
-            RectF(-tw / 2 - s(16f), -s(26f), tw / 2 + s(16f), s(14f)), s(10f), s(10f), fill,
-        )
-        text.color = 0xFF1A1608.toInt()
-        text.alpha = alpha
-        canvas.drawText(dart.second, 0f, s(3f), text)
-        canvas.restore()
+    /** Truncates with the current text paint — long pseudos must not bleed. */
+    private fun ellipsize(value: String, maxWidth: Float): String {
+        if (text.measureText(value) <= maxWidth) return value
+        var out = value
+        while (out.length > 1 && text.measureText("$out…") > maxWidth) {
+            out = out.dropLast(1)
+        }
+        return "$out…"
     }
 
     private fun drawBanner(tMs: Long) {
@@ -670,10 +687,5 @@ private class OverlayPainter(
     private fun ease(t: Float): Float {
         val c = t.coerceIn(0f, 1f)
         return 1f - (1f - c) * (1f - c)
-    }
-
-    private fun overshoot(t: Float): Float {
-        val c = t.coerceIn(0f, 1f)
-        return 1f + 0.14f * kotlin.math.sin(c * Math.PI).toFloat() * (1f - c * 0.4f)
     }
 }

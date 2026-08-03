@@ -39,9 +39,10 @@ class DetectionIsolate {
 
       // Write model asset to a temp file so the isolate can use
       // Interpreter.fromFile (memory-mapped, same speed as fromAsset).
-      final modelData = await rootBundle.load('assets/models/t223.tflite');
+      final modelData =
+          await rootBundle.load('assets/models/dart-rival-ia-heavy.tflite');
       final tempDir = await getTemporaryDirectory();
-      final modelFile = File('${tempDir.path}/t223.tflite');
+      final modelFile = File('${tempDir.path}/dart-rival-ia-heavy.tflite');
       if (!modelFile.existsSync()) {
         await modelFile.writeAsBytes(modelData.buffer.asUint8List(), flush: true);
       }

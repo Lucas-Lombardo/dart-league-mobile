@@ -7,13 +7,13 @@ import '../widgets/game_turn_ui.dart' show notationPoints;
 
 /// Builds the burn-in overlay timeline for one captured visit — the ONLY
 /// place that knows both the match and the clip. The native renderers
-/// (ReplayOverlayRenderer.kt / the Swift twin) interpret four primitives and
+/// (ReplayOverlayRenderer.kt / the Swift twin) interpret three primitives and
 /// know nothing about darts:
 ///
-///   scoreboard  (always)      — lower third: format band + one row per
-///                               player (name, legs, remaining score; mine
-///                               steps down at each dart event)
-///   dart        (per impact)  — popup chip "T20", timed on the AI impact
+///   scoreboard  (always)      — brand lockup (shield + DART RIVALS +
+///                               format) over two facing cards, one per
+///                               player (name, remaining score, leg pips),
+///                               static for the whole clip
 ///   banner      (highlights)  — full-width gold band ("180", "GAME SHOT!")
 ///   outro       (always)      — end card: logo + DART RIVALS + @handle,
 ///                               timed natively over the last 1.6s
@@ -30,33 +30,32 @@ Map<String, dynamic> buildReplayOverlayTimeline({
   required String opponentName,
   required int myLegs,
   required int opponentLegs,
+  required int legsTarget,
   required String? seriesTitle,
   required bool checkout,
   required String logoPath,
 }) {
-  // The score COUNTDOWN was cut on 2026-08-03 (AI impact timestamps lag
-  // the on-screen throw unpredictably — a score changing at the wrong
-  // instant reads worse than a static one). The scoreboard shows the
-  // visit's END state; the "T20" chips and the banner keep their per-dart
-  // timing, where a small lag is harmless.
+  // Everything per-dart was cut on 2026-08-03: AI impact timestamps lag the
+  // on-screen throw unpredictably, so the score countdown AND the "T20"
+  // popup chips landed on the wrong frames (the chip could even name a dart
+  // that was not the one just thrown). The scoreboard now shows the visit's
+  // END state for the whole clip; only the banner still uses impact times,
+  // where it fires once, late, and a small lag is harmless.
   final visitTotal =
       dartNotations.fold<int>(0, (sum, n) => sum + notationPoints(n));
 
-  final darts = <Map<String, dynamic>>[];
   final count = dartTimes.length < dartNotations.length
       ? dartTimes.length
       : dartNotations.length;
-  for (var i = 0; i < count; i++) {
-    final atMs = dartTimes[i].millisecondsSinceEpoch - clipStartWallMs;
-    if (atMs < 0) continue; // impact before the clip's first segment
-    darts.add({'atMs': atMs, 'label': dartNotations[i]});
-  }
+  final lastDartMs = count == 0
+      ? null
+      : dartTimes[count - 1].millisecondsSinceEpoch - clipStartWallMs;
 
   Map<String, dynamic>? banner;
   final is180 = visitTotal == 180 && dartNotations.length >= 3;
-  if ((is180 || checkout) && darts.isNotEmpty) {
+  if ((is180 || checkout) && lastDartMs != null && lastDartMs >= 0) {
     banner = {
-      'atMs': (darts.last['atMs'] as int) + 700,
+      'atMs': lastDartMs + 700,
       'text': is180 ? '180' : 'GAME SHOT!',
     };
   }
@@ -67,9 +66,11 @@ Map<String, dynamic> buildReplayOverlayTimeline({
     'opp': opponentName.toUpperCase(),
     'myLegs': myLegs,
     'oppLegs': opponentLegs,
+    // Number of pips drawn per card: a BO3 shows two, so "one leg left to
+    // take" reads without counting.
+    'legsTarget': legsTarget,
     'startScore': myRemainingScore,
     'oppScore': opponentScore,
-    'darts': darts,
     'banner': ?banner,
     'handle': '@$myName',
     'logoPath': logoPath,

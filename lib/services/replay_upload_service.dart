@@ -44,7 +44,9 @@ class ReplayUploadService {
       await ApiService.post('/replays', {
         'key': key,
         'matchId': ?clip.matchId,
-        'type': clip.hot ? 'highlight' : 'manual',
+        // Every clip is a manual capture now; the backend still accepts the
+        // old 'highlight' value for apps that have not updated.
+        'type': 'manual',
         'turnTotal': ?clip.turnTotal,
         'sizeBytes': size,
       });

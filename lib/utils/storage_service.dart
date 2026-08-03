@@ -42,7 +42,7 @@ class StorageService {
     await _storage.delete(key: _languageKey);
   }
 
-  // Small-model (t225) mean per-frame cost in ms, best-ever ratchet.
+  // Small-model (ia-light) mean per-frame cost in ms, best-ever ratchet.
   // Device speed profile for the adaptive AI model ladder (ModelSelector) —
   // mirrors DartsMind's persisted checkInferenceAvgTime_t201.
   static const String _aiSmallModelAvgMsKey = 'ai_small_model_avg_ms';

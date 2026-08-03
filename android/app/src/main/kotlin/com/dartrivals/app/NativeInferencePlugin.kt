@@ -46,7 +46,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // creating a fresh GpuDelegate per load leaks GL contexts.
     private var gpuDelegate: GpuDelegate? = null
     // File path of the currently loaded model; a different path forces a
-    // rebuild (adaptive t225 <-> t223 switch).
+    // rebuild (adaptive ia-light <-> ia-heavy switch).
     private var loadedModelPath: String? = null
 
     // Per-frame timing logs fire every frame and flood logcat. Off by default;
@@ -452,9 +452,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/t225.tflite" doesn't work with
-            // Android's AssetManager directly.
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/t225.tflite")
+            // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
+            // work with Android's AssetManager directly.
+            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)
             android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")
@@ -530,7 +530,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // Idempotent for the SAME path — see loadModel(). Reuse an interpreter
         // built earlier instead of rebuilding it per match (the Dart side
         // always uses this file path on Android). A DIFFERENT path forces a
-        // rebuild: this is the adaptive t225 <-> t223 model switch. So does a
+        // rebuild: this is the adaptive ia-light <-> ia-heavy model switch. So does a
         // CPU-only interpreter left by a wedge recovery once forceCpuOnce has
         // been consumed — that rebuild restores the GPU delegate. It runs on
         // dvExecutor, serialized behind any in-flight analyze, so the old

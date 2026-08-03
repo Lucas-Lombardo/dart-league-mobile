@@ -81,27 +81,30 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     return 'RANKED';
   }
 
+  /// Legs needed to take the series — one pip per leg on the replay cards.
+  int _replayLegsTarget(dynamic game) {
+    try {
+      final bestOf = game.bestOf as int?;
+      if (bestOf != null && bestOf > 0) return (bestOf ~/ 2) + 1;
+    } catch (_) {}
+    return 2;
+  }
+
   /// The « Enregistrer » pill on my camera panel — visible during MY turn
-  /// once the visit has something to record, gold on a highlight (180;
-  /// checkouts are captured automatically from the win dialog, which covers
-  /// the pill while it is open).
+  /// once the visit has something to record. Every clip comes from this one
+  /// gesture: the auto-capture of checkouts was dropped 2026-08-04, a replay
+  /// is only ever something the player asked for.
   Widget? buildReplayCaptureButton(dynamic game) {
     if (!ReplayBufferService.armed) return null;
     if (game.dartsThrown < 1 && _turnDartTimes.isEmpty) return null;
-    final total = autoScoringService?.turnTotal ?? 0;
-    final hot = game.dartsThrown >= 3 && total == 180;
-    return ReplayCaptureButton(
-      key: ValueKey('replay-capture-$hot'),
-      hot: hot,
-      onCapture: () => captureTurnClip(game, hot: hot),
-    );
+    return ReplayCaptureButton(onCapture: () => captureTurnClip(game));
   }
 
   /// Cuts the clip of the current visit from the ring buffer, burns the
-  /// broadcast overlay in (scoreboard, dart popups, banner, end card) and
+  /// broadcast overlay in (scoreboard, banner, end card) and
   /// stores it. Local-only: sharing never waits on any upload, and a failed
   /// render falls back to the raw clip.
-  Future<bool> captureTurnClip(dynamic game, {required bool hot}) async {
+  Future<bool> captureTurnClip(dynamic game) async {
     final now = DateTime.now();
     final from = _turnDartTimes.isNotEmpty
         ? _turnDartTimes.first.subtract(const Duration(seconds: 2))
@@ -123,8 +126,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         opponentName: opponentUsername,
         myLegs: game.myLegsWon as int,
         opponentLegs: game.opponentLegsWon as int,
+        legsTarget: _replayLegsTarget(game),
         seriesTitle: replayFormatLabel ?? _replayDefaultFormat(game),
-        checkout: hot && (game.myScore as int) == 0,
+        // Video dressing only — the gold band reads the visit itself, not any
+        // clip category.
+        checkout: (game.myScore as int) == 0,
         logoPath: await materializeReplayLogo(),
       );
       final dressed = await ReplayBufferService.renderOverlay(
@@ -138,7 +144,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final clip = ReplayClip(
       path: path,
       createdAt: now,
-      hot: hot,
       matchId: matchIdForLeave,
       turnTotal: autoScoringService?.turnTotal,
     );
@@ -1624,7 +1629,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
-          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); captureTurnClip(game, hot: true); game.confirmWin(); },
+          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); },
           style: gameFilledButtonStyle(AppTheme.success),
           child: Text(l10n.confirmWin),
         ),
