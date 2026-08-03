@@ -131,6 +131,12 @@ class P2pMatchVideo {
 
   Future<void> _connect({required bool offerer}) async {
     final gen = _gen;
+    // EVERY new session counts as an attempt, adoption and first connect
+    // included: ICE checks run for seconds AFTER the last signal landed, so
+    // without this stamp the loop's progress-hold expires mid-convergence
+    // and kills a negotiation that was about to succeed — the interval is
+    // the per-attempt budget, not just rebuild spacing.
+    _lastRebuildAt = DateTime.now();
     final session = P2pRtcSession(
       config: configProvider(),
       offerer: offerer,
@@ -304,7 +310,11 @@ class P2pMatchVideo {
       await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration);
       if (_stopped) return;
       _connecting = _connect(offerer: offerer);
-      await _connecting;
+      // Bounded: a native call that hangs (createPeerConnection,
+      // getUserMedia) must not leave _swapping stuck and freeze recovery
+      // for the rest of the match. On timeout the loop simply tries the
+      // next generation; a late completion is disposed by that swap.
+      await _connecting?.timeout(const Duration(seconds: 20));
     } catch (e) {
       debugPrint('P2P: session swap failed: $e');
     } finally {
