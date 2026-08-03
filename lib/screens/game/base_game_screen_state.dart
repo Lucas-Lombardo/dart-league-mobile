@@ -14,6 +14,7 @@ import '../../providers/tournament_game_provider.dart'
 import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_rtc_session.dart';
+import '../../services/rtc_recovery_policy.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
@@ -84,12 +85,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // doubling the engine and the camera.
   bool _agoraInitInFlight = false;
 
-  // P2P rebuild budget for the CURRENT outage (reset on every successful
-  // connection). Rebuilding is the real recovery path — Agora is only the
-  // transitional last resort, so this must be generous: a player on a train
-  // can lose the network several times in one leg.
-  static const int _maxP2pRebuilds = 4;
-  int _p2pRebuildAttempts = 0;
+  // Owns the whole "what happens when the picture stops" ladder — see
+  // RtcRecoveryPolicy. Created with the session, disposed with it.
+  RtcRecoveryPolicy? _p2pRecovery;
   bool _p2pRebuilding = false;
 
   // Kept so a rebuild can proceed even if the provider transiently lacks
@@ -315,6 +313,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // the native track is torn down only after the peer connection closed.
     if (p2pSession != null) {
       final generation = _rtcFramesGeneration;
+      _p2pRecovery?.dispose();
+      _p2pRecovery = null;
       p2pSession!
           .dispose()
           .whenComplete(
@@ -803,10 +803,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── RTC v2 (P2P) ─────────────────────────────────────────────────────────────
 
-  /// Wires a session with this screen's callbacks. `onFailed` does NOT go
-  /// straight to Agora: it first rebuilds the P2P session from scratch (see
-  /// [_rebuildP2pSession]) — Agora is only the last resort, and it is meant
-  /// to disappear once every install supports RTC v2.
+  /// Wires a session to the recovery ladder: the session only REPORTS its
+  /// health, [RtcRecoveryPolicy] owns every timing decision.
   P2pRtcSession _buildP2pSession(
     String matchId,
     String opponentId,
@@ -817,21 +815,25 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       opponentId: opponentId,
       config: config,
       onConnected: () {
-        // A healthy connection clears the rebuild budget: a match with three
-        // outages an hour apart must not exhaust it.
-        _p2pRebuildAttempts = 0;
         if (mounted) setState(() {});
       },
       onRemoteVideoReady: () {
         if (mounted) setState(() => p2pRemoteVideoReady = true);
       },
-      onFailed: (reason) {
-        if (_p2pRebuildAttempts < _maxP2pRebuilds) {
-          _rebuildP2pSession(reason);
-        } else {
-          fallbackToAgora(reason);
-        }
-      },
+      onHealthy: () => _p2pRecovery?.noteHealthy(),
+      onImpaired: (reason) => _p2pRecovery?.noteImpaired(reason),
+    );
+  }
+
+  /// The single owner of "what happens when the picture stops" — see
+  /// [RtcRecoveryPolicy] for the whole ladder. Agora is wired as the last
+  /// resort only while it still exists; dropping it later means passing
+  /// null, and the ladder keeps rebuilding instead.
+  RtcRecoveryPolicy _buildRecoveryPolicy() {
+    return RtcRecoveryPolicy(
+      onRestartIce: () => p2pSession?.restartIce(),
+      onRebuild: () => _rebuildP2pSession('recovery'),
+      onGiveUp: (reason) => fallbackToAgora(reason),
     );
   }
 
@@ -852,11 +854,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     });
   }
 
-  /// Full P2P session rebuild — the equivalent of Agora's channel rejoin,
-  /// and the step that was missing: an ICE restart reuses a PeerConnection
-  /// whose candidates belong to the network that just died, whereas a fresh
-  /// PeerConnection re-gathers on the CURRENT network and connects like a
-  /// first call (~2s). This is what must carry recovery once Agora is gone.
+  /// Full P2P session rebuild — the equivalent of Agora's channel rejoin: a
+  /// fresh PeerConnection re-gathers candidates on the CURRENT network and
+  /// connects like a first call (~2s), where an ICE restart reuses the
+  /// candidates of the network that just died. This is what carries recovery
+  /// once Agora is gone.
   ///
   /// The camera and the AI are deliberately left untouched: only the session
   /// and the native track are recreated, so a rebuild costs no camera
@@ -884,11 +886,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         await fallbackToAgora(reason);
         return;
       }
-      _p2pRebuildAttempts++;
-      debugPrint('[BaseGameScreen] P2P rebuild #$_p2pRebuildAttempts ($reason)');
-      // Small backoff so a still-dead network isn't hammered, and so the
-      // opponent's own rebuild has time to arm its signal handler.
-      await Future.delayed(const Duration(seconds: 2));
       if (!mounted || _p2pFellBack) return;
       final session = _buildP2pSession(matchId, opponentId, config);
       p2pSession = session;
@@ -916,7 +913,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // any restart offer emitted while the socket was dead was lost
       // forever (no replay), and waiting wedged the airplane-mode test.
       if (!p2pSession!.isLinkUp) {
-        p2pSession!.kickIceRestart();
+        // The socket is proof the network is back: re-report the outage so
+        // the ladder acts NOW instead of waiting for its next step (any
+        // offer emitted into the dead socket was lost — no replay).
+        p2pSession!.restartIce();
       }
       return;
     }
@@ -1020,6 +1020,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       permissionsGranted = true;
     }
     _p2pAgoraFallback = agoraFallback;
+    _p2pRecovery ??= _buildRecoveryPolicy();
     _p2pMatchId = matchId;
     _p2pOpponentId = opponentId;
     final session = _buildP2pSession(matchId, opponentId, config);
@@ -1071,6 +1072,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Future<void> fallbackToAgora(String reason) async {
     if (_p2pFellBack) return;
     _p2pFellBack = true;
+    _p2pRecovery?.dispose();
+    _p2pRecovery = null;
     final session = p2pSession;
     final fallback = _p2pAgoraFallback;
     _p2pAgoraFallback = null;
@@ -1398,6 +1401,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try {
       autoScoringService?.stopCapture();
       if (p2pSession != null) {
+        _p2pRecovery?.dispose();
+        _p2pRecovery = null;
         await p2pSession!.dispose();
         p2pSession = null;
         p2pRemoteVideoReady = false;

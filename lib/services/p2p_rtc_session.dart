@@ -26,7 +26,8 @@ class P2pRtcSession {
     required this.config,
     this.onConnected,
     this.onRemoteVideoReady,
-    this.onFailed,
+    this.onHealthy,
+    this.onImpaired,
   });
 
   /// The matchId used as the signaling scope. For a BO3 series this stays the
@@ -46,49 +47,24 @@ class P2pRtcSession {
 
   final VoidCallback? onConnected;
   final VoidCallback? onRemoteVideoReady;
-  final void Function(String reason)? onFailed;
 
-  /// How long the call may stay un-connected (from connect()) before we give
-  /// up and let the screen fall back to the Agora credentials of the same
-  /// payload.
-  static const Duration connectTimeout = Duration(seconds: 10);
+  /// Media is flowing. Reported on every recovery, not just the first
+  /// connection — the recovery ladder needs to know it can stand down.
+  final VoidCallback? onHealthy;
 
-  /// ABSOLUTE budget for a mid-call outage, counted from the moment the
-  /// media link first went down — not per state transition. The ICE agent
-  /// bounces Disconnected↔Failed several times during a real outage, and
-  /// re-arming a relative timer on each bounce made the total unbounded:
-  /// ~45s of frozen video before the Agora fallback in the 2026-08-03
-  /// airplane test. Every escalation is now measured against this deadline.
-  static const Duration outageBudget = Duration(seconds: 15);
-
-  /// Budget for an outage detected by the MEDIA watchdog alone (ICE still
-  /// Connected). Longer, because the likeliest cause is a silent opponent
-  /// (app backgrounded), where falling back to Agora rebuilds everything to
-  /// display the same absent video.
-  static const Duration mediaOutageBudget = Duration(seconds: 30);
-
-  /// Poll cadence for the outage deadline while the link is down.
-  static const Duration outageTick = Duration(seconds: 1);
+  /// Media is NOT flowing (ICE down, or frames frozen while ICE still says
+  /// Connected). The session reports; [RtcRecoveryPolicy] decides.
+  final void Function(String reason)? onImpaired;
 
   /// How often the decoded-frame counter is sampled once connected.
   static const Duration mediaCheckInterval = Duration(seconds: 3);
 
   /// No new decoded frame for this long = the remote video is frozen even
-  /// though ICE still reports Connected. Happens after a network blip: the
-  /// decoder waits for a keyframe that never comes, or media flows one way
-  /// only. Neither the outage budget nor the socket-return kick can see it
-  /// (connectionState never leaves Connected) — this is the only detector.
+  /// though ICE still reports Connected (the decoder waits for a keyframe
+  /// that never comes, or media flows one way only). No ICE state exposes
+  /// this — it is the only sensor for that failure, and therefore also the
+  /// sensor of its recovery.
   static const Duration mediaStallTimeout = Duration(seconds: 6);
-
-  /// Minimum spacing between two restart offers, whatever triggered them
-  /// (socket kick, ICE failure, media stall) — stacked offers desynchronize
-  /// the ICE generations and prevent convergence.
-  static const Duration restartOfferThrottle = Duration(seconds: 3);
-
-  /// How long a `Disconnected` state may self-heal before we force an ICE
-  /// restart. Short: a real transient blip recovers in ~1-2s, and beyond
-  /// that only a restart converges.
-  static const Duration disconnectedGrace = Duration(seconds: 2);
 
   /// Re-emission cadence of the initial offer while the opponent has said
   /// NOTHING yet. Signals have no replay: if the polite peer registers its
@@ -114,9 +90,6 @@ class P2pRtcSession {
   // Live link state (unlike _connected, which is one-shot "ever connected").
   bool _linkUp = false;
   bool _disposed = false;
-  // Terminal latch: once onFailed fired, no timer/state event may fire it
-  // again (double fallback) or surface a late onConnected mid-fallback.
-  bool _failed = false;
   bool _reportSent = false;
   // Serializes signal processing: _processSignal interleaves several awaits
   // (setRemote → createAnswer → setLocal) and a live signal racing a
@@ -139,69 +112,50 @@ class P2pRtcSession {
   }
   DateTime? _connectStartedAt;
   int? _connectTimeMs;
-  Timer? _connectWatchdog;
-  Timer? _recoveryTimer;
-  Timer? _disconnectedTimer;
   Timer? _offerRetryTimer;
   Timer? _mediaWatchdog;
   int? _lastFramesDecoded;
   DateTime? _lastFrameProgressAt;
-  // When the media link first went down in the CURRENT outage — the origin
-  // of [outageBudget]. Null while the link is up.
-  DateTime? _linkDownSince;
-  // True when the current outage was detected by the media watchdog only
-  // (ICE never left Connected) — see [mediaOutageBudget].
-  bool _mediaOriginOutage = false;
-  DateTime? _lastRestartOfferAt;
   bool _remoteSignalSeen = false;
-  int _iceRestartAttempts = 0;
+  bool _impairedReported = false;
 
   bool get isConnected => _connected;
 
-  /// Live media-link state (false during an outage even if we once
-  /// connected) — the screen uses it to decide whether a socket recovery
-  /// should kick a renegotiation.
+  /// Live media state: true only while frames are actually flowing.
   bool get isLinkUp => _linkUp;
 
-  /// Force a renegotiation NOW. Called when the SOCKET comes back while the
-  /// media link is down: any restart offer emitted into the dead socket was
-  /// lost forever (signals have no replay), and the polite peer otherwise
-  /// has no way to drive recovery — the airplane-mode test wedged exactly
-  /// here. Offering from either role is safe: glare is absorbed by the
-  /// perfect-negotiation path (explicit rollback included).
-  void kickIceRestart() {
-    if (_disposed || _failed || _linkUp) return;
+  /// Restart ICE and re-send an offer — the cheap in-place repair. Called by
+  /// [RtcRecoveryPolicy]; the session never decides WHEN on its own.
+  ///
+  /// Both roles may send it: waiting for the impolite peer wastes the ladder
+  /// when its network is the one that died, and glare is absorbed by the
+  /// perfect-negotiation path (explicit rollback included). Re-sending also
+  /// covers a lost offer — the relay has no replay.
+  void restartIce() {
+    if (_disposed) return;
     // Never offer before the local media is attached: an offer without our
-    // video m-line is how the one-way-video bug happened. The initial
-    // negotiation (or its buffered-signal drain) will carry the tracks.
+    // video m-line is how the one-way-video bug happened.
     if (!_localSetupDone) return;
-    // Throttle: the reconnect sync fires repeatedly on a flaky network, and
-    // stacking restart offers desynchronizes the ICE generations (a late
-    // answer to offer N applied over offer N+1, then N+1's answer dropped
-    // as a duplicate) — the agent then never converges.
-    final last = _lastRestartOfferAt;
-    if (last != null &&
-        DateTime.now().difference(last) < restartOfferThrottle) {
-      return;
-    }
-    debugPrint('P2P: socket back while link down — kicking ICE restart');
-    // Restart the outage clock: the budget is wall-clock, so time spent
-    // with the app backgrounded (call, notification) counted against it —
-    // any absence longer than the budget fell back to Agora the instant the
-    // socket returned, before the renegotiation had any chance to converge.
-    _linkDownSince = DateTime.now();
-    _restartAndOffer();
-  }
-
-  /// Restart ICE and (re)send an offer, serialized on the signal chain.
-  void _restartAndOffer() {
-    _lastRestartOfferAt = DateTime.now();
     try {
       _pc?.restartIce();
     } catch (e) {
       debugPrint('P2P: restartIce failed: $e');
     }
     _queueOffer(iceRestart: true);
+  }
+
+  void _setHealthy() {
+    if (_disposed) return;
+    _linkUp = true;
+    _handleConnected();
+    onHealthy?.call();
+  }
+
+  void _setImpaired(String reason) {
+    if (_disposed || (!_linkUp && _impairedReported)) return;
+    _linkUp = false;
+    _impairedReported = true;
+    onImpaired?.call(reason);
   }
 
   /// Offers ride the SAME chain as incoming signals: since both peers may
@@ -226,17 +180,12 @@ class P2pRtcSession {
   }) async {
     if (_disposed) return;
     _connectStartedAt = DateTime.now();
-    // Armed BEFORE the setup awaits, not after: a hang in
-    // createPeerConnection / getUserMedia / the buffered-signal drain throws
-    // nothing, so without this the session had NO timer at all — black
-    // remote tile for the whole match with no fallback. Cancelled by
-    // _handleConnected / _fail / dispose.
-    _connectWatchdog = Timer(connectTimeout, () {
-      if (!_connected && !_disposed && !_failed) {
-        debugPrint('P2P: connect watchdog fired');
-        _fail('connect_timeout');
-      }
-    });
+    // Report impaired from the very start: an initial connection that never
+    // lands is just an outage like any other, and the ladder owns the
+    // deadline. This also covers a HANG in the setup awaits below (which
+    // throws nothing) — the session used to have no timer at all there.
+    onImpaired?.call('connecting');
+    _impairedReported = true;
     await remoteRenderer.initialize();
 
     final pc = await createPeerConnection({
@@ -274,37 +223,21 @@ class P2pRtcSession {
       debugPrint('P2P: connection state $state');
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
-          // Unconditional: _handleConnected is one-shot (first connect), but
-          // every RECOVERY back to Connected must also forgive past ICE
-          // failures — otherwise transient drops accumulate over a whole
-          // series until they trip the permanent Agora fallback.
-          _clearOutage();
-          // Re-baseline the media counter: a renegotiation brings a new
-          // SSRC and a counter restarting from zero.
+          // Re-baseline the media counter: a renegotiation brings a new SSRC
+          // whose counter restarts from zero.
           _lastFramesDecoded = null;
           _lastFrameProgressAt = DateTime.now();
-          _handleConnected();
+          _setHealthy();
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
-          _linkUp = false;
-          _markLinkDown();
-          _handleIceFailure();
+          _setImpaired('ice_failed');
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
           // Disconnected is NOT always followed by Failed: after an earlier
-          // ICE restart the agent can sit in Disconnected forever, and the
-          // second airplane-mode outage froze exactly there — no Failed, so
-          // no restart, no recovery timer, no fallback, and the socket-return
-          // kick was skipped because _linkUp still read true.
-          _linkUp = false;
-          _markLinkDown();
-          _disconnectedTimer?.cancel();
-          _disconnectedTimer = Timer(disconnectedGrace, () {
-            if (!_disposed && !_failed && !_linkUp) {
-              debugPrint('P2P: still disconnected after grace — restarting ICE');
-              _handleIceFailure();
-            }
-          });
+          // restart the agent can sit here forever. Reporting it (instead of
+          // waiting for Failed) is what makes the ladder's self-heal window
+          // the single place that decides whether it matters.
+          _setImpaired('ice_disconnected');
           break;
         default:
           break;
@@ -443,9 +376,8 @@ class P2pRtcSession {
       );
 
   void _handleConnected() {
-    if (_connected || _disposed || _failed) return;
+    if (_connected || _disposed) return;
     _connected = true;
-    _connectWatchdog?.cancel();
     final started = _connectStartedAt;
     if (started != null && _connectTimeMs == null) {
       _connectTimeMs = DateTime.now().difference(started).inMilliseconds;
@@ -457,14 +389,14 @@ class P2pRtcSession {
 
   /// Watches the DECODED-FRAME counter, not the ICE state: after a blip the
   /// connection can stay Connected while the remote picture is frozen for
-  /// good (keyframe starvation / one-way media). On a stall we drive the
-  /// normal recovery chain — ICE restart, then the outage budget's fallback.
+  /// good. Purely a SENSOR — it reports healthy/impaired and lets
+  /// [RtcRecoveryPolicy] decide what to do about it.
   void _startMediaWatchdog() {
     _mediaWatchdog?.cancel();
     _lastFramesDecoded = null;
     _lastFrameProgressAt = DateTime.now();
     _mediaWatchdog = Timer.periodic(mediaCheckInterval, (_) async {
-      if (_disposed || _failed) return;
+      if (_disposed) return;
       final pc = _pc;
       if (pc == null) return;
       // SUM over every video inbound-rtp, and never mix metrics: keeping the
@@ -489,7 +421,7 @@ class P2pRtcSession {
         return;
       }
       final counter = framesTotal ?? bytesTotal;
-      if (counter == null || _disposed || _failed) return;
+      if (counter == null || _disposed) return;
       final now = DateTime.now();
       // `!=`, not `>`: a renegotiation or an opponent relaunch brings a new
       // SSRC whose counter restarts at 0 — that IS progress, not a stall.
@@ -503,103 +435,17 @@ class P2pRtcSession {
         if (!_linkUp &&
             pc.connectionState ==
                 RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-          debugPrint('P2P: media flowing again — outage cleared');
-          _clearOutage();
+          debugPrint('P2P: media flowing again');
+          _setHealthy();
         }
         return;
       }
       final since = _lastFrameProgressAt;
       if (since == null || now.difference(since) < mediaStallTimeout) return;
       debugPrint('P2P: remote video stalled (no decoded frame for '
-          '${now.difference(since).inSeconds}s) — forcing recovery');
-      // Re-baseline so the chain isn't re-triggered every tick while the
-      // restart converges.
-      _lastFrameProgressAt = now;
-      _linkUp = false;
-      // A media-only stall gets a longer budget: the opponent may simply
-      // have backgrounded their app (nothing to repair, and falling back to
-      // Agora would show the same absent video after a costly rebuild).
-      _mediaOriginOutage = _linkDownSince == null;
-      _handleIceFailure();
+          '${now.difference(since).inSeconds}s)');
+      _setImpaired('media_stalled');
     });
-  }
-
-  /// Single place that declares the link healthy again.
-  void _clearOutage() {
-    _linkUp = true;
-    _iceRestartAttempts = 0;
-    _linkDownSince = null;
-    _mediaOriginOutage = false;
-    _recoveryTimer?.cancel();
-    _recoveryTimer = null;
-    _disconnectedTimer?.cancel();
-    _disconnectedTimer = null;
-  }
-
-  /// Start (or keep) the current outage's clock and run the deadline poll —
-  /// escalation is measured from the FIRST link-down, so a bouncing ICE
-  /// agent can't extend the outage indefinitely.
-  void _markLinkDown() {
-    if (_disposed || _failed) return;
-    _linkDownSince ??= DateTime.now();
-    _recoveryTimer ??= Timer.periodic(outageTick, (_) {
-      if (_disposed || _failed) return;
-      if (_linkUp) {
-        _recoveryTimer?.cancel();
-        _recoveryTimer = null;
-        return;
-      }
-      final since = _linkDownSince;
-      final budget = _mediaOriginOutage ? mediaOutageBudget : outageBudget;
-      if (since != null && DateTime.now().difference(since) >= budget) {
-        _fail('ice_failed');
-      }
-    });
-  }
-
-  void _handleIceFailure() {
-    if (_disposed || _failed) return;
-    _disconnectedTimer?.cancel();
-    _disconnectedTimer = null;
-    _markLinkDown();
-    final since = _linkDownSince;
-    if (since != null && DateTime.now().difference(since) >= outageBudget) {
-      _fail('ice_failed');
-      return;
-    }
-    // Restarts stay capped per outage (the counter resets on Connected), but
-    // the outage deadline above is what ultimately bounds the wait. Past the
-    // cap we keep RE-SENDING the offer without restarting ICE again: the
-    // relay has no replay, so an offer emitted while the opponent's socket
-    // was down is gone forever and only a re-send can revive the call.
-    // Either role may send it: waiting for the impolite peer wastes the
-    // budget when its network is the one that died, and glare is absorbed
-    // by perfect negotiation.
-    final last = _lastRestartOfferAt;
-    final throttled = last != null &&
-        DateTime.now().difference(last) < restartOfferThrottle;
-    if (throttled) return;
-    if (_iceRestartAttempts < 2) {
-      _iceRestartAttempts++;
-      debugPrint('P2P: ICE failed — restart attempt $_iceRestartAttempts');
-      _restartAndOffer();
-    } else {
-      debugPrint('P2P: restart cap reached — re-sending offer');
-      _lastRestartOfferAt = DateTime.now();
-      _queueOffer(iceRestart: true);
-    }
-  }
-
-  void _fail(String reason) {
-    if (_disposed || _failed) return;
-    _failed = true;
-    _connectWatchdog?.cancel();
-    _recoveryTimer?.cancel();
-    _disconnectedTimer?.cancel();
-    _offerRetryTimer?.cancel();
-    _mediaWatchdog?.cancel();
-    debugPrint('P2P: failed ($reason)');
-    onFailed?.call(reason);
   }
 
   Future<void> _makeOffer({bool iceRestart = false}) async {
@@ -842,9 +688,6 @@ class P2pRtcSession {
   Future<void> dispose({bool fellBack = false, String? reason}) async {
     if (_disposed) return;
     _disposed = true;
-    _connectWatchdog?.cancel();
-    _recoveryTimer?.cancel();
-    _disconnectedTimer?.cancel();
     _offerRetryTimer?.cancel();
     _mediaWatchdog?.cancel();
     SocketService.off('rtc_signal', owner: this);
