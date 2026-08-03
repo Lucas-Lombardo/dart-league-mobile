@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../models/rtc_v2_config.dart';
 import '../services/socket_service.dart';
 import 'game_provider.dart' show ScoreMultiplier;
 
@@ -80,6 +81,7 @@ class TournamentGameProvider with ChangeNotifier {
   TournamentGameState _tournamentState = TournamentGameState.waiting;
 
   // Agora video calling
+  RtcV2Config? _rtcV2Config;
   String? _agoraAppId;
   String? _agoraToken;
   String? _agoraTokenStrict;
@@ -160,6 +162,7 @@ class TournamentGameProvider with ChangeNotifier {
   bool get iSeriesWinner => _seriesWinnerId == _myUserId;
 
   // Getters — Agora
+  RtcV2Config? get rtcV2Config => _rtcV2Config;
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
   String? get agoraTokenStrict => _agoraTokenStrict;
@@ -208,6 +211,7 @@ class TournamentGameProvider with ChangeNotifier {
     String? agoraChannelName,
     int? agoraUid,
     int? opponentAgoraUid,
+    RtcV2Config? rtcV2Config,
   }) {
     _tournamentMatchId = tournamentMatchId;
     _currentGameMatchId = gameMatchId;
@@ -226,6 +230,11 @@ class TournamentGameProvider with ChangeNotifier {
     _player1Id = null;
     _firstThrowerId = null;
 
+    // Unconditional (null clears): every initTournamentGame is a NEW bracket
+    // match, and the previous opponent's P2P verdict must not leak onto an
+    // opponent whose client doesn't support it (round 1 vs new client, round
+    // 2 vs old client).
+    _rtcV2Config = rtcV2Config;
     if (agoraAppId != null) _agoraAppId = agoraAppId;
     if (agoraToken != null) _agoraToken = agoraToken;
     if (agoraTokenStrict != null) _agoraTokenStrict = agoraTokenStrict;
@@ -726,11 +735,20 @@ class TournamentGameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
+    _adoptRtcV2(data);
 
     _cancelStartWatchdog();
     _gameStarted = true;
     _tournamentState = TournamentGameState.playing;
     notifyListeners();
+  }
+
+  /// Adopt a fresh `rtcV2` block when a payload carries one; absence never
+  /// clears an existing config (same rule as GameProvider).
+  void _adoptRtcV2(dynamic data) {
+    if (data is! Map) return;
+    final parsed = RtcV2Config.tryParse(data['rtcV2']);
+    if (parsed != null) _rtcV2Config = parsed;
   }
 
   void _handleDartUndone(dynamic data) {
@@ -806,6 +824,7 @@ class TournamentGameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
+    _adoptRtcV2(data);
 
     // Reset leg state for next leg. _gameStarted goes false again here, so
     // the next leg's game_started can be lost the same way as the first —

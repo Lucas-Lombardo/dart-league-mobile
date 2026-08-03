@@ -5,6 +5,7 @@ import '../../providers/tournament_game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../services/auto_scoring_service.dart';
+import '../../services/rtc_frames_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
@@ -97,8 +98,12 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
     updateLoadingMessage('Joining match...');
-    if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
-      updateLoadingMessage('Starting camera...');
+    // The exact legacy Agora path — used directly when the payload had no
+    // rtcV2 block, and as the automatic fallback when the P2P session fails.
+    // Reads the provider AT CALL TIME so a fallback 10s in picks up
+    // credentials refreshed by a later payload.
+    Future<void> startAgora() async {
+      if (game.agoraAppId == null || game.agoraAppId!.isEmpty) return;
       // Prefer the strict (uid-bound) token if the backend provided one;
       // otherwise fall back to legacy uid=0 + legacy token.
       final useStrict = game.hasStrictAgoraCredentials;
@@ -111,12 +116,32 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
         uid: useStrict ? game.agoraUid : 0,
       );
     }
+
+    final rtcV2 = game.rtcV2Config;
+    if (rtcV2 != null &&
+        RtcFramesService.isSupported &&
+        game.currentGameMatchId != null) {
+      // RTC v2: both clients support P2P — do NOT join Agora. The session
+      // deliberately survives the whole series (all legs share the peers);
+      // the signaling scope stays this first leg's matchId on both sides.
+      updateLoadingMessage('Starting camera...');
+      await initializeP2p(
+        matchId: game.currentGameMatchId!,
+        opponentId: widget.opponentId,
+        config: rtcV2,
+        agoraFallback: startAgora,
+      );
+    } else if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
+      updateLoadingMessage('Starting camera...');
+      await startAgora();
+    }
     game.addListener(handleSharedStateChange);
     updateLoadingMessage('Loading AI model...');
     await loadAutoScoringPref();
     // Rejoin scenario: Agora credentials arrive later via game_state_sync.
     // Show loading spinner instead of the manual dartboard until the model loads.
-    if (autoScoringEnabled && agoraEngine == null && !kIsWeb && AutoScoringService.isSupported) {
+    // (p2pSession == null: on the P2P path the camera/AI are already up.)
+    if (autoScoringEnabled && agoraEngine == null && p2pSession == null && !kIsWeb && AutoScoringService.isSupported) {
       setState(() => autoScoringLoading = true);
       // If game_state_sync never arrives (or the reconnect wedges), the
       // watchdog drops the blocking overlay instead of spinning forever.
@@ -125,7 +150,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       // If so, process the pending reconnect now instead of waiting for next notification.
       if (game.needsAgoraReconnect) {
         game.clearAgoraReconnectFlag();
-        reconnectAgora(game); // fire-and-forget; will reset autoScoringLoading when done
+        // Same decision logic as the listener path: P2P relaunch when the
+        // sync carried an rtcV2 verdict, Agora rebuild otherwise.
+        reconnectRtcTransport(game, legTransition: false);
       }
     }
   }

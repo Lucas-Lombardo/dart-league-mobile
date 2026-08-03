@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
 import 'agora_service.dart';
+import 'rtc_frames_service.dart';
 import '../utils/storage_service.dart';
 
 /// Owns the Flutter camera during gameplay and distributes frames to both
@@ -22,6 +23,10 @@ class CameraFrameService {
   CameraController? _controller;
   int? _videoTrackId;
   RtcEngine? _agoraEngine;
+  // RTC v2 (P2P): frames go to RtcFramesService (WebRTC track) instead of
+  // Agora. Mutually exclusive with [_agoraEngine]; both false/null in solo
+  // modes (training, placement).
+  bool _p2pMode = false;
   bool _isStreaming = false;
   bool _disposed = false;
 
@@ -124,15 +129,19 @@ class CameraFrameService {
   }
 
   /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
-  /// to the given custom video track. Pass nulls for solo modes (training,
-  /// placement) where the local camera preview is shown directly via the
-  /// exposed [controller] and only AI scoring needs the frame stream.
+  /// to the given custom video track. When [p2pMode] is true (RTC v2, no Agora
+  /// engine), frames go to [RtcFramesService.pushFrame] instead — same pooled
+  /// buffers, same cadence. Pass nulls for solo modes (training, placement)
+  /// where the local camera preview is shown directly via the exposed
+  /// [controller] and only AI scoring needs the frame stream.
   Future<void> initialize({
     RtcEngine? agoraEngine,
     int? videoTrackId,
+    bool p2pMode = false,
   }) async {
     _agoraEngine = agoraEngine;
     _videoTrackId = videoTrackId;
+    _p2pMode = p2pMode;
 
     // Honour the persisted front/back choice (set from the camera-setup screen
     // or a previous in-game switch). Defaults to the back camera.
@@ -352,7 +361,73 @@ class CameraFrameService {
     }
     _lastPushAt = now;
 
-    _pushFrameToAgora(image);
+    if (_p2pMode) {
+      _pushFrameToP2p(image);
+    } else {
+      _pushFrameToAgora(image);
+    }
+  }
+
+  /// P2P (RTC v2) twin of [_pushFrameToAgora]: same tight-buffer fill helpers
+  /// and pooled slot-0 buffer, same rotation semantics, but the frame goes to
+  /// the RtcFrames native companion (WebRTC video source) instead of the
+  /// Agora engine. The method channel serializes the bytes synchronously
+  /// during pushFrame, so the pooled buffer is reusable as soon as the call
+  /// returns (unlike Agora, which reads it asynchronously); back-pressure
+  /// (drop when the platform side is behind) lives in RtcFramesService.
+  void _pushFrameToP2p(CameraImage image) {
+    if (!RtcFramesService.hasTrack) return;
+    try {
+      if (Platform.isAndroid) {
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        final ySize = image.width * image.height;
+        final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
+        final buffer = _pushBuffer(0, ySize + uvSize * 2);
+        final String format;
+        if (uvPixelStride == 1) {
+          _fillI420Buffer(image, buffer);
+          format = 'i420';
+        } else {
+          _fillNv21Buffer(image, buffer);
+          format = 'nv21';
+        }
+        final rotation = _effectiveRotation();
+        if (!_firstPushLogged) {
+          _firstPushLogged = true;
+          debugPrint('[CameraFrameService] first P2P push: '
+              '${image.width}x${image.height} format=$format rotation=$rotation');
+        }
+        RtcFramesService.pushFrame(
+          buffer,
+          image.width,
+          image.height,
+          rotation,
+          format: format,
+        );
+      } else {
+        // iOS: BGRA8888, frames already upright in every orientation →
+        // rotation 0, exactly like the Agora push. The raw plane bytes go
+        // straight through (single copy inside the method-channel codec);
+        // the native side strips any row padding via bytesPerRow.
+        final plane = image.planes[0];
+        if (!_firstPushLogged) {
+          _firstPushLogged = true;
+          debugPrint('[CameraFrameService] first P2P push: '
+              '${image.width}x${image.height} format=bgra '
+              'bytesPerRow=${plane.bytesPerRow}');
+        }
+        RtcFramesService.pushFrame(
+          plane.bytes,
+          image.width,
+          image.height,
+          0,
+          format: 'bgra',
+          bytesPerRow: plane.bytesPerRow,
+        );
+      }
+    } catch (e) {
+      debugPrint('[CameraFrameService] p2p pushFrame error: $e');
+    }
   }
 
   /// Push a camera frame to Agora as an external video frame.
@@ -802,11 +877,16 @@ class CameraFrameService {
     _stopImageStream();
   }
 
+  /// Whether an online call (Agora or P2P) consumes our frames continuously —
+  /// the opponent watches our live video even between turns, so the stream
+  /// must never be gated on AI activity in these modes.
+  bool get _callAttached => _agoraEngine != null || _p2pMode;
+
   /// Resume the camera (e.g. when app comes back to foreground).
   void resume() {
     if (_disposed) return;
     // Don't resurrect a stream that [setAiActive] deliberately stopped.
-    if (_aiActive || _agoraEngine != null) _startImageStream();
+    if (_aiActive || _callAttached) _startImageStream();
   }
 
   /// Gate the image stream on AI activity — DartsMind never burns pixel work
@@ -817,9 +897,9 @@ class CameraFrameService {
   /// is the biggest CONSTANT cost of a match, running even when nothing
   /// consumes the frames. The camera preview widget is unaffected.
   ///
-  /// In online matches (Agora attached) this is a stream no-op — the opponent
-  /// watches our live video between turns — but the flag is still recorded so
-  /// [resume] behaves consistently.
+  /// In online matches (Agora OR P2P attached) this is a stream no-op — the
+  /// opponent watches our live video between turns — but the flag is still
+  /// recorded so [resume] behaves consistently.
   void setAiActive(bool active) {
     _aiActive = active;
     if (_disposed) return;
@@ -827,7 +907,7 @@ class CameraFrameService {
       // Always record the intent — gating on the CURRENT stream state would
       // drop this start when a stop is still queued, leaving the stream off.
       _startImageStream();
-    } else if (_agoraEngine == null) {
+    } else if (!_callAttached) {
       _stopImageStream();
       _latestFrame = null;
     }
@@ -847,6 +927,9 @@ class CameraFrameService {
     await _controller?.dispose();
     _controller = null;
     _agoraEngine = null;
+    // The P2P track itself is owned by the game screen (RtcFramesService) —
+    // only stop feeding it here.
+    _p2pMode = false;
   }
 }
 

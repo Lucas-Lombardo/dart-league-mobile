@@ -72,6 +72,11 @@ android {
 dependencies {
     implementation("com.google.ai.edge.litert:litert:1.4.0")
     implementation("com.google.ai.edge.litert:litert-gpu:1.4.0")
+    // RtcFramesPlugin.kt compiles against org.webrtc.* (VideoSource, frames).
+    // compileOnly: at runtime the classes come from flutter_webrtc's own
+    // libwebrtc dependency — keep this version identical to the one in
+    // flutter_webrtc's android/build.gradle (1.5.2 -> 144.7559.09).
+    compileOnly("io.github.webrtc-sdk:android:144.7559.09")
 }
 
 flutter {

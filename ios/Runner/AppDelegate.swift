@@ -23,6 +23,16 @@ import UserNotifications
     let plugin = NativeInferencePlugin()
     channel.setMethodCallHandler(plugin.handle)
 
+    // RTC v2 (P2P): custom video-frame injection into flutter_webrtc.
+    // Registered after GeneratedPluginRegistrant so FlutterWebRTCPlugin's
+    // sharedSingleton exists.
+    let rtcFramesChannel = FlutterMethodChannel(
+      name: "com.dartrivals/rtc_frames",
+      binaryMessenger: controller.binaryMessenger
+    )
+    let rtcFramesPlugin = RtcFramesPlugin()
+    rtcFramesChannel.setMethodCallHandler(rtcFramesPlugin.handle)
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

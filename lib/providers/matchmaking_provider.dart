@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../models/rtc_v2_config.dart';
 import '../services/matchmaking_service.dart';
 import '../services/match_service.dart';
 import '../services/socket_service.dart';
@@ -28,6 +29,7 @@ class MatchmakingProvider with ChangeNotifier {
   Timer? _pollTimer;
   
   // Agora video credentials
+  RtcV2Config? _rtcV2Config;
   String? _agoraAppId;
   String? _agoraToken;
   String? _agoraTokenStrict;
@@ -52,6 +54,7 @@ class MatchmakingProvider with ChangeNotifier {
   String? get opponentUsername => _opponentUsername;
   int? get opponentElo => _opponentElo;
   int? get playerElo => _playerElo;
+  RtcV2Config? get rtcV2Config => _rtcV2Config;
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
   String? get agoraTokenStrict => _agoraTokenStrict;
@@ -77,6 +80,7 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentId = null;
     _opponentUsername = null;
     _opponentElo = null;
+    _rtcV2Config = null;
     _agoraAppId = null;
     _agoraToken = null;
     _agoraTokenStrict = null;
@@ -287,7 +291,9 @@ class MatchmakingProvider with ChangeNotifier {
     }
     if (newAgoraUid != null) _agoraUid = newAgoraUid;
     if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
-    
+    final newRtcV2 = RtcV2Config.tryParse(data['rtcV2']);
+    if (newRtcV2 != null) _rtcV2Config = newRtcV2;
+
     _isSearching = false;
     
     // Debug opponent data
@@ -306,6 +312,7 @@ class MatchmakingProvider with ChangeNotifier {
         agoraChannelName: _agoraChannelName,
         agoraUid: _agoraUid,
         opponentAgoraUid: _opponentAgoraUid,
+        rtcV2Config: _rtcV2Config,
       );
     } else {
       debugPrint('DEBUG: initGame SKIPPED - gameProvider=$_gameProvider, userId=$_currentUserId, matchId=$_matchId, opponentId=$_opponentId');
@@ -354,6 +361,7 @@ class MatchmakingProvider with ChangeNotifier {
       _opponentUsername = null;
       _opponentElo = null;
       _playerElo = null;
+      _rtcV2Config = null;
       _agoraAppId = null;
       _agoraToken = null;
       _agoraTokenStrict = null;

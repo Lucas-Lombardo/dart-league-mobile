@@ -6,6 +6,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/tournament_round.dart';
+import '../../models/rtc_v2_config.dart';
 import '../../models/tournament.dart';
 import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
@@ -168,6 +169,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           agoraChannelName: data['agoraChannelName'] as String?,
           agoraUid: (data['agoraUid'] as num?)?.toInt(),
           opponentAgoraUid: (data['opponentAgoraUid'] as num?)?.toInt(),
+          rtcV2Config: RtcV2Config.tryParse(data['rtcV2']),
         );
       }
     });
@@ -241,6 +243,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
               agoraChannelName: start['agoraChannelName'] as String?,
               agoraUid: (start['agoraUid'] as num?)?.toInt(),
               opponentAgoraUid: (start['opponentAgoraUid'] as num?)?.toInt(),
+              rtcV2Config: RtcV2Config.tryParse(start['rtcV2']),
             );
           }
         }
@@ -361,7 +364,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     );
   }
 
-  Future<void> _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid}) async {
+  Future<void> _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid, RtcV2Config? rtcV2Config}) async {
     if (!mounted || _navigating) return;
     _navigating = true;
 
@@ -400,6 +403,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       agoraChannelName: agoraChannelName,
       agoraUid: agoraUid,
       opponentAgoraUid: opponentAgoraUid,
+      rtcV2Config: rtcV2Config,
     );
 
     AppNavigator.replaceWith(

@@ -5,10 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
+import '../../models/rtc_v2_config.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/tournament_game_provider.dart'
+    show TournamentGameState;
 import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
+import '../../services/p2p_rtc_session.dart';
+import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/dart_sound_service.dart';
@@ -55,6 +61,42 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
   int? customVideoTrackId;
+  // ─── RTC v2 (P2P) ──────────────────────────────────────────────────────────
+  // Non-null while this match runs on the P2P WebRTC path (payload carried an
+  // rtcV2 block). Mutually exclusive with agoraEngine, EXCEPT transiently
+  // during the automatic fallback. The session deliberately survives leg
+  // transitions (BO3 ranked AND tournament series): the peers never change
+  // between legs, so unlike Agora there is nothing to re-key.
+  P2pRtcSession? p2pSession;
+
+  // Generation of the native track THIS screen created — passed to every
+  // disposeTrack so a deferred dispose() (~300ms, see deferred-dispose
+  // gotcha) can never tear down the track a successor screen just recreated.
+  int? _rtcFramesGeneration;
+
+  // Guards initializeP2p against concurrent entry (initial init racing the
+  // reconnect relaunch): two sessions would fight over the single
+  // rtc_signal handler slot.
+  bool _p2pInitInFlight = false;
+
+  // True while an Agora init runs (fallback path) — a concurrent
+  // needsAgoraReconnect rebuild must wait for the next sync instead of
+  // doubling the engine and the camera.
+  bool _agoraInitInFlight = false;
+  // Flipped by the session's onRemoteVideoReady so the opponent tile swaps
+  // from the "Waiting..." placeholder to the live RTCVideoView.
+  bool p2pRemoteVideoReady = false;
+  // One-shot guard: the P2P → Agora fallback must never run twice (a late ICE
+  // failure after the connect watchdog already fired would otherwise rebuild
+  // Agora mid-call). Once fallen back, the screen stays on Agora for good.
+  bool _p2pFellBack = false;
+  // The exact legacy Agora init (with the credentials of the same payload),
+  // armed by the screen that called initializeP2p.
+  Future<void> Function()? _p2pAgoraFallback;
+  // Tracks the tournamentState==seriesEnded transition: tournament P2P calls
+  // skip the historical per-leg teardown, so the series verdict is what ends
+  // the call (mirrors _sawSeriesEnded for ranked BO3).
+  bool _sawTournamentSeriesEnded = false;
   // True while the camera is being flipped front/back, so the build shows the
   // placeholder instead of a LocalCameraPreview bound to a disposed controller.
   bool switchingCamera = false;
@@ -255,6 +297,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     autoScoringService = null;
     cameraFrameService?.dispose();
     cameraFrameService = null;
+    // P2P: fire-and-forget, mirroring the un-awaited leaveChannel below (a
+    // State.dispose can't await). Session dispose sends the telemetry report;
+    // the native track is torn down only after the peer connection closed.
+    if (p2pSession != null) {
+      final generation = _rtcFramesGeneration;
+      p2pSession!
+          .dispose()
+          .whenComplete(
+              () => RtcFramesService.disposeTrack(ifGeneration: generation));
+      p2pSession = null;
+    }
     if (agoraEngine != null) { AgoraService.leaveChannel(agoraEngine!); AgoraService.dispose(); }
     super.dispose();
   }
@@ -339,7 +392,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       } catch (_) {}
       final toreDownNow = game.gameEnded && !wasGameEnded && !seriesGoesOn;
       if (toreDownNow) {
-        _endAgoraCall();
+        // P2P sessions survive tournament legs too (same peers next leg —
+        // keeping camera, AI and call alive avoids the multi-second rebuild);
+        // the series verdict below ends the call instead. The Agora path
+        // keeps its historical per-leg teardown.
+        if (p2pSession == null || !_tournamentSeriesGoesOn(game)) {
+          _endAgoraCall();
+        }
       }
       // The FINAL leg ends while the series still reads as ongoing (game_won
       // arrives moments before ranked_match_won), so the branch above skips
@@ -350,6 +409,20 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         _endAgoraCall();
       }
       _sawSeriesEnded = seriesEndedNow;
+      // P2P + tournament: the per-leg teardown was skipped above, so end the
+      // call on the tournamentState==seriesEnded transition (the ranked
+      // seriesEnded getter doesn't exist on the tournament provider).
+      bool tournamentSeriesEndedNow = false;
+      try {
+        tournamentSeriesEndedNow =
+            game.tournamentState == TournamentGameState.seriesEnded;
+      } catch (_) {}
+      if (p2pSession != null &&
+          tournamentSeriesEndedNow &&
+          !_sawTournamentSeriesEnded) {
+        _endAgoraCall();
+      }
+      _sawTournamentSeriesEnded = tournamentSeriesEndedNow;
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();
@@ -504,7 +577,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         bool legTransition = false;
         try { legTransition = game.agoraLegTransition as bool; } catch (_) {}
         game.clearAgoraReconnectFlag();
-        reconnectAgora(game, reuseSession: legTransition);
+        reconnectRtcTransport(game, legTransition: legTransition);
       }
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -713,6 +786,239 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       onDartDetected: _onDartDetectedCallback,
       onAutoConfirm: () { if (mounted) submitAutoScoredDarts(readGame()); },
     );
+  }
+
+  // ─── RTC v2 (P2P) ─────────────────────────────────────────────────────────────
+
+  /// Shared RTC recovery for a consumed `needsAgoraReconnect` flag — called
+  /// from the provider listener AND from the screens' pre-listener catch-up.
+  /// Decides between: nothing (live P2P), a P2P (re)launch, or the legacy
+  /// Agora rebuild.
+  void reconnectRtcTransport(dynamic game, {required bool legTransition}) {
+    if (p2pSession != null) {
+      // P2P: nothing to re-key. The session spans legs (the per-leg Agora
+      // channel rotation doesn't apply) and socket reconnects (transport
+      // recovery is ICE restart inside the session); camera and AI stay up.
+      return;
+    }
+    if (_agoraInitInFlight) {
+      // An Agora init is mid-flight (fallback path): rebuilding concurrently
+      // doubles the engine and the camera. The next sync re-arms the flag.
+      return;
+    }
+    final rtcV2 = _rtcV2ConfigOf(game);
+    final relaunchMatchId = _gameMatchIdOf(game) ?? matchIdForLeave;
+    final relaunchOpponentId = _opponentIdOf(game);
+    if (rtcV2 != null &&
+        relaunchMatchId != null &&
+        relaunchOpponentId != null &&
+        agoraEngine == null &&
+        RtcFramesService.isSupported &&
+        !_p2pFellBack) {
+      // The sync rehydrated an rtcV2 verdict but no session is live
+      // (init raced the credentials, or this is a rejoin): relaunch
+      // P2P instead of rebuilding Agora — otherwise the surviving
+      // opponent's ICE-restart offers land on a screen with no
+      // rtc_signal handler and both sides sit on dead video until
+      // their recovery timers force Agora. `agoraEngine == null` matters:
+      // when Agora is already up (payload raced, credentials-first), P2P
+      // must NOT be stacked on top of the live call. Fire-and-forget like
+      // the initial init; its own watchdog falls back to Agora on failure.
+      initializeP2p(
+        matchId: relaunchMatchId,
+        opponentId: relaunchOpponentId,
+        config: rtcV2,
+        agoraFallback: _p2pAgoraFallback ??
+            () async => reconnectAgora(game, reuseSession: false),
+      );
+    } else {
+      reconnectAgora(game, reuseSession: legTransition);
+    }
+  }
+
+  /// Defensive reads over the two provider shapes (GameProvider /
+  /// TournamentGameProvider) — same pattern as the agoraLegTransition read.
+  RtcV2Config? _rtcV2ConfigOf(dynamic game) {
+    try {
+      return game.rtcV2Config as RtcV2Config?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _gameMatchIdOf(dynamic game) {
+    try {
+      final id = game.matchId as String?;
+      if (id != null) return id;
+    } catch (_) {}
+    try {
+      return game.currentGameMatchId as String?;
+    } catch (_) {}
+    return null;
+  }
+
+  String? _opponentIdOf(dynamic game) {
+    try {
+      return game.opponentUserId as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Establish the P2P (RTC v2) call and wire the SAME camera/AI pipeline as
+  /// the Agora path — minus the Agora engine: the camera service pushes into
+  /// the WebRTC track (p2pMode) and feeds the same TFLite capture callbacks.
+  ///
+  /// [agoraFallback] must run the exact legacy initializeAgora path with the
+  /// credentials already in hand; it is invoked automatically (once) when the
+  /// session fails to connect (10s watchdog / repeated ICE failure).
+  Future<void> initializeP2p({
+    required String matchId,
+    required String opponentId,
+    required RtcV2Config config,
+    required Future<void> Function() agoraFallback,
+  }) async {
+    // Re-entry guard: the reconnect relaunch is fire-and-forget from a
+    // provider listener that can notify repeatedly, and two concurrent
+    // sessions would fight over the single rtc_signal handler slot.
+    if (p2pSession != null || _p2pInitInFlight) return;
+    _p2pInitInFlight = true;
+    // Same permission gate as initializeAgora: camera for the app-owned
+    // capture, mic for the WebRTC audio track.
+    if (!kIsWeb) {
+      permissionsGranted = await AgoraService.requestPermissions();
+      if (!permissionsGranted) {
+        _p2pInitInFlight = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(AppLocalizations.of(context)
+                  .cameraAndMicPermissionRequired),
+              backgroundColor: AppTheme.error));
+        }
+        return;
+      }
+    } else {
+      permissionsGranted = true;
+    }
+    _p2pAgoraFallback = agoraFallback;
+    final session = P2pRtcSession(
+      matchId: matchId,
+      opponentId: opponentId,
+      config: config,
+      onConnected: () {
+        if (mounted) setState(() {});
+      },
+      onRemoteVideoReady: () {
+        if (mounted) setState(() => p2pRemoteVideoReady = true);
+      },
+      onFailed: (reason) {
+        fallbackToAgora(reason);
+      },
+    );
+    p2pSession = session;
+    try {
+      // The track is built INSIDE connect(), after the PeerConnection
+      // exists: flutter_webrtc's native factory is only initialized once a
+      // PC was created — creating the track first returned no_factory on
+      // Android and silently degraded the call to receive-only (the one-way
+      // video of the 2026-08-02 prod test). A null track (native companion
+      // failed) still connects receive-only, and the session tags it in
+      // telemetry (reason=no_local_video_track).
+      await session.connect(localVideoTrackFactory: () async {
+        final track = await RtcFramesService.createTrack();
+        _rtcFramesGeneration = RtcFramesService.generation;
+        if (track == null) {
+          session.noteLocalVideoFailure(RtcFramesService.lastCreateError);
+        }
+        return track;
+      });
+      // Remote audio through the loudspeaker, like the Agora video profile
+      // (WebRTC's iOS default is the earpiece).
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (e) {
+        debugPrint('[BaseGameScreen] setSpeakerphoneOn failed: $e');
+      }
+      // The fallback may have fired during connect() (fast ICE escalation):
+      // it disposed our session and owns the camera from here — continuing
+      // would fight its camera and double initAutoScoring.
+      if (_p2pFellBack || !mounted) return;
+      if (!kIsWeb) {
+        cameraFrameService = CameraFrameService();
+        await cameraFrameService!.initialize(p2pMode: true);
+        await initCameraZoom();
+        if (_p2pFellBack || !mounted) return;
+        // Fire-and-forget so the game screen shows immediately, same as the
+        // Agora path; autoScoringLoading drives the UI loading state.
+        initAutoScoring();
+      }
+    } catch (e) {
+      debugPrint('[BaseGameScreen] initializeP2p error: $e');
+      if (mounted) setState(() => autoScoringLoading = false);
+      await fallbackToAgora('init_error');
+    } finally {
+      _p2pInitInFlight = false;
+    }
+  }
+
+  /// One-shot automatic fallback: dispose the failed P2P session (which sends
+  /// the fellBack telemetry report) and run the untouched Agora path with the
+  /// payload's own credentials.
+  Future<void> fallbackToAgora(String reason) async {
+    if (_p2pFellBack) return;
+    _p2pFellBack = true;
+    final session = p2pSession;
+    final fallback = _p2pAgoraFallback;
+    _p2pAgoraFallback = null;
+    p2pSession = null;
+    p2pRemoteVideoReady = false;
+    // Agora joins with the mic unpublished; keep the UI in sync.
+    isAudioMuted = true;
+    debugPrint('[BaseGameScreen] P2P failed ($reason) — falling back to Agora');
+    try {
+      await session?.dispose(fellBack: true, reason: reason);
+    } catch (_) {}
+    await RtcFramesService.disposeTrack(ifGeneration: _rtcFramesGeneration);
+    // initializeAgora builds its own camera service; release the P2P one
+    // first so the device isn't "already in use".
+    autoScoringService?.stopCapture();
+    try {
+      await cameraFrameService?.dispose();
+    } catch (_) {}
+    cameraFrameService = null;
+    if (!mounted) return;
+    setState(() {});
+    if (fallback != null) {
+      // Serialize against a concurrent needsAgoraReconnect rebuild: two
+      // Agora inits racing means two engines and two camera services, and
+      // the loser's camera is never disposed (device locked "in use").
+      _agoraInitInFlight = true;
+      try {
+        await fallback();
+      } catch (e) {
+        debugPrint('[BaseGameScreen] Agora fallback failed: $e');
+      } finally {
+        _agoraInitInFlight = false;
+      }
+      // The user may have left during the multi-second Agora join — tear
+      // down what the fallback just built, State.dispose already ran.
+      if (!mounted) {
+        await _endAgoraCall();
+      }
+    }
+  }
+
+  /// True while a TOURNAMENT series still has legs to play. The tournament
+  /// provider exposes tournamentState instead of the ranked provider's
+  /// isRankedSeries/seriesEnded getters; every non-tournament provider throws
+  /// here and yields false.
+  bool _tournamentSeriesGoesOn(dynamic game) {
+    try {
+      return game.tournamentState != TournamentGameState.seriesEnded &&
+          game.pendingType != 'forfeit';
+    } catch (_) {
+      return false;
+    }
   }
 
   // ─── Agora ────────────────────────────────────────────────────────────────────
@@ -970,9 +1276,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
+  /// Ends the live call, whichever transport carries it (P2P session or
+  /// Agora engine), plus the shared camera pipeline.
   Future<void> _endAgoraCall() async {
     try {
       autoScoringService?.stopCapture();
+      if (p2pSession != null) {
+        await p2pSession!.dispose();
+        p2pSession = null;
+        p2pRemoteVideoReady = false;
+        await RtcFramesService.disposeTrack(ifGeneration: _rtcFramesGeneration);
+      }
       await cameraFrameService?.dispose();
       cameraFrameService = null;
       customVideoTrackId = null;
@@ -1089,6 +1403,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Future<void> toggleAudio() async {
+    // P2P: the audio track is pre-added disabled, so the toggle is a plain
+    // enabled flip — same isAudioMuted state handling as Agora.
+    if (p2pSession != null) {
+      setState(() => isAudioMuted = !isAudioMuted);
+      await p2pSession!.setMicEnabled(!isAudioMuted);
+      return;
+    }
     if (agoraEngine == null) return;
     setState(() => isAudioMuted = !isAudioMuted);
     await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(publishMicrophoneTrack: !isAudioMuted));
@@ -1439,13 +1760,27 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
+    // Same "Waiting..." placeholder for the P2P and Agora branches.
+    final Widget waitingPlaceholder = Container(
+      color: AppTheme.gamePanelEmpty,
+      child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), const SizedBox(height: 8),
+        Text(AppLocalizations.of(context).waitingUpper, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+      ])),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: Stack(
         fit: StackFit.expand,
           children: [
             // ── Camera feed ──
-            if (agoraEngine != null && game.remoteUid != null)
+            // P2P (RTC v2): the session's RTCVideoView once the remote track
+            // arrived (onRemoteVideoReady), the placeholder until then.
+            if (p2pSession != null)
+              (p2pRemoteVideoReady
+                  ? p2pSession!.remoteView()
+                  : waitingPlaceholder)
+            else if (agoraEngine != null && game.remoteUid != null)
               kIsWeb
                 ? FittedBox(
                     fit: BoxFit.cover,
@@ -1478,13 +1813,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     ),
                   )
             else
-              Container(
-                color: AppTheme.gamePanelEmpty,
-                child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), const SizedBox(height: 8),
-                  Text(AppLocalizations.of(context).waitingUpper, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-                ])),
-              ),
+              waitingPlaceholder,
             // ── Dart-hit flash (big "T20 / +60 pts" glow) ──
             DartHitFlash(throws: opponentThrows),
             // ── Pink border ──

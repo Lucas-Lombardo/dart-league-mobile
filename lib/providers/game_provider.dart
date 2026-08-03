@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../models/rtc_v2_config.dart';
 import '../services/socket_service.dart';
 
 enum ScoreMultiplier { single, double, triple }
@@ -79,6 +80,12 @@ class GameProvider with ChangeNotifier {
   bool _seriesEnded = false;
   Map<String, dynamic>? _seriesResultData;
   
+  // RTC v2 (P2P) — non-null only when the server put an `rtcV2` block in a
+  // payload for this match, i.e. both players' sockets support it. Selects
+  // the P2P session in the game screen; the Agora fields below remain the
+  // in-payload fallback.
+  RtcV2Config? _rtcV2Config;
+
   // Agora video calling
   String? _agoraAppId;
   String? _agoraToken;
@@ -170,6 +177,8 @@ class GameProvider with ChangeNotifier {
   /// series it's the series being decided (checkout, forfeit or timeout).
   bool get matchOver => isRankedSeries ? _seriesEnded : _gameEnded;
   
+  RtcV2Config? get rtcV2Config => _rtcV2Config;
+
   // Agora getters
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
@@ -234,6 +243,7 @@ class GameProvider with ChangeNotifier {
     String? agoraChannelName,
     int? agoraUid,
     int? opponentAgoraUid,
+    RtcV2Config? rtcV2Config,
   }) {
     debugPrint('GAME DEBUG: initGame called - matchId=$matchId, myUserId=$myUserId, currentMatchId=$_matchId');
 
@@ -244,6 +254,17 @@ class GameProvider with ChangeNotifier {
     _matchId = matchId;
     _myUserId = myUserId;
     _opponentUserId = opponentUserId;
+
+    // New match: adopt the payload's verdict as-is — INCLUDING null — so a
+    // P2P config can never leak from a previous match onto one against an old
+    // client (10s watchdog + pointless teardown) or survive the server-side
+    // kill-switch. Same match (re-init/reconnect): keep-if-null, a partial
+    // payload must not tear down a working session.
+    if (isNewMatch) {
+      _rtcV2Config = rtcV2Config;
+    } else if (rtcV2Config != null) {
+      _rtcV2Config = rtcV2Config;
+    }
 
     // Store Agora credentials if provided
     if (agoraAppId != null) _agoraAppId = agoraAppId;
@@ -882,9 +903,19 @@ class GameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
+    _adoptRtcV2(data);
 
     _resetLegState();
     notifyListeners();
+  }
+
+  /// Adopt a fresh `rtcV2` block when a payload carries one. Absence is NOT
+  /// adoption of null: a reconnect sync from a server whose TURN cache is
+  /// momentarily empty must not tear down a working P2P session.
+  void _adoptRtcV2(dynamic data) {
+    if (data is! Map) return;
+    final parsed = RtcV2Config.tryParse(data['rtcV2']);
+    if (parsed != null) _rtcV2Config = parsed;
   }
 
   void _handleRankedMatchWon(dynamic data) {
@@ -1203,6 +1234,10 @@ class GameProvider with ChangeNotifier {
     // state: that let another provider's sync populate this one and take over
     // its event handlers.
     if (_matchId == null) return;
+
+    // Only past the foreign-match guards: a rejected sync (ghost match,
+    // stale leg) must not overwrite our rtcV2 config either.
+    _adoptRtcV2(data);
 
     final player1Id = data['player1Id'] as String?;
     final player1Score = data['player1Score'] as int?;
@@ -1770,6 +1805,7 @@ class GameProvider with ChangeNotifier {
     debugPrint('GAME DEBUG: reset() called - CLEARING all state. Was: gameStarted=$_gameStarted, gameEnded=$_gameEnded, winnerId=$_winnerId, matchId=$_matchId');
     _cleanupSocketListeners();
     _matchId = null;
+    _rtcV2Config = null;
     _myScore = 501;
     _opponentScore = 501;
     _currentPlayerId = null;

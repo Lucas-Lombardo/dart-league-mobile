@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/rtc_v2_config.dart';
 import '../services/push_notification_service.dart';
 import '../services/socket_service.dart';
 import '../utils/haptic_service.dart';
@@ -43,6 +44,7 @@ class MatchInviteProvider with ChangeNotifier {
   String? _matchId;
   String? _opponentId;
   String? _opponentUsername;
+  RtcV2Config? _rtcV2Config;
   String? _agoraAppId;
   String? _agoraToken;
   String? _agoraTokenStrict;
@@ -65,6 +67,7 @@ class MatchInviteProvider with ChangeNotifier {
   String? get matchId => _matchId;
   String? get opponentId => _opponentId;
   String? get opponentUsername => _opponentUsername;
+  RtcV2Config? get rtcV2Config => _rtcV2Config;
   String? get agoraAppId => _agoraAppId;
   String? get agoraToken => _agoraToken;
   String? get agoraTokenStrict => _agoraTokenStrict;
@@ -266,7 +269,15 @@ class MatchInviteProvider with ChangeNotifier {
   }
 
   void _handleFriendlyMatchFound(dynamic data) {
-    _matchId = data['matchId'] as String?;
+    final incomingMatchId = data['matchId'] as String?;
+    // A different matchId = a new friendly: drop the previous match's P2P
+    // verdict so it can't leak onto an opponent with an old client. The
+    // keep-if-null parse below still protects same-match re-emissions that
+    // carry partial fields.
+    if (incomingMatchId != null && incomingMatchId != _matchId) {
+      _rtcV2Config = null;
+    }
+    _matchId = incomingMatchId;
     _opponentId = data['opponentId'] as String?;
     _opponentUsername = data['opponentUsername'] as String?;
 
@@ -284,6 +295,8 @@ class MatchInviteProvider with ChangeNotifier {
     if (newAgoraChannelName != null) _agoraChannelName = newAgoraChannelName;
     if (newAgoraUid != null) _agoraUid = newAgoraUid;
     if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
+    final newRtcV2 = RtcV2Config.tryParse(data['rtcV2']);
+    if (newRtcV2 != null) _rtcV2Config = newRtcV2;
 
     // Match is starting — clear any invite dialogs.
     _incoming = null;
@@ -316,6 +329,7 @@ class MatchInviteProvider with ChangeNotifier {
         agoraChannelName: _agoraChannelName,
         agoraUid: _agoraUid,
         opponentAgoraUid: _opponentAgoraUid,
+        rtcV2Config: _rtcV2Config,
       );
     }
 

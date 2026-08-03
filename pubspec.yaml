@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.28+65
+version: 1.2.29+66
 
 environment:
   sdk: ^3.10.7
@@ -45,6 +45,14 @@ dependencies:
   intl: ^0.20.2
   package_info_plus: ^10.2.0
   agora_rtc_engine: ^6.3.0
+  # RTC v2: P2P WebRTC for match video (signaling over the existing socket,
+  # TURN via Cloudflare). Coexists with Agora — session picked per match.
+  # PINNED EXACTLY: RtcFramesService imports src/native internals, the
+  # Android companion reads a private field reflectively, and app/build.gradle
+  # pins webrtc-sdk:android in lock-step with this version's libwebrtc — an
+  # unreviewed upgrade would break those silently at runtime. Bump all
+  # three together, deliberately.
+  flutter_webrtc: 1.5.2
   permission_handler: ^12.0.3
   camera: ^0.12.0
   # Keep the legacy Android camera implementation: camera 0.11+ defaults to

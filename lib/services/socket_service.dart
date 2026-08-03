@@ -7,6 +7,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
 import 'api_service.dart';
+import 'rtc_frames_service.dart';
 
 class SocketService {
   static io.Socket? _socket;
@@ -72,6 +73,15 @@ class SocketService {
   // like the flags above, so a backend rollback degrades us safely.
   static bool _supportsChat = false;
 
+  // Server capability: RTC v2 (P2P WebRTC). The server relays `rtc_signal`
+  // between the two match participants and, when both sockets declared the
+  // capability in their CONNECT auth payload, adds an `rtcV2` block to every
+  // credential-carrying match payload. The app never chooses P2P from this
+  // flag alone — it acts on the presence of `rtcV2` in the match payload,
+  // which is the server's both-sides-support verdict. Reset on disconnect
+  // like the other flags so a backend rollback degrades to Agora.
+  static bool _supportsRtcV2 = false;
+
   // True once the current socket has received the server's `authenticated`
   // handshake — the event that carries the capability flags above. Reset on
   // every disconnect, like the flags themselves, so it always describes the
@@ -100,6 +110,10 @@ class SocketService {
 
   /// Whether the server has the friend/support chat (REST + `chat:message`).
   static bool get supportsChat => _supportsChat;
+
+  /// Whether the server this socket is authenticated against can run match
+  /// video as P2P WebRTC (`rtc_signal` relay + `rtcV2` payload block).
+  static bool get supportsRtcV2 => _supportsRtcV2;
 
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
@@ -191,6 +205,12 @@ class SocketService {
       debugPrint('SocketService: server supportsChat=$supportsChat');
     }
     _supportsChat = supportsChat;
+
+    final supportsRtcV2 = data is Map && data['supportsRtcV2'] == true;
+    if (supportsRtcV2 != _supportsRtcV2) {
+      debugPrint('SocketService: server supportsRtcV2=$supportsRtcV2');
+    }
+    _supportsRtcV2 = supportsRtcV2;
   }
 
   /// Supplies the CONNECT-packet auth payload, called by socket.io on every
@@ -218,7 +238,16 @@ class SocketService {
     }
     // A null/stale token still gets sent: the server answers auth_error and
     // the recovery paths below take over (refresh is backoff-limited).
-    cb({'token': token});
+    //
+    // supportsRtcV2 declares the P2P capability. It rides the handshake auth
+    // (never a DTO) on purpose: handshake keys bypass the backend's
+    // forbidNonWhitelisted ValidationPipe, so an OLD backend ignores it
+    // silently — no 400, no behavior change. Declared only where the game
+    // screen will actually take the P2P path (RtcFramesService.isSupported):
+    // a web build declaring true made the server emit rtcV2 to the MOBILE
+    // opponent, who then burned the 10s watchdog against a peer that never
+    // signals before falling back to Agora.
+    cb({'token': token, 'supportsRtcV2': RtcFramesService.isSupported});
   }
 
   /// Local expiry check (30s skew) so we refresh BEFORE the server rejects us,
@@ -324,7 +353,7 @@ class SocketService {
             .enableReconnection()
             .setReconnectionDelay(2000)
             .setReconnectionDelayMax(10000)
-            .setAuth({'token': token})
+            .setAuth({'token': token, 'supportsRtcV2': RtcFramesService.isSupported})
             .build(),
       );
 
@@ -356,6 +385,7 @@ class SocketService {
         _authenticatedUserId = null;
         _supportsDartAck = false;
         _supportsChat = false;
+        _supportsRtcV2 = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -473,6 +503,7 @@ class SocketService {
     _authenticatedUserId = null;
     _supportsDartAck = false;
     _supportsChat = false;
+    _supportsRtcV2 = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
@@ -525,6 +556,7 @@ class SocketService {
     _lastIdentityRebuild = null;
     _supportsDartAck = false;
     _supportsChat = false;
+    _supportsRtcV2 = false;
     _handlers.clear();
     _handlerOwners.clear();
     _disconnectListeners.clear();
