@@ -4,63 +4,50 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/rtc_v2_config.dart';
-import 'socket_service.dart';
 
-/// One P2P WebRTC call with the match opponent — the RTC v2 path selected
-/// when the payload carried an `rtcV2` block (both clients support it).
+/// ONE negotiation attempt with the match opponent: one PeerConnection, one
+/// generation, one fixed role. When anything about it goes stale, nobody
+/// repairs it in place — [P2pMatchVideo] throws it away and builds the next
+/// generation. That single rule replaced the whole in-place-repair machinery
+/// (ICE restarts, offer retries, perfect-negotiation rollback): recovery is
+/// always "new session", so there is exactly one code path to trust.
 ///
-/// Lifetime: one instance per opponent pairing, owned by the game screen. It
-/// deliberately SURVIVES leg transitions (BO3 and tournament): the peers
-/// don't change between legs, so unlike the Agora channel-per-leg flow there
-/// is nothing to re-key.
-///
-/// Signaling rides the existing game socket (`rtc_signal`, relayed by the
-/// backend between the two participants) using the perfect-negotiation
-/// pattern; the polite role comes from the server so both sides agree.
-/// Signals have no replay — on any doubt (socket reconnect, ICE failure) we
-/// renegotiate from scratch rather than waiting for a lost message.
+/// The session is deliberately socket-free: it emits through [sendSignal] and
+/// receives through [handleSignal], both owned by [P2pMatchVideo], which also
+/// tags/filters the generation. Roles are fixed at construction: the
+/// [offerer] makes the one offer, the other side answers it. Glare cannot
+/// happen — role conflicts are resolved by the owner before a signal ever
+/// reaches a session.
 class P2pRtcSession {
   P2pRtcSession({
-    required this.matchId,
-    required this.opponentId,
     required this.config,
+    required this.offerer,
+    required this.sendSignal,
     this.onConnected,
     this.onRemoteVideoReady,
     this.onHealthy,
     this.onImpaired,
-    bool? offerOnConnect,
-  }) : _offerOnConnect = offerOnConnect;
+  });
 
-  /// Whether this side kicks the first offer. Defaults to the impolite role
-  /// (so the two initial offers can't glare); a REBUILT session forces true
-  /// on both sides, because a polite rebuild would otherwise stay mute until
-  /// the opponent noticed the stall.
-  final bool? _offerOnConnect;
-
-  /// The matchId used as the signaling scope. For a BO3 series this stays the
-  /// FIRST leg's id on both sides (both screens keep their session), which is
-  /// fine: it is only a correlation key for the relay's membership check —
-  /// the backend validates against leg 1's player pair, which never changes.
-  final String matchId;
-
-  /// The only peer whose signals are applied. The relay's membership check
-  /// proves the sender was in the match it NAMED — but the server's pair
-  /// cache is never invalidated when a match ends, so an opponent from a
-  /// FINISHED match could still get signals relayed here. Filtering on the
-  /// sender (not the matchId) closes that while keeping cross-leg signaling
-  /// (same opponent, different leg id) working.
-  final String opponentId;
   final RtcV2Config config;
+
+  /// Fixed at construction: true = this side creates THE offer once its
+  /// local media is attached; false = it answers the offer it receives.
+  final bool offerer;
+
+  /// Outgoing signal transport, owned by [P2pMatchVideo] (which adds the
+  /// matchId and generation tags).
+  final void Function(Map<String, dynamic> data) sendSignal;
 
   final VoidCallback? onConnected;
   final VoidCallback? onRemoteVideoReady;
 
   /// Media is flowing. Reported on every recovery, not just the first
-  /// connection — the recovery ladder needs to know it can stand down.
+  /// connection — the recovery loop needs to know it can stand down.
   final VoidCallback? onHealthy;
 
   /// Media is NOT flowing (ICE down, or frames frozen while ICE still says
-  /// Connected). The session reports; [RtcRecoveryPolicy] decides.
+  /// Connected). The session reports; [P2pMatchVideo]'s loop decides.
   final void Function(String reason)? onImpaired;
 
   /// How often the decoded-frame counter is sampled once connected.
@@ -73,26 +60,12 @@ class P2pRtcSession {
   /// sensor of its recovery.
   static const Duration mediaStallTimeout = Duration(seconds: 6);
 
-  /// Minimum spacing between two restart offers, whatever triggered them.
-  static const Duration restartThrottle = Duration(seconds: 3);
-
-  /// Re-emission cadence of the initial offer while the opponent has said
-  /// NOTHING yet. Signals have no replay: if the polite peer registers its
-  /// handler seconds after ours fired (tournament entry skew — one player
-  /// arrives via the ready-state poll), the lone offer is gone, no ICE ever
-  /// starts, and nothing else re-triggers — both sides would burn the 10s
-  /// watchdog straight into Agora.
-  static const Duration offerRetryInterval = Duration(seconds: 2);
-
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
   RTCPeerConnection? _pc;
   MediaStreamTrack? _localAudioTrack;
   MediaStream? _remoteStream;
 
-  bool get polite => config.polite;
-  bool _makingOffer = false;
-  bool _ignoreOffer = false;
   bool _remoteDescriptionSet = false;
   final List<RTCIceCandidate> _pendingCandidates = [];
 
@@ -100,16 +73,14 @@ class P2pRtcSession {
   // Live link state (unlike _connected, which is one-shot "ever connected").
   bool _linkUp = false;
   bool _disposed = false;
-  bool _reportSent = false;
   // Serializes signal processing: _processSignal interleaves several awaits
-  // (setRemote → createAnswer → setLocal) and a live signal racing a
-  // buffered copy of itself could interleave into a state only the timers
-  // could exit.
+  // (setRemote → createAnswer → setLocal) and two signals racing each other
+  // interleave into states the native PC never recovers from.
   Future<void> _signalChain = Future.value();
   // Signals received before our local tracks were attached are BUFFERED, not
   // processed: answering an offer mid-setup produces an answer without our
-  // video m-line, and the polite peer never gets another clean chance —
-  // that was the one-way-video prod test of 2026-08-02.
+  // video m-line, and the peer never gets another clean chance — that was
+  // the one-way-video prod test of 2026-08-02.
   bool _localSetupDone = false;
   final List<Map<dynamic, dynamic>> _bufferedSignals = [];
   bool _hadLocalVideo = false;
@@ -120,50 +91,18 @@ class P2pRtcSession {
   void noteLocalVideoFailure(String? detail) {
     _localVideoFailureDetail = detail;
   }
+
   DateTime? _connectStartedAt;
   int? _connectTimeMs;
-  Timer? _offerRetryTimer;
   Timer? _mediaWatchdog;
   int? _lastFramesDecoded;
   DateTime? _lastFrameProgressAt;
-  bool _remoteSignalSeen = false;
   bool _impairedReported = false;
-  DateTime? _lastRestartAt;
 
   bool get isConnected => _connected;
 
   /// Live media state: true only while frames are actually flowing.
   bool get isLinkUp => _linkUp;
-
-  /// Restart ICE and re-send an offer — the cheap in-place repair. Called by
-  /// [RtcRecoveryPolicy]; the session never decides WHEN on its own.
-  ///
-  /// Both roles may send it: waiting for the impolite peer wastes the ladder
-  /// when its network is the one that died, and glare is absorbed by the
-  /// perfect-negotiation path (explicit rollback included). Re-sending also
-  /// covers a lost offer — the relay has no replay.
-  void restartIce() {
-    if (_disposed) return;
-    // Never offer before the local media is attached: an offer without our
-    // video m-line is how the one-way-video bug happened.
-    if (!_localSetupDone) return;
-    // Throttle: socket reconnect syncs fire repeatedly on a flaky network,
-    // and stacked restart offers desynchronize the ICE generations (a late
-    // answer to offer N applied over offer N+1, then N+1's answer dropped as
-    // a duplicate) — the agent then never converges.
-    final last = _lastRestartAt;
-    if (last != null &&
-        DateTime.now().difference(last) < restartThrottle) {
-      return;
-    }
-    _lastRestartAt = DateTime.now();
-    try {
-      _pc?.restartIce();
-    } catch (e) {
-      debugPrint('P2P: restartIce failed: $e');
-    }
-    _queueOffer(iceRestart: true);
-  }
 
   void _setHealthy() {
     if (_disposed) return;
@@ -179,30 +118,20 @@ class P2pRtcSession {
     onImpaired?.call(reason);
   }
 
-  /// Offers ride the SAME chain as incoming signals: since both peers may
-  /// now restart, an offer created concurrently with an inbound one raced
-  /// on the native PC and left it in a state where the answer never left.
-  void _queueOffer({bool iceRestart = false}) {
-    final next =
-        _signalChain.then((_) => _makeOffer(iceRestart: iceRestart));
-    _signalChain = next.catchError((_) {});
-  }
-
   /// Establish the call. [localVideoTrackFactory] builds the custom-capturer
   /// track fed by the app-owned camera (see RtcFramesService); it is invoked
   /// AFTER the RTCPeerConnection exists, because flutter_webrtc's native
   /// factory is only guaranteed initialized once a PC was created — creating
-  /// the track first made Android answer `no_factory` and silently degraded
+  /// the track first returned no_factory on Android and silently degraded
   /// the call to receive-only. A null/failed track still connects
   /// (receive-only) so at least the opponent's board is visible.
   Future<void> connect({
-    MediaStreamTrack? localVideoTrack,
     Future<MediaStreamTrack?> Function()? localVideoTrackFactory,
   }) async {
     if (_disposed) return;
     _connectStartedAt = DateTime.now();
     // Report impaired from the very start: an initial connection that never
-    // lands is just an outage like any other, and the ladder owns the
+    // lands is just an outage like any other, and the recovery loop owns the
     // deadline. This also covers a HANG in the setup awaits below (which
     // throws nothing) — the session used to have no timer at all there.
     onImpaired?.call('connecting');
@@ -232,7 +161,7 @@ class P2pRtcSession {
     };
 
     pc.onIceCandidate = (RTCIceCandidate candidate) {
-      _sendSignal({
+      sendSignal({
         'type': 'candidate',
         'candidate': candidate.candidate,
         'sdpMid': candidate.sdpMid,
@@ -244,7 +173,7 @@ class P2pRtcSession {
       debugPrint('P2P: connection state $state');
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
-          // Re-baseline the media counter: a renegotiation brings a new SSRC
+          // Re-baseline the media counter: a reconnection brings a new SSRC
           // whose counter restarts from zero.
           _lastFramesDecoded = null;
           _lastFrameProgressAt = DateTime.now();
@@ -254,34 +183,15 @@ class P2pRtcSession {
           _setImpaired('ice_failed');
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
-          // Disconnected is NOT always followed by Failed: after an earlier
-          // restart the agent can sit here forever. Reporting it (instead of
-          // waiting for Failed) is what makes the ladder's self-heal window
-          // the single place that decides whether it matters.
+          // Disconnected is NOT always followed by Failed: the agent can sit
+          // here forever. Reporting it (instead of waiting for Failed) keeps
+          // the recovery loop the single place that decides if it matters.
           _setImpaired('ice_disconnected');
           break;
         default:
           break;
       }
     };
-
-    pc.onRenegotiationNeeded = () {
-      // Never offer while local media is still being attached: every track
-      // added during setup is covered by the explicit post-setup offer
-      // (impolite) or by the answer to the buffered remote offer (polite).
-      // Reacting mid-setup made the POLITE peer send an offer — a buffered
-      // remote signal had already flipped _remoteSignalSeen — and the glare
-      // that followed was fatal (see the rollback note in _processSignal).
-      if (!_localSetupDone) return;
-      // The polite peer stays quiet until the opponent has said ANYTHING, so
-      // the two initial offers can't glare; afterwards it may renegotiate.
-      if (polite && !_remoteSignalSeen) return;
-      _queueOffer();
-    };
-
-    // Incoming signals. Single-slot registry is fine: there is exactly one
-    // live session at a time, and dispose() releases the slot (owner-scoped).
-    SocketService.on('rtc_signal', _onSignal, owner: this);
 
     // Mic: track added up-front but disabled, so the mute toggle is a plain
     // `enabled` flip with no renegotiation (parity with the Agora flow's
@@ -309,8 +219,8 @@ class P2pRtcSession {
       debugPrint('P2P: audio track unavailable: $e');
     }
 
-    MediaStreamTrack? track = localVideoTrack;
-    if (track == null && localVideoTrackFactory != null) {
+    MediaStreamTrack? track;
+    if (localVideoTrackFactory != null) {
       try {
         track = await localVideoTrackFactory();
       } catch (e) {
@@ -325,12 +235,13 @@ class P2pRtcSession {
         } catch (_) {}
         return;
       }
-      await attachLocalVideoTrack(track);
+      final stream = await createLocalMediaStream('dartrivals-local');
+      await pc.addTrack(track, stream);
       _hadLocalVideo = true;
     }
 
     // Local media is final — process whatever the opponent sent meanwhile,
-    // in order, so any buffered offer is answered WITH our video m-line.
+    // in order, so a buffered offer is answered WITH our video m-line.
     // Enqueue everything synchronously BEFORE awaiting: the chain preserves
     // enqueue order, so a live signal arriving mid-drain lands after every
     // buffered (older) one.
@@ -342,44 +253,12 @@ class P2pRtcSession {
     _bufferedSignals.clear();
     if (lastDrained != null) await lastDrained;
 
-    // Kick the first offer explicitly for the impolite peer: on some
-    // platforms onRenegotiationNeeded doesn't refire reliably for tracks
-    // added before the handler was useful. Then re-emit the SAME local
-    // description every 2s until the opponent says anything at all — see
-    // [offerRetryInterval]. Re-applying an identical offer is harmless for
-    // the polite peer (it just answers again).
-    if (_offerOnConnect ?? !polite) {
-      _queueOffer();
-      _offerRetryTimer = Timer.periodic(offerRetryInterval, (timer) async {
-        if (_disposed || _remoteSignalSeen || _linkUp) {
-          timer.cancel();
-          return;
-        }
-        try {
-          final local = await _pc?.getLocalDescription();
-          if (local?.sdp != null) {
-            debugPrint('P2P: no signal from opponent yet — re-sending offer');
-            _sendSignal({'type': local!.type, 'sdp': local.sdp});
-          }
-        } catch (e) {
-          debugPrint('P2P: offer retry failed: $e');
-        }
-      });
-    }
-  }
-
-  /// Attach (or replace) the local video track fed by the custom capturer.
-  Future<void> attachLocalVideoTrack(MediaStreamTrack track) async {
-    final pc = _pc;
-    if (pc == null || _disposed) return;
-    final senders = await pc.getSenders();
-    final videoSender =
-        senders.where((s) => s.track?.kind == 'video').firstOrNull;
-    if (videoSender != null) {
-      await videoSender.replaceTrack(track);
-    } else {
-      final stream = await createLocalMediaStream('dartrivals-local');
-      await pc.addTrack(track, stream);
+    // The one offer. If it is lost (socket down, relay budget), nothing here
+    // retries: the recovery loop rebuilds into a new generation, which is
+    // the single retry mechanism for everything.
+    if (offerer) {
+      final next = _signalChain.then((_) => _makeOffer());
+      _signalChain = next.catchError((_) {});
     }
   }
 
@@ -410,8 +289,8 @@ class P2pRtcSession {
 
   /// Watches the DECODED-FRAME counter, not the ICE state: after a blip the
   /// connection can stay Connected while the remote picture is frozen for
-  /// good. Purely a SENSOR — it reports healthy/impaired and lets
-  /// [RtcRecoveryPolicy] decide what to do about it.
+  /// good. Purely a SENSOR — it reports healthy/impaired and lets the
+  /// recovery loop decide what to do about it.
   void _startMediaWatchdog() {
     _mediaWatchdog?.cancel();
     _lastFramesDecoded = null;
@@ -444,15 +323,14 @@ class P2pRtcSession {
       final counter = framesTotal ?? bytesTotal;
       if (counter == null || _disposed) return;
       final now = DateTime.now();
-      // `!=`, not `>`: a renegotiation or an opponent relaunch brings a new
-      // SSRC whose counter restarts at 0 — that IS progress, not a stall.
+      // `!=`, not `>`: an opponent relaunch brings a new SSRC whose counter
+      // restarts at 0 — that IS progress, not a stall.
       if (_lastFramesDecoded == null || counter != _lastFramesDecoded) {
         _lastFramesDecoded = counter;
         _lastFrameProgressAt = now;
         // Media is the ONLY sensor for a freeze that leaves ICE Connected —
         // so it must also be the sensor of the recovery. Without this, a
-        // stall that the ICE restart repaired still burned the outage
-        // budget and fell back to Agora on a perfectly healthy call.
+        // transient stall kept the loop rebuilding a perfectly healthy call.
         if (!_linkUp &&
             pc.connectionState ==
                 RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
@@ -469,122 +347,72 @@ class P2pRtcSession {
     });
   }
 
-  Future<void> _makeOffer({bool iceRestart = false}) async {
+  Future<void> _makeOffer() async {
     final pc = _pc;
     if (pc == null || _disposed) return;
     try {
-      _makingOffer = true;
-      final offer = await pc.createOffer(
-          iceRestart ? {'iceRestart': true} : <String, dynamic>{});
-      // Glare check: a remote offer may have landed while we were creating
-      // ours; setLocalDescription would then throw and the perfect-
-      // negotiation path already answered it.
+      final offer = await pc.createOffer();
       if (_disposed) return;
       await pc.setLocalDescription(offer);
-      _sendSignal({'type': offer.type, 'sdp': offer.sdp});
+      sendSignal({'type': offer.type, 'sdp': offer.sdp});
     } catch (e) {
       debugPrint('P2P: makeOffer failed: $e');
-    } finally {
-      _makingOffer = false;
     }
   }
 
-  Future<void> _onSignal(dynamic raw) async {
-    if (_disposed || raw is! Map) return;
-    // No strict matchId filter: the server already proved the sender is OUR
-    // opponent (membership check on the relay), and the two sides can
-    // legitimately correlate on different leg ids — the surviving session
-    // keeps leg 1's id while a peer relaunched after a rejoin uses the
-    // current leg's. There is exactly one live session at a time, so an
-    // unexpected id is telemetry, not a reason to drop the only signal that
-    // can revive the call.
-    if (raw['matchId'] != matchId) {
-      debugPrint('P2P: signal for ${raw['matchId']} while scoped to $matchId — accepting (cross-leg)');
-    }
-    // Sender filter — see [opponentId]. `from` is stamped by the relay from
-    // the authenticated socket, never by the sender's payload.
-    if (raw['from'] != opponentId) {
-      debugPrint('P2P: dropping signal from ${raw['from']} (expected $opponentId)');
-      return;
-    }
-    _remoteSignalSeen = true;
-    _offerRetryTimer?.cancel();
-    _offerRetryTimer = null;
+  /// Feed one signal payload (already generation-matched and sender-filtered
+  /// by [P2pMatchVideo]) into this session. Safe to call before [connect] —
+  /// signals are buffered until the local media is attached.
+  void handleSignal(Map<dynamic, dynamic> data) {
+    if (_disposed) return;
     if (!_localSetupDone) {
-      _bufferedSignals.add(raw);
+      _bufferedSignals.add(data);
       return;
     }
-    await _enqueueSignal(raw);
+    _enqueueSignal(data);
   }
 
   /// All signal processing rides one chain — see [_signalChain].
-  Future<void> _enqueueSignal(Map<dynamic, dynamic> raw) {
-    final next = _signalChain.then((_) => _processSignal(raw));
+  Future<void> _enqueueSignal(Map<dynamic, dynamic> data) {
+    final next = _signalChain.then((_) => _processSignal(data));
     _signalChain = next.catchError((_) {});
     return next;
   }
 
-  Future<void> _processSignal(Map<dynamic, dynamic> raw) async {
+  Future<void> _processSignal(Map<dynamic, dynamic> data) async {
     if (_disposed) return;
-    final data = raw['data'];
-    if (data is! Map) return;
     final type = data['type'] as String?;
     final pc = _pc;
     if (pc == null) return;
 
     try {
-      if (type == 'offer' || type == 'answer') {
-        final description =
-            RTCSessionDescription(data['sdp'] as String?, type);
-        if (type == 'offer') {
-          final offerCollision = _makingOffer ||
-              (await pc.getSignalingState()) !=
-                  RTCSignalingState.RTCSignalingStateStable;
-          _ignoreOffer = !polite && offerCollision;
-          if (_ignoreOffer) {
-            debugPrint('P2P: glare — impolite peer ignoring remote offer');
-            return;
-          }
-          if (offerCollision) {
-            // EXPLICIT rollback: implicit rollback on setRemoteDescription is
-            // a browser-spec behavior that native libwebrtc does not have —
-            // without this, applying the offer in have-local-offer throws
-            // "Called in wrong state" and the answer never leaves (the
-            // both-sides connect_timeout of the 2026-08-03 prod test).
-            //
-            // Rollback ONLY when a local offer is actually set: a collision
-            // detected via _makingOffer alone (our createOffer still in
-            // flight, nothing set yet) leaves the state stable, where a
-            // rollback throws and would abort THIS remote offer — the
-            // in-flight setLocalDescription fails into _makeOffer's own
-            // catch instead, which is the intended outcome.
-            if ((await pc.getSignalingState()) ==
-                RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
-              debugPrint('P2P: glare — polite peer rolling back its own offer');
-              await pc
-                  .setLocalDescription(RTCSessionDescription('', 'rollback'));
-            }
-          }
-          await pc.setRemoteDescription(description);
-          _ignoreOffer = false;
-          _remoteDescriptionSet = true;
-          await _drainPendingCandidates();
-          final answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          _sendSignal({'type': answer.type, 'sdp': answer.sdp});
-        } else {
-          // Duplicate answer (our offer-retry can make the polite peer
-          // answer more than once): applying it in stable state throws and
-          // teaches nothing — skip.
-          if ((await pc.getSignalingState()) ==
-              RTCSignalingState.RTCSignalingStateStable) {
-            return;
-          }
-          await pc.setRemoteDescription(description);
-          _ignoreOffer = false;
-          _remoteDescriptionSet = true;
-          await _drainPendingCandidates();
+      if (type == 'offer') {
+        // Role guard: the owner only routes an offer to an ANSWERER session
+        // (an offer from a conflicting generation replaces the session
+        // instead). Reaching here as offerer is a routing bug — ignore
+        // rather than corrupt the PC state.
+        if (offerer) {
+          debugPrint('P2P: offer reached an offerer session — dropped');
+          return;
         }
+        await pc.setRemoteDescription(
+            RTCSessionDescription(data['sdp'] as String?, type));
+        _remoteDescriptionSet = true;
+        await _drainPendingCandidates();
+        final answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({'type': answer.type, 'sdp': answer.sdp});
+      } else if (type == 'answer') {
+        // Duplicate answer: applying it in stable state throws and teaches
+        // nothing — skip.
+        if ((await pc.getSignalingState()) ==
+            RTCSignalingState.RTCSignalingStateStable) {
+          return;
+        }
+        await pc.setRemoteDescription(
+            RTCSessionDescription(data['sdp'] as String?, type));
+        _remoteDescriptionSet = true;
+        await _drainPendingCandidates();
       } else if (type == 'candidate') {
         final candidate = RTCIceCandidate(
           data['candidate'] as String?,
@@ -594,15 +422,10 @@ class P2pRtcSession {
         if (!_remoteDescriptionSet) {
           _pendingCandidates.add(candidate);
         } else {
-          // Perfect negotiation: candidates are NEVER dropped outright —
-          // they may belong to the next negotiation (an ICE restart's new
-          // ufrag; dropping them kills relay-only links for good). Errors
-          // are only suppressed when they stem from an offer we
-          // deliberately ignored.
           try {
             await pc.addCandidate(candidate);
           } catch (e) {
-            if (!_ignoreOffer) debugPrint('P2P: addCandidate failed: $e');
+            debugPrint('P2P: addCandidate failed: $e');
           }
         }
       }
@@ -624,23 +447,14 @@ class P2pRtcSession {
     _pendingCandidates.clear();
   }
 
-  void _sendSignal(Map<String, dynamic> data) {
-    try {
-      SocketService.emit('rtc_signal', {'matchId': matchId, 'data': data});
-    } catch (e) {
-      // Socket momentarily down — the reconnect path renegotiates anyway.
-      debugPrint('P2P: sendSignal failed: $e');
-    }
-  }
-
   /// Whether the selected ICE candidate pair goes through a TURN relay.
   Future<bool?> _usedRelay() async {
     final pc = _pc;
     if (pc == null) return null;
     try {
       // Bounded: getStats on a zombie PC (mid-outage) can hang, and this
-      // runs inside dispose — an unbounded await here blocked the whole
-      // Agora fallback.
+      // runs inside teardown — an unbounded await here blocked the whole
+      // match exit.
       final stats = await pc.getStats().timeout(const Duration(seconds: 2));
       String? selectedPairId;
       final pairs = <String, Map<dynamic, dynamic>>{};
@@ -668,15 +482,16 @@ class P2pRtcSession {
     }
   }
 
-  /// End-of-call telemetry (rtc_v2_reports). Sent at most once.
-  Future<void> sendReport({bool fellBack = false, String? reason}) async {
-    if (_reportSent) return;
-    _reportSent = true;
+  /// The telemetry fields this session can vouch for; [P2pMatchVideo] adds
+  /// the matchId and emits the terminal report. Called BEFORE [dispose] so
+  /// the stats query still has a PC to talk to.
+  Future<Map<String, dynamic>> reportPayload() async {
+    String? reason;
     // Surface a send-only call in prod telemetry: connected=true with this
     // reason means the transport was fine but OUR camera track was never
     // attached (native capturer failure) — invisible otherwise. The native
     // error detail rides along, truncated to the DTO's 200-char cap.
-    if (reason == null && !_hadLocalVideo) {
+    if (!_hadLocalVideo) {
       final detail = _localVideoFailureDetail;
       reason = detail == null
           ? 'no_local_video_track'
@@ -689,37 +504,21 @@ class P2pRtcSession {
     try {
       state = _pc?.connectionState;
     } catch (_) {}
-    try {
-      SocketService.emit('rtc_v2_report', {
-        'matchId': matchId,
-        'connected': _connected,
-        if (_connectTimeMs != null) 'connectTimeMs': _connectTimeMs,
-        if (state != null)
-          'iceFinalState':
-              state.toString().replaceFirst('RTCPeerConnectionState.RTCPeerConnectionState', ''),
-        'usedRelay': ?usedRelay,
-        'fellBack': fellBack,
-        'reason': ?reason,
-      });
-    } catch (e) {
-      debugPrint('P2P: report emit failed: $e');
-    }
+    return {
+      'connected': _connected,
+      'connectTimeMs': ?_connectTimeMs,
+      'iceFinalState': ?state
+          ?.toString()
+          .replaceFirst('RTCPeerConnectionState.RTCPeerConnectionState', ''),
+      'usedRelay': ?usedRelay,
+      'reason': ?reason,
+    };
   }
 
-  /// [report] false skips the end-of-call telemetry — used by the rebuild
-  /// path, where the terminal report of the LAST session tells the story
-  /// (and the backend caps reports per socket).
-  Future<void> dispose({
-    bool fellBack = false,
-    String? reason,
-    bool report = true,
-  }) async {
+  Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _offerRetryTimer?.cancel();
     _mediaWatchdog?.cancel();
-    SocketService.off('rtc_signal', owner: this);
-    if (report) await sendReport(fellBack: fellBack, reason: reason);
     try {
       await _pc?.close();
     } catch (_) {}

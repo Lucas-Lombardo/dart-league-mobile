@@ -1,9 +1,9 @@
 /// The `rtcV2` block of a credential-carrying match payload — the server's
 /// verdict that BOTH players' sockets support P2P WebRTC for this match.
 ///
-/// Presence of this object is the ONLY signal that selects the P2P path; the
-/// Agora fields emitted next to it stay untouched and serve as the in-payload
-/// fallback if the P2P connection fails to establish.
+/// Presence of this object is the ONLY signal that selects the P2P path,
+/// and the selection is final: there is no Agora fallback. The Agora fields
+/// emitted next to it only serve OLD clients (which don't see this block).
 class RtcV2Config {
   const RtcV2Config({required this.iceServers, required this.polite});
 
