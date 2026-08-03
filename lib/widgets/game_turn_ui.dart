@@ -505,7 +505,11 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
               )
             else
               Icon(
-                saved ? Icons.check_circle : Icons.fiber_manual_record,
+                saved
+                    ? Icons.check_circle
+                    : (widget.hot
+                        ? Icons.local_fire_department
+                        : Icons.save_alt),
                 size: 14,
                 color: saved ? AppTheme.success : accent,
               ),
