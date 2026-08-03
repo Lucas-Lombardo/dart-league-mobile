@@ -10,7 +10,9 @@ import '../../l10n/app_localizations.dart';
 import '../../models/user.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
+import '../../services/api_service.dart';
 import '../../utils/app_theme.dart';
+import '../profile/replay_library_screen.dart';
 import '../../utils/dart_caller_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/rank_translation.dart';
@@ -26,6 +28,10 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Clip count for the replays row subtitle — best-effort, row works
+  // without it.
+  int? _replayCount;
+
   String _appVersion = 'Loading...';
   bool _callerEnabled = DartCallerService.enabled;
   bool _hapticsEnabled = HapticService.isEnabled;
@@ -36,6 +42,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    ApiService.get('/replays/mine?limit=1').then((data) {
+      if (!mounted) return;
+      setState(() => _replayCount = (data['total'] as num?)?.toInt());
+    }).catchError((Object e) {
+      debugPrint('[Settings] replay count failed: $e');
+    });
     _loadAppVersion();
   }
 
@@ -68,6 +80,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
           _buildProfileHero(l10n, user),
+
+          // Replays live in the PROFILE (Lucas, 2026-08-03): personal
+          // content, right above Premium so the quota reads as a natural
+          // bridge to the row below it.
+          const SizedBox(height: 24),
+          _buildSection(l10n.replaysSection.toUpperCase()),
+          _buildGroupCard([_buildReplaysRow(l10n, user)]),
 
           const SizedBox(height: 24),
           _buildSection(l10n.premium.toUpperCase()),
@@ -408,6 +427,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplaysRow(AppLocalizations l10n, dynamic user) {
+    final premium = user?.isPremiumActive == true;
+    final count = _replayCount;
+    final subtitle = count == null
+        ? l10n.myReplaysSubtitle
+        : premium
+            ? l10n.replayClipsCount(count)
+            : '${l10n.replayClipsCount(count)} · '
+                '${l10n.replayFreeLeft((5 - count).clamp(0, 5))}';
+    return InkWell(
+      onTap: () {
+        HapticService.lightImpact();
+        AppNavigator.toScreen(context, const ReplayLibraryScreen());
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.movie_outlined, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.myReplays,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
           ],
         ),
       ),

@@ -2442,6 +2442,18 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get replayDelete => 'Supprimer';
+
+  @override
+  String get replaysSection => 'Replays';
+
+  @override
+  String get myReplaysSubtitle => 'Tes moments enregistrés';
+
+  @override
+  String replayClipsCount(int count) => count == 1 ? '1 clip' : '$count clips';
+
+  @override
+  String replayFreeLeft(int left) => '$left restants en gratuit';
   @override
   String get totalLabel => 'TOTAL';
   @override
