@@ -308,6 +308,125 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
+    // ---- Delegate self-test (DartsMind: CheckInferenceModel) ----------------
+    //
+    // DartsMind benchmarks a GPU detector and a CPU detector against a bundled
+    // reference photo, scoring "cannot detect" as 100000ms so a delegate that
+    // finds nothing always loses to one that does. This port kept only "GPU
+    // first, CPU if the build throws" — which cannot catch the failure mode
+    // where the delegate builds perfectly and then computes garbage. On such a
+    // device every frame yields zero calibration points, so the app reports
+    // "Dartboard not detected" on every board, at every angle and distance,
+    // forever, while looking completely healthy from Dart.
+    //
+    // Reduced here to the decision it drives: after a GPU build, run the
+    // reference photo once. If the delegate cannot find the board in a picture
+    // we know contains one, it is lying — discard it and use the CPU.
+    private val referenceAsset = "assets/models/check_inference.jpg"
+    private val referenceConfidence = 0.8f   // detection_parsing.dart
+    private val referenceMinClasses = 4      // camera_setup_mixin: calibs >= 4
+    private var referenceBitmap: Bitmap? = null
+
+    // null = not yet tested, false = GPU disqualified for this process.
+    private var gpuVerdict: Boolean? = null
+
+    private fun referenceFrame(): Bitmap? {
+        referenceBitmap?.let { return it }
+        return try {
+            val key = flutterAssets.getAssetFilePathBySubpath(referenceAsset)
+            context.assets.open(key).use { stream ->
+                BitmapFactory.decodeStream(stream)?.also { referenceBitmap = it }
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("NativeInference", "reference frame unavailable: ${t.message}")
+            null
+        }
+    }
+
+    /**
+     * How many of the 9 detection classes fire above the confidence threshold
+     * on the reference photo. Mirrors the layout the Dart parser reads:
+     * channels 0..3 are box geometry, 4.. are per-class confidences.
+     * Returns -1 when the test could not be run at all.
+     */
+    private fun detectionsOnReference(interp: Interpreter): Int {
+        val bmp = referenceFrame() ?: return -1
+        val sz = modelInputSize
+        prepareTensorBuffers(interp)
+        val inBuf = inputBuffer ?: return -1
+        val outBuf = outputBuffer ?: return -1
+
+        val m = Matrix()
+        val s = min(sz.toFloat() / bmp.width, sz.toFloat() / bmp.height)
+        m.postScale(s, s)
+        squareCanvas.drawColor(Color.BLACK)
+        squareCanvas.drawBitmap(bmp, m, scalePaint)
+        // The live path caches its matrix against the last frame geometry; this
+        // draw used a different one, so force the next frame to recompute.
+        cachedRotation = Int.MIN_VALUE
+
+        squareBitmap.getPixels(tensorPixels, 0, sz, 0, 0, sz, sz)
+        var i = 0
+        var j = 0
+        val n = sz * sz
+        while (i < n) {
+            val p = tensorPixels[i]
+            tensorFloats[j] = norm[(p shr 16) and 0xFF]
+            tensorFloats[j + 1] = norm[(p shr 8) and 0xFF]
+            tensorFloats[j + 2] = norm[p and 0xFF]
+            i++
+            j += 3
+        }
+        inBuf.rewind()
+        inBuf.asFloatBuffer().put(tensorFloats)
+        inBuf.rewind()
+        outBuf.rewind()
+        interp.run(inBuf, outBuf)
+
+        val shape = interp.getOutputTensor(0).shape()
+        if (shape.size < 3) return -1
+        val channels = shape[1]
+        val elements = shape[2]
+        outBuf.rewind()
+        val fb = outBuf.asFloatBuffer()
+        var classesFound = 0
+        for (c in 4 until channels) {
+            val base = c * elements
+            for (k in 0 until elements) {
+                if (fb.get(base + k) > referenceConfidence) { classesFound++; break }
+            }
+        }
+        return classesFound
+    }
+
+    /**
+     * True if this interpreter may be trusted. Tested once per process; a
+     * delegate that throws during the test is treated as failing, since the
+     * caller's catch discards it and rebuilds on CPU either way.
+     */
+    private fun verifyGpuDelegate(interp: Interpreter): Boolean {
+        gpuVerdict?.let { return it }
+        val found = detectionsOnReference(interp)
+        // Reference missing / test unrunnable: don't punish the delegate for
+        // our own missing asset — behave exactly as before this check existed.
+        if (found < 0) {
+            android.util.Log.w("NativeInference", "delegate self-test skipped (no reference frame)")
+            return true
+        }
+        val ok = found >= referenceMinClasses
+        gpuVerdict = ok
+        if (ok) {
+            android.util.Log.d("NativeInference", "GPU delegate self-test: $found/9 classes — OK")
+        } else {
+            android.util.Log.w(
+                "NativeInference",
+                "GPU delegate self-test: $found/9 classes on a known-good frame — " +
+                    "delegate disqualified, using CPU for this process"
+            )
+        }
+        return ok
+    }
+
     // ---- Model Loading (DartsMind: Detector.updateTensorData) ----
 
     private fun loadModel(result: MethodChannel.Result) {
@@ -317,7 +436,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // re-inits the GPU delegate and leaked the old interpreter. A CPU-only
         // interpreter left by a wedge recovery is NOT reused once forceCpuOnce
         // has been consumed — the rebuild restores the GPU delegate. See iOS note.
-        val buildCpuOnly = forceCpuOnce
+        // A GPU delegate already caught lying stays disqualified for the
+        // rest of the process — no point rebuilding it every match.
+        val buildCpuOnly = forceCpuOnce || gpuVerdict == false
         if (interpreter != null) {
             if (loadedCpuOnly == buildCpuOnly) {
                 android.util.Log.d("NativeInference", "Model already loaded — reusing")
@@ -356,8 +477,16 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     gpuDelegate = GpuDelegate(gpuOptions)
                 }
                 val options = Interpreter.Options().addDelegate(gpuDelegate)
-                interp = Interpreter(modelBuffer, options)
-                android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
+                // Build, then PROVE it computes before trusting it (see
+                // verifyGpuDelegate). A delegate that builds and lies is the
+                // one failure mode the old "GPU first, CPU on throw" missed.
+                val built = Interpreter(modelBuffer, options)
+                if (verifyGpuDelegate(built)) {
+                    interp = built
+                    android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
+                } else {
+                    try { built.close() } catch (_: Throwable) {}
+                }
             } catch (t: Throwable) {
                 // Catch Throwable (not just Exception) to handle NoClassDefFoundError,
                 // UnsatisfiedLinkError, etc. that R8/ProGuard stripping can cause.
@@ -407,7 +536,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // dvExecutor, serialized behind any in-flight analyze, so the old
         // interpreter is never closed while in use. The GpuDelegate is reused
         // across switches (DartsMind: Detector.gpuDelegate).
-        val buildCpuOnly = forceCpuOnce
+        // A GPU delegate already caught lying stays disqualified for the
+        // rest of the process — no point rebuilding it every match.
+        val buildCpuOnly = forceCpuOnce || gpuVerdict == false
         if (interpreter != null) {
             if (path == loadedModelPath && loadedCpuOnly == buildCpuOnly) {
                 android.util.Log.d("NativeInference", "Model already loaded — reusing")
@@ -444,8 +575,16 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     gpuDelegate = GpuDelegate(gpuOptions)
                 }
                 val options = Interpreter.Options().addDelegate(gpuDelegate)
-                interp = Interpreter(modelBuffer, options)
-                android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
+                // Build, then PROVE it computes before trusting it (see
+                // verifyGpuDelegate). A delegate that builds and lies is the
+                // one failure mode the old "GPU first, CPU on throw" missed.
+                val built = Interpreter(modelBuffer, options)
+                if (verifyGpuDelegate(built)) {
+                    interp = built
+                    android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
+                } else {
+                    try { built.close() } catch (_: Throwable) {}
+                }
             } catch (t: Throwable) {
                 android.util.Log.w("NativeInference", "GPU failed: ${t.javaClass.simpleName}: ${t.message}")
                 interp?.close()
@@ -778,6 +917,17 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         yRowStride: Int, uvRowStride: Int, uvPixelStride: Int,
         out: IntArray
     ) {
+        // Plane lengths are NOT implied by width/height/stride: a camera HAL is
+        // free to hand back semi-planar UV buffers that stop a byte or two short
+        // of the index the stride arithmetic reaches on the last row. Reading
+        // past them threw ArrayIndexOutOfBounds for every frame on such a
+        // device, and the Dart capture loop only debugPrints that — leaving the
+        // setup screen frozen on its last hint, which reads as "detects
+        // nothing". Clamp instead: the worst case is a slightly wrong chroma
+        // value on the final pixels, which changes no detection.
+        val uMax = uPlane.size - 1
+        val vMax = vPlane.size - 1
+        val yMax = yPlane.size - 1
         var dstIdx = 0
         var sy = 0
         while (sy < height) {
@@ -785,10 +935,11 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val uvRowBase = (sy shr 1) * uvRowStride
             var sx = 0
             while (sx < width) {
-                val yVal = yPlane[yRowBase + sx].toInt() and 0xFF
+                val yIdx = yRowBase + sx
+                val yVal = yPlane[if (yIdx > yMax) yMax else yIdx].toInt() and 0xFF
                 val uvIdx = uvRowBase + (sx shr 1) * uvPixelStride
-                val u = (uPlane[uvIdx].toInt() and 0xFF) - 128
-                val v = (vPlane[uvIdx].toInt() and 0xFF) - 128
+                val u = (uPlane[if (uvIdx > uMax) uMax else uvIdx].toInt() and 0xFF) - 128
+                val v = (vPlane[if (uvIdx > vMax) vMax else uvIdx].toInt() and 0xFF) - 128
 
                 var r = yVal + ((351 * v + 128) shr 8)
                 var g = yVal - ((86 * u + 179 * v + 128) shr 8)
