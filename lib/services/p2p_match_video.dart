@@ -43,7 +43,6 @@ class P2pMatchVideo {
   bool _stopped = false;
   bool _remoteReady = false;
 
-  bool get isRunning => _session != null && !_stopped;
   bool get isRemoteReady => _remoteReady;
   bool get isLinkUp => _session?.isLinkUp ?? false;
 
@@ -102,7 +101,7 @@ class P2pMatchVideo {
   /// the network that just died. The camera and the AI are untouched: only
   /// the session and the native track are recreated, so a rebuild costs no
   /// camera restart (and no extra heat).
-  Future<void> _rebuild() async {
+  Future<void> _rebuild(String reason) async {
     if (_stopped || _rebuilding) return;
     _rebuilding = true;
     try {
@@ -112,7 +111,7 @@ class P2pMatchVideo {
       onChanged();
       try {
         await old
-            ?.dispose(reason: 'rebuild')
+            ?.dispose(reason: 'rebuild:$reason')
             .timeout(const Duration(seconds: 3));
       } catch (_) {}
       await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration);
@@ -130,15 +129,13 @@ class P2pMatchVideo {
   /// offer emitted into the dead socket was lost (signals have no replay).
   void onSocketReconnected() {
     if (_stopped || isLinkUp) return;
+    _recovery?.noteNetworkBack();
     _session?.restartIce();
   }
 
   Future<void> setMicEnabled(bool enabled) async {
     await _session?.setMicEnabled(enabled);
   }
-
-  /// Whether a mic track exists at all (permission denied ⇒ false).
-  bool get hasLocalAudio => _session?.hasLocalAudio ?? false;
 
   /// Tears everything down. [fellBack] marks the telemetry report when the
   /// screen is switching to Agora.

@@ -116,7 +116,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
 
     await startMatchVideo(
       game: game,
-      matchId: game.currentGameMatchId ?? widget.gameMatchId,
+      matchId: game.currentGameMatchId,
       opponentId: widget.opponentId,
       startAgora: startAgora,
       hasAgoraCredentials:

@@ -39,7 +39,7 @@ class RtcRecoveryPolicy {
 
   /// Full session rebuild — a new PeerConnection gathering candidates on the
   /// current network. Works for every outage shape; costs ~2s of video.
-  final Future<void> Function() onRebuild;
+  final Future<void> Function(String reason) onRebuild;
 
   /// Last resort while the legacy transport still exists. Null = keep
   /// rebuilding forever (post-Agora).
@@ -103,6 +103,19 @@ class RtcRecoveryPolicy {
     _timer = Timer.periodic(_tick, (_) => _step());
   }
 
+  /// The network just came back (the socket reconnected). Restarts the
+  /// clock: the budget is WALL-CLOCK, so time spent with the app in the
+  /// background — a call, a locked screen — counted against it, and any
+  /// absence longer than the budget handed over to Agora the very instant
+  /// the network returned, before the renegotiation could converge.
+  void noteNetworkBack() {
+    if (_finished || _downSince == null) return;
+    debugPrint('[RtcRecovery] network back — outage clock restarted');
+    _downSince = DateTime.now();
+    _restartIssued = false;
+    _lastRebuildAt = null;
+  }
+
   void _step() {
     final since = _downSince;
     if (_finished || since == null) return;
@@ -134,7 +147,7 @@ class RtcRecoveryPolicy {
       _rebuildInFlight = true;
       _lastRebuildAt = DateTime.now();
       debugPrint('[RtcRecovery] rebuilding session');
-      onRebuild().whenComplete(() {
+      onRebuild(_reason).whenComplete(() {
         _rebuildInFlight = false;
         // A rebuilt session starts from scratch: let it earn its ICE restart
         // again if it too goes down.

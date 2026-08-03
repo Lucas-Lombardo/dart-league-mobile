@@ -66,6 +66,9 @@ class P2pRtcSession {
   /// sensor of its recovery.
   static const Duration mediaStallTimeout = Duration(seconds: 6);
 
+  /// Minimum spacing between two restart offers, whatever triggered them.
+  static const Duration restartThrottle = Duration(seconds: 3);
+
   /// Re-emission cadence of the initial offer while the opponent has said
   /// NOTHING yet. Signals have no replay: if the polite peer registers its
   /// handler seconds after ours fired (tournament entry skew — one player
@@ -118,6 +121,7 @@ class P2pRtcSession {
   DateTime? _lastFrameProgressAt;
   bool _remoteSignalSeen = false;
   bool _impairedReported = false;
+  DateTime? _lastRestartAt;
 
   bool get isConnected => _connected;
 
@@ -136,6 +140,16 @@ class P2pRtcSession {
     // Never offer before the local media is attached: an offer without our
     // video m-line is how the one-way-video bug happened.
     if (!_localSetupDone) return;
+    // Throttle: socket reconnect syncs fire repeatedly on a flaky network,
+    // and stacked restart offers desynchronize the ICE generations (a late
+    // answer to offer N applied over offer N+1, then N+1's answer dropped as
+    // a duplicate) — the agent then never converges.
+    final last = _lastRestartAt;
+    if (last != null &&
+        DateTime.now().difference(last) < restartThrottle) {
+      return;
+    }
+    _lastRestartAt = DateTime.now();
     try {
       _pc?.restartIce();
     } catch (e) {

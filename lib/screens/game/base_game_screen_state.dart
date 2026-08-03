@@ -289,9 +289,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     cameraFrameService?.dispose();
     cameraFrameService = null;
     // P2P: fire-and-forget, mirroring the un-awaited leaveChannel below (a
-    // State.dispose can't await). Session dispose sends the telemetry report;
-    // the native track is torn down only after the peer connection closed.
-    // P2P: fire-and-forget, mirroring the un-awaited leaveChannel below (a
     // State.dispose can't await). The controller sends the telemetry report
     // and releases the native track.
     p2pVideo?.stopDetached();
@@ -559,7 +556,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           else if (game.pendingType == 'bust' && !bustDialogShowing) { DartSoundService.playBust(); showPendingBustDialog(game); }
         });
       }
-      if (game.needsAgoraReconnect) {
+      if (game.needsAgoraReconnect == true) {
         // Leg transitions (D7) reuse the live session; every other reconnect
         // keeps the full rebuild — there the fresh engine IS the recovery.
         bool legTransition = false;
@@ -788,13 +785,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// reads its widget params, the tournament screen its provider.
   Future<void> startMatchVideo({
     required dynamic game,
-    required String matchId,
+    required String? matchId,
     required String opponentId,
     required Future<void> Function() startAgora,
     required bool hasAgoraCredentials,
   }) async {
     final rtcV2 = _rtcV2ConfigOf(game);
-    if (rtcV2 != null && RtcFramesService.isSupported) {
+    // No matchId means no signaling scope: fall back to Agora rather than
+    // start a call nobody can reach (the tournament screen's historical
+    // currentGameMatchId guard).
+    if (rtcV2 != null && matchId != null && RtcFramesService.isSupported) {
       updateLoadingMessage('Starting camera...');
       await initializeP2p(
         matchId: matchId,
