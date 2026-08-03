@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/app_navigator.dart';
+import '../profile/replay_library_screen.dart';
 import 'stats/matches_stats_tab.dart';
 import 'training_stats_tab.dart';
 
@@ -47,6 +49,10 @@ class _StatsScreenState extends State<StatsScreen> {
               ),
             ],
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: _ReplaysEntryCard(l10n: l10n),
         ),
         Expanded(
           child: _tab == StatsTab.matches
@@ -117,6 +123,51 @@ class _TabButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Slim entry to the replay library — the clips live in « Mes replays »,
+/// reachable from the player's own stats page (no extra nav item).
+class _ReplaysEntryCard extends StatelessWidget {
+  final AppLocalizations l10n;
+
+  const _ReplaysEntryCard({required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticService.lightImpact();
+        AppNavigator.toScreen(context, const ReplayLibraryScreen());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: AppTheme.playerBlue.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.movie_outlined,
+                color: AppTheme.playerBlue, size: 20),
+            const SizedBox(width: 10),
+            Text(
+              l10n.myReplays,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14),
+            ),
+            const Spacer(),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.textSecondary, size: 20),
+          ],
         ),
       ),
     );

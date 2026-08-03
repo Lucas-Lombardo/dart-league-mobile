@@ -2427,6 +2427,21 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get replayMoments => 'Moments du match';
+
+  @override
+  String get myReplays => 'Mes replays';
+
+  @override
+  String get replaysEmpty => 'Aucun clip pour l\'instant — enregistre un moment pendant un match.';
+
+  @override
+  String get replayQuotaBanner => 'Offre gratuite : 5 clips stockés. Premium = illimité.';
+
+  @override
+  String get replayDeleteTitle => 'Supprimer ce clip ?';
+
+  @override
+  String get replayDelete => 'Supprimer';
   @override
   String get totalLabel => 'TOTAL';
   @override

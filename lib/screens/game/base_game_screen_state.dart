@@ -16,6 +16,7 @@ import '../../services/p2p_match_video.dart';
 import '../../services/replay_buffer_service.dart';
 import '../../services/replay_clips_store.dart';
 import '../../services/replay_overlay_timeline.dart';
+import '../../services/replay_upload_service.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
@@ -147,6 +148,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // pill's own ✓ state is the only in-match feedback — sharing lives on
     // the end screen, never mid-game.
     matchReplayClips.add(clip);
+    // Cloud library, fire-and-forget: the local clip is already usable and
+    // shareable whether or not the upload lands.
+    ReplayUploadService.uploadClip(clip);
     return true;
   }
 

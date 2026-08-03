@@ -924,6 +924,11 @@ abstract class AppLocalizations {
   String get replayShare;
   String get replayNothingToCapture;
   String get replayMoments;
+  String get myReplays;
+  String get replaysEmpty;
+  String get replayQuotaBanner;
+  String get replayDeleteTitle;
+  String get replayDelete;
   String get totalLabel;
   String get upcomingDart;
   String get editShort;

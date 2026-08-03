@@ -2400,6 +2400,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replayMoments => 'Match moments';
+
+  @override
+  String get myReplays => 'My replays';
+
+  @override
+  String get replaysEmpty => 'No clips yet — save a moment during a match.';
+
+  @override
+  String get replayQuotaBanner => 'Free plan: 5 saved clips. Go Premium for unlimited.';
+
+  @override
+  String get replayDeleteTitle => 'Delete this clip?';
+
+  @override
+  String get replayDelete => 'Delete';
   @override
   String get totalLabel => 'TOTAL';
   @override

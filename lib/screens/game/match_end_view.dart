@@ -3,7 +3,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../services/replay_clips_store.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../profile/replay_player_screen.dart';
 
 /// Redesigned end-of-match screen shared by ranked, friendly and tournament
 /// matches: animated hero + headline, optional series score and tournament
@@ -363,7 +365,12 @@ class _MatchEndViewState extends State<MatchEndView>
     final label = total != null && total > 0
         ? (total == 180 ? '180 🔥' : l10n.ptsLabel(total))
         : TimeOfDay.fromDateTime(clip.createdAt).format(context);
-    return Padding(
+    return InkWell(
+      onTap: () => AppNavigator.toScreen(
+        context,
+        ReplayPlayerScreen(source: clip.path, isLocal: true),
+      ),
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
@@ -392,6 +399,7 @@ class _MatchEndViewState extends State<MatchEndView>
             ),
           ),
         ],
+      ),
       ),
     );
   }
