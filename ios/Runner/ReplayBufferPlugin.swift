@@ -2,7 +2,7 @@ import Flutter
 import AVFoundation
 
 /// Rolling replay buffer: encodes the camera frames the app already produces
-/// (same BGRA buffers as the RTC push) into a ring of SELF-CONTAINED 5s MP4
+/// (same BGRA buffers as the RTC push) into a ring of SELF-CONTAINED short MP4
 /// segments, and turns a wall-clock window into one clip by inserting the
 /// matching segments into an AVMutableComposition exported PASSTHROUGH — no
 /// re-encoding anywhere but the continuous hardware AVAssetWriter.
@@ -14,8 +14,11 @@ import AVFoundation
 /// Registered from AppDelegate on `com.dartrivals/replay_buffer` — same
 /// pattern as RtcFramesPlugin.
 class ReplayBufferPlugin: NSObject {
-  private static let segmentMs: Int64 = 5_000
-  private static let ringSegments = 12
+  // 3s segments: capture bounds snap to segment edges, so the segment
+  // length IS the worst-case clip preamble — 5s let a late dart-pull slip
+  // into the clip head (2026-08-03 test).
+  private static let segmentMs: Int64 = 3_000
+  private static let ringSegments = 16
   private static let bitRate = 3_000_000
 
   private let queue = DispatchQueue(label: "com.dartrivals.replay", qos: .utility)

@@ -19,12 +19,12 @@ import java.nio.ByteBuffer
 /**
  * Rolling replay buffer: encodes the camera frames the app already produces
  * (same tight NV21/I420 buffers as the RTC push) into a ring of SELF-CONTAINED
- * 5s MP4 segments, and turns a wall-clock window into one clip by
+ * short MP4 segments, and turns a wall-clock window into one clip by
  * concatenating segments WITHOUT re-encoding (MediaExtractor → MediaMuxer
  * passthrough).
  *
- * One continuous hardware encoder (MediaCodec AVC, I-frame every 5s); the
- * muxer rotates to a new file on each keyframe past the 5s mark, so every
+ * One continuous hardware encoder (MediaCodec AVC, one I-frame per segment);
+ * the muxer rotates to a new file on each keyframe past the segment mark, so every
  * segment starts with an IDR and plays standalone. All state lives on the
  * dedicated handler thread — the platform thread only relays calls.
  *
@@ -33,8 +33,11 @@ import java.nio.ByteBuffer
 class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     companion object {
-        private const val SEGMENT_MS = 5_000L
-        private const val RING_SEGMENTS = 12
+        // 3s segments: capture bounds snap to segment edges, so the segment
+        // length IS the worst-case clip preamble — 5s let a late dart-pull
+        // slip into the clip head (2026-08-03 test). One IDR per segment.
+        private const val SEGMENT_MS = 3_000L
+        private const val RING_SEGMENTS = 16
         private const val BIT_RATE = 3_000_000
         private const val FRAME_RATE = 15
     }
@@ -172,7 +175,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             )
             setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
             setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
-            // One IDR per 5s = one segment boundary per GOP.
+            // One IDR per segment = one boundary per GOP.
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, (SEGMENT_MS / 1000).toInt())
         }
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).apply {

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 /// Dart facade of the native rolling replay buffer (ReplayBufferPlugin.kt /
 /// .swift): the camera pipeline tees every match frame here, the native side
-/// keeps a ring of self-contained 5s MP4 segments (~60s of the local camera),
+/// keeps a ring of self-contained 3s MP4 segments (~48s of my-turn camera),
 /// and [captureRange] turns a wall-clock window into ONE clip file by
 /// concatenating segments without re-encoding.
 ///
