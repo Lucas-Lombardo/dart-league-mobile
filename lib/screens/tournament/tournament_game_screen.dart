@@ -140,8 +140,8 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     await loadAutoScoringPref();
     // Rejoin scenario: Agora credentials arrive later via game_state_sync.
     // Show loading spinner instead of the manual dartboard until the model loads.
-    // (p2pSession == null: on the P2P path the camera/AI are already up.)
-    if (autoScoringEnabled && agoraEngine == null && p2pSession == null && !kIsWeb && AutoScoringService.isSupported) {
+    // (p2pVideo == null: on the P2P path the camera/AI are already up.)
+    if (autoScoringEnabled && agoraEngine == null && p2pVideo == null && !kIsWeb && AutoScoringService.isSupported) {
       setState(() => autoScoringLoading = true);
       // If game_state_sync never arrives (or the reconnect wedges), the
       // watchdog drops the blocking overlay instead of spinning forever.
