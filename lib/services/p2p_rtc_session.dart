@@ -117,6 +117,28 @@ class P2pRtcSession {
 
   bool get isConnected => _connected;
 
+  /// Live media-link state (false during an outage even if we once
+  /// connected) — the screen uses it to decide whether a socket recovery
+  /// should kick a renegotiation.
+  bool get isLinkUp => _linkUp;
+
+  /// Force a renegotiation NOW. Called when the SOCKET comes back while the
+  /// media link is down: any restart offer emitted into the dead socket was
+  /// lost forever (signals have no replay), and the polite peer otherwise
+  /// has no way to drive recovery — the airplane-mode test wedged exactly
+  /// here. Offering from either role is safe: glare is absorbed by the
+  /// perfect-negotiation path (explicit rollback included).
+  void kickIceRestart() {
+    if (_disposed || _failed || _linkUp) return;
+    debugPrint('P2P: socket back while link down — kicking ICE restart');
+    try {
+      _pc?.restartIce();
+    } catch (e) {
+      debugPrint('P2P: restartIce failed: $e');
+    }
+    _makeOffer(iceRestart: true);
+  }
+
   /// Establish the call. [localVideoTrackFactory] builds the custom-capturer
   /// track fed by the app-owned camera (see RtcFramesService); it is invoked
   /// AFTER the RTCPeerConnection exists, because flutter_webrtc's native
@@ -535,7 +557,10 @@ class P2pRtcSession {
     final pc = _pc;
     if (pc == null) return null;
     try {
-      final stats = await pc.getStats();
+      // Bounded: getStats on a zombie PC (mid-outage) can hang, and this
+      // runs inside dispose — an unbounded await here blocked the whole
+      // Agora fallback.
+      final stats = await pc.getStats().timeout(const Duration(seconds: 2));
       String? selectedPairId;
       final pairs = <String, Map<dynamic, dynamic>>{};
       final localCandidates = <String, Map<dynamic, dynamic>>{};

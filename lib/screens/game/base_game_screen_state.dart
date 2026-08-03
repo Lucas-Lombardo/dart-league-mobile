@@ -796,9 +796,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// Agora rebuild.
   void reconnectRtcTransport(dynamic game, {required bool legTransition}) {
     if (p2pSession != null) {
-      // P2P: nothing to re-key. The session spans legs (the per-leg Agora
-      // channel rotation doesn't apply) and socket reconnects (transport
-      // recovery is ICE restart inside the session); camera and AI stay up.
+      // P2P: nothing to re-key — the session spans legs and socket
+      // reconnects. BUT the sync that brought us here proves the socket
+      // works again: if the media link is down, re-drive the negotiation —
+      // any restart offer emitted while the socket was dead was lost
+      // forever (no replay), and waiting wedged the airplane-mode test.
+      if (!p2pSession!.isLinkUp) {
+        p2pSession!.kickIceRestart();
+      }
       return;
     }
     if (_agoraInitInFlight) {
@@ -976,7 +981,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     isAudioMuted = true;
     debugPrint('[BaseGameScreen] P2P failed ($reason) — falling back to Agora');
     try {
-      await session?.dispose(fellBack: true, reason: reason);
+      // Bounded: the fallback must ALWAYS reach the Agora init — a session
+      // teardown hanging on a zombie PC must not hold the whole match's
+      // video hostage.
+      await session
+          ?.dispose(fellBack: true, reason: reason)
+          .timeout(const Duration(seconds: 3));
     } catch (_) {}
     await RtcFramesService.disposeTrack(ifGeneration: _rtcFramesGeneration);
     // initializeAgora builds its own camera service; release the P2P one
