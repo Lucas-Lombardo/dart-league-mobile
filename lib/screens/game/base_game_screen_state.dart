@@ -15,6 +15,7 @@ import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
 import '../../services/replay_buffer_service.dart';
 import '../../services/replay_clips_store.dart';
+import '../../services/replay_overlay_timeline.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
@@ -64,6 +65,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   int? customVideoTrackId;
   // ─── Replays ──────────────────────────────────────────────────────────────
 
+  /// Format band burned into replay overlays — screens override with their
+  /// own context (the tournament screen shows the tournament name); null
+  /// falls back to the match type read off the provider.
+  String? get replayFormatLabel => null;
+
+  String _replayDefaultFormat(dynamic game) {
+    try {
+      if (game.isFriendly == true) return 'FRIENDLY';
+    } catch (_) {}
+    try {
+      if (game.isRankedSeries == true) return 'RANKED · BO${game.bestOf}';
+    } catch (_) {}
+    return 'RANKED';
+  }
+
   /// The « Enregistrer » pill on my camera panel — visible during MY turn
   /// once the visit has something to record, gold on a highlight (180;
   /// checkouts are captured automatically from the win dialog, which covers
@@ -80,8 +96,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
-  /// Cuts the clip of the current visit from the ring buffer, stores it and
-  /// offers the share sheet. Local-only: sharing never waits on any upload.
+  /// Cuts the clip of the current visit from the ring buffer, burns the
+  /// broadcast overlay in (scoreboard, dart popups, banner, end card) and
+  /// stores it. Local-only: sharing never waits on any upload, and a failed
+  /// render falls back to the raw clip.
   Future<bool> captureTurnClip(dynamic game, {required bool hot}) async {
     final now = DateTime.now();
     final from = _turnDartTimes.isNotEmpty
@@ -89,8 +107,33 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // No AI timestamps (manual scoring): a fixed window still covers the
         // visit — segment snapping widens it anyway.
         : now.subtract(const Duration(seconds: 20));
-    final path = await ReplayBufferService.captureRange(from, now);
-    if (path == null) return false;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final captured = await ReplayBufferService.captureRange(from, now);
+    if (captured == null) return false;
+    var path = captured.path;
+    try {
+      final timeline = buildReplayOverlayTimeline(
+        clipStartWallMs: captured.startWallMs,
+        dartTimes: List.of(_turnDartTimes),
+        dartNotations: List<String>.from(game.currentRoundThrows as List),
+        myRemainingScore: game.myScore as int,
+        opponentScore: game.opponentScore as int,
+        myName: auth.currentUser?.username ?? 'YOU',
+        opponentName: opponentUsername,
+        myLegs: game.myLegsWon as int,
+        opponentLegs: game.opponentLegsWon as int,
+        seriesTitle: replayFormatLabel ?? _replayDefaultFormat(game),
+        checkout: hot && (game.myScore as int) == 0,
+        logoPath: await materializeReplayLogo(),
+      );
+      final dressed = await ReplayBufferService.renderOverlay(
+        inPath: path,
+        timeline: timeline,
+      );
+      if (dressed != null) path = dressed;
+    } catch (e) {
+      debugPrint('[Replay] overlay skipped: $e');
+    }
     final clip = ReplayClip(
       path: path,
       createdAt: now,

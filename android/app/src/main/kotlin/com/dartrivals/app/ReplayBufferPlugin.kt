@@ -104,6 +104,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         when (call.method) {
             "pushFrame" -> pushFrame(call, result)
             "capture" -> capture(call, result)
+            "render" -> renderOverlay(call, result)
             "pause" -> {
                 // Turn gate: the Dart side stops sending frames for the
                 // opponent's turn; close the open segment so the ring only
@@ -305,7 +306,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         while (segments.size > RING_SEGMENTS) segments.removeFirst().file.delete()
     }
 
-    /** args: fromMs, toMs (epoch millis) → clip path, or null. */
+    /** args: fromMs, toMs (epoch millis) → {path, startWallMs}, or null. */
     private fun capture(call: MethodCall, result: MethodChannel.Result) {
         val fromMs = (call.argument<Number>("fromMs"))?.toLong()
         val toMs = (call.argument<Number>("toMs"))?.toLong()
@@ -314,7 +315,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return
         }
         handler.post {
-            var path: String? = null
+            var payload: Map<String, Any>? = null
             try {
                 // Include the tail: close the open segment mid-GOP (its
                 // samples are complete) and make the encoder restart the next
@@ -329,12 +330,43 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     } catch (_: Exception) {}
                 }
                 val picked = segments.filter { it.endWallMs >= fromMs && it.startWallMs <= toMs }
-                if (picked.isNotEmpty()) path = concat(picked)
+                if (picked.isNotEmpty()) {
+                    payload = mapOf(
+                        "path" to concat(picked),
+                        "startWallMs" to picked.first().startWallMs,
+                    )
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ReplayBuffer", "capture failed: $e")
             }
-            mainHandler.post { result.success(path) }
+            mainHandler.post { result.success(payload) }
         }
+    }
+
+    /**
+     * args: inPath, timeline (json) → path of the clip with the broadcast
+     * overlay burned in. Runs on its OWN thread: a multi-second re-encode
+     * must not stall the ring encoder's handler.
+     */
+    private fun renderOverlay(call: MethodCall, result: MethodChannel.Result) {
+        val inPath = call.argument<String>("inPath")
+        val timelineJson = call.argument<String>("timeline")
+        if (inPath == null || timelineJson == null) {
+            result.success(null)
+            return
+        }
+        Thread {
+            var outPath: String? = null
+            try {
+                val out = File(clipsDir(), "clip_${System.currentTimeMillis()}_brand.mp4")
+                ReplayOverlayRenderer(org.json.JSONObject(timelineJson))
+                    .render(inPath, out.absolutePath)
+                outPath = out.absolutePath
+            } catch (e: Exception) {
+                android.util.Log.w("ReplayBuffer", "render failed: $e")
+            }
+            mainHandler.post { result.success(outPath) }
+        }.start()
     }
 
     /** Passthrough concat — no decode, no re-encode. */

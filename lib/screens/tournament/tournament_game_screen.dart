@@ -273,6 +273,11 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
   @override
+  @override
+  String? get replayFormatLabel => widget.tournamentName.isNotEmpty
+      ? widget.tournamentName.toUpperCase()
+      : 'TOURNAMENT';
+
   Widget buildEndScreen(dynamic game, AuthProvider auth) {
     if (_resultAccepted) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);

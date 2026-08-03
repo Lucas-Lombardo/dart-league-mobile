@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,12 @@ import 'package:flutter/services.dart';
 /// Frames only flow while [armed] — the camera service arms it for matches
 /// and stops it on dispose, which also deletes the ring (clips survive in
 /// their own directory).
+class ReplayCapture {
+  const ReplayCapture(this.path, this.startWallMs);
+  final String path;
+  final int startWallMs;
+}
+
 class ReplayBufferService {
   static const _channel = MethodChannel('com.dartrivals/replay_buffer');
 
@@ -88,24 +95,41 @@ class ReplayBufferService {
 
   /// Cut one clip covering [from, to] (bounds snap to segment edges, so the
   /// clip is a little wider than asked — that's the ±2s margin working for
-  /// free). Returns the MP4 path, or null when the ring has nothing there.
-  static Future<String?> captureRange(DateTime from, DateTime to) async {
+  /// free). Null when the ring has nothing there. [startWallMs] is the wall
+  /// clock of the clip's first frame — what the overlay timeline aligns on.
+  static Future<ReplayCapture?> captureRange(DateTime from, DateTime to) async {
     if (!isSupported) return null;
     try {
-      return await _channel.invokeMethod<String>('capture', {
+      final res = await _channel.invokeMethod<Map>('capture', {
         'fromMs': from.millisecondsSinceEpoch,
         'toMs': to.millisecondsSinceEpoch,
       });
+      final path = res?['path'] as String?;
+      if (path == null) return null;
+      return ReplayCapture(path, (res?['startWallMs'] as num?)?.toInt() ?? 0);
     } catch (e) {
       debugPrint('[ReplayBufferService] capture failed: $e');
       return null;
     }
   }
 
-  /// Convenience for "the turn that just ended".
-  static Future<String?> captureLast(Duration window) {
-    final now = DateTime.now();
-    return captureRange(now.subtract(window), now);
+  /// Burns the broadcast overlay into [inPath] (short hardware re-encode,
+  /// a few seconds for a ~25s clip). Returns the dressed clip path, or null
+  /// on failure — callers keep the raw clip then.
+  static Future<String?> renderOverlay({
+    required String inPath,
+    required Map<String, dynamic> timeline,
+  }) async {
+    if (!isSupported) return null;
+    try {
+      return await _channel.invokeMethod<String>('render', {
+        'inPath': inPath,
+        'timeline': jsonEncode(timeline),
+      });
+    } catch (e) {
+      debugPrint('[ReplayBufferService] render failed: $e');
+      return null;
+    }
   }
 
   /// Stops encoding and deletes the ring segments (clips are kept).
