@@ -2409,6 +2409,21 @@ class AppLocalizationsFr extends AppLocalizations {
   String visitOf(String name) => 'VOLÉE DE $name';
   @override
   String get yourVisit => 'VOTRE VOLÉE';
+
+  @override
+  String get replayCapture => 'Enregistrer';
+
+  @override
+  String get replayCaptureHot => 'Enregistrer ce moment';
+
+  @override
+  String get replaySaved => 'Clip enregistré';
+
+  @override
+  String get replayShare => 'Partager';
+
+  @override
+  String get replayNothingToCapture => 'Rien à enregistrer pour l\'instant';
   @override
   String get totalLabel => 'TOTAL';
   @override

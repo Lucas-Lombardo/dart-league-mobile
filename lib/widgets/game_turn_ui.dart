@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
+import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'logo_watermark.dart';
 
@@ -220,6 +221,10 @@ class GameCameraPanel extends StatelessWidget {
   final VoidCallback? onZoomIn;
   final VoidCallback? onZoomOut;
 
+  /// Bottom-right overlay (the replay "record" pill lives here — the zoom
+  /// pill keeps the bottom center).
+  final Widget? cornerAction;
+
   const GameCameraPanel({
     super.key,
     this.videoView,
@@ -233,6 +238,7 @@ class GameCameraPanel extends StatelessWidget {
     this.maxZoom = 1.0,
     this.onZoomIn,
     this.onZoomOut,
+    this.cornerAction,
   });
 
   @override
@@ -410,7 +416,114 @@ class GameCameraPanel extends StatelessWidget {
                 ),
               ),
             ),
+
+          // ── Corner action (bottom right) ──
+          if (cornerAction != null)
+            Positioned(bottom: 12, right: 12, child: cornerAction!),
         ],
+      ),
+    );
+  }
+}
+
+/// The replay "record this turn" pill, shown on MY camera panel while my
+/// turn has something to record. [hot] switches to the gold celebration
+/// styling (180, checkout, bull finish) so the auto-suggestion is the same
+/// gesture, just impossible to miss. Manages its own tap lifecycle:
+/// idle → saving (spinner) → saved (check, 2.5s) → idle.
+class ReplayCaptureButton extends StatefulWidget {
+  final bool hot;
+
+  /// Cuts the clip; returns true when a clip file was produced.
+  final Future<bool> Function() onCapture;
+
+  const ReplayCaptureButton({
+    super.key,
+    required this.onCapture,
+    this.hot = false,
+  });
+
+  @override
+  State<ReplayCaptureButton> createState() => _ReplayCaptureButtonState();
+}
+
+enum _CaptureState { idle, saving, saved }
+
+class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
+  _CaptureState _state = _CaptureState.idle;
+
+  Future<void> _tap() async {
+    if (_state != _CaptureState.idle) return;
+    HapticService.lightImpact();
+    setState(() => _state = _CaptureState.saving);
+    final ok = await widget.onCapture();
+    if (!mounted) return;
+    setState(() => _state = ok ? _CaptureState.saved : _CaptureState.idle);
+    if (ok) {
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _state = _CaptureState.idle);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final accent = widget.hot ? AppTheme.accent : AppTheme.playerBlue;
+    final saved = _state == _CaptureState.saved;
+    return GestureDetector(
+      onTap: _tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.gamePanel.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: accent.withValues(alpha: widget.hot ? 0.9 : 0.5),
+            width: 1.2,
+          ),
+          boxShadow: widget.hot
+              ? [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_state == _CaptureState.saving)
+              const SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.textSecondary,
+                ),
+              )
+            else
+              Icon(
+                saved ? Icons.check_circle : Icons.fiber_manual_record,
+                size: 14,
+                color: saved ? AppTheme.success : accent,
+              ),
+            const SizedBox(width: 6),
+            Text(
+              saved
+                  ? l10n.replaySaved
+                  : (widget.hot ? l10n.replayCaptureHot : l10n.replayCapture),
+              style: TextStyle(
+                color: saved
+                    ? AppTheme.success
+                    : (widget.hot ? AppTheme.accent : Colors.white),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -13,7 +13,9 @@ import '../../providers/tournament_game_provider.dart'
 import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../services/replay_buffer_service.dart';
+import '../../services/replay_clips_store.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
@@ -61,6 +63,56 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
   int? customVideoTrackId;
+  // ─── Replays ──────────────────────────────────────────────────────────────
+
+  /// The « Enregistrer » pill on my camera panel — visible during MY turn
+  /// once the visit has something to record, gold on a highlight (180;
+  /// checkouts are captured automatically from the win dialog, which covers
+  /// the pill while it is open).
+  Widget? buildReplayCaptureButton(dynamic game) {
+    if (!ReplayBufferService.armed) return null;
+    if (game.dartsThrown < 1 && _turnDartTimes.isEmpty) return null;
+    final total = autoScoringService?.turnTotal ?? 0;
+    final hot = game.dartsThrown >= 3 && total == 180;
+    return ReplayCaptureButton(
+      key: ValueKey('replay-capture-$hot'),
+      hot: hot,
+      onCapture: () => captureTurnClip(game, hot: hot),
+    );
+  }
+
+  /// Cuts the clip of the current visit from the ring buffer, stores it and
+  /// offers the share sheet. Local-only: sharing never waits on any upload.
+  Future<bool> captureTurnClip(dynamic game, {required bool hot}) async {
+    final now = DateTime.now();
+    final from = _turnDartTimes.isNotEmpty
+        ? _turnDartTimes.first.subtract(const Duration(seconds: 2))
+        // No AI timestamps (manual scoring): a fixed window still covers the
+        // visit — segment snapping widens it anyway.
+        : now.subtract(const Duration(seconds: 20));
+    final path = await ReplayBufferService.captureRange(from, now);
+    if (path == null) return false;
+    ReplayClipsStore.add(ReplayClip(
+      path: path,
+      createdAt: now,
+      hot: hot,
+      matchId: matchIdForLeave,
+      turnTotal: autoScoringService?.turnTotal,
+    ));
+    if (mounted) {
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(l10n.replaySaved),
+        action: SnackBarAction(
+          label: l10n.replayShare,
+          onPressed: () =>
+              SharePlus.instance.share(ShareParams(files: [XFile(path)])),
+        ),
+      ));
+    }
+    return true;
+  }
+
   // ─── RTC v2 (P2P) ──────────────────────────────────────────────────────────
   // Non-null while this match runs on the P2P WebRTC path (payload carried an
   // rtcV2 block — both clients are new, so P2P is the transport for the whole
@@ -101,6 +153,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   CaptureBgraCallback? _captureBgraCallback;
   CaptureYuvCallback? _captureYuvCallback;
   OnDartDetectedCallback? _onDartDetectedCallback;
+  // Impact timestamps of MY current visit (AI-detected) — the replay pill's
+  // capture window is [first dart − 2s, tap]. Cleared when my turn starts.
+  final List<DateTime> _turnDartTimes = [];
   String? lastKnownCurrentPlayer;
   // Last leg number seen (BO3 ranked series / tournament series). Detects leg
   // transitions that turn-change detection misses: when the SAME player ends
@@ -404,6 +459,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();
+          // Fresh visit: the replay pill's capture window restarts here.
+          _turnDartTimes.clear();
         } else {
           DartSoundService.playTurnFinished();
         }
@@ -657,6 +714,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (!mounted) return;
       final g = readGame();
       if (!g.isMyTurn || g.pendingConfirmation) return;
+      // Impact time of this dart — the replay clip window opens 2s before
+      // the first one of the visit.
+      _turnDartTimes.add(DateTime.now());
       final (base, mul) = dartScoreToBackend(dartScore);
       HapticService.mediumImpact();
       DartSoundService.playDartHit(base, mul);
@@ -1516,7 +1576,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
-          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); },
+          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); captureTurnClip(game, hot: true); game.confirmWin(); },
           style: gameFilledButtonStyle(AppTheme.success),
           child: Text(l10n.confirmWin),
         ),
@@ -1797,24 +1857,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               top: 10,
               right: 10,
               child: Row(children: [
-                // R1a heat-gate probe, debug builds only: dumps the last 30s
-                // of the replay ring to a clip and prints its path. Replaced
-                // by the real "🎬 Enregistrer" pill in R1b.
-                if (kDebugMode) ...[
-                  GameControlButton(
-                    icon: Icons.fiber_manual_record,
-                    color: AppTheme.accent,
-                    onTap: () async {
-                      final path = await ReplayBufferService.captureLast(
-                          const Duration(seconds: 30));
-                      debugPrint('[ReplayBuffer] debug clip: $path');
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(path ?? 'Replay: rien dans le ring')));
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                ],
                 GameControlButton(
                   icon: isAudioMuted ? Icons.mic_off : Icons.mic,
                   color: isAudioMuted ? AppTheme.opponentPink : AppTheme.playerBlue,
@@ -2205,6 +2247,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     myName: auth.currentUser?.username ?? 'You',
                     iAmPlayer2: game.iAmPlayer2,
                     dartsThrown: game.dartsThrown,
+                    captureButton: buildReplayCaptureButton(game),
                     agoraEngine: agoraEngine,
                     localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
                         ? LocalCameraPreview(controller: cameraFrameService!.controller!)

@@ -918,6 +918,11 @@ abstract class AppLocalizations {
   String get yourAvgLabel;
   String visitOf(String name);
   String get yourVisit;
+  String get replayCapture;
+  String get replayCaptureHot;
+  String get replaySaved;
+  String get replayShare;
+  String get replayNothingToCapture;
   String get totalLabel;
   String get upcomingDart;
   String get editShort;

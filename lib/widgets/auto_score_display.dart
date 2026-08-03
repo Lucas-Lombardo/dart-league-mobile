@@ -49,6 +49,10 @@ class AutoScoreGameView extends StatelessWidget {
   final int startingScore;
   final int? roundNumber;
   final VoidCallback? onBack;
+  /// The replay "record this turn" pill (built by the screen, which owns the
+  /// capture flow) — rendered bottom-right of the camera panel.
+  final Widget? captureButton;
+
   // BO3 series context for the score bar center ("BO3 · Manche 2" over the
   // colored legs score). Null for single-leg matches.
   final String? seriesTitle;
@@ -88,6 +92,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.opponentAverage,
     this.startingScore = 501,
     this.roundNumber,
+    this.captureButton,
     this.seriesTitle,
     this.myLegs = 0,
     this.opponentLegs = 0,
@@ -150,6 +155,7 @@ class AutoScoreGameView extends StatelessWidget {
           maxZoom: maxZoom,
           onZoomIn: onZoomIn,
           onZoomOut: onZoomOut,
+          cornerAction: captureButton,
         );
 
         // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──

@@ -93,6 +93,8 @@ PODS:
   - permission_handler_apple (9.4.8):
     - Flutter
   - PromisesObjC (2.4.1)
+  - share_plus (0.0.1):
+    - Flutter
   - Stripe (25.17.0):
     - StripeApplePay (= 25.17.0)
     - StripeCore (= 25.17.0)
@@ -195,6 +197,7 @@ DEPENDENCIES:
   - iris_method_channel (from `.symlinks/plugins/iris_method_channel/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - stripe_ios (from `.symlinks/plugins/stripe_ios/ios`)
   - TensorFlowLiteC/CoreML (= 2.12.0)
   - TensorFlowLiteC/Metal (= 2.12.0)
@@ -255,6 +258,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/package_info_plus/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
   stripe_ios:
     :path: ".symlinks/plugins/stripe_ios/ios"
   tflite_flutter:
@@ -289,6 +294,7 @@ SPEC CHECKSUMS:
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
+  share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   Stripe: da4f210385ff97d786968eb751d5c0d5c47ba539
   stripe_ios: 4cc4ead50c59fe63e0ef7507c3a3bae056f88abb
   StripeApplePay: 7b1b6e86eb75be5d4bcf109c34224adf38000fe2

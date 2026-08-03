@@ -2382,6 +2382,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String visitOf(String name) => 'VISIT OF $name';
   @override
   String get yourVisit => 'YOUR VISIT';
+
+  @override
+  String get replayCapture => 'Record';
+
+  @override
+  String get replayCaptureHot => 'Record this moment';
+
+  @override
+  String get replaySaved => 'Clip saved';
+
+  @override
+  String get replayShare => 'Share';
+
+  @override
+  String get replayNothingToCapture => 'Nothing to record yet';
   @override
   String get totalLabel => 'TOTAL';
   @override
