@@ -53,17 +53,21 @@ class P2pRtcSession {
   /// payload.
   static const Duration connectTimeout = Duration(seconds: 10);
 
-  /// How long a MID-CALL outage may last before failing over to Agora. The
-  /// connect watchdog only covers the initial connection; this one is armed
-  /// on every entry into Failed, because connectionState can PARK there with
-  /// no further transition (an ICE session restarted against a gone peer
-  /// never gets an answer) — escalation must never depend on another event.
-  static const Duration recoveryTimeout = Duration(seconds: 12);
+  /// ABSOLUTE budget for a mid-call outage, counted from the moment the
+  /// media link first went down — not per state transition. The ICE agent
+  /// bounces Disconnected↔Failed several times during a real outage, and
+  /// re-arming a relative timer on each bounce made the total unbounded:
+  /// ~45s of frozen video before the Agora fallback in the 2026-08-03
+  /// airplane test. Every escalation is now measured against this deadline.
+  static const Duration outageBudget = Duration(seconds: 15);
+
+  /// Poll cadence for the outage deadline while the link is down.
+  static const Duration outageTick = Duration(seconds: 1);
 
   /// How long a `Disconnected` state may self-heal before we force an ICE
   /// restart. Short: a real transient blip recovers in ~1-2s, and beyond
   /// that only a restart converges.
-  static const Duration disconnectedGrace = Duration(seconds: 4);
+  static const Duration disconnectedGrace = Duration(seconds: 2);
 
   /// Re-emission cadence of the initial offer while the opponent has said
   /// NOTHING yet. Signals have no replay: if the polite peer registers its
@@ -118,6 +122,9 @@ class P2pRtcSession {
   Timer? _recoveryTimer;
   Timer? _disconnectedTimer;
   Timer? _offerRetryTimer;
+  // When the media link first went down in the CURRENT outage — the origin
+  // of [outageBudget]. Null while the link is up.
+  DateTime? _linkDownSince;
   bool _remoteSignalSeen = false;
   int _iceRestartAttempts = 0;
 
@@ -201,6 +208,7 @@ class P2pRtcSession {
           // series until they trip the permanent Agora fallback.
           _linkUp = true;
           _iceRestartAttempts = 0;
+          _linkDownSince = null;
           _recoveryTimer?.cancel();
           _recoveryTimer = null;
           _disconnectedTimer?.cancel();
@@ -209,6 +217,7 @@ class P2pRtcSession {
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
           _linkUp = false;
+          _markLinkDown();
           _handleIceFailure();
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
@@ -218,6 +227,7 @@ class P2pRtcSession {
           // no restart, no recovery timer, no fallback, and the socket-return
           // kick was skipped because _linkUp still read true.
           _linkUp = false;
+          _markLinkDown();
           _disconnectedTimer?.cancel();
           _disconnectedTimer = Timer(disconnectedGrace, () {
             if (!_disposed && !_failed && !_linkUp) {
@@ -381,25 +391,46 @@ class P2pRtcSession {
     onConnected?.call();
   }
 
+  /// Start (or keep) the current outage's clock and run the deadline poll —
+  /// escalation is measured from the FIRST link-down, so a bouncing ICE
+  /// agent can't extend the outage indefinitely.
+  void _markLinkDown() {
+    if (_disposed || _failed) return;
+    _linkDownSince ??= DateTime.now();
+    _recoveryTimer ??= Timer.periodic(outageTick, (_) {
+      if (_disposed || _failed) return;
+      if (_linkUp) {
+        _recoveryTimer?.cancel();
+        _recoveryTimer = null;
+        return;
+      }
+      final since = _linkDownSince;
+      if (since != null && DateTime.now().difference(since) >= outageBudget) {
+        _fail('ice_failed');
+      }
+    });
+  }
+
   void _handleIceFailure() {
     if (_disposed || _failed) return;
     _disconnectedTimer?.cancel();
     _disconnectedTimer = null;
-    // Guaranteed exit: if nothing brings the link back within the window,
-    // fail over — never wait for a Failed→Failed "transition" that libwebrtc
-    // will not emit.
-    _recoveryTimer?.cancel();
-    _recoveryTimer = Timer(recoveryTimeout, () {
-      if (!_disposed && !_linkUp) _fail('ice_failed');
-    });
+    _markLinkDown();
+    final since = _linkDownSince;
+    if (since != null && DateTime.now().difference(since) >= outageBudget) {
+      _fail('ice_failed');
+      return;
+    }
+    // Restarts stay capped per outage (the counter resets on Connected), but
+    // the outage deadline above is what ultimately bounds the wait.
     if (_iceRestartAttempts < 2) {
       _iceRestartAttempts++;
       debugPrint('P2P: ICE failed — restart attempt $_iceRestartAttempts');
       _pc?.restartIce();
-      // A restart needs a fresh offer from the impolite side to converge.
-      if (!polite) _makeOffer(iceRestart: true);
-    } else {
-      _fail('ice_failed');
+      // A restart needs a fresh offer to converge. Either role may send it:
+      // waiting for the impolite peer wastes the budget when it is the one
+      // whose network died, and glare is absorbed by perfect negotiation.
+      _makeOffer(iceRestart: true);
     }
   }
 
