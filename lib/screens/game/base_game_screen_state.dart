@@ -83,6 +83,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // needsAgoraReconnect rebuild must wait for the next sync instead of
   // doubling the engine and the camera.
   bool _agoraInitInFlight = false;
+
+  // P2P rebuild budget for the CURRENT outage (reset on every successful
+  // connection). Rebuilding is the real recovery path — Agora is only the
+  // transitional last resort, so this must be generous: a player on a train
+  // can lose the network several times in one leg.
+  static const int _maxP2pRebuilds = 4;
+  int _p2pRebuildAttempts = 0;
+  bool _p2pRebuilding = false;
+
+  // Kept so a rebuild can proceed even if the provider transiently lacks
+  // the ids (reset, leg boundary).
+  String? _p2pMatchId;
+  String? _p2pOpponentId;
   // Flipped by the session's onRemoteVideoReady so the opponent tile swaps
   // from the "Waiting..." placeholder to the live RTCVideoView.
   bool p2pRemoteVideoReady = false;
@@ -790,6 +803,107 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── RTC v2 (P2P) ─────────────────────────────────────────────────────────────
 
+  /// Wires a session with this screen's callbacks. `onFailed` does NOT go
+  /// straight to Agora: it first rebuilds the P2P session from scratch (see
+  /// [_rebuildP2pSession]) — Agora is only the last resort, and it is meant
+  /// to disappear once every install supports RTC v2.
+  P2pRtcSession _buildP2pSession(
+    String matchId,
+    String opponentId,
+    RtcV2Config config,
+  ) {
+    return P2pRtcSession(
+      matchId: matchId,
+      opponentId: opponentId,
+      config: config,
+      onConnected: () {
+        // A healthy connection clears the rebuild budget: a match with three
+        // outages an hour apart must not exhaust it.
+        _p2pRebuildAttempts = 0;
+        if (mounted) setState(() {});
+      },
+      onRemoteVideoReady: () {
+        if (mounted) setState(() => p2pRemoteVideoReady = true);
+      },
+      onFailed: (reason) {
+        if (_p2pRebuildAttempts < _maxP2pRebuilds) {
+          _rebuildP2pSession(reason);
+        } else {
+          fallbackToAgora(reason);
+        }
+      },
+    );
+  }
+
+  /// Connects a session, building the local video track INSIDE connect():
+  /// flutter_webrtc's native factory only exists once a PeerConnection was
+  /// created — creating the track first returned no_factory on Android and
+  /// silently degraded the call to receive-only (the one-way video of the
+  /// 2026-08-02 prod test). A null track still connects receive-only, and
+  /// the session tags it in telemetry (reason=no_local_video_track).
+  Future<void> _connectP2pSession(P2pRtcSession session) {
+    return session.connect(localVideoTrackFactory: () async {
+      final track = await RtcFramesService.createTrack();
+      _rtcFramesGeneration = RtcFramesService.generation;
+      if (track == null) {
+        session.noteLocalVideoFailure(RtcFramesService.lastCreateError);
+      }
+      return track;
+    });
+  }
+
+  /// Full P2P session rebuild — the equivalent of Agora's channel rejoin,
+  /// and the step that was missing: an ICE restart reuses a PeerConnection
+  /// whose candidates belong to the network that just died, whereas a fresh
+  /// PeerConnection re-gathers on the CURRENT network and connects like a
+  /// first call (~2s). This is what must carry recovery once Agora is gone.
+  ///
+  /// The camera and the AI are deliberately left untouched: only the session
+  /// and the native track are recreated, so a rebuild costs no camera
+  /// restart (and no extra heat).
+  Future<void> _rebuildP2pSession(String reason) async {
+    if (_p2pFellBack || _p2pRebuilding || !mounted) return;
+    _p2pRebuilding = true;
+    try {
+      final old = p2pSession;
+      p2pSession = null;
+      p2pRemoteVideoReady = false;
+      if (mounted) setState(() {});
+      try {
+        await old
+            ?.dispose(reason: 'rebuild:$reason')
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      await RtcFramesService.disposeTrack(ifGeneration: _rtcFramesGeneration);
+
+      final game = readGame();
+      final config = _rtcV2ConfigOf(game);
+      final matchId = _gameMatchIdOf(game) ?? _p2pMatchId;
+      final opponentId = _opponentIdOf(game) ?? _p2pOpponentId;
+      if (config == null || matchId == null || opponentId == null) {
+        await fallbackToAgora(reason);
+        return;
+      }
+      _p2pRebuildAttempts++;
+      debugPrint('[BaseGameScreen] P2P rebuild #$_p2pRebuildAttempts ($reason)');
+      // Small backoff so a still-dead network isn't hammered, and so the
+      // opponent's own rebuild has time to arm its signal handler.
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted || _p2pFellBack) return;
+      final session = _buildP2pSession(matchId, opponentId, config);
+      p2pSession = session;
+      await _connectP2pSession(session);
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('[BaseGameScreen] P2P rebuild failed: $e');
+      await fallbackToAgora('rebuild_error');
+    } finally {
+      _p2pRebuilding = false;
+    }
+  }
+
   /// Shared RTC recovery for a consumed `needsAgoraReconnect` flag — called
   /// from the provider listener AND from the screens' pre-listener catch-up.
   /// Decides between: nothing (live P2P), a P2P (re)launch, or the legacy
@@ -906,37 +1020,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       permissionsGranted = true;
     }
     _p2pAgoraFallback = agoraFallback;
-    final session = P2pRtcSession(
-      matchId: matchId,
-      opponentId: opponentId,
-      config: config,
-      onConnected: () {
-        if (mounted) setState(() {});
-      },
-      onRemoteVideoReady: () {
-        if (mounted) setState(() => p2pRemoteVideoReady = true);
-      },
-      onFailed: (reason) {
-        fallbackToAgora(reason);
-      },
-    );
+    _p2pMatchId = matchId;
+    _p2pOpponentId = opponentId;
+    final session = _buildP2pSession(matchId, opponentId, config);
     p2pSession = session;
     try {
-      // The track is built INSIDE connect(), after the PeerConnection
-      // exists: flutter_webrtc's native factory is only initialized once a
-      // PC was created — creating the track first returned no_factory on
-      // Android and silently degraded the call to receive-only (the one-way
-      // video of the 2026-08-02 prod test). A null track (native companion
-      // failed) still connects receive-only, and the session tags it in
-      // telemetry (reason=no_local_video_track).
-      await session.connect(localVideoTrackFactory: () async {
-        final track = await RtcFramesService.createTrack();
-        _rtcFramesGeneration = RtcFramesService.generation;
-        if (track == null) {
-          session.noteLocalVideoFailure(RtcFramesService.lastCreateError);
-        }
-        return track;
-      });
+      await _connectP2pSession(session);
       // Remote audio through the loudspeaker, like the Agora video profile
       // (WebRTC's iOS default is the earpiece).
       try {
