@@ -31,10 +31,13 @@ class CameraFrameService {
   bool _isStreaming = false;
   bool _disposed = false;
 
-  // Session-wide camera frame-rate cap (D8). The AI pulls ≤4 frames/s and the
-  // Agora encoder runs at 15 fps, so anything above 15 was pure per-frame
-  // waste (callback + copies at ~30/s).
-  static const int _cameraFps = 15;
+  // Session-wide camera frame rate. D8 capped it at 15 (no consumer took
+  // more); the replay ring now DOES — a 15 fps clip read as choppy on the
+  // first shareable exports (2026-08-03). The RTC/Agora push stays throttled
+  // at ~15 via _minPushInterval and the AI still pulls ≤4/s, so the extra
+  // cost is the callback/copy rate plus the ring encoder during MY turn
+  // only. Heat to be re-validated on-device.
+  static const int _cameraFps = 30;
 
   // Push cadence into Agora: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
@@ -364,6 +367,10 @@ class CameraFrameService {
     // Cap the push cadence at ~16 fps regardless of the actual camera rate
     // (the encoder runs at 15 fps; a device that ignores the fps cap must
     // not double the copy work).
+    // The replay ring takes EVERY camera frame (30 fps smoothness is the
+    // point of a shareable clip); only the transport push below is
+    // throttled to its encoder's 15 fps.
+    if (_replayMode) _pushFrameToReplay(image);
     final now = DateTime.now();
     if (_lastPushAt != null &&
         now.difference(_lastPushAt!) < _minPushInterval) {
@@ -376,7 +383,6 @@ class CameraFrameService {
     } else {
       _pushFrameToAgora(image);
     }
-    if (_replayMode) _pushFrameToReplay(image);
   }
 
   /// Replay ring tee — third consumer of the same frames. Own staging buffer:

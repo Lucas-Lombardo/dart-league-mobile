@@ -2417,6 +2417,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get replayDelete => 'Delete';
 
   @override
+  String get replayRename => 'Rename';
+
+  @override
+  String get replayNameHint => 'Clip name';
+
+  @override
   String get replaysSection => 'Replays';
 
   @override

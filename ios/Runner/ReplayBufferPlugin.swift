@@ -19,7 +19,7 @@ class ReplayBufferPlugin: NSObject {
   // into the clip head (2026-08-03 test).
   private static let segmentMs: Int64 = 3_000
   private static let ringSegments = 16
-  private static let bitRate = 3_000_000
+  private static let bitRate = 4_000_000
 
   private let queue = DispatchQueue(label: "com.dartrivals.replay", qos: .utility)
 
@@ -132,7 +132,7 @@ class ReplayBufferPlugin: NSObject {
       AVVideoHeightKey: height,
       AVVideoCompressionPropertiesKey: [
         AVVideoAverageBitRateKey: Self.bitRate,
-        AVVideoExpectedSourceFrameRateKey: 15,
+        AVVideoExpectedSourceFrameRateKey: 30,
       ],
     ]
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -379,7 +379,7 @@ extension ReplayBufferPlugin {
 
     let videoComp = AVMutableVideoComposition()
     videoComp.renderSize = renderSize
-    videoComp.frameDuration = CMTime(value: 1, timescale: 15)
+    videoComp.frameDuration = CMTime(value: 1, timescale: 30)
     let instruction = AVMutableVideoCompositionInstruction()
     instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)
@@ -421,25 +421,42 @@ extension ReplayBufferPlugin {
     let darts = (timeline["darts"] as? [[String: Any]]) ?? []
     let dartAt = { (d: [String: Any]) -> Double in ((d["atMs"] as? NSNumber)?.doubleValue ?? 0) / 1000.0 }
 
-    // ── Scoreboard (slide in at 0.3s) ──
-    let panelW = size.width - 40 * s
-    let panelH = 118 * s
+    // ── Scoreboard (slide in at 0.3s) — DartCounter-style lower third:
+    // logo block left, slim rows, SMALL static scores (the countdown was
+    // cut 2026-08-03: unreliable impact timing read worse than a still
+    // number, and two switching layers even overlapped on device). ──
+    let panelW = size.width - 32 * s
+    let panelH = 92 * s
+    let logoW = 86 * s
     let panel = CALayer()
-    panel.frame = CGRect(x: 20 * s, y: size.height - 96 * s - panelH, width: panelW, height: panelH)
+    panel.frame = CGRect(x: 16 * s, y: size.height - 84 * s - panelH, width: panelW, height: panelH)
     panel.backgroundColor = navy
-    panel.cornerRadius = 14 * s
-    panel.borderWidth = 1.5 * s
-    panel.borderColor = UIColor(cgColor: blue).withAlphaComponent(0.35).cgColor
+    panel.cornerRadius = 12 * s
     panel.masksToBounds = true
     panel.opacity = 0
 
+    let logoBlock = CALayer()
+    logoBlock.frame = CGRect(x: 0, y: 0, width: logoW, height: panelH)
+    logoBlock.backgroundColor = bg
+    panel.addSublayer(logoBlock)
+    if let logoPath = timeline["logoPath"] as? String,
+       let shield = UIImage(contentsOfFile: logoPath)?.cgImage {
+      let h = 56 * s
+      let w = h * CGFloat(shield.width) / CGFloat(shield.height)
+      let shieldLayer = CALayer()
+      shieldLayer.contents = shield
+      shieldLayer.frame = CGRect(
+        x: (logoW - w) / 2, y: (panelH - h) / 2, width: w, height: h)
+      logoBlock.addSublayer(shieldLayer)
+    }
+
     let band = CALayer()
-    band.frame = CGRect(x: 0, y: 0, width: panelW, height: 34 * s)
+    band.frame = CGRect(x: logoW, y: 0, width: panelW - logoW, height: 26 * s)
     band.backgroundColor = UIColor(cgColor: sky).withAlphaComponent(0.16).cgColor
     panel.addSublayer(band)
     panel.addSublayer(textLayer(
-      "DART RIVALS · \(timeline["format"] as? String ?? "RANKED")",
-      x: 14 * s, y: 7 * s, w: panelW - 28 * s, size: 15 * s,
+      timeline["format"] as? String ?? "RANKED",
+      x: logoW + 12 * s, y: 5 * s, w: panelW - logoW - 24 * s, size: 12 * s,
       color: UIColor(red: 0.729, green: 0.902, blue: 0.992, alpha: 1).cgColor,
       align: .left))
 
@@ -450,36 +467,15 @@ extension ReplayBufferPlugin {
     let myLegs = (timeline["myLegs"] as? NSNumber)?.intValue ?? 0
     let oppLegs = (timeline["oppLegs"] as? NSNumber)?.intValue ?? 0
 
-    addRow(panel, y: 40 * s, s: s, w: panelW, dot: blue, name: me,
-           legs: myLegs, textColor: UIColor.white.cgColor)
-    addRow(panel, y: 82 * s, s: s, w: panelW, dot: pink, name: opp,
-           legs: oppLegs, textColor: muted)
-    // Opponent score: static.
-    panel.addSublayer(textLayer(
-      "\(oppScore)", x: panelW - 116 * s, y: 82 * s, w: 100 * s,
-      size: 20 * s, color: muted, align: .right))
-    // My score: one layer per state, switched at each dart.
-    var scoreOn: Double = 0
-    var running = startScore
-    var scoreStates: [(Int, Double)] = [(startScore, 0)]
-    for d in darts {
-      running = (d["to"] as? NSNumber)?.intValue ?? running
-      scoreStates.append((running, dartAt(d)))
-    }
-    for (i, state) in scoreStates.enumerated() {
-      let layer = textLayer(
-        "\(state.0)", x: panelW - 116 * s, y: 40 * s, w: 100 * s,
-        size: 20 * s, color: UIColor.white.cgColor, align: .right)
-      layer.opacity = i == 0 ? 1 : 0
-      if i > 0 { switchOpacity(layer, to: 1, at: state.1) }
-      if i + 1 < scoreStates.count { switchOpacity(layer, to: 0, at: scoreStates[i + 1].1) }
-      panel.addSublayer(layer)
-      scoreOn = state.1
-    }
-    _ = scoreOn
+    addRow(panel, y: 30 * s, s: s, x: logoW, w: panelW - logoW,
+           dot: blue, name: me, legs: myLegs, score: startScore,
+           textColor: UIColor.white.cgColor)
+    addRow(panel, y: 62 * s, s: s, x: logoW, w: panelW - logoW,
+           dot: pink, name: opp, legs: oppLegs, score: oppScore,
+           textColor: muted)
     parent.addSublayer(panel)
     animate(panel, key: "opacity", from: 0, to: 1, begin: 0.3, dur: 0.5)
-    animate(panel, key: "position.y", from: Double(panel.position.y + 80 * s),
+    animate(panel, key: "position.y", from: Double(panel.position.y + 70 * s),
             to: Double(panel.position.y), begin: 0.3, dur: 0.5)
 
     // ── Dart chips ──
@@ -535,10 +531,10 @@ extension ReplayBufferPlugin {
       let h = 170 * s
       let w = h * CGFloat(logo.width) / CGFloat(logo.height)
       let logoLayer = CALayer()
+      // No counter-flip: the geometry-flipped tree renders `contents`
+      // correctly as-is (device-verified 2026-08-03 — the flip showed the
+      // shield upside down).
       logoLayer.contents = logo
-      // Counter-flip: image contents render upside down inside a
-      // geometry-flipped tree.
-      logoLayer.setAffineTransform(CGAffineTransform(scaleX: 1, y: -1))
       logoLayer.frame = CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
       card.addSublayer(logoLayer)
     }
@@ -553,19 +549,28 @@ extension ReplayBufferPlugin {
   }
 
   private func addRow(
-    _ panel: CALayer, y: CGFloat, s: CGFloat, w: CGFloat,
-    dot: CGColor, name: String, legs: Int, textColor: CGColor
+    _ panel: CALayer, y: CGFloat, s: CGFloat, x: CGFloat, w: CGFloat,
+    dot: CGColor, name: String, legs: Int, score: Int, textColor: CGColor
   ) {
     let dotLayer = CALayer()
-    dotLayer.frame = CGRect(x: 16 * s, y: y + 8 * s, width: 12 * s, height: 12 * s)
-    dotLayer.cornerRadius = 6 * s
+    dotLayer.frame = CGRect(x: x + 12 * s, y: y + 12 * s, width: 9 * s, height: 9 * s)
+    dotLayer.cornerRadius = 4.5 * s
     dotLayer.backgroundColor = dot
     panel.addSublayer(dotLayer)
     panel.addSublayer(textLayer(
-      name, x: 40 * s, y: y, w: w * 0.55, size: 20 * s, color: textColor, align: .left))
+      name, x: x + 30 * s, y: y + 6 * s, w: w * 0.5, size: 15 * s,
+      color: textColor, align: .left))
+    let legsBox = CALayer()
+    legsBox.frame = CGRect(x: x + w - 96 * s, y: y + 5 * s, width: 24 * s, height: 22 * s)
+    legsBox.cornerRadius = 6 * s
+    legsBox.backgroundColor = UIColor(cgColor: dot).withAlphaComponent(0.22).cgColor
+    panel.addSublayer(legsBox)
     panel.addSublayer(textLayer(
-      "⬤ \(legs)", x: w - 210 * s, y: y + 3 * s, w: 90 * s, size: 14 * s,
-      color: dot, align: .right))
+      "\(legs)", x: x + w - 96 * s, y: y + 7 * s, w: 24 * s, size: 13 * s,
+      color: dot, align: .center))
+    panel.addSublayer(textLayer(
+      "\(score)", x: x + w - 76 * s, y: y + 6 * s, w: 60 * s, size: 16 * s,
+      color: textColor, align: .right))
   }
 
   private func textLayer(

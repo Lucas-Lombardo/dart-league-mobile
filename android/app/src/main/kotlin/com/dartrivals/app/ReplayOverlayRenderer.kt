@@ -86,7 +86,7 @@ class ReplayOverlayRenderer(private val timeline: JSONObject) {
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface,
                 )
                 setInteger(MediaFormat.KEY_BIT_RATE, 4_000_000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 15)
+                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             },
             null, null, MediaCodec.CONFIGURE_FLAG_ENCODE,
@@ -426,7 +426,7 @@ private class OverlayPainter(
     private val startScore = timeline.optInt("startScore", 0)
     private val oppScore = timeline.optInt("oppScore", 0)
     private val handle = timeline.optString("handle", "")
-    private val darts: List<Triple<Long, String, Int>>
+    private val darts: List<Pair<Long, String>>
     private val bannerAtMs: Long
     private val bannerText: String
     private val logo: Bitmap? =
@@ -467,7 +467,7 @@ private class OverlayPainter(
         val list = timeline.optJSONArray("darts")
         darts = (0 until (list?.length() ?: 0)).map { i ->
             val d = list!!.getJSONObject(i)
-            Triple(d.getLong("atMs"), d.getString("label"), d.getInt("to"))
+            Pair(d.getLong("atMs"), d.getString("label"))
         }
         val banner = timeline.optJSONObject("banner")
         bannerAtMs = banner?.optLong("atMs", -1L) ?: -1L
@@ -490,62 +490,96 @@ private class OverlayPainter(
         val slide = ease(((tMs - 300) / 500f))
         if (slide <= 0f) return
         val alpha = (slide * 255).toInt()
-        val panelW = displayW - s(40f)
-        val panelH = s(118f)
-        val x = s(20f)
-        val y = displayH - s(96f) - panelH + (1f - slide) * s(80f)
+        val panelW = displayW - s(32f)
+        val panelH = s(92f)
+        val x = s(16f)
+        val y = displayH - s(84f) - panelH + (1f - slide) * s(70f)
+        val logoW = s(86f)
 
+        // Panel
         fill.shader = null
-        fill.color = NAVY
-        fill.alpha = (alpha * 0.95f).toInt()
-        val panel = RectF(x, y, x + panelW, y + panelH)
-        canvas.drawRoundRect(panel, s(14f), s(14f), fill)
-        fill.style = Paint.Style.STROKE
-        fill.strokeWidth = s(1.5f)
-        fill.color = BLUE
-        fill.alpha = (alpha * 0.35f).toInt()
-        canvas.drawRoundRect(panel, s(14f), s(14f), fill)
         fill.style = Paint.Style.FILL
+        fill.color = NAVY
+        fill.alpha = (alpha * 0.96f).toInt()
+        val panel = RectF(x, y, x + panelW, y + panelH)
+        canvas.drawRoundRect(panel, s(12f), s(12f), fill)
+
+        // Logo block (left, darker, squared right edge) — the DartCounter
+        // reference layout, with our shield instead of text.
+        fill.color = BG
+        fill.alpha = alpha
+        val block = RectF(x, y, x + logoW, y + panelH)
+        canvas.drawRoundRect(block, s(12f), s(12f), fill)
+        canvas.drawRect(RectF(x + logoW - s(12f), y, x + logoW, y + panelH), fill)
+        logo?.let {
+            val h = s(56f)
+            val w = h * it.width / it.height
+            fill.alpha = alpha
+            canvas.drawBitmap(
+                it, null,
+                RectF(
+                    x + (logoW - w) / 2, y + (panelH - h) / 2,
+                    x + (logoW + w) / 2, y + (panelH + h) / 2,
+                ),
+                fill,
+            )
+        }
 
         // Format band
+        val contentX = x + logoW
+        fill.color = SKY
+        fill.alpha = (alpha * 0.16f).toInt()
+        canvas.drawRect(RectF(contentX, y, x + panelW - s(12f), y + s(26f)), fill)
         fill.color = SKY
         fill.alpha = (alpha * 0.16f).toInt()
         canvas.drawRoundRect(
-            RectF(x, y, x + panelW, y + s(34f)), s(14f), s(14f), fill,
+            RectF(x + panelW - s(24f), y, x + panelW, y + s(26f)), s(12f), s(12f), fill,
         )
+        canvas.drawRect(RectF(x + panelW - s(24f), y + s(13f), x + panelW, y + s(26f)), fill)
         text.color = 0xFFBAE6FD.toInt()
         text.alpha = alpha
-        text.textSize = s(15f)
+        text.textSize = s(12f)
         text.textAlign = Paint.Align.LEFT
-        text.letterSpacing = 0.09f
-        canvas.drawText("DART RIVALS · $format", x + s(14f), y + s(23f), text)
+        text.letterSpacing = 0.08f
+        canvas.drawText(format, contentX + s(12f), y + s(18f), text)
         text.letterSpacing = 0f
 
-        // Player rows
-        val myScoreNow = darts.lastOrNull { it.first <= tMs }?.third ?: startScore
-        drawRow(x, y + s(34f), panelW, alpha, BLUE, me, myLegs, myScoreNow, true)
-        drawRow(x, y + s(76f), panelW, alpha, PINK, opp, oppLegs, oppScore, false)
+        // Player rows — static scores (the countdown was cut: unreliable
+        // impact timing read worse than a still number).
+        drawRow(contentX, y + s(26f), x + panelW - contentX, alpha, BLUE, me, myLegs, startScore, true)
+        drawRow(contentX, y + s(59f), x + panelW - contentX, alpha, PINK, opp, oppLegs, oppScore, false)
     }
 
     private fun drawRow(
         x: Float, y: Float, w: Float, alpha: Int,
         color: Int, name: String, legs: Int, score: Int, mine: Boolean,
     ) {
+        fill.style = Paint.Style.FILL
+        fill.shader = null
         fill.color = color
         fill.alpha = alpha
-        canvas.drawCircle(x + s(22f), y + s(21f), s(6f), fill)
+        canvas.drawCircle(x + s(16f), y + s(16f), s(4.5f), fill)
         text.textAlign = Paint.Align.LEFT
-        text.textSize = s(20f)
+        text.textSize = s(15f)
         text.color = if (mine) Color.WHITE else MUTED
         text.alpha = alpha
-        canvas.drawText(name, x + s(40f), y + s(28f), text)
-        text.textAlign = Paint.Align.RIGHT
-        text.color = if (mine) Color.WHITE else MUTED
-        canvas.drawText(score.toString(), x + w - s(16f), y + s(28f), text)
-        text.textSize = s(14f)
+        canvas.drawText(name, x + s(30f), y + s(21f), text)
+        // Legs chip
+        fill.color = color
+        fill.alpha = (alpha * 0.22f).toInt()
+        val legsBox = RectF(x + w - s(96f), y + s(5f), x + w - s(72f), y + s(27f))
+        canvas.drawRoundRect(legsBox, s(6f), s(6f), fill)
+        text.textAlign = Paint.Align.CENTER
+        text.textSize = s(13f)
         text.color = color
         text.alpha = alpha
-        canvas.drawText("⬤ $legs", x + w - s(86f), y + s(27f), text)
+        canvas.drawText(legs.toString(), legsBox.centerX(), y + s(20.5f), text)
+        // Remaining score — deliberately small (broadcast reference)
+        text.textAlign = Paint.Align.RIGHT
+        text.textSize = s(16f)
+        text.color = if (mine) Color.WHITE else MUTED
+        text.alpha = alpha
+        canvas.drawText(score.toString(), x + w - s(16f), y + s(21f), text)
     }
 
     private fun drawDartChip(tMs: Long) {

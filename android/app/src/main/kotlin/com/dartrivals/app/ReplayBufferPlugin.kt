@@ -38,8 +38,8 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // slip into the clip head (2026-08-03 test). One IDR per segment.
         private const val SEGMENT_MS = 3_000L
         private const val RING_SEGMENTS = 16
-        private const val BIT_RATE = 3_000_000
-        private const val FRAME_RATE = 15
+        private const val BIT_RATE = 4_000_000
+        private const val FRAME_RATE = 30
     }
 
     private lateinit var channel: MethodChannel

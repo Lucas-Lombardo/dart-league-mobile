@@ -34,22 +34,22 @@ Map<String, dynamic> buildReplayOverlayTimeline({
   required bool checkout,
   required String logoPath,
 }) {
-  // The provider's score is already reduced by the thrown darts (the server
-  // applies each dart as it lands), so the visit's start = remaining + visit.
+  // The score COUNTDOWN was cut on 2026-08-03 (AI impact timestamps lag
+  // the on-screen throw unpredictably — a score changing at the wrong
+  // instant reads worse than a static one). The scoreboard shows the
+  // visit's END state; the "T20" chips and the banner keep their per-dart
+  // timing, where a small lag is harmless.
   final visitTotal =
       dartNotations.fold<int>(0, (sum, n) => sum + notationPoints(n));
-  final startScore = myRemainingScore + visitTotal;
 
   final darts = <Map<String, dynamic>>[];
-  var running = startScore;
   final count = dartTimes.length < dartNotations.length
       ? dartTimes.length
       : dartNotations.length;
   for (var i = 0; i < count; i++) {
-    running -= notationPoints(dartNotations[i]);
     final atMs = dartTimes[i].millisecondsSinceEpoch - clipStartWallMs;
     if (atMs < 0) continue; // impact before the clip's first segment
-    darts.add({'atMs': atMs, 'label': dartNotations[i], 'to': running});
+    darts.add({'atMs': atMs, 'label': dartNotations[i]});
   }
 
   Map<String, dynamic>? banner;
@@ -67,7 +67,7 @@ Map<String, dynamic> buildReplayOverlayTimeline({
     'opp': opponentName.toUpperCase(),
     'myLegs': myLegs,
     'oppLegs': opponentLegs,
-    'startScore': startScore,
+    'startScore': myRemainingScore,
     'oppScore': opponentScore,
     'darts': darts,
     'banner': ?banner,

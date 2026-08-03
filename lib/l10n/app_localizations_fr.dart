@@ -2444,6 +2444,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get replayDelete => 'Supprimer';
 
   @override
+  String get replayRename => 'Renommer';
+
+  @override
+  String get replayNameHint => 'Nom du clip';
+
+  @override
   String get replaysSection => 'Replays';
 
   @override

@@ -150,14 +150,58 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
         ]),
       );
 
+  Future<void> _rename(Map<String, dynamic> clip) async {
+    final l10n = AppLocalizations.of(context);
+    final controller =
+        TextEditingController(text: clip['name'] as String? ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(l10n.replayRename,
+            style: const TextStyle(color: Colors.white, fontSize: 17)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 60,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: l10n.replayNameHint,
+            hintStyle: const TextStyle(color: AppTheme.textSecondary),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: Text(l10n.save),
+          ),
+        ],
+      ),
+    );
+    if (name == null) return;
+    try {
+      await ApiService.patch('/replays/${clip['id']}', {'name': name});
+      _load();
+    } catch (e) {
+      debugPrint('[ReplayLibrary] rename failed: $e');
+    }
+  }
+
   Widget _clipRow(Map<String, dynamic> clip, AppLocalizations l10n) {
     final hot = clip['type'] == 'highlight';
     final turnTotal = (clip['turnTotal'] as num?)?.toInt();
     final created = DateTime.tryParse(clip['createdAt'] as String? ?? '');
     final accent = hot ? AppTheme.accent : AppTheme.playerBlue;
-    final title = turnTotal != null && turnTotal > 0
-        ? (turnTotal == 180 ? '180 🔥' : l10n.ptsLabel(turnTotal))
-        : l10n.myReplays;
+    final name = clip['name'] as String?;
+    final title = name != null && name.isNotEmpty
+        ? name
+        : turnTotal != null && turnTotal > 0
+            ? (turnTotal == 180 ? '180 🔥' : l10n.ptsLabel(turnTotal))
+            : l10n.myReplays;
     final date = created == null
         ? ''
         : '${created.day.toString().padLeft(2, '0')}/'
@@ -198,10 +242,26 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
           date,
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline,
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert,
               color: AppTheme.textSecondary, size: 20),
-          onPressed: () => _delete(clip['id'] as String),
+          color: AppTheme.surface,
+          onSelected: (action) {
+            if (action == 'rename') _rename(clip);
+            if (action == 'delete') _delete(clip['id'] as String);
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'rename',
+              child: Text(l10n.replayRename,
+                  style: const TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Text(l10n.replayDelete,
+                  style: const TextStyle(color: AppTheme.error)),
+            ),
+          ],
         ),
       ),
     );
