@@ -61,6 +61,12 @@ class P2pRtcSession {
   /// airplane test. Every escalation is now measured against this deadline.
   static const Duration outageBudget = Duration(seconds: 15);
 
+  /// Budget for an outage detected by the MEDIA watchdog alone (ICE still
+  /// Connected). Longer, because the likeliest cause is a silent opponent
+  /// (app backgrounded), where falling back to Agora rebuilds everything to
+  /// display the same absent video.
+  static const Duration mediaOutageBudget = Duration(seconds: 30);
+
   /// Poll cadence for the outage deadline while the link is down.
   static const Duration outageTick = Duration(seconds: 1);
 
@@ -73,6 +79,11 @@ class P2pRtcSession {
   /// only. Neither the outage budget nor the socket-return kick can see it
   /// (connectionState never leaves Connected) — this is the only detector.
   static const Duration mediaStallTimeout = Duration(seconds: 6);
+
+  /// Minimum spacing between two restart offers, whatever triggered them
+  /// (socket kick, ICE failure, media stall) — stacked offers desynchronize
+  /// the ICE generations and prevent convergence.
+  static const Duration restartOfferThrottle = Duration(seconds: 3);
 
   /// How long a `Disconnected` state may self-heal before we force an ICE
   /// restart. Short: a real transient blip recovers in ~1-2s, and beyond
@@ -138,6 +149,10 @@ class P2pRtcSession {
   // When the media link first went down in the CURRENT outage — the origin
   // of [outageBudget]. Null while the link is up.
   DateTime? _linkDownSince;
+  // True when the current outage was detected by the media watchdog only
+  // (ICE never left Connected) — see [mediaOutageBudget].
+  bool _mediaOriginOutage = false;
+  DateTime? _lastRestartOfferAt;
   bool _remoteSignalSeen = false;
   int _iceRestartAttempts = 0;
 
@@ -156,13 +171,37 @@ class P2pRtcSession {
   /// perfect-negotiation path (explicit rollback included).
   void kickIceRestart() {
     if (_disposed || _failed || _linkUp) return;
+    // Throttle: the reconnect sync fires repeatedly on a flaky network, and
+    // stacking restart offers desynchronizes the ICE generations (a late
+    // answer to offer N applied over offer N+1, then N+1's answer dropped
+    // as a duplicate) — the agent then never converges.
+    final last = _lastRestartOfferAt;
+    if (last != null &&
+        DateTime.now().difference(last) < restartOfferThrottle) {
+      return;
+    }
     debugPrint('P2P: socket back while link down — kicking ICE restart');
+    _restartAndOffer();
+  }
+
+  /// Restart ICE and (re)send an offer, serialized on the signal chain.
+  void _restartAndOffer() {
+    _lastRestartOfferAt = DateTime.now();
     try {
       _pc?.restartIce();
     } catch (e) {
       debugPrint('P2P: restartIce failed: $e');
     }
-    _makeOffer(iceRestart: true);
+    _queueOffer(iceRestart: true);
+  }
+
+  /// Offers ride the SAME chain as incoming signals: since both peers may
+  /// now restart, an offer created concurrently with an inbound one raced
+  /// on the native PC and left it in a state where the answer never left.
+  void _queueOffer({bool iceRestart = false}) {
+    final next =
+        _signalChain.then((_) => _makeOffer(iceRestart: iceRestart));
+    _signalChain = next.catchError((_) {});
   }
 
   /// Establish the call. [localVideoTrackFactory] builds the custom-capturer
@@ -178,6 +217,17 @@ class P2pRtcSession {
   }) async {
     if (_disposed) return;
     _connectStartedAt = DateTime.now();
+    // Armed BEFORE the setup awaits, not after: a hang in
+    // createPeerConnection / getUserMedia / the buffered-signal drain throws
+    // nothing, so without this the session had NO timer at all — black
+    // remote tile for the whole match with no fallback. Cancelled by
+    // _handleConnected / _fail / dispose.
+    _connectWatchdog = Timer(connectTimeout, () {
+      if (!_connected && !_disposed && !_failed) {
+        debugPrint('P2P: connect watchdog fired');
+        _fail('connect_timeout');
+      }
+    });
     await remoteRenderer.initialize();
 
     final pc = await createPeerConnection({
@@ -219,13 +269,11 @@ class P2pRtcSession {
           // every RECOVERY back to Connected must also forgive past ICE
           // failures — otherwise transient drops accumulate over a whole
           // series until they trip the permanent Agora fallback.
-          _linkUp = true;
-          _iceRestartAttempts = 0;
-          _linkDownSince = null;
-          _recoveryTimer?.cancel();
-          _recoveryTimer = null;
-          _disconnectedTimer?.cancel();
-          _disconnectedTimer = null;
+          _clearOutage();
+          // Re-baseline the media counter: a renegotiation brings a new
+          // SSRC and a counter restarting from zero.
+          _lastFramesDecoded = null;
+          _lastFrameProgressAt = DateTime.now();
           _handleConnected();
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
@@ -265,7 +313,7 @@ class P2pRtcSession {
       // The polite peer stays quiet until the opponent has said ANYTHING, so
       // the two initial offers can't glare; afterwards it may renegotiate.
       if (polite && !_remoteSignalSeen) return;
-      _makeOffer();
+      _queueOffer();
     };
 
     // Incoming signals. Single-slot registry is fine: there is exactly one
@@ -331,13 +379,6 @@ class P2pRtcSession {
     _bufferedSignals.clear();
     if (lastDrained != null) await lastDrained;
 
-    _connectWatchdog = Timer(connectTimeout, () {
-      if (!_connected && !_disposed) {
-        debugPrint('P2P: connect watchdog fired');
-        _fail('connect_timeout');
-      }
-    });
-
     // Kick the first offer explicitly for the impolite peer: on some
     // platforms onRenegotiationNeeded doesn't refire reliably for tracks
     // added before the handler was useful. Then re-emit the SAME local
@@ -345,7 +386,7 @@ class P2pRtcSession {
     // [offerRetryInterval]. Re-applying an identical offer is harmless for
     // the polite peer (it just answers again).
     if (!polite) {
-      _makeOffer();
+      _queueOffer();
       _offerRetryTimer = Timer.periodic(offerRetryInterval, (timer) async {
         if (_disposed || _remoteSignalSeen || _linkUp) {
           timer.cancel();
@@ -417,7 +458,12 @@ class P2pRtcSession {
       if (_disposed || _failed) return;
       final pc = _pc;
       if (pc == null) return;
-      int? frames;
+      // SUM over every video inbound-rtp, and never mix metrics: keeping the
+      // last report only, or falling back to bytesReceived for one sample,
+      // makes the counter jump scales and the comparison below false
+      // forever — a permanent phantom stall.
+      int? framesTotal;
+      int? bytesTotal;
       try {
         final stats = await pc.getStats().timeout(const Duration(seconds: 2));
         for (final report in stats) {
@@ -425,17 +471,32 @@ class P2pRtcSession {
           final values = report.values;
           final kind = values['kind'] ?? values['mediaType'];
           if (kind != 'video') continue;
-          final counter = values['framesDecoded'] ?? values['bytesReceived'];
-          if (counter is num) frames = counter.toInt();
+          final decoded = values['framesDecoded'];
+          if (decoded is num) framesTotal = (framesTotal ?? 0) + decoded.toInt();
+          final bytes = values['bytesReceived'];
+          if (bytes is num) bytesTotal = (bytesTotal ?? 0) + bytes.toInt();
         }
       } catch (_) {
         return;
       }
-      if (frames == null || _disposed || _failed) return;
+      final counter = framesTotal ?? bytesTotal;
+      if (counter == null || _disposed || _failed) return;
       final now = DateTime.now();
-      if (_lastFramesDecoded == null || frames > _lastFramesDecoded!) {
-        _lastFramesDecoded = frames;
+      // `!=`, not `>`: a renegotiation or an opponent relaunch brings a new
+      // SSRC whose counter restarts at 0 — that IS progress, not a stall.
+      if (_lastFramesDecoded == null || counter != _lastFramesDecoded) {
+        _lastFramesDecoded = counter;
         _lastFrameProgressAt = now;
+        // Media is the ONLY sensor for a freeze that leaves ICE Connected —
+        // so it must also be the sensor of the recovery. Without this, a
+        // stall that the ICE restart repaired still burned the outage
+        // budget and fell back to Agora on a perfectly healthy call.
+        if (!_linkUp &&
+            pc.connectionState ==
+                RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          debugPrint('P2P: media flowing again — outage cleared');
+          _clearOutage();
+        }
         return;
       }
       final since = _lastFrameProgressAt;
@@ -446,8 +507,24 @@ class P2pRtcSession {
       // restart converges.
       _lastFrameProgressAt = now;
       _linkUp = false;
+      // A media-only stall gets a longer budget: the opponent may simply
+      // have backgrounded their app (nothing to repair, and falling back to
+      // Agora would show the same absent video after a costly rebuild).
+      _mediaOriginOutage = _linkDownSince == null;
       _handleIceFailure();
     });
+  }
+
+  /// Single place that declares the link healthy again.
+  void _clearOutage() {
+    _linkUp = true;
+    _iceRestartAttempts = 0;
+    _linkDownSince = null;
+    _mediaOriginOutage = false;
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    _disconnectedTimer?.cancel();
+    _disconnectedTimer = null;
   }
 
   /// Start (or keep) the current outage's clock and run the deadline poll —
@@ -464,7 +541,8 @@ class P2pRtcSession {
         return;
       }
       final since = _linkDownSince;
-      if (since != null && DateTime.now().difference(since) >= outageBudget) {
+      final budget = _mediaOriginOutage ? mediaOutageBudget : outageBudget;
+      if (since != null && DateTime.now().difference(since) >= budget) {
         _fail('ice_failed');
       }
     });
@@ -481,15 +559,25 @@ class P2pRtcSession {
       return;
     }
     // Restarts stay capped per outage (the counter resets on Connected), but
-    // the outage deadline above is what ultimately bounds the wait.
+    // the outage deadline above is what ultimately bounds the wait. Past the
+    // cap we keep RE-SENDING the offer without restarting ICE again: the
+    // relay has no replay, so an offer emitted while the opponent's socket
+    // was down is gone forever and only a re-send can revive the call.
+    // Either role may send it: waiting for the impolite peer wastes the
+    // budget when its network is the one that died, and glare is absorbed
+    // by perfect negotiation.
+    final last = _lastRestartOfferAt;
+    final throttled = last != null &&
+        DateTime.now().difference(last) < restartOfferThrottle;
+    if (throttled) return;
     if (_iceRestartAttempts < 2) {
       _iceRestartAttempts++;
       debugPrint('P2P: ICE failed — restart attempt $_iceRestartAttempts');
-      _pc?.restartIce();
-      // A restart needs a fresh offer to converge. Either role may send it:
-      // waiting for the impolite peer wastes the budget when it is the one
-      // whose network died, and glare is absorbed by perfect negotiation.
-      _makeOffer(iceRestart: true);
+      _restartAndOffer();
+    } else {
+      debugPrint('P2P: restart cap reached — re-sending offer');
+      _lastRestartOfferAt = DateTime.now();
+      _queueOffer(iceRestart: true);
     }
   }
 
