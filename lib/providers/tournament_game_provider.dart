@@ -735,7 +735,7 @@ class TournamentGameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
-    _adoptRtcV2(data);
+    _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
 
     _cancelStartWatchdog();
     _gameStarted = true;
@@ -743,13 +743,6 @@ class TournamentGameProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adopt a fresh `rtcV2` block when a payload carries one; absence never
-  /// clears an existing config (same rule as GameProvider).
-  void _adoptRtcV2(dynamic data) {
-    if (data is! Map) return;
-    final parsed = RtcV2Config.tryParse(data['rtcV2']);
-    if (parsed != null) _rtcV2Config = parsed;
-  }
 
   void _handleDartUndone(dynamic data) {
     if (_isForeignMatch(data)) return;
@@ -824,7 +817,7 @@ class TournamentGameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
-    _adoptRtcV2(data);
+    _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
 
     // Reset leg state for next leg. _gameStarted goes false again here, so
     // the next leg's game_started can be lost the same way as the first —

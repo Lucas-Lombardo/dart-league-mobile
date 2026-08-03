@@ -778,6 +778,58 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── RTC v2 (P2P) ─────────────────────────────────────────────────────────────
 
+  /// Starts match video on the right transport, and arms the rejoin
+  /// catch-up. The only entry point the screens need: P2P when the payload
+  /// carried an rtcV2 verdict (both clients support it), the untouched
+  /// legacy Agora path otherwise, with [startAgora] doubling as the P2P
+  /// fallback.
+  ///
+  /// [hasAgoraCredentials] is the screen's own check — the ranked screen
+  /// reads its widget params, the tournament screen its provider.
+  Future<void> startMatchVideo({
+    required dynamic game,
+    required String matchId,
+    required String opponentId,
+    required Future<void> Function() startAgora,
+    required bool hasAgoraCredentials,
+  }) async {
+    final rtcV2 = _rtcV2ConfigOf(game);
+    if (rtcV2 != null && RtcFramesService.isSupported) {
+      updateLoadingMessage('Starting camera...');
+      await initializeP2p(
+        matchId: matchId,
+        opponentId: opponentId,
+        config: rtcV2,
+        agoraFallback: startAgora,
+      );
+    } else if (hasAgoraCredentials) {
+      updateLoadingMessage('Starting camera...');
+      await startAgora();
+    }
+    game.addListener(handleSharedStateChange);
+    updateLoadingMessage('Loading AI model...');
+    await loadAutoScoringPref();
+    // Rejoin: credentials arrive later via game_state_sync, so show the
+    // spinner rather than the manual dartboard until the model loads. On the
+    // P2P path the camera/AI are already up, hence the p2pVideo guard.
+    if (autoScoringEnabled &&
+        agoraEngine == null &&
+        p2pVideo == null &&
+        !kIsWeb &&
+        AutoScoringService.isSupported) {
+      setState(() => autoScoringLoading = true);
+      // If game_state_sync never arrives (or the reconnect wedges), the
+      // watchdog drops the blocking overlay instead of spinning forever.
+      armAutoScoringLoadingWatchdog();
+      // A sync may have fired before the listener was attached: process the
+      // pending reconnect now instead of waiting for the next notification.
+      if (game.needsAgoraReconnect == true) {
+        game.clearAgoraReconnectFlag();
+        reconnectRtcTransport(game, legTransition: false);
+      }
+    }
+  }
+
   /// Shared RTC recovery for a consumed `needsAgoraReconnect` flag — called
   /// from the provider listener AND from the screens' pre-listener catch-up.
   /// Decides between: nothing (live P2P), a P2P (re)launch, or the legacy

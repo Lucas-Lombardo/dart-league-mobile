@@ -291,8 +291,7 @@ class MatchmakingProvider with ChangeNotifier {
     }
     if (newAgoraUid != null) _agoraUid = newAgoraUid;
     if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
-    final newRtcV2 = RtcV2Config.tryParse(data['rtcV2']);
-    if (newRtcV2 != null) _rtcV2Config = newRtcV2;
+    _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
 
     _isSearching = false;
     

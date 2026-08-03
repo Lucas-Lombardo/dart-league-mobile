@@ -903,20 +903,12 @@ class GameProvider with ChangeNotifier {
         _remoteUid = newOpponentAgoraUid;
       }
     }
-    _adoptRtcV2(data);
+    _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
 
     _resetLegState();
     notifyListeners();
   }
 
-  /// Adopt a fresh `rtcV2` block when a payload carries one. Absence is NOT
-  /// adoption of null: a reconnect sync from a server whose TURN cache is
-  /// momentarily empty must not tear down a working P2P session.
-  void _adoptRtcV2(dynamic data) {
-    if (data is! Map) return;
-    final parsed = RtcV2Config.tryParse(data['rtcV2']);
-    if (parsed != null) _rtcV2Config = parsed;
-  }
 
   void _handleRankedMatchWon(dynamic data) {
     if (data is! Map || _isForeignSeries(data)) return;
@@ -1237,7 +1229,7 @@ class GameProvider with ChangeNotifier {
 
     // Only past the foreign-match guards: a rejected sync (ghost match,
     // stale leg) must not overwrite our rtcV2 config either.
-    _adoptRtcV2(data);
+    _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
 
     final player1Id = data['player1Id'] as String?;
     final player1Score = data['player1Score'] as int?;

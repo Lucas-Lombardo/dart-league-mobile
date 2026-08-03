@@ -14,6 +14,18 @@ class RtcV2Config {
   /// without a round-trip: the polite peer rolls back on offer glare.
   final bool polite;
 
+  /// Adopts a verdict carried by [payload], keeping [current] when the
+  /// payload has none.
+  ///
+  /// Absence is NOT a denial: periodic syncs and partial payloads omit the
+  /// block, and clearing on them would tear down a live P2P session. Only a
+  /// NEW match may reset the verdict — that is the providers' job (`isNewMatch`
+  /// in initGame, a changed matchId in the invite flow), not this one's.
+  static RtcV2Config? adopt(dynamic payload, RtcV2Config? current) {
+    if (payload is! Map) return current;
+    return tryParse(payload['rtcV2']) ?? current;
+  }
+
   /// Defensive parse of `payload['rtcV2']`. Null on anything malformed —
   /// callers treat null exactly like an old-style payload (Agora path).
   static RtcV2Config? tryParse(dynamic raw) {

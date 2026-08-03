@@ -1,11 +1,8 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
-import '../../services/auto_scoring_service.dart';
-import '../../services/rtc_frames_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
@@ -117,44 +114,14 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       );
     }
 
-    final rtcV2 = game.rtcV2Config;
-    if (rtcV2 != null &&
-        RtcFramesService.isSupported &&
-        game.currentGameMatchId != null) {
-      // RTC v2: both clients support P2P — do NOT join Agora. The session
-      // deliberately survives the whole series (all legs share the peers);
-      // the signaling scope stays this first leg's matchId on both sides.
-      updateLoadingMessage('Starting camera...');
-      await initializeP2p(
-        matchId: game.currentGameMatchId!,
-        opponentId: widget.opponentId,
-        config: rtcV2,
-        agoraFallback: startAgora,
-      );
-    } else if (game.agoraAppId != null && game.agoraAppId!.isNotEmpty) {
-      updateLoadingMessage('Starting camera...');
-      await startAgora();
-    }
-    game.addListener(handleSharedStateChange);
-    updateLoadingMessage('Loading AI model...');
-    await loadAutoScoringPref();
-    // Rejoin scenario: Agora credentials arrive later via game_state_sync.
-    // Show loading spinner instead of the manual dartboard until the model loads.
-    // (p2pVideo == null: on the P2P path the camera/AI are already up.)
-    if (autoScoringEnabled && agoraEngine == null && p2pVideo == null && !kIsWeb && AutoScoringService.isSupported) {
-      setState(() => autoScoringLoading = true);
-      // If game_state_sync never arrives (or the reconnect wedges), the
-      // watchdog drops the blocking overlay instead of spinning forever.
-      armAutoScoringLoadingWatchdog();
-      // game_state_sync may have already fired before the listener was attached.
-      // If so, process the pending reconnect now instead of waiting for next notification.
-      if (game.needsAgoraReconnect) {
-        game.clearAgoraReconnectFlag();
-        // Same decision logic as the listener path: P2P relaunch when the
-        // sync carried an rtcV2 verdict, Agora rebuild otherwise.
-        reconnectRtcTransport(game, legTransition: false);
-      }
-    }
+    await startMatchVideo(
+      game: game,
+      matchId: game.currentGameMatchId ?? widget.gameMatchId,
+      opponentId: widget.opponentId,
+      startAgora: startAgora,
+      hasAgoraCredentials:
+          game.agoraAppId != null && game.agoraAppId!.isNotEmpty,
+    );
   }
 
   @override
