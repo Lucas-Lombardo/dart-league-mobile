@@ -14,14 +14,20 @@ import 'package:flutter/foundation.dart';
 /// timing decision lives here:
 ///
 /// ```
-///  t+0s   picture stops                     → nothing (blips self-heal)
-///  t+2s   still down, session was connected → onRestartIce()   (cheap, keeps the media path)
-///  t+8s   still down                        → onRebuild()      (fresh PeerConnection, re-gathers
-///                                                               on the CURRENT network — the
-///                                                               universal fix)
-///  every 10s after that                     → onRebuild() again
-///  t+40s                                    → onGiveUp()       (Agora, while it still exists)
+/// Mid-call outage (the session was connected):
+///  t+0s   picture stops   → nothing (blips self-heal)
+///  t+2s   still down      → onRestartIce()  (cheap, keeps the media path)
+///  t+8s   still down      → onRebuild()     (fresh PeerConnection, re-gathers on
+///                                            the CURRENT network — the universal fix)
+///  +10s each             → onRebuild() again
+///  t+40s                 → onGiveUp()       (Agora, while it still exists)
+///
+/// First connection (nothing to restart):
+///  t+10s  never connected → onRebuild(), then the same cadence
 /// ```
+///
+/// The clock is wall-clock and restarts on [noteNetworkBack]: an outage
+/// spent in the background must not consume the budget.
 ///
 /// [onGiveUp] is optional BY DESIGN: once every install supports RTC v2 and
 /// Agora is deleted, pass null and the ladder simply keeps rebuilding until
@@ -53,6 +59,17 @@ class RtcRecoveryPolicy {
   /// Time given to the ICE restart before escalating to a rebuild.
   static const Duration iceRestartWindow = Duration(seconds: 6);
 
+  /// Budget for the FIRST connection, which has nothing to restart. It must
+  /// not be `selfHeal`: negotiation legitimately takes seconds (TURN
+  /// allocation, cold start, mic permission dialog), and rebuilding at t+2s
+  /// destroyed a session that was still connecting.
+  static const Duration firstConnectBudget = Duration(seconds: 10);
+
+  /// A rebuild that hangs (native channel, getUserMedia) must not freeze the
+  /// ladder: without a bound, `onGiveUp: null` — the post-Agora setup —
+  /// would mean dead video for the rest of the match with no recourse.
+  static const Duration rebuildTimeout = Duration(seconds: 20);
+
   /// Spacing between two rebuild attempts. A rebuild connects in ~2s when
   /// the network is back, so this is mostly "wait for the network".
   static const Duration rebuildInterval = Duration(seconds: 10);
@@ -75,8 +92,6 @@ class RtcRecoveryPolicy {
   /// path to salvage) and goes straight to rebuilds.
   bool _everHealthy = false;
 
-  bool get isRecovering => _downSince != null;
-
   /// The transport is delivering media again.
   void noteHealthy() {
     _everHealthy = true;
@@ -96,8 +111,13 @@ class RtcRecoveryPolicy {
   /// agent cannot extend the deadline — that unbounded-wait bug is what the
   /// absolute clock is for.
   void noteImpaired(String reason) {
-    if (_finished || _downSince != null) return;
+    if (_finished) return;
+    // Always keep the LATEST cause, even mid-outage: the clock starts once
+    // (a bouncing ICE agent must not extend the deadline), but telemetry
+    // needs the reason that actually characterizes the failure — otherwise
+    // every report reads 'connecting', the state connect() opens with.
     _reason = reason;
+    if (_downSince != null) return;
     _downSince = DateTime.now();
     debugPrint('[RtcRecovery] impaired ($reason) — ladder started');
     _timer = Timer.periodic(_tick, (_) => _step());
@@ -140,18 +160,23 @@ class RtcRecoveryPolicy {
       // Never connected: nothing to salvage, fall through to a rebuild.
     }
 
+    final firstRebuildAt =
+        _everHealthy ? selfHeal + iceRestartWindow : firstConnectBudget;
     final rebuildDue = _lastRebuildAt == null
-        ? elapsed >= selfHeal + (_everHealthy ? iceRestartWindow : Duration.zero)
+        ? elapsed >= firstRebuildAt
         : DateTime.now().difference(_lastRebuildAt!) >= rebuildInterval;
     if (rebuildDue && !_rebuildInFlight) {
       _rebuildInFlight = true;
       _lastRebuildAt = DateTime.now();
       debugPrint('[RtcRecovery] rebuilding session');
-      onRebuild(_reason).whenComplete(() {
+      // `_restartIssued` deliberately stays true: a freshly rebuilt session
+      // is mid-negotiation, and firing an ICE restart into it one tick later
+      // is the very glare this ladder exists to avoid. The next rebuild is
+      // the escalation, not a restart.
+      onRebuild(_reason).timeout(rebuildTimeout).whenComplete(() {
         _rebuildInFlight = false;
-        // A rebuilt session starts from scratch: let it earn its ICE restart
-        // again if it too goes down.
-        _restartIssued = false;
+      }).catchError((Object e) {
+        debugPrint('[RtcRecovery] rebuild failed/timed out: $e');
       });
     }
   }

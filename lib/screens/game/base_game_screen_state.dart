@@ -63,9 +63,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // ─── RTC v2 (P2P) ──────────────────────────────────────────────────────────
   // Non-null while this match runs on the P2P WebRTC path (payload carried an
   // rtcV2 block). Mutually exclusive with agoraEngine, EXCEPT transiently
-  // during the automatic fallback. The session deliberately survives leg
-  // transitions (BO3 ranked AND tournament series): the peers never change
-  // between legs, so unlike Agora there is nothing to re-key.
+  // It deliberately survives leg transitions (BO3 ranked AND tournament):
+  // the peers never change between legs, so unlike Agora there is nothing
+  // to re-key.
   /// The whole P2P path in one object (session + native track + recovery
   /// ladder) — see [P2pMatchVideo]. Null on the Agora path.
   P2pMatchVideo? p2pVideo;
@@ -842,9 +842,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // any restart offer emitted while the socket was dead was lost
       // forever (no replay), and waiting wedged the airplane-mode test.
       if (!p2pVideo!.isLinkUp) {
-        // The socket is proof the network is back: re-report the outage so
-        // the ladder acts NOW instead of waiting for its next step (any
-        // offer emitted into the dead socket was lost — no replay).
+        // The socket is proof the network is usable again: restart the
+        // ladder's clock and renegotiate NOW — any offer emitted into the
+        // dead socket was lost forever (signals have no replay).
         p2pVideo!.onSocketReconnected();
       }
       return;
@@ -952,7 +952,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final video = P2pMatchVideo(
       matchId: matchId,
       opponentId: opponentId,
-      config: config,
+      configProvider: () => _rtcV2ConfigOf(readGame()) ?? config,
       onChanged: () {
         if (mounted) setState(() {});
       },

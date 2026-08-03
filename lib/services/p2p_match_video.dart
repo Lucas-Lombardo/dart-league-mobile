@@ -20,14 +20,17 @@ class P2pMatchVideo {
   P2pMatchVideo({
     required this.matchId,
     required this.opponentId,
-    required this.config,
+    required this.configProvider,
     required this.onChanged,
     required this.onGiveUp,
   });
 
   final String matchId;
   final String opponentId;
-  final RtcV2Config config;
+  /// Read at every (re)connect, never frozen: a `game_state_sync` can carry
+  /// freshly minted Cloudflare TURN credentials, and a long match rebuilding
+  /// with the initial payload's expired ones could never reach the relay.
+  final RtcV2Config Function() configProvider;
 
   /// Something the UI renders changed (connection, remote video).
   final VoidCallback onChanged;
@@ -66,7 +69,7 @@ class P2pMatchVideo {
     final session = P2pRtcSession(
       matchId: matchId,
       opponentId: opponentId,
-      config: config,
+      config: configProvider(),
       onConnected: onChanged,
       onRemoteVideoReady: () {
         _remoteReady = true;
