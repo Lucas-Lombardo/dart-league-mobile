@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -13,6 +13,7 @@ import '../../providers/tournament_game_provider.dart'
 import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
+import '../../services/replay_buffer_service.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/haptic_service.dart';
@@ -942,7 +943,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (!mounted) return;
       if (!kIsWeb) {
         cameraFrameService = CameraFrameService();
-        await cameraFrameService!.initialize(p2pMode: true);
+        await cameraFrameService!.initialize(p2pMode: true, replayRing: true);
         await initCameraZoom();
         if (!mounted) {
           // The screen died during the camera init: this instance was
@@ -1020,6 +1021,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         await cameraFrameService!.initialize(
           agoraEngine: agoraEngine!,
           videoTrackId: customVideoTrackId!,
+          replayRing: true,
         );
 
         // 4. Register Agora event handlers
@@ -1196,6 +1198,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         await cameraFrameService!.initialize(
           agoraEngine: agoraEngine!,
           videoTrackId: customVideoTrackId!,
+          replayRing: true,
         );
         _registerAgoraHandlers();
         await AgoraService.joinChannel(
@@ -1794,6 +1797,24 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               top: 10,
               right: 10,
               child: Row(children: [
+                // R1a heat-gate probe, debug builds only: dumps the last 30s
+                // of the replay ring to a clip and prints its path. Replaced
+                // by the real "🎬 Enregistrer" pill in R1b.
+                if (kDebugMode) ...[
+                  GameControlButton(
+                    icon: Icons.fiber_manual_record,
+                    color: AppTheme.accent,
+                    onTap: () async {
+                      final path = await ReplayBufferService.captureLast(
+                          const Duration(seconds: 30));
+                      debugPrint('[ReplayBuffer] debug clip: $path');
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(path ?? 'Replay: rien dans le ring')));
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 GameControlButton(
                   icon: isAudioMuted ? Icons.mic_off : Icons.mic,
                   color: isAudioMuted ? AppTheme.opponentPink : AppTheme.playerBlue,

@@ -33,6 +33,14 @@ import UserNotifications
     let rtcFramesPlugin = RtcFramesPlugin()
     rtcFramesChannel.setMethodCallHandler(rtcFramesPlugin.handle)
 
+    // Replays: rolling ring buffer of the local camera (5s MP4 segments).
+    let replayChannel = FlutterMethodChannel(
+      name: "com.dartrivals/replay_buffer",
+      binaryMessenger: controller.binaryMessenger
+    )
+    let replayPlugin = ReplayBufferPlugin()
+    replayChannel.setMethodCallHandler(replayPlugin.handle)
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
 import 'agora_service.dart';
+import 'replay_buffer_service.dart';
 import 'rtc_frames_service.dart';
 import '../utils/storage_service.dart';
 
@@ -51,6 +52,9 @@ class CameraFrameService {
   // channel fell behind.
   final List<Uint8List?> _pushBuffers = [null, null];
   final List<bool> _pushBufferBusy = [false, false];
+  // Replay tee staging buffer — see _pushFrameToReplay.
+  Uint8List? _replayBuffer;
+  bool _replayMode = false;
 
   // Cache the latest frame for AI scoring capture
   CameraImage? _latestFrame;
@@ -134,14 +138,20 @@ class CameraFrameService {
   /// buffers, same cadence. Pass nulls for solo modes (training, placement)
   /// where the local camera preview is shown directly via the exposed
   /// [controller] and only AI scoring needs the frame stream.
+  ///
+  /// [replayRing] additionally tees every frame into the native replay ring
+  /// buffer (see ReplayBufferService) — match modes only, transport-agnostic.
   Future<void> initialize({
     RtcEngine? agoraEngine,
     int? videoTrackId,
     bool p2pMode = false,
+    bool replayRing = false,
   }) async {
     _agoraEngine = agoraEngine;
     _videoTrackId = videoTrackId;
     _p2pMode = p2pMode;
+    _replayMode = replayRing && ReplayBufferService.isSupported;
+    if (_replayMode) ReplayBufferService.arm();
 
     // Honour the persisted front/back choice (set from the camera-setup screen
     // or a previous in-game switch). Defaults to the back camera.
@@ -365,6 +375,54 @@ class CameraFrameService {
       _pushFrameToP2p(image);
     } else {
       _pushFrameToAgora(image);
+    }
+    if (_replayMode) _pushFrameToReplay(image);
+  }
+
+  /// Replay ring tee — third consumer of the same frames. Own staging buffer:
+  /// the pool slots belong to the transport pushes (Agora reads its slot
+  /// asynchronously), and the method channel serializes synchronously, so
+  /// this buffer is reusable as soon as the call returns.
+  void _pushFrameToReplay(CameraImage image) {
+    try {
+      if (Platform.isAndroid) {
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        final ySize = image.width * image.height;
+        final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
+        final needed = ySize + uvSize * 2;
+        var buffer = _replayBuffer;
+        if (buffer == null || buffer.length < needed) {
+          buffer = Uint8List(needed);
+          _replayBuffer = buffer;
+        }
+        final String format;
+        if (uvPixelStride == 1) {
+          _fillI420Buffer(image, buffer);
+          format = 'i420';
+        } else {
+          _fillNv21Buffer(image, buffer);
+          format = 'nv21';
+        }
+        ReplayBufferService.pushFrame(
+          buffer,
+          image.width,
+          image.height,
+          _effectiveRotation(),
+          format: format,
+        );
+      } else {
+        final plane = image.planes[0];
+        ReplayBufferService.pushFrame(
+          plane.bytes,
+          image.width,
+          image.height,
+          0,
+          format: 'bgra',
+          bytesPerRow: plane.bytesPerRow,
+        );
+      }
+    } catch (e) {
+      debugPrint('[CameraFrameService] replay pushFrame error: $e');
     }
   }
 
@@ -930,6 +988,12 @@ class CameraFrameService {
     // The P2P track itself is owned by the game screen (RtcFramesService) —
     // only stop feeding it here.
     _p2pMode = false;
+    if (_replayMode) {
+      _replayMode = false;
+      // Stops the native encoder and deletes the ring; produced clips live
+      // in their own directory and survive.
+      ReplayBufferService.stop();
+    }
   }
 }
 

@@ -15,5 +15,6 @@ class MainActivity : FlutterFragmentActivity() {
         val webrtcPlugin =
             flutterEngine.plugins.get(FlutterWebRTCPlugin::class.java) as? FlutterWebRTCPlugin
         flutterEngine.plugins.add(RtcFramesPlugin(webrtcPlugin))
+        flutterEngine.plugins.add(ReplayBufferPlugin())
     }
 }
