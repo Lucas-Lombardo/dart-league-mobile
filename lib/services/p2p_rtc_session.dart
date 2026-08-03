@@ -171,6 +171,10 @@ class P2pRtcSession {
   /// perfect-negotiation path (explicit rollback included).
   void kickIceRestart() {
     if (_disposed || _failed || _linkUp) return;
+    // Never offer before the local media is attached: an offer without our
+    // video m-line is how the one-way-video bug happened. The initial
+    // negotiation (or its buffered-signal drain) will carry the tracks.
+    if (!_localSetupDone) return;
     // Throttle: the reconnect sync fires repeatedly on a flaky network, and
     // stacking restart offers desynchronizes the ICE generations (a late
     // answer to offer N applied over offer N+1, then N+1's answer dropped
@@ -181,6 +185,11 @@ class P2pRtcSession {
       return;
     }
     debugPrint('P2P: socket back while link down — kicking ICE restart');
+    // Restart the outage clock: the budget is wall-clock, so time spent
+    // with the app backgrounded (call, notification) counted against it —
+    // any absence longer than the budget fell back to Agora the instant the
+    // socket returned, before the renegotiation had any chance to converge.
+    _linkDownSince = DateTime.now();
     _restartAndOffer();
   }
 

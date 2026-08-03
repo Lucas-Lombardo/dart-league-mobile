@@ -952,7 +952,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         cameraFrameService = CameraFrameService();
         await cameraFrameService!.initialize(p2pMode: true);
         await initCameraZoom();
-        if (_p2pFellBack || !mounted) return;
+        if (_p2pFellBack || !mounted) {
+          // The screen died (or Agora took over) during the camera init:
+          // this instance was created AFTER State.dispose ran, so nobody
+          // else will release it — the device would stay locked ("camera
+          // already in use") for the next match.
+          try {
+            await cameraFrameService?.dispose();
+          } catch (_) {}
+          cameraFrameService = null;
+          return;
+        }
         // Fire-and-forget so the game screen shows immediately, same as the
         // Agora path; autoScoringLoading drives the UI loading state.
         initAutoScoring();
@@ -1010,9 +1020,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       } finally {
         _agoraInitInFlight = false;
       }
-      // The user may have left during the multi-second Agora join — tear
-      // down what the fallback just built, State.dispose already ran.
-      if (!mounted) {
+      // The user may have left — or the match may have ENDED — during the
+      // multi-second Agora join. Both teardown triggers (State.dispose,
+      // handleSharedStateChange's _endAgoraCall) ran while there was
+      // nothing built yet, so the freshly joined call would otherwise keep
+      // running (and burning Agora minutes) on the result screen.
+      bool ended = false;
+      try {
+        ended = readGame().gameEnded as bool;
+      } catch (_) {}
+      if (!mounted || ended) {
         await _endAgoraCall();
       }
     }
