@@ -123,14 +123,26 @@ class RtcRecoveryPolicy {
     _timer = Timer.periodic(_tick, (_) => _step());
   }
 
-  /// The network just came back (the socket reconnected). Restarts the
-  /// clock: the budget is WALL-CLOCK, so time spent with the app in the
-  /// background — a call, a locked screen — counted against it, and any
-  /// absence longer than the budget handed over to Agora the very instant
-  /// the network returned, before the renegotiation could converge.
-  void noteNetworkBack() {
+  /// The socket reconnected: allow ONE more immediate ICE restart, because
+  /// any offer emitted while the socket was dead is gone for good (no
+  /// replay). It deliberately does NOT touch the clock — on a flaky network
+  /// the socket bounces every few seconds, and rewinding the deadline each
+  /// time meant the ladder never escalated past the restart: no rebuild, no
+  /// hand-over, frozen video for the rest of the match.
+  void noteSignalingBack() {
     if (_finished || _downSince == null) return;
-    debugPrint('[RtcRecovery] network back — outage clock restarted');
+    _restartIssued = false;
+  }
+
+  /// The app came back to the foreground. THIS is what restarts the clock:
+  /// the budget is wall-clock, so a call or a locked screen was spending it
+  /// while nothing could possibly reconnect — any absence longer than the
+  /// budget handed over to Agora the very instant the user returned, before
+  /// the renegotiation had a chance. Foreground time is real trying time;
+  /// background time is not.
+  void noteAppResumed() {
+    if (_finished || _downSince == null) return;
+    debugPrint('[RtcRecovery] app resumed — outage clock restarted');
     _downSince = DateTime.now();
     _restartIssued = false;
     _lastRebuildAt = null;

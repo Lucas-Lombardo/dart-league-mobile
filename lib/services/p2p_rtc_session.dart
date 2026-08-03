@@ -28,7 +28,14 @@ class P2pRtcSession {
     this.onRemoteVideoReady,
     this.onHealthy,
     this.onImpaired,
-  });
+    bool? offerOnConnect,
+  }) : _offerOnConnect = offerOnConnect;
+
+  /// Whether this side kicks the first offer. Defaults to the impolite role
+  /// (so the two initial offers can't glare); a REBUILT session forces true
+  /// on both sides, because a polite rebuild would otherwise stay mute until
+  /// the opponent noticed the stall.
+  final bool? _offerOnConnect;
 
   /// The matchId used as the signaling scope. For a BO3 series this stays the
   /// FIRST leg's id on both sides (both screens keep their session), which is
@@ -341,7 +348,7 @@ class P2pRtcSession {
     // description every 2s until the opponent says anything at all — see
     // [offerRetryInterval]. Re-applying an identical offer is harmless for
     // the polite peer (it just answers again).
-    if (!polite) {
+    if (_offerOnConnect ?? !polite) {
       _queueOffer();
       _offerRetryTimer = Timer.periodic(offerRetryInterval, (timer) async {
         if (_disposed || _remoteSignalSeen || _linkUp) {
@@ -699,13 +706,20 @@ class P2pRtcSession {
     }
   }
 
-  Future<void> dispose({bool fellBack = false, String? reason}) async {
+  /// [report] false skips the end-of-call telemetry — used by the rebuild
+  /// path, where the terminal report of the LAST session tells the story
+  /// (and the backend caps reports per socket).
+  Future<void> dispose({
+    bool fellBack = false,
+    String? reason,
+    bool report = true,
+  }) async {
     if (_disposed) return;
     _disposed = true;
     _offerRetryTimer?.cancel();
     _mediaWatchdog?.cancel();
     SocketService.off('rtc_signal', owner: this);
-    await sendReport(fellBack: fellBack, reason: reason);
+    if (report) await sendReport(fellBack: fellBack, reason: reason);
     try {
       await _pc?.close();
     } catch (_) {}

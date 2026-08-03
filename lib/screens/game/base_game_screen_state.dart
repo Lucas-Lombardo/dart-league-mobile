@@ -318,6 +318,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         return;
       }
       _wasPausedSinceLastResume = false;
+      // Real background time doesn't count against the recovery budget:
+      // nothing could reconnect while suspended, and spending the budget
+      // there handed the match to Agora the instant the user came back.
+      p2pVideo?.onAppResumed();
       // App actually backgrounded — re-sync everything. A connect timeout used
       // to surface as an unhandled future error, and reconnectToMatch never
       // ran: recovery then depended entirely on the reconnect listener.

@@ -135,9 +135,8 @@ class RtcFramesService {
     // factory never ran): it owns nothing, so it must not tear down a
     // successor screen's brand-new track during the deferred-dispose
     // overlap. Only a matching generation may dispose.
-    if (ifGeneration == null) {
-      if (_track == null) return;
-    } else if (ifGeneration != _generation) {
+    if (ifGeneration == null) return;
+    if (ifGeneration != _generation) {
       debugPrint(
           '[RtcFramesService] disposeTrack skipped: generation $ifGeneration is stale (current $_generation)');
       return;

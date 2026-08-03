@@ -45,6 +45,14 @@ class P2pMatchVideo {
   bool _rebuilding = false;
   bool _stopped = false;
   bool _remoteReady = false;
+  // Survives rebuilds: a new session always starts muted, so without this
+  // an unmuted player went silent for the rest of the match with no visible
+  // symptom (the screen's mic icon still read "on").
+  bool _micEnabled = false;
+  int _rebuildCount = 0;
+  // The connect currently in flight, so stop() can wait for it instead of
+  // racing its track creation and orphaning the native track.
+  Future<void>? _connecting;
 
   bool get isRemoteReady => _remoteReady;
   bool get isLinkUp => _session?.isLinkUp ?? false;
@@ -62,10 +70,11 @@ class P2pMatchVideo {
         if (!_stopped) onGiveUp(reason);
       },
     );
-    await _connect();
+    _connecting = _connect();
+    await _connecting;
   }
 
-  Future<void> _connect() async {
+  Future<void> _connect({bool isRebuild = false}) async {
     final session = P2pRtcSession(
       matchId: matchId,
       opponentId: opponentId,
@@ -77,6 +86,10 @@ class P2pMatchVideo {
       },
       onHealthy: () => _recovery?.noteHealthy(),
       onImpaired: (reason) => _recovery?.noteImpaired(reason),
+      // On a rebuild BOTH roles must offer: the polite peer stays silent
+      // until the opponent speaks, so a polite-side rebuild sat mute until
+      // the other end noticed the stall — ~8-10s of black video for free.
+      offerOnConnect: isRebuild ? true : null,
     );
     _session = session;
     // The track is built INSIDE connect(), after the PeerConnection exists:
@@ -97,6 +110,8 @@ class P2pMatchVideo {
     try {
       await Helper.setSpeakerphoneOn(true);
     } catch (_) {}
+    // Re-apply the player's mic choice: every new session starts muted.
+    if (_micEnabled) await session.setMicEnabled(true);
   }
 
   /// A fresh PeerConnection re-gathers candidates on the CURRENT network and
@@ -113,13 +128,19 @@ class P2pMatchVideo {
       _remoteReady = false;
       onChanged();
       try {
+        // No telemetry on a rebuild: the backend caps reports at 6/min per
+        // socket, and a burst of rebuild rows would evict the ONE report
+        // that explains the outcome — plus they'd skew the connection rate
+        // with connected:false rows. The terminal report carries the count.
         await old
-            ?.dispose(reason: 'rebuild:$reason')
+            ?.dispose(report: false)
             .timeout(const Duration(seconds: 3));
       } catch (_) {}
       await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration);
       if (_stopped) return;
-      await _connect();
+      _rebuildCount++;
+      _connecting = _connect(isRebuild: true);
+      await _connecting;
     } catch (e) {
       debugPrint('[P2pMatchVideo] rebuild failed: $e');
     } finally {
@@ -132,11 +153,20 @@ class P2pMatchVideo {
   /// offer emitted into the dead socket was lost (signals have no replay).
   void onSocketReconnected() {
     if (_stopped || isLinkUp) return;
-    _recovery?.noteNetworkBack();
+    _recovery?.noteSignalingBack();
     _session?.restartIce();
   }
 
+  /// The app returned to the foreground — see
+  /// [RtcRecoveryPolicy.noteAppResumed]: background time must not consume
+  /// the recovery budget.
+  void onAppResumed() {
+    if (_stopped) return;
+    _recovery?.noteAppResumed();
+  }
+
   Future<void> setMicEnabled(bool enabled) async {
+    _micEnabled = enabled;
     await _session?.setMicEnabled(enabled);
   }
 
@@ -147,12 +177,22 @@ class P2pMatchVideo {
     _stopped = true;
     _recovery?.dispose();
     _recovery = null;
+    // A connect in flight is still creating its native track; disposing
+    // around it would leave that track orphaned for the process's life.
+    try {
+      await _connecting?.timeout(const Duration(seconds: 5));
+    } catch (_) {}
     final session = _session;
     _session = null;
     _remoteReady = false;
     try {
       await session
-          ?.dispose(fellBack: fellBack, reason: reason)
+          ?.dispose(
+            fellBack: fellBack,
+            reason: _rebuildCount > 0 && reason != null
+                ? '$reason after $_rebuildCount rebuild(s)'
+                : reason,
+          )
           .timeout(const Duration(seconds: 3));
     } catch (_) {}
     await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration);
