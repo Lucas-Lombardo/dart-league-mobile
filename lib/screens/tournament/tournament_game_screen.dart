@@ -344,6 +344,7 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       scoreCaption: l10n.bestOfN(widget.bestOf),
       badgeText: widget.tournamentName,
       panel: panel,
+      replayClips: matchReplayClips,
     );
   }
 

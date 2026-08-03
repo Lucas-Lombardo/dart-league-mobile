@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../l10n/app_localizations.dart';
+import '../../services/replay_clips_store.dart';
 import '../../utils/app_theme.dart';
 
 /// Redesigned end-of-match screen shared by ranked, friendly and tournament
@@ -25,6 +29,11 @@ class MatchEndView extends StatefulWidget {
   /// glow) is applied here so every match type gets the same panel look.
   final Widget panel;
 
+  /// The replay clips captured during this match/series — sharing lives
+  /// HERE, after the match, never in-game (deliberate: recording mid-match
+  /// is one tap, everything else waits until the darts are done).
+  final List<ReplayClip> replayClips;
+
   const MatchEndView({
     super.key,
     required this.didWin,
@@ -34,6 +43,7 @@ class MatchEndView extends StatefulWidget {
     this.scoreLine,
     this.scoreCaption,
     this.badgeText,
+    this.replayClips = const [],
   });
 
   @override
@@ -129,7 +139,16 @@ class _MatchEndViewState extends State<MatchEndView>
                     child: _scrollCentered(Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 16),
-                      child: _buildPanelCard(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.replayClips.isNotEmpty) ...[
+                            _buildMomentsCard(),
+                            const SizedBox(height: 14),
+                          ],
+                          _buildPanelCard(),
+                        ],
+                      ),
                     )),
                   ),
                 ])
@@ -144,6 +163,10 @@ class _MatchEndViewState extends State<MatchEndView>
                         children: [
                           _buildHeadline(compact: false),
                           const SizedBox(height: 28),
+                          if (widget.replayClips.isNotEmpty) ...[
+                            _buildMomentsCard(),
+                            const SizedBox(height: 14),
+                          ],
                           _buildPanelCard(),
                         ],
                       ),
@@ -294,6 +317,82 @@ class _MatchEndViewState extends State<MatchEndView>
           ),
         ],
       ],
+    );
+  }
+
+  /// « Moments du match » — one row per captured clip, share on tap. The
+  /// native share sheet uses the LOCAL file, so this works offline and
+  /// independently of any upload.
+  Widget _buildMomentsCard() {
+    final l10n = AppLocalizations.of(context);
+    return SlideTransition(
+      position: _panelSlide,
+      child: FadeTransition(
+        opacity: _panelFade,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '🎬 ${l10n.replayMoments.toUpperCase()}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (final clip in widget.replayClips) _momentRow(clip, l10n),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _momentRow(ReplayClip clip, AppLocalizations l10n) {
+    final accent = clip.hot ? AppTheme.accent : AppTheme.playerBlue;
+    final total = clip.turnTotal;
+    final label = total != null && total > 0
+        ? (total == 180 ? '180 🔥' : l10n.ptsLabel(total))
+        : TimeOfDay.fromDateTime(clip.createdAt).format(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(clip.hot ? Icons.local_fire_department : Icons.videocam,
+              color: accent, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: clip.hot ? AppTheme.accent : Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => SharePlus.instance
+                .share(ShareParams(files: [XFile(clip.path)])),
+            icon: const Icon(Icons.ios_share, size: 16),
+            label: Text(l10n.replayShare),
+            style: TextButton.styleFrom(
+              foregroundColor: accent,
+              textStyle: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

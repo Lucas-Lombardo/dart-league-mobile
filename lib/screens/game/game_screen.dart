@@ -385,6 +385,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       // Friendly matches don't affect ELO — swap the accept/report panel for a
       // "play again?" rematch panel.
       panel: game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel,
+      replayClips: matchReplayClips,
     );
   }
 

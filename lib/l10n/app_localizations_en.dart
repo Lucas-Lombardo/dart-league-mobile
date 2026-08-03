@@ -2397,6 +2397,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replayNothingToCapture => 'Nothing to record yet';
+
+  @override
+  String get replayMoments => 'Match moments';
   @override
   String get totalLabel => 'TOTAL';
   @override

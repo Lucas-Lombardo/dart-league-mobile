@@ -923,6 +923,7 @@ abstract class AppLocalizations {
   String get replaySaved;
   String get replayShare;
   String get replayNothingToCapture;
+  String get replayMoments;
   String get totalLabel;
   String get upcomingDart;
   String get editShort;

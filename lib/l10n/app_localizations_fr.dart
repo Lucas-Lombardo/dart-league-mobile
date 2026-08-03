@@ -2424,6 +2424,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get replayNothingToCapture => 'Rien à enregistrer pour l\'instant';
+
+  @override
+  String get replayMoments => 'Moments du match';
   @override
   String get totalLabel => 'TOTAL';
   @override

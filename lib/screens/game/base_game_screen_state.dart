@@ -13,7 +13,6 @@ import '../../providers/tournament_game_provider.dart'
 import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../services/replay_buffer_service.dart';
 import '../../services/replay_clips_store.dart';
 import '../../services/rtc_frames_service.dart';
@@ -92,24 +91,19 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         : now.subtract(const Duration(seconds: 20));
     final path = await ReplayBufferService.captureRange(from, now);
     if (path == null) return false;
-    ReplayClipsStore.add(ReplayClip(
+    final clip = ReplayClip(
       path: path,
       createdAt: now,
       hot: hot,
       matchId: matchIdForLeave,
       turnTotal: autoScoringService?.turnTotal,
-    ));
-    if (mounted) {
-      final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(l10n.replaySaved),
-        action: SnackBarAction(
-          label: l10n.replayShare,
-          onPressed: () =>
-              SharePlus.instance.share(ShareParams(files: [XFile(path)])),
-        ),
-      ));
-    }
+    );
+    ReplayClipsStore.add(clip);
+    // Per-screen list: the screen survives the whole BO3/tournament series,
+    // so this is exactly "the clips of this match" for the end view. The
+    // pill's own ✓ state is the only in-match feedback — sharing lives on
+    // the end screen, never mid-game.
+    matchReplayClips.add(clip);
     return true;
   }
 
@@ -156,6 +150,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // Impact timestamps of MY current visit (AI-detected) — the replay pill's
   // capture window is [first dart − 2s, tap]. Cleared when my turn starts.
   final List<DateTime> _turnDartTimes = [];
+  /// Clips captured during this screen's match/series, newest last — handed
+  /// to MatchEndView, where sharing happens.
+  final List<ReplayClip> matchReplayClips = [];
   String? lastKnownCurrentPlayer;
   // Last leg number seen (BO3 ranked series / tournament series). Detects leg
   // transitions that turn-change detection misses: when the SAME player ends
