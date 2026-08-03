@@ -60,6 +60,11 @@ class P2pRtcSession {
   /// never gets an answer) — escalation must never depend on another event.
   static const Duration recoveryTimeout = Duration(seconds: 12);
 
+  /// How long a `Disconnected` state may self-heal before we force an ICE
+  /// restart. Short: a real transient blip recovers in ~1-2s, and beyond
+  /// that only a restart converges.
+  static const Duration disconnectedGrace = Duration(seconds: 4);
+
   /// Re-emission cadence of the initial offer while the opponent has said
   /// NOTHING yet. Signals have no replay: if the polite peer registers its
   /// handler seconds after ours fired (tournament entry skew — one player
@@ -111,6 +116,7 @@ class P2pRtcSession {
   int? _connectTimeMs;
   Timer? _connectWatchdog;
   Timer? _recoveryTimer;
+  Timer? _disconnectedTimer;
   Timer? _offerRetryTimer;
   bool _remoteSignalSeen = false;
   int _iceRestartAttempts = 0;
@@ -197,11 +203,28 @@ class P2pRtcSession {
           _iceRestartAttempts = 0;
           _recoveryTimer?.cancel();
           _recoveryTimer = null;
+          _disconnectedTimer?.cancel();
+          _disconnectedTimer = null;
           _handleConnected();
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
           _linkUp = false;
           _handleIceFailure();
+          break;
+        case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
+          // Disconnected is NOT always followed by Failed: after an earlier
+          // ICE restart the agent can sit in Disconnected forever, and the
+          // second airplane-mode outage froze exactly there — no Failed, so
+          // no restart, no recovery timer, no fallback, and the socket-return
+          // kick was skipped because _linkUp still read true.
+          _linkUp = false;
+          _disconnectedTimer?.cancel();
+          _disconnectedTimer = Timer(disconnectedGrace, () {
+            if (!_disposed && !_failed && !_linkUp) {
+              debugPrint('P2P: still disconnected after grace — restarting ICE');
+              _handleIceFailure();
+            }
+          });
           break;
         default:
           break;
@@ -360,6 +383,8 @@ class P2pRtcSession {
 
   void _handleIceFailure() {
     if (_disposed || _failed) return;
+    _disconnectedTimer?.cancel();
+    _disconnectedTimer = null;
     // Guaranteed exit: if nothing brings the link back within the window,
     // fail over — never wait for a Failed→Failed "transition" that libwebrtc
     // will not emit.
@@ -383,6 +408,7 @@ class P2pRtcSession {
     _failed = true;
     _connectWatchdog?.cancel();
     _recoveryTimer?.cancel();
+    _disconnectedTimer?.cancel();
     _offerRetryTimer?.cancel();
     debugPrint('P2P: failed ($reason)');
     onFailed?.call(reason);
@@ -630,6 +656,7 @@ class P2pRtcSession {
     _disposed = true;
     _connectWatchdog?.cancel();
     _recoveryTimer?.cancel();
+    _disconnectedTimer?.cancel();
     _offerRetryTimer?.cancel();
     SocketService.off('rtc_signal', owner: this);
     await sendReport(fellBack: fellBack, reason: reason);
