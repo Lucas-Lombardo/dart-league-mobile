@@ -5,6 +5,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/replay_group.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/replay_clips_store.dart';
 import '../../services/replay_upload_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
@@ -26,6 +27,13 @@ class ReplayLibraryScreen extends StatefulWidget {
 
 class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
   List<ReplayGroup>? _groups;
+
+  /// Freshly captured clips whose overlay render / upload is still running
+  /// (the end-of-match pipeline) — shown as dimmed "preparing" rows at the
+  /// top so arriving straight from the end screen never reads as "my
+  /// replays are gone". Snapshotted together with [_groups] so a pending
+  /// row and its cloud replacement swap in a single frame.
+  List<ReplayClip> _pending = const [];
   int _total = 0;
 
   /// How long the backend keeps a clip. Sent with the library; the fallback
@@ -36,7 +44,20 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    _pending = ReplayClipsStore.preparing();
+    // Fires when an upload lands or fails: the cloud list changed, refetch.
+    ReplayClipsStore.revision.addListener(_onClipsChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    ReplayClipsStore.revision.removeListener(_onClipsChanged);
+    super.dispose();
+  }
+
+  void _onClipsChanged() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
@@ -47,6 +68,7 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
         _groups = groupReplayClips(
           List<Map<String, dynamic>>.from(data['clips'] as List),
         );
+        _pending = ReplayClipsStore.preparing();
         _total = (data['total'] as num?)?.toInt() ?? 0;
         _retentionDays =
             (data['retentionDays'] as num?)?.toInt() ?? _retentionDays;
@@ -54,7 +76,12 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
       });
     } catch (e) {
       debugPrint('[ReplayLibrary] load failed: $e');
-      if (mounted) setState(() => _failed = true);
+      if (mounted) {
+        setState(() {
+          _pending = ReplayClipsStore.preparing();
+          _failed = true;
+        });
+      }
     }
   }
 
@@ -141,7 +168,9 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         color: AppTheme.primary,
-        child: _groups == null
+        // Pending rows never wait for the network: straight from the end
+        // screen, the list shows them before /replays/mine even answers.
+        child: _groups == null && _pending.isEmpty
             ? Center(
                 child: _failed
                     ? IconButton(
@@ -156,8 +185,9 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
                   if (quotaBites) _quotaBanner(l10n),
-                  if (_groups!.isNotEmpty) _retentionNotice(l10n),
-                  if (_groups!.isEmpty)
+                  if (_groups?.isNotEmpty ?? false) _retentionNotice(l10n),
+                  if (_pending.isNotEmpty) ..._pendingSections(l10n),
+                  if (_groups != null && _groups!.isEmpty && _pending.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 80),
                       child: Column(children: [
@@ -172,18 +202,182 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
                         ),
                       ]),
                     )
-                  else
-                    ..._buildGroups(l10n),
+                  else if (_groups != null)
+                    ..._buildGroups(
+                      l10n,
+                      // The pending sections already printed today's heading.
+                      lastDay: _pending.isNotEmpty
+                          ? _dayLabel(DateTime.now(), l10n)
+                          : null,
+                    ),
                 ],
               ),
       ),
     );
   }
 
-  /// Groups, with a day heading whenever the date changes.
-  List<Widget> _buildGroups(AppLocalizations l10n) {
+  /// The clips of the match(es) just played, still rendering/uploading: their
+  /// final place in the list, today's heading included, as dimmed rows with a
+  /// spinner — each is replaced by its cloud row when its upload lands (the
+  /// store notify triggers the refetch).
+  List<Widget> _pendingSections(AppLocalizations l10n) {
+    final byMatch = <String?, List<ReplayClip>>{};
+    for (final clip in _pending) {
+      byMatch.putIfAbsent(clip.matchId, () => []).add(clip);
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(
+          _dayLabel(DateTime.now(), l10n).toUpperCase(),
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.4,
+          ),
+        ),
+      ),
+      for (final clips in byMatch.values)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pendingHeader(clips.first, l10n),
+              const SizedBox(height: 10),
+              for (var i = 0; i < clips.length; i++)
+                Padding(
+                  padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+                  child: _pendingRow(clips[i], i + 1, l10n),
+                ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  /// Light twin of [_matchHeader]: the cloud group (opponent, format, result)
+  /// does not exist yet, so this shows what the capture knew — the opponent's
+  /// name and the time.
+  Widget _pendingHeader(ReplayClip clip, AppLocalizations l10n) {
+    final title =
+        clip.opponent != null ? l10n.replayVs(clip.opponent!) : l10n.replayNoMatch;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            _timeLabel(clip.createdAt),
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Dimmed sibling of [_clipRow]: spinner instead of the play affordance,
+  /// « Préparation du clip… » as the subtitle, no tap and no menu — the row
+  /// exists to say "it's coming", nothing on it is actionable yet.
+  Widget _pendingRow(ReplayClip clip, int position, AppLocalizations l10n) {
+    final score = clip.turnTotal != null && clip.turnTotal! > 0
+        ? '${clip.turnTotal}'
+        : null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border:
+            Border.all(color: AppTheme.textSecondary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppTheme.textSecondary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppTheme.textSecondary.withValues(alpha: 0.25)),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 17,
+                height: 17,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.primary),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (score != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Text(
+                score,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 21,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.replayClipNumber(position),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l10n.replayPreparing,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 11.5,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Groups, with a day heading whenever the date changes. [lastDay] seeds
+  /// the dedup when a heading was already printed above (pending sections).
+  List<Widget> _buildGroups(AppLocalizations l10n, {String? lastDay}) {
     final widgets = <Widget>[];
-    String? lastDay;
     for (final group in _groups!) {
       final day = _dayLabel(group.latestAt, l10n);
       if (day != lastDay) {
@@ -230,7 +424,7 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
       );
 
   /// Always on, above the first match: a clip that will be deleted must say
-  /// so long before the tile starts counting down.
+  /// so long before the row starts counting down.
   Widget _retentionNotice(AppLocalizations l10n) => Container(
         margin: const EdgeInsets.only(bottom: 18),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -251,34 +445,22 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
         ]),
       );
 
-  /// One match: its header, then its clips on a rail — the rail is what says
-  /// « these belong together ».
+  /// One match: its header, then one full-width row per clip. Rows instead of
+  /// thumbnails because there is no thumbnail to show — an empty rectangle
+  /// promises an image the clip does not have.
   Widget _matchSection(ReplayGroup group, AppLocalizations l10n) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _matchHeader(group, l10n),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.only(left: 12),
-            decoration: const BoxDecoration(
-              border: Border(
-                left: BorderSide(color: AppTheme.surfaceLight, width: 2),
-              ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < group.clips.length; i++)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+              child: _clipRow(group.clips[i], i + 1, l10n),
             ),
-            child: SizedBox(
-              height: 132,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                itemCount: group.clips.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => _clipTile(group.clips[i], l10n),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -364,100 +546,106 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
     );
   }
 
-  /// A clip: its total in big, its custom name underneath when it has one —
-  /// renaming stays reachable from the ⋮ on the tile.
-  Widget _clipTile(ReplayEntry clip, AppLocalizations l10n) {
+  /// A clip: play affordance, the visit total, then its name (or its rank in
+  /// the match) over the duration and the time it was captured. Renaming and
+  /// deleting stay on the ⋮ at the end of the row.
+  Widget _clipRow(ReplayEntry clip, int position, AppLocalizations l10n) {
     const accent = AppTheme.playerBlue;
     final score = clip.turnTotal != null && clip.turnTotal! > 0
         ? '${clip.turnTotal}'
         : null;
     final expiry = _expiryLabel(clip, l10n);
-    return SizedBox(
-      width: 104,
-      child: Material(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            HapticService.lightImpact();
-            AppNavigator.toScreen(
-              context,
-              ReplayPlayerScreen(source: clip.url, isLocal: false),
-            );
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withValues(alpha: 0.35)),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  accent.withValues(alpha: 0.12),
-                  AppTheme.gameBackground,
-                ],
+    final duration = clip.durationLabel;
+    final time = _timeLabel(clip.createdAt);
+    final subtitle = duration == null ? time : '$duration · $time';
+
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticService.lightImpact();
+          AppNavigator.toScreen(
+            context,
+            ReplayPlayerScreen(source: clip.url, isLocal: false),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: accent.withValues(alpha: 0.38)),
+                ),
+                child: const Icon(Icons.play_arrow_rounded,
+                    color: accent, size: 22),
               ),
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 6,
-                  left: 8,
-                  child: expiry != null
-                      ? _expiryBadge(expiry)
-                      : const Icon(Icons.videocam, color: accent, size: 16),
-                ),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: _tileMenu(clip, l10n),
-                ),
-                Positioned(
-                  left: 8,
-                  right: 8,
-                  bottom: 10,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (score != null)
-                        Text(
-                          score,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: clip.hasName ? 22 : 30,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      if (clip.hasName)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Text(
-                            clip.name!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              height: 1.2,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                    ],
+              const SizedBox(width: 12),
+              if (score != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    score,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      clip.hasName
+                          ? clip.name!
+                          : l10n.replayClipNumber(position),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color:
+                            clip.hasName ? Colors.white : AppTheme.textSecondary,
+                        fontSize: 13,
+                        fontWeight:
+                            clip.hasName ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (expiry != null) ...[
+                const SizedBox(width: 8),
+                _expiryBadge(expiry),
               ],
-            ),
+              _clipMenu(clip, l10n),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// Only shown in the last week of a clip's life — a countdown on every tile
+  /// Only shown in the last week of a clip's life — a countdown on every row
   /// would be noise, on the ones about to go it is the point.
   static const _expiryWarningDays = 7;
 
@@ -486,7 +674,7 @@ class _ReplayLibraryScreenState extends State<ReplayLibraryScreen> {
         ),
       );
 
-  Widget _tileMenu(ReplayEntry clip, AppLocalizations l10n) =>
+  Widget _clipMenu(ReplayEntry clip, AppLocalizations l10n) =>
       PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert,
             color: AppTheme.textSecondary, size: 18),

@@ -14,9 +14,12 @@ import 'package:flutter/services.dart';
 /// and stops it on dispose, which also deletes the ring (clips survive in
 /// their own directory).
 class ReplayCapture {
-  const ReplayCapture(this.path, this.startWallMs);
+  const ReplayCapture(this.path, this.startWallMs, this.durationMs);
   final String path;
   final int startWallMs;
+
+  /// Length of the cut clip. Null from a native side that predates it.
+  final int? durationMs;
 }
 
 class ReplayBufferService {
@@ -53,6 +56,13 @@ class ReplayBufferService {
   // the frame is dropped client-side (never queued).
   static int _inFlight = 0;
   static bool _pushErrorLogged = false;
+
+  /// Whether a frame pushed right now would actually be consumed. The camera
+  /// tee checks this BEFORE staging the frame: the Android tight-copy is
+  /// ~1.4MB per frame, and paying it 24×/s during the opponent's whole turn
+  /// just to have [pushFrame] drop the result was pure heat.
+  static bool get wantsFrame =>
+      _armed && _myTurn && _inFlight < 2 && isSupported;
 
   static void arm() {
     _armed = true;
@@ -96,7 +106,8 @@ class ReplayBufferService {
   /// Cut one clip covering [from, to] (bounds snap to segment edges, so the
   /// clip is a little wider than asked — that's the ±2s margin working for
   /// free). Null when the ring has nothing there. [startWallMs] is the wall
-  /// clock of the clip's first frame — what the overlay timeline aligns on.
+  /// clock of the clip's first frame — what the overlay timeline aligns on,
+  /// [durationMs] the length the library shows next to the clip.
   static Future<ReplayCapture?> captureRange(DateTime from, DateTime to) async {
     if (!isSupported) return null;
     try {
@@ -106,7 +117,11 @@ class ReplayBufferService {
       });
       final path = res?['path'] as String?;
       if (path == null) return null;
-      return ReplayCapture(path, (res?['startWallMs'] as num?)?.toInt() ?? 0);
+      return ReplayCapture(
+        path,
+        (res?['startWallMs'] as num?)?.toInt() ?? 0,
+        (res?['durationMs'] as num?)?.toInt(),
+      );
     } catch (e) {
       debugPrint('[ReplayBufferService] capture failed: $e');
       return null;

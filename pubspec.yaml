@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.29+66
+version: 1.2.31+68
 
 environment:
   sdk: ^3.10.7
@@ -44,6 +44,9 @@ dependencies:
   connectivity_plus: ^7.2.0
   intl: ^0.20.2
   package_info_plus: ^10.2.0
+  # Phone model, sent as X-Device-Model so AI-scoring quality and thermal
+  # issues can be correlated with actual hardware.
+  device_info_plus: ^13.2.0
   agora_rtc_engine: ^6.3.0
   # RTC v2: P2P WebRTC for match video (signaling over the existing socket,
   # TURN via Cloudflare). Coexists with Agora — session picked per match.
@@ -70,6 +73,7 @@ dependencies:
   url_launcher: ^6.3.0
   share_plus: ^13.3.0
   video_player: ^2.13.0
+  gal: ^2.3.3
 
 # Vendored camera_android 0.10.11 with one patch: MediaSettings.fps caps the
 # WHOLE Camera2 session (preview + image stream), not just video recording —

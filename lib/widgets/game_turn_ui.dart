@@ -1457,6 +1457,7 @@ Future<T?> showGameDialog<T>(
   Widget? content,
   required List<Widget> Function(BuildContext ctx) actionsBuilder,
   bool barrierDismissible = false,
+  Widget? bottomBar,
 }) {
   return showDialog<T>(
     context: context,
@@ -1467,44 +1468,97 @@ Future<T?> showGameDialog<T>(
       title: title,
       content: content,
       actions: actionsBuilder(ctx),
+      bottomBar: bottomBar,
     ),
   );
 }
 
 /// The dialog widget itself, exposed for callers that need a StatefulBuilder
 /// or custom showDialog options around it.
+///
+/// [bottomBar] docks a full-width widget to the dialog's bottom edge, under
+/// the actions and flush with the rounded border — the replay capture bar of
+/// the checkout dialog (2026-08-04, piste 2: the in-game bar "follows" the
+/// player into the modal that covers it). Null keeps the exact AlertDialog
+/// every other dialog ships.
 Widget gameDialogFrame({
   required Color accent,
   required IconData icon,
   required String title,
   Widget? content,
   required List<Widget> actions,
+  Widget? bottomBar,
 }) {
-  return AlertDialog(
-    backgroundColor: AppTheme.gamePanelEmpty,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(22),
-      side: BorderSide(color: accent.withValues(alpha: 0.7), width: 1.5),
-    ),
-    title: Row(
-      children: [
-        Icon(icon, color: accent, size: 26),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              color: accent,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
+  final titleRow = Row(
+    children: [
+      Icon(icon, color: accent, size: 26),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            color: accent,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.5,
           ),
         ),
-      ],
+      ),
+    ],
+  );
+  final shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(22),
+    side: BorderSide(color: accent.withValues(alpha: 0.7), width: 1.5),
+  );
+  if (bottomBar == null) {
+    return AlertDialog(
+      backgroundColor: AppTheme.gamePanelEmpty,
+      shape: shape,
+      title: titleRow,
+      content: content,
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      actions: actions,
+    );
+  }
+  // A full-bleed footer cannot live in an AlertDialog (title, content and
+  // actions are all inset), so this branch rebuilds the same frame as a plain
+  // Dialog whose Column ends with the bar, clipped by the shared rounded
+  // border. Paddings mirror the AlertDialog ones above; the width cap keeps
+  // the bar's unbounded Row from stretching the dialog in landscape.
+  return Dialog(
+    backgroundColor: AppTheme.gamePanelEmpty,
+    shape: shape,
+    clipBehavior: Clip.antiAlias,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            child: titleRow,
+          ),
+          if (content != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: content,
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowAlignment: OverflowBarAlignment.end,
+                overflowSpacing: 8,
+                children: actions,
+              ),
+            ),
+          ),
+          bottomBar,
+        ],
+      ),
     ),
-    content: content,
-    actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-    actions: actions,
   );
 }

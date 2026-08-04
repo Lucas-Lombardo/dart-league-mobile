@@ -132,7 +132,9 @@ class ReplayBufferPlugin: NSObject {
       AVVideoHeightKey: height,
       AVVideoCompressionPropertiesKey: [
         AVVideoAverageBitRateKey: Self.bitRate,
-        AVVideoExpectedSourceFrameRateKey: 30,
+        // Must track the Dart side's match-mode camera fps
+        // (CameraFrameService._replayCameraFps).
+        AVVideoExpectedSourceFrameRateKey: 24,
       ],
     ]
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -298,6 +300,8 @@ class ReplayBufferPlugin: NSObject {
       DispatchQueue.main.async { result(nil) }
       return
     }
+    // The composition cursor IS the clip's length — the concat is passthrough.
+    let durationMs = Int64((CMTimeGetSeconds(cursor) * 1000).rounded())
     let out = clipsDir.appendingPathComponent("clip_\(nowMs()).mp4")
     try? FileManager.default.removeItem(at: out)
     export.outputURL = out
@@ -306,7 +310,10 @@ class ReplayBufferPlugin: NSObject {
       DispatchQueue.main.async {
         result(
           export.status == .completed
-            ? ["path": out.path, "startWallMs": startWallMs] : nil)
+            ? [
+              "path": out.path, "startWallMs": startWallMs,
+              "durationMs": durationMs,
+            ] : nil)
       }
     }
   }
@@ -359,6 +366,9 @@ extension ReplayBufferPlugin {
   private func doRender(
     inPath: String, timeline: [String: Any], result: @escaping FlutterResult
   ) {
+    // NSLog on purpose (visible from Console.app on a release/TestFlight
+    // build): the render is the deferred pipeline's least observable stage.
+    NSLog("ReplayBuffer: render start %@", inPath)
     let fail = { DispatchQueue.main.async { result(nil) } }
     let asset = AVURLAsset(url: URL(fileURLWithPath: inPath))
     guard let track = asset.tracks(withMediaType: .video).first else { return fail() }
@@ -380,7 +390,9 @@ extension ReplayBufferPlugin {
 
     let videoComp = AVMutableVideoComposition()
     videoComp.renderSize = renderSize
-    videoComp.frameDuration = CMTime(value: 1, timescale: 30)
+    // Matches the ring's 24 fps capture cadence — a 30 fps export would only
+    // duplicate frames.
+    videoComp.frameDuration = CMTime(value: 1, timescale: 24)
     let instruction = AVMutableVideoCompositionInstruction()
     instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)
@@ -409,6 +421,9 @@ extension ReplayBufferPlugin {
     export.outputFileType = .mp4
     export.videoComposition = videoComp
     export.exportAsynchronously {
+      NSLog(
+        "ReplayBuffer: render done status=%ld error=%@",
+        export.status.rawValue, String(describing: export.error))
       DispatchQueue.main.async {
         result(export.status == .completed ? out.path : nil)
       }

@@ -39,7 +39,10 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         private const val SEGMENT_MS = 3_000L
         private const val RING_SEGMENTS = 16
         private const val BIT_RATE = 4_000_000
-        private const val FRAME_RATE = 30
+        // Must track the Dart side's match-mode camera fps
+        // (CameraFrameService._replayCameraFps) — rate-control hint and
+        // concat frame gap both assume the real capture cadence.
+        private const val FRAME_RATE = 24
     }
 
     private lateinit var channel: MethodChannel
@@ -306,7 +309,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         while (segments.size > RING_SEGMENTS) segments.removeFirst().file.delete()
     }
 
-    /** args: fromMs, toMs (epoch millis) → {path, startWallMs}, or null. */
+    /** args: fromMs, toMs (epoch millis) → {path, startWallMs, durationMs}, or null. */
     private fun capture(call: MethodCall, result: MethodChannel.Result) {
         val fromMs = (call.argument<Number>("fromMs"))?.toLong()
         val toMs = (call.argument<Number>("toMs"))?.toLong()
@@ -331,9 +334,11 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
                 val picked = segments.filter { it.endWallMs >= fromMs && it.startWallMs <= toMs }
                 if (picked.isNotEmpty()) {
+                    val (path, durationMs) = concat(picked)
                     payload = mapOf(
-                        "path" to concat(picked),
+                        "path" to path,
                         "startWallMs" to picked.first().startWallMs,
+                        "durationMs" to durationMs,
                     )
                 }
             } catch (e: Exception) {
@@ -356,6 +361,9 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return
         }
         Thread {
+            // Info-level on purpose (visible in release logcat): the render
+            // is the deferred pipeline's least observable stage.
+            android.util.Log.i("ReplayBuffer", "render start $inPath")
             var outPath: String? = null
             try {
                 val out = File(clipsDir(), "clip_${System.currentTimeMillis()}_brand.mp4")
@@ -365,12 +373,14 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             } catch (e: Exception) {
                 android.util.Log.w("ReplayBuffer", "render failed: $e")
             }
+            android.util.Log.i("ReplayBuffer", "render done -> $outPath")
             mainHandler.post { result.success(outPath) }
         }.start()
     }
 
     /** Passthrough concat — no decode, no re-encode. */
-    private fun concat(picked: List<Segment>): String {
+    /** Returns the concatenated clip's path and its duration in milliseconds. */
+    private fun concat(picked: List<Segment>): Pair<String, Long> {
         val out = File(clipsDir(), "clip_${System.currentTimeMillis()}.mp4")
         val outMuxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         var outTrack = -1
@@ -427,7 +437,8 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             } catch (_: Exception) {}
             try { outMuxer.release() } catch (_: Exception) {}
         }
-        return out.absolutePath
+        // offsetUs ended up on the last sample's end: that IS the clip length.
+        return out.absolutePath to offsetUs / 1000
     }
 
     private fun teardown(deleteRing: Boolean) {

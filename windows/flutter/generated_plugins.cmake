@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   flutter_secure_storage_windows
   flutter_webrtc
+  gal
   iris_method_channel
   permission_handler_windows
   share_plus

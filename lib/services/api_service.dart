@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
 
@@ -14,6 +15,10 @@ class ApiService {
   // (tournament entry requires an up-to-date app). Resolved once per session.
   static String? _appVersion;
   static String? _appPlatform;
+  // Phone model, stored server-side to correlate AI-scoring quality and
+  // thermal behaviour with actual hardware. iOS keeps the raw machine id
+  // ("iPhone14,3") — the marketing name hides which chip is in the phone.
+  static String? _deviceModel;
   static Future<void>? _versionInfoFuture;
 
   static Future<void> _ensureVersionInfo() {
@@ -26,7 +31,33 @@ class ApiService {
       } catch (e) {
         debugPrint('ApiService: could not resolve app version: $e');
       }
+      // Separate try: a device-info failure must not cost us the version.
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        if (Platform.isIOS) {
+          _deviceModel = _asHeaderValue((await deviceInfo.iosInfo).utsname.machine);
+        } else {
+          final android = await deviceInfo.androidInfo;
+          _deviceModel =
+              _asHeaderValue('${android.manufacturer} ${android.model}');
+        }
+      } catch (e) {
+        debugPrint('ApiService: could not resolve device model: $e');
+      }
     }();
+  }
+
+  /// Keeps only printable ASCII, the range dart:io accepts in a header value
+  /// (`_isValueChar`: 32-127). The model name comes from the OEM: a single
+  /// non-ASCII character in it would make `HttpHeaders.set` throw a
+  /// FormatException on EVERY request, killing the app for that user with no
+  /// server-side trace. Null when nothing usable is left.
+  static String? _asHeaderValue(String? raw) {
+    if (raw == null) return null;
+    final cleaned =
+        String.fromCharCodes(raw.codeUnits.where((c) => c >= 0x20 && c < 0x7F))
+            .trim();
+    return cleaned.isEmpty ? null : cleaned;
   }
 
   /// Called when token refresh fails -- the app should navigate to login.
@@ -50,6 +81,7 @@ class ApiService {
     await _ensureVersionInfo();
     if (_appVersion != null) headers['X-App-Version'] = _appVersion!;
     if (_appPlatform != null) headers['X-App-Platform'] = _appPlatform!;
+    if (_deviceModel != null) headers['X-Device-Model'] = _deviceModel!;
 
     if (includeAuth) {
       final token = await StorageService.getToken();

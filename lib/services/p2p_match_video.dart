@@ -431,7 +431,14 @@ class P2pMatchVideo {
     try {
       await session?.dispose().timeout(const Duration(seconds: 3));
     } catch (_) {}
-    await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration);
+    // Bounded like every await above: a wedged native call must not hang
+    // stop()'s caller forever (the platform side still finishes on its own).
+    try {
+      await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration)
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('P2P: disposeTrack timed out/failed: $e');
+    }
   }
 
   /// Fire-and-forget teardown for `State.dispose`, which cannot await.

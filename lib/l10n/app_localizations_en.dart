@@ -2394,6 +2394,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get replayShare => 'Share';
 
   @override
+  String get replaySaveToGallery => 'Save';
+
+  @override
+  String get replaySavedToGallery => 'Clip saved to your gallery';
+
+  @override
+  String get replaySaveToGalleryFailed => 'Could not save the clip to your gallery';
+
+  @override
+  String get replayGalleryPermissionDenied =>
+      'Allow photo access in Settings to save the clip';
+
+  @override
+  String get replayShareFailed => 'Could not prepare the clip for sharing';
+
+  @override
   String get replayNothingToCapture => 'Nothing to record yet';
 
   @override
@@ -2439,6 +2455,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String replayVs(String opponent) => 'vs $opponent';
 
   @override
+  String replayClipNumber(int position) => 'Clip $position';
+
+  @override
   String replayRetentionNotice(int days) =>
       'Your clips are kept for $days days, then deleted automatically.';
 
@@ -2450,6 +2469,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replayNoMatch => 'Outside a match';
+
+  @override
+  String get replayPreparing => 'Preparing your clip…';
 
   @override
   String get replayOutcomeWon => 'Won';

@@ -921,6 +921,11 @@ abstract class AppLocalizations {
   String get replayCapture;
   String get replaySaved;
   String get replayShare;
+  String get replaySaveToGallery;
+  String get replaySavedToGallery;
+  String get replaySaveToGalleryFailed;
+  String get replayGalleryPermissionDenied;
+  String get replayShareFailed;
   String get replayNothingToCapture;
   String get replayMoments;
   String get myReplays;
@@ -936,10 +941,12 @@ abstract class AppLocalizations {
   String replayClipsCount(int count);
   String replayFreeLeft(int left);
   String replayVs(String opponent);
+  String replayClipNumber(int position);
   String replayRetentionNotice(int days);
   String replayExpiresIn(int days);
   String get replayExpiresToday;
   String get replayNoMatch;
+  String get replayPreparing;
   String get replayOutcomeWon;
   String get replayOutcomeLost;
   String get replayOutcomePending;

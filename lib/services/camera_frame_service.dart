@@ -32,12 +32,14 @@ class CameraFrameService {
   bool _disposed = false;
 
   // Session-wide camera frame rate. D8 capped it at 15 (no consumer took
-  // more); the replay ring now DOES — a 15 fps clip read as choppy on the
-  // first shareable exports (2026-08-03). The RTC/Agora push stays throttled
-  // at ~15 via _minPushInterval and the AI still pulls ≤4/s, so the extra
-  // cost is the callback/copy rate plus the ring encoder during MY turn
-  // only. Heat to be re-validated on-device.
-  static const int _cameraFps = 30;
+  // more); the replay ring is the one consumer that does — a 15 fps clip
+  // read as choppy on the first shareable exports (2026-08-03). Match modes
+  // (ring armed) run at 24: smooth enough to share, one fifth less per-frame
+  // pipeline than the 30 first tried. Solo modes (training, placement) have
+  // no ring and keep D8's 15 — the AI pulls ≤4/s and the RTC/Agora push is
+  // throttled to ~15 via _minPushInterval regardless.
+  static const int _replayCameraFps = 24;
+  static const int _defaultCameraFps = 15;
 
   // Push cadence into Agora: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
@@ -204,7 +206,7 @@ class CameraFrameService {
           // iOS: applied by camera_avfoundation via activeVideoM{in,ax}FrameDuration.
           // Android: applied by our vendored camera_android patch (see
           // packages/camera_android — stock only applies fps while recording).
-          fps: _cameraFps,
+          fps: _replayMode ? _replayCameraFps : _defaultCameraFps,
           imageFormatGroup: Platform.isAndroid
               ? ImageFormatGroup.yuv420
               : ImageFormatGroup.bgra8888,
@@ -367,7 +369,7 @@ class CameraFrameService {
     // Cap the push cadence at ~16 fps regardless of the actual camera rate
     // (the encoder runs at 15 fps; a device that ignores the fps cap must
     // not double the copy work).
-    // The replay ring takes EVERY camera frame (30 fps smoothness is the
+    // The replay ring takes every camera frame (24 fps smoothness is the
     // point of a shareable clip); only the transport push below is
     // throttled to its encoder's 15 fps.
     if (_replayMode) _pushFrameToReplay(image);
@@ -390,6 +392,9 @@ class CameraFrameService {
   /// asynchronously), and the method channel serializes synchronously, so
   /// this buffer is reusable as soon as the call returns.
   void _pushFrameToReplay(CameraImage image) {
+    // The service only consumes frames of MY turn (and drops when the channel
+    // is behind) — bail before the staging copy, not after.
+    if (!ReplayBufferService.wantsFrame) return;
     try {
       if (Platform.isAndroid) {
         final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;

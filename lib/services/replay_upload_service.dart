@@ -48,12 +48,22 @@ class ReplayUploadService {
         // old 'highlight' value for apps that have not updated.
         'type': 'manual',
         'turnTotal': ?clip.turnTotal,
+        'durationMs': ?clip.durationMs,
         'sizeBytes': size,
       });
       quotaReached = false;
+      // The library swaps the clip's "preparing" row for its cloud row on
+      // this notify (it refetches /replays/mine, which now has the clip).
+      clip.status = ReplayClipStatus.cloud;
+      ReplayClipsStore.touch();
       debugPrint('[ReplayUpload] uploaded ${clip.path}');
     } catch (e) {
       if (e.toString().contains('quota')) quotaReached = true;
+      // Local-only from here: the pending row disappears (the cloud library
+      // will never list this clip) and the quota banner explains the why
+      // when that is the cause.
+      clip.status = ReplayClipStatus.failed;
+      ReplayClipsStore.touch();
       debugPrint('[ReplayUpload] failed (kept local): $e');
     }
   }

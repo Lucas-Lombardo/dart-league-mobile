@@ -12,6 +12,8 @@ PODS:
     - Flutter
   - connectivity_plus (0.0.1):
     - Flutter
+  - device_info_plus (0.0.1):
+    - Flutter
   - Firebase/CoreOnly (12.15.0):
     - FirebaseCore (~> 12.15.0)
   - Firebase/Messaging (12.15.0):
@@ -51,6 +53,9 @@ PODS:
   - flutter_webrtc (1.4.0):
     - Flutter
     - WebRTC-SDK (= 144.7559.09)
+  - gal (1.0.0):
+    - Flutter
+    - FlutterMacOS
   - GoogleDataTransport (10.1.0):
     - nanopb (~> 3.30910.0)
     - PromisesObjC (~> 2.4)
@@ -191,11 +196,13 @@ DEPENDENCIES:
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/ios`)
   - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - Flutter (from `Flutter`)
   - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - flutter_webrtc (from `.symlinks/plugins/flutter_webrtc/ios`)
+  - gal (from `.symlinks/plugins/gal/darwin`)
   - in_app_purchase_storekit (from `.symlinks/plugins/in_app_purchase_storekit/darwin`)
   - iris_method_channel (from `.symlinks/plugins/iris_method_channel/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
@@ -244,6 +251,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/camera_avfoundation/ios"
   connectivity_plus:
     :path: ".symlinks/plugins/connectivity_plus/ios"
+  device_info_plus:
+    :path: ".symlinks/plugins/device_info_plus/ios"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   firebase_messaging:
@@ -254,6 +263,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_secure_storage_darwin/darwin"
   flutter_webrtc:
     :path: ".symlinks/plugins/flutter_webrtc/ios"
+  gal:
+    :path: ".symlinks/plugins/gal/darwin"
   in_app_purchase_storekit:
     :path: ".symlinks/plugins/in_app_purchase_storekit/darwin"
   iris_method_channel:
@@ -282,6 +293,7 @@ SPEC CHECKSUMS:
   audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
   camera_avfoundation: 968a9a5323c79a99c166ad9d7866bfd2047b5a9b
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
+  device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
   firebase_core: 1c1e250a77e2df9e80bb8bf0875c8b427044a697
   firebase_messaging: 90cf2b62f5058120ab19f29ceff1503ba0f51ba7
@@ -292,6 +304,7 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_webrtc: 3ee86aa10e0313c38c93fdb215dd86e77014f96a
+  gal: baecd024ebfd13c441269ca7404792a7152fde89
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
   in_app_purchase_storekit: 22cca7d08eebca9babdf4d07d0baccb73325d3c8

@@ -30,6 +30,8 @@
 	<string>Camera access is required for video calls during matches</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is required for voice communication during matches</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Dart Rivals saves your match replay clips to your photo library so you can post or share them</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

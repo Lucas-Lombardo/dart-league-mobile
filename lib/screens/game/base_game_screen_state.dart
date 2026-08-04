@@ -72,13 +72,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   String? get replayFormatLabel => null;
 
   String _replayDefaultFormat(dynamic game) {
-    try {
-      if (game.isFriendly == true) return 'FRIENDLY';
-    } catch (_) {}
+    // isFriendly only turns true when game_won lands (the provider derives
+    // it from that payload), so it is useless during the match — a friendly
+    // clip was burned "RANKED" (2026-08-05). Mid-match the reliable signal
+    // is the series: ranked is BO3-only, so no series = friendly.
     try {
       if (game.isRankedSeries == true) return 'RANKED · BO${game.bestOf}';
     } catch (_) {}
-    return 'RANKED';
+    return 'FRIENDLY';
   }
 
   /// Legs needed to take the series — one pip per leg on the replay cards.
@@ -100,10 +101,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     return ReplayCaptureButton(onCapture: () => captureTurnClip(game));
   }
 
-  /// Cuts the clip of the current visit from the ring buffer, burns the
-  /// broadcast overlay in (scoreboard, banner, end card) and
-  /// stores it. Local-only: sharing never waits on any upload, and a failed
-  /// render falls back to the raw clip.
+  /// Cuts the clip of the current visit from the ring buffer (a cheap
+  /// passthrough concat) and stores it RAW. The heavy tail — the multi-second
+  /// overlay re-encode and the R2 upload — is queued for the END of the match
+  /// (see [processPendingReplayClips]): mid-match the camera, the AI and the
+  /// RTC encoder are already running, and stacking a render + a network burst
+  /// on top was a heat spike at the worst moment. The overlay timeline is
+  /// still built HERE, because it freezes the scores as they are at the tap.
   Future<bool> captureTurnClip(dynamic game) async {
     final now = DateTime.now();
     final from = _turnDartTimes.isNotEmpty
@@ -114,13 +118,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final captured = await ReplayBufferService.captureRange(from, now);
     if (captured == null) return false;
-    var path = captured.path;
+    // A checkout capture usually happens from the win dialog, while the
+    // final dart is still PENDING confirmation: the provider has not applied
+    // it yet, so its score reads one dart short (16 burned on a 70-finish,
+    // 2026-08-05 report — DB had the correct 0). The verdict being asked for
+    // IS the checkout: burn the end state.
+    bool pendingWin = false;
     try {
-      final timeline = buildReplayOverlayTimeline(
+      pendingWin = game.pendingType == 'win';
+    } catch (_) {}
+    Map<String, dynamic>? timeline;
+    try {
+      timeline = buildReplayOverlayTimeline(
         clipStartWallMs: captured.startWallMs,
         dartTimes: List.of(_turnDartTimes),
         dartNotations: List<String>.from(game.currentRoundThrows as List),
-        myRemainingScore: game.myScore as int,
+        myRemainingScore: pendingWin ? 0 : game.myScore as int,
         opponentScore: game.opponentScore as int,
         myName: auth.currentUser?.username ?? 'YOU',
         opponentName: opponentUsername,
@@ -130,33 +143,99 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         seriesTitle: replayFormatLabel ?? _replayDefaultFormat(game),
         // Video dressing only — the gold band reads the visit itself, not any
         // clip category.
-        checkout: (game.myScore as int) == 0,
+        checkout: pendingWin || (game.myScore as int) == 0,
         logoPath: await materializeReplayLogo(),
       );
-      final dressed = await ReplayBufferService.renderOverlay(
-        inPath: path,
-        timeline: timeline,
-      );
-      if (dressed != null) path = dressed;
     } catch (e) {
-      debugPrint('[Replay] overlay skipped: $e');
+      // No timeline → the clip stays raw, exactly like a failed render.
+      debugPrint('[Replay] timeline skipped: $e');
     }
     final clip = ReplayClip(
-      path: path,
+      path: captured.path,
       createdAt: now,
       matchId: matchIdForLeave,
+      opponent: opponentUsername,
       turnTotal: autoScoringService?.turnTotal,
+      durationMs: captured.durationMs,
     );
+    _pendingReplayRenders.add((clip, timeline));
+    // The final checkout's capture races the win-dialog confirm: when the
+    // series verdict already drained the queue, this clip would sit in it
+    // forever (and its library row would say "preparing" until app death).
+    // Hand it straight to the drain instead.
+    if (_replayProcessingStarted) _drainReplayQueue();
     ReplayClipsStore.add(clip);
     // Per-screen list: the screen survives the whole BO3/tournament series,
     // so this is exactly "the clips of this match" for the end view. The
     // pill's own ✓ state is the only in-match feedback — sharing lives on
     // the end screen, never mid-game.
     matchReplayClips.add(clip);
-    // Cloud library, fire-and-forget: the local clip is already usable and
-    // shareable whether or not the upload lands.
-    ReplayUploadService.uploadClip(clip);
     return true;
+  }
+
+  // Clips waiting for their end-of-match overlay render + upload, in capture
+  // order. A null timeline means "upload raw as-is".
+  final List<(ReplayClip, Map<String, dynamic>?)> _pendingReplayRenders = [];
+  bool _replayProcessingStarted = false;
+
+  /// Runs the deferred tail of every capture: burn the overlay in, swap the
+  /// clip's path to the dressed file, upload. Fired on the series-end
+  /// transition (the end screen is up, camera/AI/RTC load is gone) with a
+  /// dispose() fallback for abandons; the guard makes every later call a
+  /// no-op — except through [captureTurnClip]'s handoff, which drains a
+  /// capture that finished AFTER the verdict (checkout-modal capture racing
+  /// the confirm).
+  void processPendingReplayClips() {
+    if (_replayProcessingStarted) return;
+    _replayProcessingStarted = true;
+    _drainReplayQueue();
+  }
+
+  /// Every await in here is BOUNDED. The uploads are the user-visible part
+  /// (the library's "preparing" rows resolve when they land) and they must
+  /// never sit behind an open-ended native call: a stalled overlay export
+  /// held the whole chain for minutes on-device (2026-08-04) and the clips
+  /// only surfaced after the screen died freed the hardware.
+  void _drainReplayQueue() {
+    if (_pendingReplayRenders.isEmpty) return;
+    final pending = List.of(_pendingReplayRenders);
+    _pendingReplayRenders.clear();
+    Future(() async {
+      // Free the ring's hardware encoder BEFORE the first render — they
+      // otherwise compete for codec instances, and the ring is useless once
+      // the verdict is in (no more captures). Idempotent with the stop the
+      // camera teardown issues.
+      try {
+        await ReplayBufferService.stop()
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        debugPrint('[Replay] ring stop timed out: $e');
+      }
+      for (final (clip, timeline) in pending) {
+        final watch = Stopwatch()..start();
+        if (timeline != null) {
+          // Falls back to the raw clip on failure or timeout (a timed-out
+          // export keeps running native-side; if it lands later the local
+          // path still upgrades for sharing, but the upload stops waiting).
+          try {
+            final dressed = await ReplayBufferService.renderOverlay(
+              inPath: clip.path,
+              timeline: timeline,
+            ).timeout(const Duration(seconds: 30));
+            if (dressed != null) clip.path = dressed;
+          } catch (e) {
+            debugPrint('[Replay] overlay render timed out: $e');
+          }
+        }
+        final renderMs = watch.elapsedMilliseconds;
+        // Awaited on purpose: concurrent uploads split the uplink and every
+        // clip lands together at the end — sequential costs the same total
+        // but resolves the FIRST library row as early as possible.
+        await ReplayUploadService.uploadClip(clip);
+        debugPrint('[Replay] clip processed: render=${renderMs}ms '
+            'upload=${watch.elapsedMilliseconds - renderMs}ms');
+      }
+    });
   }
 
   // ─── RTC v2 (P2P) ──────────────────────────────────────────────────────────
@@ -369,6 +448,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   @override
   void dispose() {
+    // Abandon/quit before the series verdict: the deferred replay tail must
+    // still run (async — it survives this screen; renders need only the clip
+    // files, not the ring). No-op when the series-end transition already ran.
+    processPendingReplayClips();
     WidgetsBinding.instance.removeObserver(this);
     _wakelockReassertTimer?.cancel();
     _wakelockReassertTimer = null;
@@ -441,6 +524,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (gameStarted) {
         _cancelStartStallTimer();
         startStalled = false;
+        // A LIVE game on a screen whose previous verdict already ran the
+        // replay drain (friendly rematch): captures must queue for the next
+        // verdict again, not drain mid-match.
+        if (_replayProcessingStarted && !game.gameEnded) {
+          _replayProcessingStarted = false;
+        }
       }
       final wasGameEnded = gameEnded;
       gameEnded = game.gameEnded;
@@ -505,6 +594,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         _endAgoraCall();
       }
       _sawTournamentSeriesEnded = tournamentSeriesEndedNow;
+      // The match verdict is when the deferred replay renders + uploads run —
+      // the end screen is up and the match load is gone. Three shapes, same
+      // ones that gate the call teardown: a FRIENDLY has no series at all
+      // (seriesEnded stays false — 2026-08-04 on-device: friendly clips sat
+      // "preparing" until the screen died), so its verdict is the plain
+      // gameEnded transition, minus tournament legs whose series goes on.
+      // Guarded internally, safe on every notify.
+      final matchOverNow = toreDownNow && !_tournamentSeriesGoesOn(game);
+      if (matchOverNow || seriesEndedNow || tournamentSeriesEndedNow) {
+        processPendingReplayClips();
+      }
       // Replay ring turn gate: encode only while I throw (the local camera
       // films MY board — the opponent's turn is dead footage and half the
       // encoder heat). Idempotent, safe on every notify.
@@ -1356,16 +1456,24 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   /// Ends the live call, whichever transport carries it (P2P session or
   /// Agora engine), plus the shared camera pipeline.
+  ///
+  /// Camera FIRST — same order as dispose(). It is the local, fast half
+  /// (image stream, replay ring, AI tee) and it must stop feeding the
+  /// transports before they are torn down. Gating it behind p2pVideo.stop()
+  /// left the whole camera pipeline running on the end screen whenever that
+  /// stop dragged (telemetry emit, native track dispose) — 2026-08-04
+  /// report: the deferred replay renders/uploads then crawled until the
+  /// screen was left.
   Future<void> _endAgoraCall() async {
     try {
       autoScoringService?.stopCapture();
+      await cameraFrameService?.dispose();
+      cameraFrameService = null;
+      customVideoTrackId = null;
       if (p2pVideo != null) {
         await p2pVideo!.stop();
         p2pVideo = null;
       }
-      await cameraFrameService?.dispose();
-      cameraFrameService = null;
-      customVideoTrackId = null;
       if (agoraEngine != null) {
         await AgoraService.leaveChannel(agoraEngine!);
         await AgoraService.dispose();
@@ -1610,11 +1718,29 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final notation = (game.pendingData?['finalDart'])?['notation'] as String?;
     final l10n = AppLocalizations.of(context);
     winDialogShowing = true;
+    // The in-game capture bar, docked to the dialog's bottom edge: the
+    // checkout dart opens this modal INSTANTLY, so the bar on the camera
+    // panel sits unreachable under the barrier — exactly on the visit most
+    // worth keeping. Armed ring is the ONLY gate — the in-game bar's
+    // dart-count gate hid it here when the winning visit was auto-validated
+    // with the AI silent (manual D8, 2026-08-04): visit committed, dart
+    // count back to 0, no AI timestamps — yet the footage IS in the ring
+    // (captureTurnClip falls back to a 20s window). Saving does not close
+    // the dialog (the bar shows its own ✓); capture MUST stay possible
+    // before « Modifier les fléchettes », whose undoAllDarts() wipes the
+    // visit timestamps.
+    Widget? checkoutBar;
+    if (ReplayBufferService.armed) {
+      checkoutBar = ReplayCaptureButton(onCapture: () => captureTurnClip(game));
+    } else {
+      debugPrint('[Replay] checkout bar hidden: ring not armed');
+    }
     showGameDialog(
       context,
       accent: AppTheme.success,
       icon: Icons.emoji_events,
       title: l10n.checkout,
+      bottomBar: checkoutBar,
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         if (notation != null && notation.isNotEmpty) ...[
           Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),

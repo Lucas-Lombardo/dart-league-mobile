@@ -6,6 +6,7 @@ class ReplayEntry {
     required this.createdAt,
     this.name,
     this.turnTotal,
+    this.durationMs,
   });
 
   factory ReplayEntry.fromJson(Map<String, dynamic> json) => ReplayEntry(
@@ -16,6 +17,7 @@ class ReplayEntry {
                 DateTime.now(),
         name: (json['name'] as String?)?.trim(),
         turnTotal: (json['turnTotal'] as num?)?.toInt(),
+        durationMs: (json['durationMs'] as num?)?.toInt(),
       );
 
   final String id;
@@ -23,8 +25,17 @@ class ReplayEntry {
   final DateTime createdAt;
   final String? name;
   final int? turnTotal;
+  final int? durationMs;
 
   bool get hasName => name != null && name!.isNotEmpty;
+
+  /// `m:ss`, or null when the upload never reported a duration (older clips).
+  String? get durationLabel {
+    final ms = durationMs;
+    if (ms == null || ms <= 0) return null;
+    final seconds = (ms / 1000).round();
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
 
   /// Whole days left before the backend's retention sweep removes this clip.
   /// Zero or less means the next sweep takes it.

@@ -13,6 +13,7 @@ Map<String, dynamic> clip(
   String outcome = 'won',
   String? name,
   int? turnTotal = 100,
+  int? durationMs,
   String createdAt = '2026-08-03T21:22:00.000Z',
 }) =>
     {
@@ -22,6 +23,7 @@ Map<String, dynamic> clip(
       // Still returned by the API; the app no longer reads it.
       'type': 'manual',
       'turnTotal': turnTotal,
+      'durationMs': durationMs,
       'createdAt': createdAt,
       'match': key == null
           ? null
@@ -79,7 +81,7 @@ void main() {
       expect(orphans.outcome, isNull);
     });
 
-    test('reads the clip fields the tiles render', () {
+    test('reads the clip fields the rows render', () {
       final groups = groupReplayClips([
         clip('c1',
             key: 'm1', opponent: 'A', name: '  Mon 180  ', turnTotal: 180),
@@ -89,6 +91,19 @@ void main() {
       expect(entry.turnTotal, 180);
       expect(entry.name, 'Mon 180');
       expect(entry.hasName, isTrue);
+    });
+
+    test('labels the clip duration, and stays silent without one', () {
+      String? labelOf(int? durationMs) => groupReplayClips([
+            clip('c1', key: 'm1', durationMs: durationMs),
+          ]).first.clips.single.durationLabel;
+
+      expect(labelOf(11400), '0:11');
+      expect(labelOf(62000), '1:02');
+      // Clips uploaded before the app sent a duration, and a zero the
+      // encoder never filled in: the row shows the time alone.
+      expect(labelOf(null), isNull);
+      expect(labelOf(0), isNull);
     });
 
     test('counts the days left before the retention sweep', () {
