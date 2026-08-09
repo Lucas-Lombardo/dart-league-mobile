@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import 'board_framing.dart';
+import 'camera_frame_service.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
@@ -285,6 +286,11 @@ class AutoScoringService extends ChangeNotifier {
   // Dataset capture (see DatasetCaptureService): armed once per startCapture
   // so a visit contributes at most ONE 3-dart frame, disarmed on capture.
   bool _datasetCaptureArmed = false;
+
+  // Clockwise rotation applied to the raw frame before the CURRENT analysis
+  // (Android native-YUV path only, null elsewhere) — pairs with the measured
+  // board tilt to feed the replay's calibration-derived orientation hint.
+  int? _lastAnalysisRotation;
 
   // UI state
   ZoomHint? _zoomHint;
@@ -650,6 +656,7 @@ class AutoScoringService extends ChangeNotifier {
       YuvFrame? datasetYuv;
       (Uint8List, int, int)? datasetPixels;
       bool datasetPixelsAreBgra = false;
+      _lastAnalysisRotation = null;
 
       if (isAndroid && captureYuv != null && _nativeInference != null) {
         // ── Android path: DartsMind-style native YUV pipeline ──
@@ -658,6 +665,7 @@ class AutoScoringService extends ChangeNotifier {
         final yuvData = captureYuv();
         if (yuvData == null || seq != _captureSeq || !_capturing) return;
         datasetYuv = yuvData;
+        _lastAnalysisRotation = yuvData.rotation;
         result = await _nativeInference!.analyzeYuv(
           yPlane: yuvData.yPlane,
           uPlane: yuvData.uPlane,
@@ -1994,10 +2002,23 @@ class AutoScoringService extends ChangeNotifier {
     // Projected board-edge circle (see BoardFraming): the honest size
     // measure — the point extents used before read "in zone" on a board
     // overflowing the frame.
-    final framing = BoardFraming.compute(calibs);
+    final framing = BoardFraming.compute(calibs,
+        imageWidth: result.imageWidth, imageHeight: result.imageHeight);
     if (framing == null) {
       _zoomHint = ZoomHint.boardNotFullyVisible;
       return;
+    }
+    // Feed the replay ring's orientation hint from where the 20 actually is
+    // in the frame — the device-orientation sensor lies on rotation-locked
+    // mounted phones (see CameraFrameService.reportBoardTilt).
+    if (_lastAnalysisRotation != null &&
+        framing.tiltDegrees != null &&
+        !kIsWeb &&
+        Platform.isAndroid) {
+      CameraFrameService.reportBoardTilt(
+        analysisRotation: _lastAnalysisRotation!,
+        tiltDegrees: framing.tiltDegrees!,
+      );
     }
     if (framing.spread < kZoomSpreadMin) {
       _zoomHint = ZoomHint.zoomIn;

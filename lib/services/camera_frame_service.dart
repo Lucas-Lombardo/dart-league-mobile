@@ -137,6 +137,51 @@ class CameraFrameService {
     return rot;
   }
 
+  // --- Calibration-derived replay orientation (Android only) ----------------
+  // The replay ring stores RAW sensor frames and relies on the MP4 rotation
+  // hint to play them upright. Deriving that hint from [_effectiveRotation]
+  // lies on mounted phones: rotation lock ON with the phone strapped sideways
+  // pointing at the board reads as "portrait", the hint comes out 90 on
+  // content that is already upright, and every replay plays sideways —
+  // while scoring stays correct, because the homography absorbs any board
+  // angle, so nothing in the match ever exposes it. The AI calibration is
+  // the one witness of where the 20 actually is in the frame, so the replay
+  // hint is derived from it and only falls back to the sensor guess until
+  // the first calibration lands. Static on purpose: the camera-setup screen
+  // measures on its own instance before the match instance exists, and the
+  // physical mount doesn't change between the two.
+  static int? _calibrationUprightRotation;
+  static int _uprightCandidate = -1;
+  static int _uprightStreak = 0;
+
+  /// Report a fresh board-orientation measurement from the AI calibration.
+  /// [analysisRotation] is the clockwise rotation that was applied to the raw
+  /// frame before inference; [tiltDegrees] the board's clockwise tilt
+  /// measured in that analyzed frame (see [BoardFraming.tiltDegrees]). Their
+  /// difference is the rotation that plays the RAW frame board-upright —
+  /// quantized to the nearest 90° (all an MP4 hint can encode) and adopted
+  /// only after 3 consecutive identical measurements, so one bad calibration
+  /// frame can't flip the ring's orientation mid-match.
+  static void reportBoardTilt({
+    required int analysisRotation,
+    required double tiltDegrees,
+  }) {
+    final upright = (analysisRotation - tiltDegrees) % 360;
+    final quantized = (((upright + 360) % 360 + 45) ~/ 90) * 90 % 360;
+    if (quantized == _uprightCandidate) {
+      _uprightStreak++;
+    } else {
+      _uprightCandidate = quantized;
+      _uprightStreak = 1;
+    }
+    if (_uprightStreak >= 3 && _calibrationUprightRotation != quantized) {
+      debugPrint('[CameraFrameService] replay rotation hint from calibration: '
+          '$quantized° (analysisRotation=$analysisRotation '
+          'tilt=${tiltDegrees.toStringAsFixed(1)}°)');
+      _calibrationUprightRotation = quantized;
+    }
+  }
+
   /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
   /// to the given custom video track. When [p2pMode] is true (RTC v2, no Agora
   /// engine), frames go to [RtcFramesService.pushFrame] instead — same pooled
@@ -418,7 +463,9 @@ class CameraFrameService {
           buffer,
           image.width,
           image.height,
-          _effectiveRotation(),
+          // Calibration-derived hint when available — the sensor guess is
+          // wrong on rotation-locked mounted phones (see reportBoardTilt).
+          _calibrationUprightRotation ?? _effectiveRotation(),
           format: format,
         );
       } else {

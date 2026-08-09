@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/board_framing.dart';
+import '../../services/camera_frame_service.dart';
 import '../../services/dart_detection_service_stub.dart'
     if (dart.library.io) '../../services/dart_detection_service.dart';
 import '../../services/native_inference.dart';
@@ -510,7 +511,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       // 2.5× half-board pass the gate) — treat it like an unusable frame.
       final framing = result.calibrationFromCache
           ? null
-          : BoardFraming.compute(calibs);
+          : BoardFraming.compute(calibs,
+              imageWidth: result.imageWidth, imageHeight: result.imageHeight);
+      // The setup analysis runs on the UNROTATED sensor frame (rotation 0 in
+      // _analyzeSetupFrame), so the measured tilt IS the raw-frame board
+      // angle — prime the replay ring's orientation hint before the match
+      // screen even opens (see CameraFrameService.reportBoardTilt).
+      if (framing?.tiltDegrees != null && Platform.isAndroid) {
+        CameraFrameService.reportBoardTilt(
+          analysisRotation: 0,
+          tiltDegrees: framing!.tiltDegrees!,
+        );
+      }
 
       // ── Framing states — size only, like before the placement guide ──
       // The position checks (fully-visible circle, centering, direction

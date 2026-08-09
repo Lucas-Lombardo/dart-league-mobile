@@ -25,11 +25,18 @@ class BoardFraming {
   /// Whether the whole projected circle fits inside the frame (small margin).
   final bool fullyVisible;
 
+  /// Clockwise angle (degrees, [0, 360)) by which the board appears rotated
+  /// in the analyzed frame — 0 means the 20 points straight up. Measured on
+  /// the projected centre→20 axis, aspect-corrected when the caller passes
+  /// the frame dimensions. Null when that projection degenerates.
+  final double? tiltDegrees;
+
   const BoardFraming({
     required this.spread,
     required this.centerX,
     required this.centerY,
     required this.fullyVisible,
+    this.tiltDegrees,
   });
 
   static const double _edgeMargin = 0.01;
@@ -47,8 +54,14 @@ class BoardFraming {
   bool get locked => fullyVisible && centered && inZone;
 
   /// Null when no valid homography can be built (< 4 points, degenerate set)
-  /// or the projection is implausible.
-  static BoardFraming? compute(List<Detection> calibrationPoints) {
+  /// or the projection is implausible. [imageWidth]/[imageHeight] are the
+  /// analyzed frame's pixel dimensions, used only to aspect-correct
+  /// [tiltDegrees] (the normalized-space measures don't need them).
+  static BoardFraming? compute(
+    List<Detection> calibrationPoints, {
+    int imageWidth = 1,
+    int imageHeight = 1,
+  }) {
     if (calibrationPoints.length < 4) return null;
     final DartScoringService scorer;
     try {
@@ -89,11 +102,22 @@ class BoardFraming {
       // A wildly implausible projection (near-degenerate homography blowing
       // the circle up) is noise, not a measurement.
       if (spread <= 0.01 || spread > 5.0) return null;
+      // Board tilt: project the canonical centre→20 axis into the image and
+      // take its clockwise angle from "up" (y-down screen coords).
+      double? tilt;
+      final top = scorer.boardToImage(kBoardR, 0);
+      if (top[0].isFinite && top[1].isFinite) {
+        final dx = (top[0] - center[0]) * imageWidth;
+        final dy = (top[1] - center[1]) * imageHeight;
+        tilt = math.atan2(dx, -dy) * 180 / math.pi;
+        if (tilt < 0) tilt += 360;
+      }
       return BoardFraming(
         spread: spread,
         centerX: center[0],
         centerY: center[1],
         fullyVisible: inside,
+        tiltDegrees: tilt,
       );
     } catch (_) {
       return null;

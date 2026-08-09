@@ -406,7 +406,13 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 extractor.selectTrack(videoTrack)
                 if (!started) {
                     outTrack = outMuxer.addTrack(extractor.getTrackFormat(videoTrack))
-                    outMuxer.setOrientationHint(picked.first().rotation)
+                    // One hint rules the whole clip; segments can disagree
+                    // when the hint source updates mid-match (e.g. the
+                    // calibration-derived value replacing the sensor guess),
+                    // so take the dominant rotation, not the first's.
+                    val rotation = picked.groupingBy { it.rotation }
+                        .eachCount().maxByOrNull { it.value }!!.key
+                    outMuxer.setOrientationHint(rotation)
                     outMuxer.start()
                     started = true
                 }
