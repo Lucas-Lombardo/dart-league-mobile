@@ -47,7 +47,7 @@ class NativeInferencePlugin: NSObject {
     // events (model load, rebuild, delegate choice) always print; the
     // per-inference line must not — it fired on every frame in release.
     private let verboseTiming = false
-    // Name (e.g. "dartboard-v7_float16") of the currently loaded model; nil
+    // Name (e.g. "dartboard-v6_float16") of the currently loaded model; nil
     // before first load.
     private var loadedModelName: String?
     // Delegate the current interpreter was requested with ("auto" = the
@@ -83,7 +83,7 @@ class NativeInferencePlugin: NSObject {
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "loadModel":
-            // Optional {"modelName": "dartboard-v7_float16"} — which bundled
+            // Optional {"modelName": "dartboard-v6_float16"} — which bundled
             // model to load.
             // Omitted → keep whatever is loaded, or default preference order.
             // Optional {"delegate": "auto"|"cpu"|"metal"|"coreml"} — debug
@@ -198,7 +198,7 @@ class NativeInferencePlugin: NSObject {
             deleteDelegateIfAny()
         }
         guard let modelPath = findModelPath(preferred: modelName) else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dartboard-v7_float16.tflite not found in bundle", details: nil))
+            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dartboard-v6_float16.tflite not found in bundle", details: nil))
             return
         }
 
@@ -343,7 +343,7 @@ class NativeInferencePlugin: NSObject {
 
     // Must track the bundled model (ModelSelector.currentAsset) — single
     // model since 2026-08-09 (v7s and the adaptive ladder were removed).
-    private let defaultModelOrder = ["dartboard-v7_float16"]
+    private let defaultModelOrder = ["dartboard-v6_float16"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

@@ -10,10 +10,17 @@
 class ModelSelector {
   ModelSelector._();
 
-  /// v7 generation (YOLO26 end-to-end, [1,300,6] head — detection_parsing
-  /// dispatches on the shape). Winner of the 6-model A/B campaign of 2026-08.
+  /// v6 generation (YOLO11 anchor head, [1,13,21504] — detection_parsing
+  /// dispatches on the shape, so both head formats stay supported).
+  ///
+  /// TEMPORARY revert from v7 (2026-08-09): the 09/08 leg analysis showed v7
+  /// blind on wide framings and hallucinating duplicate p1 control points
+  /// (34% of frames unscorable); v6 sees all 3 darts on the reference image.
+  /// The plan is to return to a retrained YOLO26 (v7-class) model soon —
+  /// this constant (+ pubspec asset + native defaultModelOrder/asset-key
+  /// fallbacks) is all that needs to flip back.
   static const String currentAsset =
-      'assets/models/dartboard-v7_float16.tflite';
+      'assets/models/dartboard-v6_float16.tflite';
 
   /// Model name without path/extension (what the iOS plugin expects).
   static String get currentModelName =>
