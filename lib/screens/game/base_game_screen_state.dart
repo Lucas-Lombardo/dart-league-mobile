@@ -11,7 +11,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart'
     show TournamentGameState;
 import '../../services/agora_service.dart';
-import '../../services/auto_framer.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
 import '../../services/replay_buffer_service.dart';
@@ -432,7 +431,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
     OrientationUtils.allowAll();
     autoScoringService = AutoScoringService();
-    autoScoringService!.onAutoFrameNeeded = autoFrameCamera;
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -1636,29 +1634,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try { await cameraFrameService!.setZoomLevel(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
   }
 
-  /// AutoFramer servo behind the in-match AUTO chip: drives the camera zoom
-  /// until the scorer's measured spread is back in the reliable zone.
-  bool autoFraming = false;
-  Future<void> autoFrameCamera() async {
-    if (autoFraming || cameraFrameService == null) return;
-    HapticService.mediumImpact();
-    setState(() => autoFraming = true);
-    final result = await AutoFramer.run(
-      readSpread: () => autoScoringService?.zoomSpread,
-      readZoom: () => cameraZoom,
-      setZoom: (z) async {
-        await cameraFrameService?.setZoomLevel(z);
-        if (mounted) setState(() => cameraZoom = z);
-      },
-      minZoom: cameraMinZoom,
-      maxZoom: cameraMaxZoom,
-      isCancelled: () => !mounted || cameraFrameService == null,
-      readAnalysisSeq: () => autoScoringService?.analysisSeq ?? 0,
-    );
-    if (!mounted) return;
-    setState(() => autoFraming = false);
-    if (result == AutoFrameResult.framed) HapticService.heavyImpact();
-  }
 
   // ─── Leave / pop ──────────────────────────────────────────────────────────────
 
@@ -2466,8 +2441,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     currentZoom: cameraZoom,
                     minZoom: cameraMinZoom,
                     maxZoom: cameraMaxZoom,
-                    onAutoFrame: autoFrameCamera,
-                    autoFraming: autoFraming,
                     onEditDart: (index, dartScore) {
                       final (base, mul) = dartScoreToBackend(dartScore);
                       game.editDartThrow(index, base, mul);

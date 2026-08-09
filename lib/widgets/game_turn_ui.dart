@@ -5,7 +5,6 @@ import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'logo_watermark.dart';
-import 'spread_gauge.dart';
 
 /// Shared building blocks for the in-match maquette UI (July 2026 redesign).
 /// Both turn layouts — AutoScoreGameView (your turn) and the opponent-turn
@@ -218,14 +217,6 @@ class GameCameraPanel extends StatelessWidget {
   /// Semantic value from the scorer — localized here at render time.
   final ZoomHint? hint;
 
-  /// Live measured board spread (feeds the mini gauge in the framing chip).
-  final double? spread;
-
-  /// When set, zoomIn/zoomOut hints render as a tappable AUTO chip that
-  /// runs the AutoFramer servo instead of a passive text pill.
-  final Future<void> Function()? onAutoFrame;
-  final bool autoFraming;
-
   final double zoom;
   final double minZoom;
   final double maxZoom;
@@ -244,9 +235,6 @@ class GameCameraPanel extends StatelessWidget {
     this.controls = const [],
     this.showRemoveDartsHint = false,
     this.hint,
-    this.spread,
-    this.onAutoFrame,
-    this.autoFraming = false,
     this.zoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
@@ -324,11 +312,9 @@ class GameCameraPanel extends StatelessWidget {
           ),
 
           // ── Bad-framing alert: pulsing amber ring over the whole panel,
-          // readable in peripheral vision while aiming (the chip below
+          // readable in peripheral vision while aiming (the pill below
           // carries the words, this carries the urgency).
-          if (hint == ZoomHint.zoomIn ||
-              hint == ZoomHint.zoomOut ||
-              autoFraming)
+          if (hint == ZoomHint.zoomIn || hint == ZoomHint.zoomOut)
             const Positioned.fill(
               child: IgnorePointer(child: PulsingFrameBorder()),
             ),
@@ -420,73 +406,7 @@ class GameCameraPanel extends StatelessWidget {
                   ),
                 if (showRemoveDartsHint && hint != null)
                   const SizedBox(height: 8),
-                // Framing off (zoomIn/zoomOut) with a servo available →
-                // explicit amber chip: the servo fires by itself (the scorer
-                // requests it), the chip narrates and stays tappable as a
-                // manual retry. Every other hint → passive text pill.
-                if (hint == ZoomHint.zoomIn || hint == ZoomHint.zoomOut)
-                  if (onAutoFrame != null)
-                    GestureDetector(
-                      onTap: autoFraming ? null : () => onAutoFrame!(),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.95),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            MiniSpreadGauge(spread: spread),
-                            const SizedBox(width: 10),
-                            if (autoFraming)
-                              const SizedBox(
-                                width: 13,
-                                height: 13,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.black87,
-                                ),
-                              )
-                            else
-                              const Icon(
-                                Icons.center_focus_strong,
-                                color: Colors.black87,
-                                size: 15,
-                              ),
-                            const SizedBox(width: 7),
-                            Flexible(
-                              child: Text(
-                                autoFraming
-                                    ? l10n.autoFramingLabel
-                                    : (hint == ZoomHint.zoomIn
-                                        ? l10n.zoomInBoardTooFar
-                                        : l10n.zoomOutBoardTooClose),
-                                style: const TextStyle(
-                                  color: Colors.black87,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    _hintTextPill(l10n)
-                else if (hint != null)
-                  _hintTextPill(l10n),
+                if (hint != null) _hintTextPill(l10n),
               ],
             ),
           ),

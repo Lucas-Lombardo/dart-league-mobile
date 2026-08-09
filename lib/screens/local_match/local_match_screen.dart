@@ -8,7 +8,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/local_match_config.dart';
 import '../../providers/game_provider.dart' show ScoreMultiplier;
-import '../../services/auto_framer.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
@@ -175,7 +174,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       // Solo mode: stop the 30fps image stream whenever the AI loop is off —
       // no Agora viewer needs the frames.
       _autoScoringService?.onCaptureActiveChanged = cameraService.setAiActive;
-      _autoScoringService?.onAutoFrameNeeded = _autoFrame;
 
       try {
         final minZoom = await cameraService.getMinZoomLevel();
@@ -288,27 +286,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     } catch (_) {}
   }
 
-  bool _autoFraming = false;
-  Future<void> _autoFrame() async {
-    if (_autoFraming || _cameraService == null) return;
-    HapticService.mediumImpact();
-    setState(() => _autoFraming = true);
-    final result = await AutoFramer.run(
-      readSpread: () => _autoScoringService?.zoomSpread,
-      readZoom: () => _cameraZoom,
-      setZoom: (z) async {
-        await _cameraService?.setZoomLevel(z);
-        if (mounted) setState(() => _cameraZoom = z);
-      },
-      minZoom: _cameraMinZoom,
-      maxZoom: _cameraMaxZoom,
-      isCancelled: () => !mounted || _cameraService == null,
-      readAnalysisSeq: () => _autoScoringService?.analysisSeq ?? 0,
-    );
-    if (!mounted) return;
-    setState(() => _autoFraming = false);
-    if (result == AutoFrameResult.framed) HapticService.heavyImpact();
-  }
 
   Future<void> _switchCamera() async {
     final svc = _cameraService;
@@ -758,8 +735,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       currentZoom: _cameraZoom,
       minZoom: _cameraMinZoom,
       maxZoom: _cameraMaxZoom,
-      onAutoFrame: _autoFrame,
-      autoFraming: _autoFraming,
       onEditDart: (index, dartScore) {
         final (base, mul) = dartScoreToBackend(dartScore);
         if (index < _currentRoundThrows.length) {

@@ -41,8 +41,6 @@ class TrainingGameView extends StatelessWidget {
   final double currentZoom;
   final double minZoom;
   final double maxZoom;
-  final Future<void> Function()? onAutoFrame;
-  final bool autoFraming;
   final void Function(int index, DartScore? current) onEditSlot;
   final VoidCallback onRemoveLast;
   final VoidCallback? onToggleAi;
@@ -65,8 +63,6 @@ class TrainingGameView extends StatelessWidget {
     this.currentZoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
-    this.onAutoFrame,
-    this.autoFraming = false,
     this.onToggleAi,
     this.aiEnabled = true,
   });
@@ -106,9 +102,6 @@ class TrainingGameView extends StatelessWidget {
           ],
           showRemoveDartsHint: scoringService.showRemoveDartsHint,
           hint: scoringService.zoomHint,
-          spread: scoringService.zoomSpread,
-          onAutoFrame: onAutoFrame,
-          autoFraming: autoFraming,
           zoom: currentZoom,
           minZoom: minZoom,
           maxZoom: maxZoom,

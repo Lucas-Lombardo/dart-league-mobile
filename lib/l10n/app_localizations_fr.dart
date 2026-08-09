@@ -647,23 +647,10 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get zoomOutBoardTooClose => 'Dézoomer — cible trop proche';
 
-  @override
-  String get autoFrameButton => 'Cadrer auto';
-
-  @override
-  String get autoFrameFailedHint => 'Recule ou déplace le téléphone';
-
-  @override
-  String get autoFramingLabel => 'Cadrage auto…';
 
   @override
   String get cameraNeededForAiInfo => 'Caméra requise pour le comptage IA des fléchettes';
 
-  @override
-  String get placeBoardInCircle => 'Place la cible entière au milieu de l\'écran';
-
-  @override
-  String get centerTheBoard => 'Centre la cible au milieu de l\'écran';
 
   @override
   String get boardLocked => 'Cible verrouillée';

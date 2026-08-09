@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
-import '../../services/auto_framer.dart';
 import '../../services/board_framing.dart';
 import '../../services/dart_detection_service_stub.dart'
     if (dart.library.io) '../../services/dart_detection_service.dart';
@@ -65,25 +64,9 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   // AI dartboard detection
   NativeInference? _nativeInference;
   bool aiModelLoaded = false;
-  String? aiHint;
   bool boardDetected = false;
-  // Live measured board spread (null while the board isn't fully seen) —
-  // feeds the framing gauge and the AutoFramer servo.
-  double? latestSpread;
-  bool autoFraming = false;
-  bool autoFrameFailed = false;
-  // Placement-guide state driving the placement overlay.
+  // Framing state driving the setup overlay pill.
   GuideState guideState = GuideState.searching;
-  GuideDirection? guideDirection;
-  // Completed-analysis counter — the AutoFramer's freshness handshake (each
-  // servo step waits for two analyses newer than its zoom change).
-  int _analysisSeq = 0;
-  // Hands-free servo trigger: fires after a couple of consecutive
-  // out-of-zone measurements (board visible, so zooming can fix it), with a
-  // cooldown so a failed attempt (phone must physically move) doesn't loop.
-  int _badFramingStreak = 0;
-  DateTime? _lastAutoFrameAt;
-  static const Duration _autoFrameCooldown = Duration(seconds: 10);
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
   // Latest frame from the persistent image stream, analyzed by the AI loop.
@@ -376,7 +359,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       setState(() {
         cameraReady = false;
         boardDetected = false;
-        aiHint = null;
+        guideState = GuideState.searching;
       });
     }
     await _waitForAiIdle();
@@ -514,7 +497,6 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   }
 
   Future<void> _runAiCapture() async {
-    final l10n = AppLocalizations.of(context);
     if (_aiAnalyzing) return;
     if (_nativeInference == null || !aiModelLoaded) return;
     final frame = _latestAiFrame;
@@ -523,7 +505,6 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     try {
       final result = await _analyzeSetupFrame(frame);
       if (!mounted) return;
-      _analysisSeq++;
       final calibs = result.calibrationPoints;
       // Cache-served calibration must never validate framing (it once let a
       // 2.5× half-board pass the gate) — treat it like an unusable frame.
@@ -531,35 +512,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
           ? null
           : BoardFraming.compute(calibs);
 
-      // ── Placement-guide state machine (validated design) ──
-      // Zoom-fixable problems go to the servo (sizing); position problems go
-      // to the user (cut/offCenter, chevron pointing at the board).
+      // ── Framing states — size only, like before the placement guide ──
+      // The position checks (fully-visible circle, centering, direction
+      // chevrons) mis-read Android's sensor-oriented frames and nagged the
+      // user to "move" forever; zoom instructions are the only guidance.
+      // Same spread zone as the in-game hints (kZoomSpreadMin/Max).
       final GuideState state;
-      GuideDirection? dir;
       if (framing == null) {
         state = calibs.isEmpty ? GuideState.searching : GuideState.cut;
-        if (calibs.isNotEmpty) {
-          var mx = 0.0, my = 0.0;
-          for (final c in calibs) {
-            mx += c.x;
-            my += c.y;
-          }
-          dir = _guideDirectionFrom(mx / calibs.length, my / calibs.length);
-        }
       } else if (framing.spread > kZoomSpreadMax) {
-        // Too big — even when the circle exits the frame, zooming out fixes
-        // this, so it's the servo's job, not the user's.
-        state = GuideState.sizing;
-      } else if (!framing.fullyVisible) {
-        state = GuideState.cut;
-        dir = _guideDirectionFrom(framing.centerX, framing.centerY);
-      } else if (!framing.centered) {
-        state = GuideState.offCenter;
-        dir = _guideDirectionFrom(framing.centerX, framing.centerY);
-      } else if (framing.spread < kZoomSpreadComfortMin) {
-        // Setup keeps sizing up to the comfort floor — locking right at the
-        // model's bare 0.50 minimum looked under-zoomed.
-        state = GuideState.sizing;
+        state = GuideState.tooClose;
+      } else if (framing.spread < kZoomSpreadMin) {
+        state = GuideState.tooFar;
       } else {
         state = GuideState.locked;
       }
@@ -568,32 +532,8 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       if (locked && !boardDetected) HapticService.heavyImpact();
       setState(() {
         guideState = state;
-        guideDirection = dir;
         boardDetected = locked;
-        latestSpread = framing?.spread;
-        aiHint = switch (state) {
-          GuideState.searching => l10n.dartboardNotDetected,
-          GuideState.cut => l10n.placeBoardInCircle,
-          GuideState.offCenter => l10n.centerTheBoard,
-          GuideState.sizing => l10n.autoFramingLabel,
-          GuideState.locked => null,
-        };
       });
-
-      // Hands-free servo — sizing state only: position problems are the
-      // user's to fix, firing the zoom there caused the yo-yo loops.
-      if (state != GuideState.sizing) {
-        _badFramingStreak = 0;
-      } else if (!autoFraming) {
-        _badFramingStreak++;
-        final cooldownOver = _lastAutoFrameAt == null ||
-            DateTime.now().difference(_lastAutoFrameAt!) >=
-                _autoFrameCooldown;
-        if (_badFramingStreak >= 2 && cooldownOver) {
-          _badFramingStreak = 0;
-          unawaited(runAutoFrame());
-        }
-      }
     } catch (e) {
       debugPrint('[CameraSetup] AI capture error: $e');
     } finally {
@@ -601,67 +541,15 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// Text of the guide's status pill. The servo-failure message overrides
-  /// the state text until the servo retries.
+  /// Text of the guide's status pill — one clear instruction per state.
   String _guideStatusText(AppLocalizations l10n) {
-    if (autoFrameFailed && !autoFraming && guideState != GuideState.locked) {
-      return l10n.autoFrameFailedHint;
-    }
     return switch (guideState) {
       GuideState.searching => l10n.dartboardNotDetected,
-      GuideState.cut => l10n.placeBoardInCircle,
-      GuideState.offCenter => l10n.centerTheBoard,
-      GuideState.sizing => l10n.autoFramingLabel,
+      GuideState.cut => l10n.boardNotFullyVisible,
+      GuideState.tooFar => l10n.zoomInBoardTooFar,
+      GuideState.tooClose => l10n.zoomOutBoardTooClose,
       GuideState.locked => l10n.boardLocked,
     };
-  }
-
-  /// Side of the frame the board currently sits on (chevron direction), or
-  /// null when it's close enough to center for no arrow to be useful.
-  GuideDirection? _guideDirectionFrom(double cx, double cy) {
-    final dx = cx - 0.5;
-    final dy = cy - 0.5;
-    if (dx.abs() < 0.08 && dy.abs() < 0.08) return null;
-    if (dx.abs() >= dy.abs()) {
-      return dx < 0 ? GuideDirection.left : GuideDirection.right;
-    }
-    return dy < 0 ? GuideDirection.up : GuideDirection.down;
-  }
-
-  // --- Auto-framing (AutoFramer servo on the setup camera) ---
-
-  Future<void> runAutoFrame() async {
-    if (autoFraming || cameraController == null) return;
-    _lastAutoFrameAt = DateTime.now();
-    HapticService.mediumImpact();
-    setState(() {
-      autoFraming = true;
-      autoFrameFailed = false;
-    });
-    final result = await AutoFramer.run(
-      readSpread: () => latestSpread,
-      readZoom: () => currentZoom,
-      setZoom: (z) async {
-        await cameraController?.setZoomLevel(z);
-        if (mounted) setState(() => currentZoom = z);
-      },
-      minZoom: minZoom,
-      maxZoom: maxZoom,
-      isCancelled: () => !mounted || cameraController == null,
-      // Over-zoomed past the board's calibration points → drop to 1× and
-      // re-acquire. Safe here: nobody occludes the board during setup.
-      resetToMinOnLost: true,
-      readAnalysisSeq: () => _analysisSeq,
-    );
-    if (!mounted) return;
-    setState(() {
-      autoFraming = false;
-      autoFrameFailed = result == AutoFrameResult.boardLost ||
-          result == AutoFrameResult.zoomLimit;
-    });
-    if (result == AutoFrameResult.framed) {
-      HapticService.heavyImpact();
-    }
   }
 
   // --- Zoom Controls ---
@@ -750,7 +638,6 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                   child: IgnorePointer(
                     child: BoardPlacementGuide(
                       state: guideState,
-                      direction: guideDirection,
                       statusText: _guideStatusText(l10n),
                     ),
                   ),

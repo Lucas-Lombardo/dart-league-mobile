@@ -10,17 +10,16 @@
 class ModelSelector {
   ModelSelector._();
 
-  /// v6 generation (YOLO11 anchor head, [1,13,21504] — detection_parsing
-  /// dispatches on the shape, so both head formats stay supported).
+  /// Original DartsMind light model (anchor head, [1,13,21504], 1024×1024
+  /// input — same interface as the v6/v7 exports, detection_parsing
+  /// dispatches on the shape).
   ///
-  /// TEMPORARY revert from v7 (2026-08-09): the 09/08 leg analysis showed v7
-  /// blind on wide framings and hallucinating duplicate p1 control points
-  /// (34% of frames unscorable); v6 sees all 3 darts on the reference image.
-  /// The plan is to return to a retrained YOLO26 (v7-class) model soon —
-  /// this constant (+ pubspec asset + native defaultModelOrder/asset-key
-  /// fallbacks) is all that needs to flip back.
+  /// Reverted from v6 (2026-08-09): the v6/v7 trials scored worse in real
+  /// matches than the original model. The plan is to return to a retrained
+  /// YOLO26 (v7-class) model later — this constant (+ pubspec asset + native
+  /// defaultModelOrder/asset-key fallbacks) is all that needs to flip.
   static const String currentAsset =
-      'assets/models/dartboard-v6_float16.tflite';
+      'assets/models/dart-rival-ia-light.tflite';
 
   /// Model name without path/extension (what the iOS plugin expects).
   static String get currentModelName =>
