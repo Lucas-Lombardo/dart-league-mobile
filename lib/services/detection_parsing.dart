@@ -20,6 +20,100 @@ const List<String> kDetectionLabels = [
   'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'tip'
 ];
 
+// ---------------------------------------------------------------------------
+// Two output formats coexist, dispatched on the output-tensor shape:
+//   [1, 13, 21504] — anchor head (DartsMind + v3..v6 exports):
+//                    parseOutputFloats, then classSpecificNms.
+//   [1, 300, 6]    — end-to-end head (YOLO26, v7s+): rows of
+//                    [x1, y1, x2, y2, conf, cls], already deduplicated —
+//                    parseEndToEndOutput, NO NMS.
+// ---------------------------------------------------------------------------
+
+/// Row length of the end-to-end (YOLO26) head: [x1, y1, x2, y2, conf, cls].
+const int kEndToEndRowLen = 6;
+
+/// The model input canvas is 1024×1024; e2e coordinates are in pixels of
+/// that canvas (the anchor head emits them already normalized to [0,1]).
+const double _e2eCanvasSize = 1024.0;
+
+bool isEndToEndShape(List<int> shape) =>
+    shape.isNotEmpty && shape.last == kEndToEndRowLen;
+
+/// Reconstruct the output shape from a raw float count when the tensor shape
+/// is not available (native inference returns bare bytes). The two head
+/// populations are orders of magnitude apart — anchor is ≥ 13×21504 ≈ 280k
+/// floats, e2e is ≤ 300×6 = 1800 — so a small buffer is e2e.
+List<int> deriveOutputShape(int totalFloats) => totalFloats <= 6000
+    ? [1, totalFloats ~/ kEndToEndRowLen, kEndToEndRowLen]
+    : [1, 13, totalFloats ~/ 13];
+
+/// Parse the end-to-end head ([1, 300, 6]): one row per object, xyxy in
+/// pixels of the 1024 letterbox canvas. Same confidence threshold and the
+/// same xScale/yScale de-letterboxing as the anchor parser; padding rows
+/// (conf ≈ 0) fall out with the threshold. The head is already
+/// deduplicated — callers must NOT run NMS on the result.
+List<Detection> parseEndToEndOutput(
+  Float32List floats,
+  List<int> shape, {
+  required double xScale,
+  required double yScale,
+}) {
+  final numRows = shape[1]; // 300
+  final detections = <Detection>[];
+
+  for (int i = 0; i < numRows; i++) {
+    final off = i * kEndToEndRowLen;
+    final conf = floats[off + 4];
+    if (conf <= kConfidenceThreshold) continue;
+    final classId = floats[off + 5].round();
+    if (classId < 0 || classId >= kDetectionLabels.length) continue;
+
+    // xyxy pixels → [0,1] canvas → the anchor parser's scaled space.
+    final cx = (floats[off] + floats[off + 2]) / 2.0 / _e2eCanvasSize * xScale;
+    final cy =
+        (floats[off + 1] + floats[off + 3]) / 2.0 / _e2eCanvasSize * yScale;
+    final w =
+        (floats[off + 2] - floats[off]).abs() / _e2eCanvasSize * xScale;
+    final h =
+        (floats[off + 3] - floats[off + 1]).abs() / _e2eCanvasSize * yScale;
+
+    // Same boundary check as the anchor parser.
+    if (cx - w / 2 > 1.0 ||
+        cy - h / 2 > 1.0 ||
+        cx + w / 2 < 0.0 ||
+        cy + h / 2 < 0.0) {
+      continue;
+    }
+
+    detections.add(Detection(
+      classId: classId,
+      className: kDetectionLabels[classId],
+      x: cx.clamp(0.0, 1.5), // can exceed 1.0 due to aspect ratio
+      y: cy.clamp(0.0, 1.5),
+      width: w,
+      height: h,
+      confidence: conf,
+    ));
+  }
+  return detections;
+}
+
+/// Shape-dispatched parse: e2e head comes back ready (already deduplicated),
+/// anchor head goes through parseOutputFloats + classSpecificNms. Single
+/// entry point so the inline path and the parse isolate cannot diverge.
+List<Detection> parseModelOutput(
+  Float32List floats,
+  List<int> shape, {
+  required double xScale,
+  required double yScale,
+}) {
+  if (isEndToEndShape(shape)) {
+    return parseEndToEndOutput(floats, shape, xScale: xScale, yScale: yScale);
+  }
+  return classSpecificNms(
+      parseOutputFloats(floats, shape, xScale: xScale, yScale: yScale));
+}
+
 /// Matches DartsMind's `findBestBox` exactly:
 /// - Iterates 21504 elements, 9 class channels (p1-p8 + tip)
 /// - Confidence threshold 0.8

@@ -177,6 +177,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildInfoRow(l10n.developer, 'Lucas Lombardo', Icons.code),
           ], dividerIndent: 56),
 
+
           const SizedBox(height: 24),
           _buildSection(l10n.accountSection.toUpperCase()),
           _buildGroupCard([

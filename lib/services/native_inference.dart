@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
+import 'detection_parsing.dart';
 import 'model_selector.dart';
 import 'output_parse_isolate.dart';
 
@@ -91,12 +92,14 @@ class NativeInference {
     int imageWidth,
     int imageHeight,
   ) async {
-    // Both bundled models (ia-heavy/ia-light) output [1, 13, 21504]; derive the
-    // element count from the byte length so a retrained variant still parses.
+    // Native returns bare bytes without the tensor shape — reconstruct it
+    // from the float count (anchor head [1,13,~21504] vs e2e head [1,~300,6],
+    // see deriveOutputShape). The parse isolate dispatches on that shape.
+    final shape = deriveOutputShape(outputBytes.lengthInBytes ~/ 4);
     final dets = await OutputParseIsolate.instance.tryParse(
       outputBytes,
-      numChannels: 13,
-      numElements: outputBytes.lengthInBytes ~/ (4 * 13),
+      numChannels: shape[1],
+      numElements: shape[2],
       xScale: xScale,
       yScale: yScale,
     );

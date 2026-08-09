@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'dart_detection_service.dart';
+import 'model_selector.dart';
 
 const int _decodeTargetWidth = 1024;
 
@@ -39,10 +40,10 @@ class DetectionIsolate {
 
       // Write model asset to a temp file so the isolate can use
       // Interpreter.fromFile (memory-mapped, same speed as fromAsset).
-      final modelData =
-          await rootBundle.load('assets/models/dart-rival-ia-heavy.tflite');
+      final modelAsset = ModelSelector.currentAsset;
+      final modelData = await rootBundle.load(modelAsset);
       final tempDir = await getTemporaryDirectory();
-      final modelFile = File('${tempDir.path}/dart-rival-ia-heavy.tflite');
+      final modelFile = File('${tempDir.path}/${modelAsset.split('/').last}');
       if (!modelFile.existsSync()) {
         await modelFile.writeAsBytes(modelData.buffer.asUint8List(), flush: true);
       }

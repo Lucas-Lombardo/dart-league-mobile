@@ -773,6 +773,7 @@ class AutoScoringService extends ChangeNotifier {
             _nativeInference!.lastNativeInferMs ?? _lastInferenceMs!);
       }
 
+
       if (seq != _captureSeq || !_capturing) {
         await _maybeCleanup(imagePath, cleanupFile);
         return;

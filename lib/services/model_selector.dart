@@ -34,8 +34,16 @@ import '../utils/storage_service.dart';
 class ModelSelector {
   ModelSelector._();
 
-  static const String smallModelAsset = 'assets/models/dart-rival-ia-light.tflite';
-  static const String bigModelAsset = 'assets/models/dart-rival-ia-heavy.tflite';
+  // v7 generation (YOLO26 end-to-end, [1,300,6] head — detection_parsing
+  // dispatches on the shape): v7 plays the historical "light" role, v7s the
+  // "heavy" one. Winners of the 6-model A/B campaign of 2026-08.
+  static const String smallModelAsset = 'assets/models/dartboard-v7_float16.tflite';
+  static const String bigModelAsset = 'assets/models/dartboard-v7s_float16.tflite';
+
+  /// TRIAL OVERRIDE — when non-empty, every loader (native iOS/Android, Dart
+  /// interpreter, isolate) uses this single model and the small/big ladder is
+  /// disabled. Set back to '' to restore adaptive selection.
+  static const String trialAsset = '';
   static const int upgradeAtMs = 260; // DartsMind: ≤260 → MODEL_BETTER
   static const int downgradeAtMs = 500; // DartsMind: >500 → MODEL_SMALLER
   static const int windowSize = 16; // DartsMind: inferenceTimeArray >= 16
@@ -47,17 +55,24 @@ class ModelSelector {
   static final List<int> _window = <int>[];
 
   /// The asset every loader should use for its next load.
-  static String get currentAsset => _currentAsset;
+  static String get currentAsset =>
+      trialAsset.isNotEmpty ? trialAsset : _currentAsset;
 
   /// Model name without path/extension (what the iOS plugin expects).
   static String get currentModelName =>
-      _currentAsset.split('/').last.replaceAll('.tflite', '');
+      currentAsset.split('/').last.replaceAll('.tflite', '');
 
   /// Resolve the initial model from the persisted device profile.
   /// Idempotent; cheap after the first call.
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
     _initialized = true;
+    if (trialAsset.isNotEmpty) {
+      // Ladder disabled: recordInferenceMs is inert too, since _runningAsset
+      // matches neither ladder asset while the trial model is loaded.
+      debugPrint('[ModelSelector] TRIAL override active → $currentModelName');
+      return;
+    }
     try {
       final profileMs = await StorageService.getAiSmallModelAvgMs();
       if (profileMs != null && profileMs <= upgradeAtMs) {

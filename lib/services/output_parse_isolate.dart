@@ -154,13 +154,14 @@ class OutputParseIsolate {
         }
         final floats = bytes.buffer
             .asFloat32List(bytes.offsetInBytes, bytes.lengthInBytes ~/ 4);
-        var detections = parseOutputFloats(
+        // Shape-dispatched (anchor head → parse + NMS, e2e head → parse
+        // only) — same single entry point as the inline path.
+        final detections = parseModelOutput(
           floats,
           [1, numChannels, numElements],
           xScale: xScale,
           yScale: yScale,
         );
-        detections = classSpecificNms(detections);
         out?.send([id, detections]);
       } catch (e) {
         out?.send([id, 'parse failed: $e']);

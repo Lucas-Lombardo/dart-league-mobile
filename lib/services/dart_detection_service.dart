@@ -204,23 +204,6 @@ class DartDetectionService {
     return (xScale, yScale, origW, origH);
   }
 
-  // ---- Output parsing (DartsMind: findBestBox) ----------------------------
-
-  /// Shared implementation in detection_parsing.dart (also run by the parse
-  /// isolate — keep a single definition).
-  List<Detection> _parseOutput(
-    Float32List floats,
-    List<int> shape, {
-    required double xScale,
-    required double yScale,
-  }) =>
-      parseOutputFloats(floats, shape, xScale: xScale, yScale: yScale);
-
-  // ---- Class-specific NMS (DartsMind: classSpecificNMS) -------------------
-
-  List<Detection> _classSpecificNMS(List<Detection> detections) =>
-      classSpecificNms(detections);
-
   // ---- Control point extraction (extract4CPs equivalent) ------------------
 
   /// Select best 4 control points from p1-p8 detections.
@@ -335,8 +318,8 @@ class DartDetectionService {
 
   /// Core analysis: preprocess → inference → parse → filter → score.
   /// Parse raw TFLite output tensor into a [ScoringResult].
-  /// Used by [NativeInference] to parse output from native-side inference.
-  /// The model's output shape is [1, 13, 21504].
+  /// Used by [NativeInference] to parse output from native-side inference —
+  /// anchor head ([1, 13, 21504]) or end-to-end head ([1, 300, 6]).
   ScoringResult parseRawOutput(
     Float32List outputFloats,
     double xScale,
@@ -344,8 +327,12 @@ class DartDetectionService {
     int imgW,
     int imgH,
   ) {
-    // Ensure output shape is set even if model wasn't loaded via this instance.
-    _outputShape ??= [1, 13, 21504];
+    // No interpreter on this instance (native path): derive the layout from
+    // the buffer itself on every call — a cached shape would go stale if the
+    // native engine reloads onto a model with the other head format.
+    if (_interpreter == null) {
+      _outputShape = deriveOutputShape(outputFloats.length);
+    }
     return _analyze(outputFloats, xScale, yScale, imgW, imgH, 0, 0);
   }
 
@@ -359,13 +346,14 @@ class DartDetectionService {
     int inferenceMs,
   ) {
     final sw = Stopwatch()..start();
-    var detections = _parseOutput(
+    // Shape-dispatched: anchor head → parse + NMS, e2e head → parse only
+    // (already deduplicated). See detection_parsing.dart.
+    final detections = parseModelOutput(
       outputFloats,
       _outputShape!,
       xScale: xScale,
       yScale: yScale,
     );
-    detections = _classSpecificNMS(detections);
     final parseMs = sw.elapsedMilliseconds;
     return scoreParsedDetections(
       detections,

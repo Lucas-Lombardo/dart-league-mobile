@@ -47,7 +47,7 @@ class NativeInferencePlugin: NSObject {
     // events (model load, rebuild, delegate choice) always print; the
     // per-inference line must not — it fired on every frame in release.
     private let verboseTiming = false
-    // Name (e.g. "dart-rival-ia-light") of the currently loaded model; nil
+    // Name (e.g. "dartboard-v7_float16") of the currently loaded model; nil
     // before first load.
     private var loadedModelName: String?
 
@@ -78,7 +78,7 @@ class NativeInferencePlugin: NSObject {
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "loadModel":
-            // Optional {"modelName": "dart-rival-ia-light"} — which bundled
+            // Optional {"modelName": "dartboard-v7_float16"} — which bundled
             // model to load.
             // Omitted → keep whatever is loaded, or default preference order.
             let modelName = (call.arguments as? [String: Any])?["modelName"] as? String
@@ -186,7 +186,7 @@ class NativeInferencePlugin: NSObject {
             deleteDelegateIfAny()
         }
         guard let modelPath = findModelPath(preferred: modelName) else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dart-rival-ia-heavy.tflite/dart-rival-ia-light.tflite not found in bundle", details: nil))
+            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dartboard-v7_float16.tflite/dartboard-v7s_float16.tflite not found in bundle", details: nil))
             return
         }
 
@@ -290,7 +290,8 @@ class NativeInferencePlugin: NSObject {
     }
 
     // Small model first: matches DartsMind's MODEL_SMALLER-by-default strategy.
-    private let defaultModelOrder = ["dart-rival-ia-light", "dart-rival-ia-heavy"]
+    // Must track the bundled pair (ModelSelector small/bigModelAsset).
+    private let defaultModelOrder = ["dartboard-v7_float16", "dartboard-v7s_float16"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

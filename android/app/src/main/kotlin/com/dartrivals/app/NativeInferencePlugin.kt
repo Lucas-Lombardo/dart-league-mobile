@@ -389,6 +389,20 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         val elements = shape[2]
         outBuf.rewind()
         val fb = outBuf.asFloatBuffer()
+        if (elements == 6) {
+            // End-to-end head (YOLO26, [1, rows, 6]): rows of
+            // [x1, y1, x2, y2, conf, cls] — count distinct classes above the
+            // threshold. The channel loop below would misread pixel
+            // coordinates as confidences on this layout.
+            val rows = channels
+            val classes = HashSet<Int>()
+            for (r in 0 until rows) {
+                if (fb.get(r * 6 + 4) > referenceConfidence) {
+                    classes.add(fb.get(r * 6 + 5).toInt())
+                }
+            }
+            return classes.size
+        }
         var classesFound = 0
         for (c in 4 until channels) {
             val base = c * elements
@@ -452,9 +466,12 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
+            // pubspec key "assets/models/dartboard-v7_float16.tflite" doesn't
             // work with Android's AssetManager directly.
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
+            // NB: Dart normally loads via loadModelFile (temp file) — this
+            // asset path is the fallback and must track the bundled small
+            // model (ModelSelector.smallModelAsset).
+            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dartboard-v7_float16.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)
             android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")
