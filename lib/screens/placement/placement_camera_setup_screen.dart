@@ -152,33 +152,12 @@ class _PlacementCameraSetupScreenState
     );
   }
 
-  Widget _buildCameraPreview() {
-    final l10n = AppLocalizations.of(context);
-    return buildCameraPreview(
-      overlayChildren: [
-        const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                l10n.positionDeviceInstruction,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget _buildCameraPreview() => buildCameraPreview();
 
   Widget _buildBottomSection() {
     final l10n = AppLocalizations.of(context);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         border: Border(
@@ -187,26 +166,10 @@ class _PlacementCameraSetupScreenState
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-            ),
-            child: Column(
-              children: [
-                buildInfoRow(Icons.videocam, l10n.cameraOnDuringMatchInfo),
-                const SizedBox(height: 8),
-                buildInfoRow(Icons.smart_toy, l10n.aiWillScoreDartsInfo),
-                const SizedBox(height: 8),
-                buildInfoRow(
-                    Icons.my_location, l10n.makeSureDartboardVisibleInfo),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+          // One compact line — the camera panel above is the point of this
+          // screen, the chrome stays out of its way.
+          buildInfoRow(Icons.videocam, l10n.cameraNeededForAiInfo),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(

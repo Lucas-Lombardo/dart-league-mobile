@@ -13,6 +13,14 @@ import 'dart_scoring_service.dart';
 const double kZoomSpreadMin = 0.50;
 const double kZoomSpreadMax = 0.85;
 
+/// Comfort floor used by the SETUP gate and the AutoFramer target band:
+/// 0.50 is where the model stops going blind, but a board locked near the
+/// floor still looks under-zoomed — setup keeps sizing until the board
+/// fills at least this much. Calibrated against Lucas's reference framing
+/// (1.7× on his rig ≈ 0.78 spread, board edge-to-edge with the surround
+/// cropped). Match hints keep the 0.50 floor (no comfort churn mid-game).
+const double kZoomSpreadComfortMin = 0.68;
+
 /// Semantic camera-framing hint produced by the scorer / setup analysis.
 /// UI layers map it to a localized string — the service must never emit
 /// display text (the old hardcoded English leaked into the match pill).
@@ -56,6 +64,14 @@ class ScoringResult {
   final int imageWidth;
   final int imageHeight;
 
+  /// True when [calibrationPoints] came from the last-good-calibration CACHE
+  /// (the frame itself showed < 4 points — hand occlusion, over-zoom). Fine
+  /// for scoring mid-turn, but framing logic (setup gate, zoom hints/gauge,
+  /// AutoFramer) must treat such a frame as "board not fully visible": the
+  /// cache once let a 2.5×, half-out-of-frame board pass the setup gate with
+  /// a green gauge, and fed the servo a fictional spread.
+  final bool calibrationFromCache;
+
   ScoringResult({
     required this.calibrationPoints,
     required this.dartTips,
@@ -64,5 +80,6 @@ class ScoringResult {
     this.error,
     this.imageWidth = 1,
     this.imageHeight = 1,
+    this.calibrationFromCache = false,
   });
 }

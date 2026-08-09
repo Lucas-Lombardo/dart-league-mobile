@@ -654,6 +654,21 @@ class AppLocalizationsFr extends AppLocalizations {
   String get autoFrameFailedHint => 'Recule ou déplace le téléphone';
 
   @override
+  String get autoFramingLabel => 'Cadrage auto…';
+
+  @override
+  String get cameraNeededForAiInfo => 'Caméra requise pour le comptage IA des fléchettes';
+
+  @override
+  String get placeBoardInCircle => 'Place la cible entière au milieu de l\'écran';
+
+  @override
+  String get centerTheBoard => 'Centre la cible au milieu de l\'écran';
+
+  @override
+  String get boardLocked => 'Cible verrouillée';
+
+  @override
   String get dartboardDetectedGoodPosition => 'Cible détectée — bonne position';
 
   @override

@@ -11,6 +11,55 @@ const double _hi = 1.0;
 
 double _pos(double spread) => ((spread - _lo) / (_hi - _lo)).clamp(0.0, 1.0);
 
+/// Display smoothing shared by both gauges: the raw per-frame spread jitters
+/// by ±0.01–0.02 (model noise) which made the cursor visibly tremble on a
+/// perfectly static scene. A dead-band swallows the noise and real changes
+/// glide instead of twitching. Logic (servo, gate) keeps the RAW value —
+/// only the pixels are smoothed.
+class _SmoothedSpread extends StatefulWidget {
+  final double? spread;
+  final Widget Function(BuildContext context, double? spread) builder;
+
+  const _SmoothedSpread({required this.spread, required this.builder});
+
+  @override
+  State<_SmoothedSpread> createState() => _SmoothedSpreadState();
+}
+
+class _SmoothedSpreadState extends State<_SmoothedSpread> {
+  static const double _deadBand = 0.02;
+  double? _target;
+
+  @override
+  void initState() {
+    super.initState();
+    _target = widget.spread;
+  }
+
+  @override
+  void didUpdateWidget(_SmoothedSpread old) {
+    super.didUpdateWidget(old);
+    final s = widget.spread;
+    if (s == null || _target == null) {
+      _target = s;
+    } else if ((s - _target!).abs() >= _deadBand) {
+      _target = s;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _target;
+    if (t == null) return widget.builder(context, null);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: t, end: t),
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, _) => widget.builder(context, v),
+    );
+  }
+}
+
 /// Vertical framing gauge for the camera-setup screen: green band = reliable
 /// zone, cursor = live measured spread (hidden while the board isn't seen).
 /// Bottom of the track = board too far, top = too close.
@@ -22,10 +71,13 @@ class SpreadGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 22,
-      height: height,
-      child: CustomPaint(painter: _SpreadGaugePainter(spread)),
+    return _SmoothedSpread(
+      spread: spread,
+      builder: (context, smoothed) => SizedBox(
+        width: 22,
+        height: height,
+        child: CustomPaint(painter: _SpreadGaugePainter(smoothed)),
+      ),
     );
   }
 }
@@ -96,41 +148,43 @@ class MiniSpreadGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = spread;
-    return SizedBox(
-      width: 40,
-      height: 12,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            height: 6,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              gradient: LinearGradient(colors: [
-                AppTheme.error.withValues(alpha: 0.8),
-                AppTheme.success.withValues(alpha: 0.8),
-                AppTheme.accent.withValues(alpha: 0.8),
-              ], stops: [
-                _pos(kZoomSpreadMin) / 2,
-                (_pos(kZoomSpreadMin) + _pos(kZoomSpreadMax)) / 2,
-                (1 + _pos(kZoomSpreadMax)) / 2,
-              ]),
-            ),
-          ),
-          if (s != null)
-            Align(
-              alignment: Alignment(_pos(s) * 2 - 1, 0),
-              child: Container(
-                width: 4,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+    return _SmoothedSpread(
+      spread: spread,
+      builder: (context, s) => SizedBox(
+        width: 40,
+        height: 12,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              height: 6,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                gradient: LinearGradient(colors: [
+                  AppTheme.error.withValues(alpha: 0.8),
+                  AppTheme.success.withValues(alpha: 0.8),
+                  AppTheme.accent.withValues(alpha: 0.8),
+                ], stops: [
+                  _pos(kZoomSpreadMin) / 2,
+                  (_pos(kZoomSpreadMin) + _pos(kZoomSpreadMax)) / 2,
+                  (1 + _pos(kZoomSpreadMax)) / 2,
+                ]),
               ),
             ),
-        ],
+            if (s != null)
+              Align(
+                alignment: Alignment(_pos(s) * 2 - 1, 0),
+                child: Container(
+                  width: 4,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

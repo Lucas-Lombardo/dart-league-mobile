@@ -246,8 +246,13 @@ class DartDetectionService {
     return selected;
   }
 
+  /// Whether the calibration of the CURRENT analysis came from the cache
+  /// (set by [_applyCalibFallback], read when building the ScoringResult).
+  bool _calibFromCache = false;
+
   /// Fallback to cached calibration when < 4 points detected.
   List<Detection> _applyCalibFallback(List<Detection> current) {
+    _calibFromCache = false;
     if (current.length >= 4) {
       _lastGoodCalib = List.of(current);
       return current;
@@ -279,6 +284,7 @@ class DartDetectionService {
 
     debugPrint(
         '[Calib] ${current.length}/4 control points match cache — using fallback');
+    _calibFromCache = true;
     return _lastGoodCalib!;
   }
 
@@ -397,6 +403,7 @@ class DartDetectionService {
         imageWidth: imgW,
         imageHeight: imgH,
         error: 'Need 4 control points, found ${controlPoints.length}',
+        calibrationFromCache: _calibFromCache,
       );
     }
 
@@ -409,6 +416,7 @@ class DartDetectionService {
         imageWidth: imgW,
         imageHeight: imgH,
         error: 'No darts detected',
+        calibrationFromCache: _calibFromCache,
       );
     }
 
@@ -445,6 +453,7 @@ class DartDetectionService {
         totalScore: total,
         imageWidth: imgW,
         imageHeight: imgH,
+        calibrationFromCache: _calibFromCache,
       );
     } catch (e) {
       return ScoringResult(
@@ -455,6 +464,7 @@ class DartDetectionService {
         imageWidth: imgW,
         imageHeight: imgH,
         error: 'Scoring error: $e',
+        calibrationFromCache: _calibFromCache,
       );
     }
   }

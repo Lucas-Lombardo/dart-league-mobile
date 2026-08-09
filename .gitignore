@@ -49,3 +49,6 @@ android/key.properties
 
 # Build-time env files — keep prod out of git, dev is committed
 env/prod.json
+
+# Local AI-analysis run data (frames pulled from device) — never ship
+tools/ai_frame_analysis/runs/

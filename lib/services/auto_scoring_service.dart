@@ -4,10 +4,10 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'board_framing.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
-import 'debug_frame_dump_service.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
 
@@ -292,6 +292,39 @@ class AutoScoringService extends ChangeNotifier {
   // points) — null while the board isn't fully visible. Feeds the in-match
   // framing gauge + AutoFramer.
   double? _zoomSpread;
+
+  // Hands-free auto-framing: when the framing stays out of zone for
+  // [_autoFrameBadFrames] consecutive analyzed frames, this callback (wired
+  // by the screen to its AutoFramer run) fires by itself — the AUTO chip
+  // becomes a status, not a required tap. Cooldown so an attempt that can't
+  // succeed (zoom bound reached, phone must move) doesn't loop.
+  Future<void> Function()? onAutoFrameNeeded;
+  int _badFramingStreak = 0;
+  DateTime? _lastAutoFrameRequest;
+  static const int _autoFrameBadFrames = 3;
+  static const Duration _autoFrameCooldown = Duration(seconds: 10);
+
+  /// Completed-analysis counter for the AutoFramer freshness handshake.
+  int _analysisSeq = 0;
+  int get analysisSeq => _analysisSeq;
+
+  void _maybeRequestAutoFrame() {
+    if (_zoomHint != ZoomHint.zoomIn && _zoomHint != ZoomHint.zoomOut) {
+      _badFramingStreak = 0;
+      return;
+    }
+    _badFramingStreak++;
+    final cb = onAutoFrameNeeded;
+    if (cb == null || _badFramingStreak < _autoFrameBadFrames) return;
+    final now = DateTime.now();
+    if (_lastAutoFrameRequest != null &&
+        now.difference(_lastAutoFrameRequest!) < _autoFrameCooldown) {
+      return;
+    }
+    _lastAutoFrameRequest = now;
+    _badFramingStreak = 0;
+    unawaited(cb());
+  }
   int? _lastInferenceMs;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
@@ -493,7 +526,6 @@ class AutoScoringService extends ChangeNotifier {
     final generation = ++_captureGeneration;
     _dartsRemoved = false;
     _datasetCaptureArmed = true;
-    unawaited(DebugFrameDumpService.armSession());
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
     _resetErrorStreak();
@@ -710,25 +742,7 @@ class AutoScoringService extends ChangeNotifier {
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
-
-      // Debug frame dump — records EVERY analyzed frame with its raw result,
-      // before any gate below can early-return (misses and gated frames are
-      // exactly the interesting ones). iOS pixel paths only.
-      if (DebugFrameDumpService.enabled && datasetPixels != null) {
-        final (dumpPixels, dumpW, dumpH) = datasetPixels;
-        DebugFrameDumpService.capture(
-          pixels: dumpPixels,
-          width: dumpW,
-          height: dumpH,
-          isBgra: datasetPixelsAreBgra,
-          seq: seq,
-          result: result,
-          totalMs: _lastInferenceMs,
-          nativeMs: _nativeInference?.lastNativeInferMs,
-          waitingForEmptyBoard: _waitingForEmptyBoard,
-          gateSawDarts: _emptyBoardGateSawDarts,
-        );
-      }
+      _analysisSeq++;
 
       if (seq != _captureSeq || !_capturing) {
         await _maybeCleanup(imagePath, cleanupFile);
@@ -789,6 +803,7 @@ class AutoScoringService extends ChangeNotifier {
       _resetErrorStreak();
 
       _updateZoomHint(result);
+      _maybeRequestAutoFrame();
 
       // One-shot "leftover darts" gate (armed at turn start). The FIRST
       // analyzed frame with a visible board decides:
@@ -2011,19 +2026,30 @@ class AutoScoringService extends ChangeNotifier {
       _zoomSpread = null;
       return;
     }
-    double minX = 1, maxX = 0, minY = 1, maxY = 0;
-    for (final c in calibs) {
-      minX = min(minX, c.x);
-      maxX = max(maxX, c.x);
-      minY = min(minY, c.y);
-      maxY = max(maxY, c.y);
+    // Cache-served calibration (hand occlusion mid-turn, over-zoom): fine
+    // for scoring, but not a real look at the board — no framing hint, no
+    // spread, so neither the gauge nor the AutoFramer act on fiction.
+    if (result.calibrationFromCache) {
+      _zoomHint = null;
+      _zoomSpread = null;
+      return;
     }
-    final spread = max(maxX - minX, maxY - minY);
-    _zoomSpread = spread;
-    if (spread < kZoomSpreadMin) {
+    // Projected board-edge circle (see BoardFraming): the honest size
+    // measure — the point extents used before read "in zone" on a board
+    // overflowing the frame.
+    final framing = BoardFraming.compute(calibs);
+    if (framing == null) {
+      _zoomHint = ZoomHint.boardNotFullyVisible;
+      _zoomSpread = null;
+      return;
+    }
+    _zoomSpread = framing.spread;
+    if (framing.spread < kZoomSpreadMin) {
       _zoomHint = ZoomHint.zoomIn;
-    } else if (spread > kZoomSpreadMax) {
+    } else if (framing.spread > kZoomSpreadMax) {
       _zoomHint = ZoomHint.zoomOut;
+    } else if (!framing.fullyVisible) {
+      _zoomHint = ZoomHint.boardNotFullyVisible;
     } else {
       _zoomHint = null;
     }

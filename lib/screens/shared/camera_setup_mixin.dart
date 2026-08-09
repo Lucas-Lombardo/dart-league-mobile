@@ -8,10 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/auto_framer.dart';
+import '../../services/board_framing.dart';
 import '../../services/dart_detection_service_stub.dart'
     if (dart.library.io) '../../services/dart_detection_service.dart';
 import '../../services/native_inference.dart';
-import '../../widgets/spread_gauge.dart';
+import '../../widgets/board_placement_guide.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
@@ -71,6 +72,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   double? latestSpread;
   bool autoFraming = false;
   bool autoFrameFailed = false;
+  // Placement-guide state driving the placement overlay.
+  GuideState guideState = GuideState.searching;
+  GuideDirection? guideDirection;
+  // Completed-analysis counter — the AutoFramer's freshness handshake (each
+  // servo step waits for two analyses newer than its zoom change).
+  int _analysisSeq = 0;
+  // Hands-free servo trigger: fires after a couple of consecutive
+  // out-of-zone measurements (board visible, so zooming can fix it), with a
+  // cooldown so a failed attempt (phone must physically move) doesn't loop.
+  int _badFramingStreak = 0;
+  DateTime? _lastAutoFrameAt;
+  static const Duration _autoFrameCooldown = Duration(seconds: 10);
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
   // Latest frame from the persistent image stream, analyzed by the AI loop.
@@ -93,14 +106,13 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     return true;
   }
 
-  /// Label for the play/ready button based on current state.
+  /// Label for the play/ready button. Kept SHORT on purpose: the placement
+  /// guide's pill narrates what to do — mirroring the hint here turned the
+  /// CTA into a broken two-line banner.
   String getPlayButtonLabel(AppLocalizations l10n) {
     if (!permissionsGranted || !cameraReady) return l10n.cameraRequiredButton;
     if (cameraSetupConfig.enableAiDetection && !kIsWeb && !aiModelLoaded) {
       return l10n.loadingAi.toUpperCase();
-    }
-    if (aiModelLoaded && !boardDetected) {
-      return aiHint != null ? aiHint!.toUpperCase() : l10n.scanningButton;
     }
     return l10n.play.toUpperCase();
   }
@@ -511,44 +523,77 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     try {
       final result = await _analyzeSetupFrame(frame);
       if (!mounted) return;
+      _analysisSeq++;
       final calibs = result.calibrationPoints;
-      String? hint;
-      bool detected = false;
-      double? measuredSpread;
-      if (calibs.length < 4) {
-        hint = calibs.isEmpty
-            ? l10n.dartboardNotDetected
-            : l10n.boardNotFullyVisible;
-        detected = false;
-      } else {
-        double minX = 1, maxX = 0, minY = 1, maxY = 0;
-        for (final c in calibs) {
-          if (c.x < minX) minX = c.x;
-          if (c.x > maxX) maxX = c.x;
-          if (c.y < minY) minY = c.y;
-          if (c.y > maxY) maxY = c.y;
+      // Cache-served calibration must never validate framing (it once let a
+      // 2.5× half-board pass the gate) — treat it like an unusable frame.
+      final framing = result.calibrationFromCache
+          ? null
+          : BoardFraming.compute(calibs);
+
+      // ── Placement-guide state machine (validated design) ──
+      // Zoom-fixable problems go to the servo (sizing); position problems go
+      // to the user (cut/offCenter, chevron pointing at the board).
+      final GuideState state;
+      GuideDirection? dir;
+      if (framing == null) {
+        state = calibs.isEmpty ? GuideState.searching : GuideState.cut;
+        if (calibs.isNotEmpty) {
+          var mx = 0.0, my = 0.0;
+          for (final c in calibs) {
+            mx += c.x;
+            my += c.y;
+          }
+          dir = _guideDirectionFrom(mx / calibs.length, my / calibs.length);
         }
-        final spread =
-            (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
-        measuredSpread = spread;
-        // Same bounds as the in-game zoom hint — see kZoomSpreadMin for why
-        // the floor is a measured 0.50, not the 0.35 it was once relaxed to.
-        if (spread < kZoomSpreadMin) {
-          hint = l10n.zoomInBoardTooFar;
-          detected = false;
-        } else if (spread > kZoomSpreadMax) {
-          hint = l10n.zoomOutBoardTooClose;
-          detected = false;
-        } else {
-          hint = null;
-          detected = true;
+      } else if (framing.spread > kZoomSpreadMax) {
+        // Too big — even when the circle exits the frame, zooming out fixes
+        // this, so it's the servo's job, not the user's.
+        state = GuideState.sizing;
+      } else if (!framing.fullyVisible) {
+        state = GuideState.cut;
+        dir = _guideDirectionFrom(framing.centerX, framing.centerY);
+      } else if (!framing.centered) {
+        state = GuideState.offCenter;
+        dir = _guideDirectionFrom(framing.centerX, framing.centerY);
+      } else if (framing.spread < kZoomSpreadComfortMin) {
+        // Setup keeps sizing up to the comfort floor — locking right at the
+        // model's bare 0.50 minimum looked under-zoomed.
+        state = GuideState.sizing;
+      } else {
+        state = GuideState.locked;
+      }
+
+      final locked = state == GuideState.locked;
+      if (locked && !boardDetected) HapticService.heavyImpact();
+      setState(() {
+        guideState = state;
+        guideDirection = dir;
+        boardDetected = locked;
+        latestSpread = framing?.spread;
+        aiHint = switch (state) {
+          GuideState.searching => l10n.dartboardNotDetected,
+          GuideState.cut => l10n.placeBoardInCircle,
+          GuideState.offCenter => l10n.centerTheBoard,
+          GuideState.sizing => l10n.autoFramingLabel,
+          GuideState.locked => null,
+        };
+      });
+
+      // Hands-free servo — sizing state only: position problems are the
+      // user's to fix, firing the zoom there caused the yo-yo loops.
+      if (state != GuideState.sizing) {
+        _badFramingStreak = 0;
+      } else if (!autoFraming) {
+        _badFramingStreak++;
+        final cooldownOver = _lastAutoFrameAt == null ||
+            DateTime.now().difference(_lastAutoFrameAt!) >=
+                _autoFrameCooldown;
+        if (_badFramingStreak >= 2 && cooldownOver) {
+          _badFramingStreak = 0;
+          unawaited(runAutoFrame());
         }
       }
-      setState(() {
-        aiHint = hint;
-        boardDetected = detected;
-        latestSpread = measuredSpread;
-      });
     } catch (e) {
       debugPrint('[CameraSetup] AI capture error: $e');
     } finally {
@@ -556,10 +601,38 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
+  /// Text of the guide's status pill. The servo-failure message overrides
+  /// the state text until the servo retries.
+  String _guideStatusText(AppLocalizations l10n) {
+    if (autoFrameFailed && !autoFraming && guideState != GuideState.locked) {
+      return l10n.autoFrameFailedHint;
+    }
+    return switch (guideState) {
+      GuideState.searching => l10n.dartboardNotDetected,
+      GuideState.cut => l10n.placeBoardInCircle,
+      GuideState.offCenter => l10n.centerTheBoard,
+      GuideState.sizing => l10n.autoFramingLabel,
+      GuideState.locked => l10n.boardLocked,
+    };
+  }
+
+  /// Side of the frame the board currently sits on (chevron direction), or
+  /// null when it's close enough to center for no arrow to be useful.
+  GuideDirection? _guideDirectionFrom(double cx, double cy) {
+    final dx = cx - 0.5;
+    final dy = cy - 0.5;
+    if (dx.abs() < 0.08 && dy.abs() < 0.08) return null;
+    if (dx.abs() >= dy.abs()) {
+      return dx < 0 ? GuideDirection.left : GuideDirection.right;
+    }
+    return dy < 0 ? GuideDirection.up : GuideDirection.down;
+  }
+
   // --- Auto-framing (AutoFramer servo on the setup camera) ---
 
   Future<void> runAutoFrame() async {
     if (autoFraming || cameraController == null) return;
+    _lastAutoFrameAt = DateTime.now();
     HapticService.mediumImpact();
     setState(() {
       autoFraming = true;
@@ -575,6 +648,10 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       minZoom: minZoom,
       maxZoom: maxZoom,
       isCancelled: () => !mounted || cameraController == null,
+      // Over-zoomed past the board's calibration points → drop to 1× and
+      // re-acquire. Safe here: nobody occludes the board during setup.
+      resetToMinOnLost: true,
+      readAnalysisSeq: () => _analysisSeq,
     );
     if (!mounted) return;
     setState(() {
@@ -618,7 +695,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// zoom controls, and a customizable overlay.
   /// [overlayChildren] are placed inside the status overlay container
   /// after the "Camera ready" row.
-  Widget buildCameraPreview({List<Widget> overlayChildren = const []}) {
+  Widget buildCameraPreview() {
     final l10n = AppLocalizations.of(context);
     if (cameraController == null || !cameraController!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
@@ -661,70 +738,22 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                 ),
               ),
               Positioned(
-                top: 16,
-                left: 16,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: AppTheme.primary.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.success,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            l10n.cameraReady,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      ...overlayChildren,
-                      if (aiModelLoaded) ...[
-                        const SizedBox(height: 10),
-                        buildAiStatusOverlay(l10n),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
                 right: 12,
                 top: 0,
                 bottom: 0,
                 child: buildZoomControls(),
               ),
+              // The "cercle fantôme" placement guide — replaces the old side
+              // gauge + auto-frame button (validated design 2026-08-09).
               if (aiModelLoaded && cameraSetupConfig.enableAiDetection)
-                Positioned(
-                  left: 12,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(child: SpreadGauge(spread: latestSpread)),
-                ),
-              if (aiModelLoaded &&
-                  cameraSetupConfig.enableAiDetection &&
-                  (!boardDetected || autoFraming))
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 12,
-                  child: Center(child: buildAutoFrameButton(l10n)),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: BoardPlacementGuide(
+                      state: guideState,
+                      direction: guideDirection,
+                      statusText: _guideStatusText(l10n),
+                    ),
+                  ),
                 ),
               if (canFlipCamera)
                 Positioned(
@@ -846,65 +875,6 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  /// Gold "auto-frame" pill: taps run the AutoFramer servo, a spinner shows
-  /// while it works, and a failure (board lost / zoom bound reached) swaps
-  /// the label for the "move the phone" hint until the next tap.
-  Widget buildAutoFrameButton(AppLocalizations l10n) {
-    final failed = autoFrameFailed && !autoFraming;
-    return GestureDetector(
-      onTap: autoFraming ? null : runAutoFrame,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(
-          color: failed
-              ? AppTheme.error.withValues(alpha: 0.92)
-              : AppTheme.accent.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (autoFraming)
-              const SizedBox(
-                width: 15,
-                height: 15,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  color: Colors.black87,
-                ),
-              )
-            else
-              Icon(
-                failed ? Icons.open_with : Icons.center_focus_strong,
-                size: 17,
-                color: failed ? Colors.white : Colors.black87,
-              ),
-            const SizedBox(width: 8),
-            Text(
-              failed
-                  ? l10n.autoFrameFailedHint
-                  : l10n.autoFrameButton.toUpperCase(),
-              style: TextStyle(
-                color: failed ? Colors.white : Colors.black87,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: failed ? 0 : 0.8,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget buildZoomControls() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -939,64 +909,6 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
           border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
         ),
         child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
-  }
-
-  Widget buildAiStatusOverlay(AppLocalizations l10n) {
-    if (!aiModelLoaded) return const SizedBox.shrink();
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: (aiHint == null && boardDetected)
-            ? AppTheme.success.withValues(alpha: 0.2)
-            : (aiHint != null)
-                ? AppTheme.error.withValues(alpha: 0.2)
-                : AppTheme.accent.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: (aiHint == null && boardDetected)
-              ? AppTheme.success
-              : (aiHint != null)
-                  ? AppTheme.error
-                  : AppTheme.accent,
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            (aiHint == null && boardDetected)
-                ? Icons.check_circle
-                : (aiHint != null)
-                    ? Icons.warning_rounded
-                    : Icons.smart_toy_outlined,
-            color: (aiHint == null && boardDetected)
-                ? AppTheme.success
-                : (aiHint != null)
-                    ? AppTheme.error
-                    : AppTheme.accent,
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              (aiHint == null && boardDetected)
-                  ? l10n.dartboardDetectedGoodPosition
-                  : aiHint ?? l10n.scanningForDartboard,
-              style: TextStyle(
-                color: (aiHint == null && boardDetected)
-                    ? AppTheme.success
-                    : (aiHint != null)
-                        ? AppTheme.error
-                        : AppTheme.accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

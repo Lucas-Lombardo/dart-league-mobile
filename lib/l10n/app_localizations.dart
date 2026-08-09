@@ -238,6 +238,11 @@ abstract class AppLocalizations {
   String get zoomOutBoardTooClose;
   String get autoFrameButton;
   String get autoFrameFailedHint;
+  String get autoFramingLabel;
+  String get cameraNeededForAiInfo;
+  String get placeBoardInCircle;
+  String get centerTheBoard;
+  String get boardLocked;
   String get dartboardDetectedGoodPosition;
   String get scanningForDartboard;
   String get cameraRequiredButton;

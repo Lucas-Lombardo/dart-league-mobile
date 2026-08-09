@@ -141,6 +141,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       // (score edit, AI toggled off, training finished) — no Agora viewer
       // needs the frames.
       _ai?.onCaptureActiveChanged = cameraService.setAiActive;
+      _ai?.onAutoFrameNeeded = _autoFrame;
 
       try {
         final minZoom = await cameraService.getMinZoomLevel();
@@ -286,6 +287,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       minZoom: _cameraMinZoom,
       maxZoom: _cameraMaxZoom,
       isCancelled: () => !mounted || _cameraService == null,
+      readAnalysisSeq: () => _ai?.analysisSeq ?? 0,
     );
     if (!mounted) return;
     setState(() => _autoFraming = false);

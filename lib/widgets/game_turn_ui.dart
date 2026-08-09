@@ -323,6 +323,16 @@ class GameCameraPanel extends StatelessWidget {
             ),
           ),
 
+          // ── Bad-framing alert: pulsing amber ring over the whole panel,
+          // readable in peripheral vision while aiming (the chip below
+          // carries the words, this carries the urgency).
+          if (hint == ZoomHint.zoomIn ||
+              hint == ZoomHint.zoomOut ||
+              autoFraming)
+            const Positioned.fill(
+              child: IgnorePointer(child: PulsingFrameBorder()),
+            ),
+
           // ── Brand bug (top center), like a TV channel logo ──
           const Positioned(
             top: 12,
@@ -411,7 +421,9 @@ class GameCameraPanel extends StatelessWidget {
                 if (showRemoveDartsHint && hint != null)
                   const SizedBox(height: 8),
                 // Framing off (zoomIn/zoomOut) with a servo available →
-                // actionable AUTO chip; every other hint → passive text pill.
+                // explicit amber chip: the servo fires by itself (the scorer
+                // requests it), the chip narrates and stays tappable as a
+                // manual retry. Every other hint → passive text pill.
                 if (hint == ZoomHint.zoomIn || hint == ZoomHint.zoomOut)
                   if (onAutoFrame != null)
                     GestureDetector(
@@ -419,16 +431,18 @@ class GameCameraPanel extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
-                          vertical: 8,
+                          vertical: 9,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              AppTheme.gameBackground.withValues(alpha: 0.92),
+                          color: AppTheme.accent.withValues(alpha: 0.95),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppTheme.accent.withValues(alpha: 0.8),
-                            width: 1.2,
-                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -441,23 +455,28 @@ class GameCameraPanel extends StatelessWidget {
                                 height: 13,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: AppTheme.accent,
+                                  color: Colors.black87,
                                 ),
                               )
                             else
                               const Icon(
                                 Icons.center_focus_strong,
-                                color: AppTheme.accent,
+                                color: Colors.black87,
                                 size: 15,
                               ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'AUTO',
-                              style: TextStyle(
-                                color: AppTheme.accent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1,
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                autoFraming
+                                    ? l10n.autoFramingLabel
+                                    : (hint == ZoomHint.zoomIn
+                                        ? l10n.zoomInBoardTooFar
+                                        : l10n.zoomOutBoardTooClose),
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                           ],
@@ -1633,4 +1652,53 @@ Widget gameDialogFrame({
       ),
     ),
   );
+}
+
+/// Pulsing amber ring shown over the camera panel while the board framing is
+/// out of the reliable zone (or the auto-framing servo is correcting it).
+class PulsingFrameBorder extends StatefulWidget {
+  const PulsingFrameBorder({super.key});
+
+  @override
+  State<PulsingFrameBorder> createState() => _PulsingFrameBorderState();
+}
+
+class _PulsingFrameBorderState extends State<PulsingFrameBorder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = 0.35 + 0.65 * _ctrl.value;
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: AppTheme.accent.withValues(alpha: t),
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accent.withValues(alpha: 0.25 * t),
+                blurRadius: 18,
+                spreadRadius: -4,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

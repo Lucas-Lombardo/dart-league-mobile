@@ -432,6 +432,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
     OrientationUtils.allowAll();
     autoScoringService = AutoScoringService();
+    autoScoringService!.onAutoFrameNeeded = autoFrameCamera;
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -1652,6 +1653,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       minZoom: cameraMinZoom,
       maxZoom: cameraMaxZoom,
       isCancelled: () => !mounted || cameraFrameService == null,
+      readAnalysisSeq: () => autoScoringService?.analysisSeq ?? 0,
     );
     if (!mounted) return;
     setState(() => autoFraming = false);

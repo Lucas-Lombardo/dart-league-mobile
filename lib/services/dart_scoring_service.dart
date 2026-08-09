@@ -298,6 +298,38 @@ class DartScoringService {
   /// CnfPoint and mergeTips operate in.
   List<double> toBoard(double x, double y) => _toBoard(x, y);
 
+  // Inverse homography (board → image), computed lazily on first use.
+  List<List<double>>? _hInv;
+
+  /// Map absolute board coords back to normalised image coords — used by the
+  /// framing logic to project the board-edge circle into the image (including
+  /// the parts that fall OUTSIDE the frame, which the calibration-point
+  /// extents can't see).
+  List<double> boardToImage(double bx, double by) {
+    final inv = _hInv ??= _invert3x3(_h);
+    final w = inv[2][0] * bx + inv[2][1] * by + inv[2][2];
+    return [
+      (inv[0][0] * bx + inv[0][1] * by + inv[0][2]) / w,
+      (inv[1][0] * bx + inv[1][1] * by + inv[1][2]) / w,
+    ];
+  }
+
+  List<List<double>> _invert3x3(List<List<double>> m) {
+    final a = m[0][0], b = m[0][1], c = m[0][2];
+    final d = m[1][0], e = m[1][1], f = m[1][2];
+    final g = m[2][0], h = m[2][1], i = m[2][2];
+    final det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if (det.abs() < 1e-12) {
+      throw ArgumentError('Singular homography — cannot invert');
+    }
+    final id = 1.0 / det;
+    return [
+      [(e * i - f * h) * id, (c * h - b * i) * id, (b * f - c * e) * id],
+      [(f * g - d * i) * id, (a * i - c * g) * id, (c * d - a * f) * id],
+      [(d * h - e * g) * id, (b * g - a * h) * id, (a * e - b * d) * id],
+    ];
+  }
+
   List<double> _toBoard(double x, double y) {
     final w = _h[2][0] * x + _h[2][1] * y + _h[2][2];
     final bx = (_h[0][0] * x + _h[0][1] * y + _h[0][2]) / w;

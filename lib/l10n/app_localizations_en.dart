@@ -649,6 +649,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoFrameFailedHint => 'Move back or reposition your phone';
 
   @override
+  String get autoFramingLabel => 'Auto-framing…';
+
+  @override
+  String get cameraNeededForAiInfo => 'Camera required for AI dart scoring';
+
+  @override
+  String get placeBoardInCircle => 'Fit the whole board in the middle of the screen';
+
+  @override
+  String get centerTheBoard => 'Center the board on the screen';
+
+  @override
+  String get boardLocked => 'Board locked';
+
+  @override
   String get dartboardDetectedGoodPosition =>
       'Dartboard detected — good position';
 

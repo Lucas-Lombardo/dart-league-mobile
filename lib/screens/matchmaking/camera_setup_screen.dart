@@ -307,7 +307,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     final label =
         canPlay ? (widget.actionLabel ?? getPlayButtonLabel(l10n)) : getPlayButtonLabel(l10n);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         border: Border(
@@ -317,26 +317,10 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-            ),
-            child: Column(
-              children: [
-                buildInfoRow(Icons.videocam, l10n.cameraOnDuringMatch),
-                const SizedBox(height: 8),
-                buildInfoRow(Icons.mic_off, l10n.micOffByDefault),
-                const SizedBox(height: 8),
-                buildInfoRow(
-                    Icons.my_location, l10n.makeSureDartboardVisible),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+          // One compact line — the camera panel above is the point of this
+          // screen, the chrome stays out of its way.
+          buildInfoRow(Icons.videocam, l10n.cameraNeededForAiInfo),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
