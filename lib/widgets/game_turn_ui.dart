@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/dart_detection_types.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'logo_watermark.dart';
+import 'spread_gauge.dart';
 
 /// Shared building blocks for the in-match maquette UI (July 2026 redesign).
 /// Both turn layouts — AutoScoreGameView (your turn) and the opponent-turn
@@ -213,7 +215,16 @@ class GameCameraPanel extends StatelessWidget {
   final bool showRemoveDartsHint;
 
   /// The AI's zoom/detection hint, shown under the remove-darts pill.
-  final String? hint;
+  /// Semantic value from the scorer — localized here at render time.
+  final ZoomHint? hint;
+
+  /// Live measured board spread (feeds the mini gauge in the framing chip).
+  final double? spread;
+
+  /// When set, zoomIn/zoomOut hints render as a tappable AUTO chip that
+  /// runs the AutoFramer servo instead of a passive text pill.
+  final Future<void> Function()? onAutoFrame;
+  final bool autoFraming;
 
   final double zoom;
   final double minZoom;
@@ -233,6 +244,9 @@ class GameCameraPanel extends StatelessWidget {
     this.controls = const [],
     this.showRemoveDartsHint = false,
     this.hint,
+    this.spread,
+    this.onAutoFrame,
+    this.autoFraming = false,
     this.zoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
@@ -240,6 +254,42 @@ class GameCameraPanel extends StatelessWidget {
     this.onZoomOut,
     this.bottomBar,
   });
+
+  Widget _hintTextPill(AppLocalizations l10n) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.gameBackground.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.accent.withValues(alpha: 0.6),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.camera_alt, color: AppTheme.accent, size: 15),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              switch (hint!) {
+                ZoomHint.dartboardNotDetected => l10n.dartboardNotDetected,
+                ZoomHint.boardNotFullyVisible => l10n.boardNotFullyVisible,
+                ZoomHint.zoomIn => l10n.zoomInBoardTooFar,
+                ZoomHint.zoomOut => l10n.zoomOutBoardTooClose,
+              },
+              style: const TextStyle(
+                color: AppTheme.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -360,42 +410,64 @@ class GameCameraPanel extends StatelessWidget {
                   ),
                 if (showRemoveDartsHint && hint != null)
                   const SizedBox(height: 8),
-                if (hint != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.gameBackground.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppTheme.accent.withValues(alpha: 0.6),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.camera_alt,
-                          color: AppTheme.accent,
-                          size: 15,
+                // Framing off (zoomIn/zoomOut) with a servo available →
+                // actionable AUTO chip; every other hint → passive text pill.
+                if (hint == ZoomHint.zoomIn || hint == ZoomHint.zoomOut)
+                  if (onAutoFrame != null)
+                    GestureDetector(
+                      onTap: autoFraming ? null : () => onAutoFrame!(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
                         ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            hint!,
-                            style: const TextStyle(
-                              color: AppTheme.accent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        decoration: BoxDecoration(
+                          color:
+                              AppTheme.gameBackground.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppTheme.accent.withValues(alpha: 0.8),
+                            width: 1.2,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            MiniSpreadGauge(spread: spread),
+                            const SizedBox(width: 10),
+                            if (autoFraming)
+                              const SizedBox(
+                                width: 13,
+                                height: 13,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppTheme.accent,
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.center_focus_strong,
+                                color: AppTheme.accent,
+                                size: 15,
+                              ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'AUTO',
+                              style: TextStyle(
+                                color: AppTheme.accent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    _hintTextPill(l10n)
+                else if (hint != null)
+                  _hintTextPill(l10n),
               ],
             ),
           ),

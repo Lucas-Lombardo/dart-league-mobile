@@ -7,9 +7,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/auto_framer.dart';
 import '../../services/dart_detection_service_stub.dart'
     if (dart.library.io) '../../services/dart_detection_service.dart';
 import '../../services/native_inference.dart';
+import '../../widgets/spread_gauge.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
@@ -64,6 +66,11 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   bool aiModelLoaded = false;
   String? aiHint;
   bool boardDetected = false;
+  // Live measured board spread (null while the board isn't fully seen) —
+  // feeds the framing gauge and the AutoFramer servo.
+  double? latestSpread;
+  bool autoFraming = false;
+  bool autoFrameFailed = false;
   bool _aiCapturing = false;
   bool _aiAnalyzing = false;
   // Latest frame from the persistent image stream, analyzed by the AI loop.
@@ -507,6 +514,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       final calibs = result.calibrationPoints;
       String? hint;
       bool detected = false;
+      double? measuredSpread;
       if (calibs.length < 4) {
         hint = calibs.isEmpty
             ? l10n.dartboardNotDetected
@@ -522,13 +530,13 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         }
         final spread =
             (maxX - minX) > (maxY - minY) ? (maxX - minX) : (maxY - minY);
-        // Match the in-game scorer's tolerance (auto_scoring_service._updateZoomHint).
-        // Setup used to demand >= 0.50 spread, which forced users to zoom in
-        // past what the AI actually needs to score reliably (0.35).
-        if (spread < 0.35) {
+        measuredSpread = spread;
+        // Same bounds as the in-game zoom hint — see kZoomSpreadMin for why
+        // the floor is a measured 0.50, not the 0.35 it was once relaxed to.
+        if (spread < kZoomSpreadMin) {
           hint = l10n.zoomInBoardTooFar;
           detected = false;
-        } else if (spread > 0.85) {
+        } else if (spread > kZoomSpreadMax) {
           hint = l10n.zoomOutBoardTooClose;
           detected = false;
         } else {
@@ -539,11 +547,43 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       setState(() {
         aiHint = hint;
         boardDetected = detected;
+        latestSpread = measuredSpread;
       });
     } catch (e) {
       debugPrint('[CameraSetup] AI capture error: $e');
     } finally {
       _aiAnalyzing = false;
+    }
+  }
+
+  // --- Auto-framing (AutoFramer servo on the setup camera) ---
+
+  Future<void> runAutoFrame() async {
+    if (autoFraming || cameraController == null) return;
+    HapticService.mediumImpact();
+    setState(() {
+      autoFraming = true;
+      autoFrameFailed = false;
+    });
+    final result = await AutoFramer.run(
+      readSpread: () => latestSpread,
+      readZoom: () => currentZoom,
+      setZoom: (z) async {
+        await cameraController?.setZoomLevel(z);
+        if (mounted) setState(() => currentZoom = z);
+      },
+      minZoom: minZoom,
+      maxZoom: maxZoom,
+      isCancelled: () => !mounted || cameraController == null,
+    );
+    if (!mounted) return;
+    setState(() {
+      autoFraming = false;
+      autoFrameFailed = result == AutoFrameResult.boardLost ||
+          result == AutoFrameResult.zoomLimit;
+    });
+    if (result == AutoFrameResult.framed) {
+      HapticService.heavyImpact();
     }
   }
 
@@ -670,6 +710,22 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                 bottom: 0,
                 child: buildZoomControls(),
               ),
+              if (aiModelLoaded && cameraSetupConfig.enableAiDetection)
+                Positioned(
+                  left: 12,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(child: SpreadGauge(spread: latestSpread)),
+                ),
+              if (aiModelLoaded &&
+                  cameraSetupConfig.enableAiDetection &&
+                  (!boardDetected || autoFraming))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 12,
+                  child: Center(child: buildAutoFrameButton(l10n)),
+                ),
               if (canFlipCamera)
                 Positioned(
                   left: 12,
@@ -782,6 +838,65 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
                     letterSpacing: 1,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Gold "auto-frame" pill: taps run the AutoFramer servo, a spinner shows
+  /// while it works, and a failure (board lost / zoom bound reached) swaps
+  /// the label for the "move the phone" hint until the next tap.
+  Widget buildAutoFrameButton(AppLocalizations l10n) {
+    final failed = autoFrameFailed && !autoFraming;
+    return GestureDetector(
+      onTap: autoFraming ? null : runAutoFrame,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: failed
+              ? AppTheme.error.withValues(alpha: 0.92)
+              : AppTheme.accent.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (autoFraming)
+              const SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: Colors.black87,
+                ),
+              )
+            else
+              Icon(
+                failed ? Icons.open_with : Icons.center_focus_strong,
+                size: 17,
+                color: failed ? Colors.white : Colors.black87,
+              ),
+            const SizedBox(width: 8),
+            Text(
+              failed
+                  ? l10n.autoFrameFailedHint
+                  : l10n.autoFrameButton.toUpperCase(),
+              style: TextStyle(
+                color: failed ? Colors.white : Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: failed ? 0 : 0.8,
               ),
             ),
           ],

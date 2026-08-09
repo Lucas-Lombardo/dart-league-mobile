@@ -34,6 +34,11 @@ class AutoScoreGameView extends StatelessWidget {
   final double currentZoom;
   final double minZoom;
   final double maxZoom;
+
+  /// AutoFramer servo hook — when set, a bad-framing hint renders as the
+  /// tappable AUTO chip instead of a passive text pill.
+  final Future<void> Function()? onAutoFrame;
+  final bool autoFraming;
   final void Function(int index, DartScore score)? onEditDart;
   final void Function(int index)? onRemoveDart;
 
@@ -82,6 +87,8 @@ class AutoScoreGameView extends StatelessWidget {
     this.currentZoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
+    this.onAutoFrame,
+    this.autoFraming = false,
     this.onEditDart,
     this.onRemoveDart,
     this.onEditModalClosed,
@@ -150,6 +157,9 @@ class AutoScoreGameView extends StatelessWidget {
           ],
           showRemoveDartsHint: showRemoveDartsHint,
           hint: hint,
+          spread: scoringService.zoomSpread,
+          onAutoFrame: onAutoFrame,
+          autoFraming: autoFraming,
           zoom: currentZoom,
           minZoom: minZoom,
           maxZoom: maxZoom,

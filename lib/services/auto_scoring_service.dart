@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
+import 'debug_frame_dump_service.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
 
@@ -286,7 +287,11 @@ class AutoScoringService extends ChangeNotifier {
   bool _datasetCaptureArmed = false;
 
   // UI state
-  String? _zoomHint;
+  ZoomHint? _zoomHint;
+  // Latest measured board spread (largest x/y extent of the 4 calibration
+  // points) — null while the board isn't fully visible. Feeds the in-match
+  // framing gauge + AutoFramer.
+  double? _zoomSpread;
   int? _lastInferenceMs;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
@@ -357,7 +362,7 @@ class AutoScoringService extends ChangeNotifier {
     }
     b.write(_turnTotal);
     b.write('|');
-    b.write(_zoomHint ?? '');
+    b.write(_zoomHint?.name ?? '');
     b.write('|');
     b.write(_dartsRemoved ? '1' : '0');
     b.write('|');
@@ -380,7 +385,8 @@ class AutoScoringService extends ChangeNotifier {
   String? get initError => _initError;
   List<DartScore?> get dartSlots => List.unmodifiable(_dartSlots);
   int get turnTotal => _turnTotal;
-  String? get zoomHint => _zoomHint;
+  ZoomHint? get zoomHint => _zoomHint;
+  double? get zoomSpread => _zoomSpread;
   int? get lastInferenceMs => _lastInferenceMs;
   bool get dartsRemoved => _dartsRemoved;
   bool get waitingForEmptyBoard => _waitingForEmptyBoard;
@@ -487,6 +493,7 @@ class AutoScoringService extends ChangeNotifier {
     final generation = ++_captureGeneration;
     _dartsRemoved = false;
     _datasetCaptureArmed = true;
+    unawaited(DebugFrameDumpService.armSession());
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
     _resetErrorStreak();
@@ -704,6 +711,24 @@ class AutoScoringService extends ChangeNotifier {
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
 
+      // Debug frame dump — records EVERY analyzed frame with its raw result,
+      // before any gate below can early-return (misses and gated frames are
+      // exactly the interesting ones). iOS pixel paths only.
+      if (DebugFrameDumpService.enabled && datasetPixels != null) {
+        final (dumpPixels, dumpW, dumpH) = datasetPixels;
+        DebugFrameDumpService.capture(
+          pixels: dumpPixels,
+          width: dumpW,
+          height: dumpH,
+          isBgra: datasetPixelsAreBgra,
+          seq: seq,
+          result: result,
+          totalMs: _lastInferenceMs,
+          nativeMs: _nativeInference?.lastNativeInferMs,
+          waitingForEmptyBoard: _waitingForEmptyBoard,
+          gateSawDarts: _emptyBoardGateSawDarts,
+        );
+      }
 
       if (seq != _captureSeq || !_capturing) {
         await _maybeCleanup(imagePath, cleanupFile);
@@ -1980,8 +2005,10 @@ class AutoScoringService extends ChangeNotifier {
   void _updateZoomHint(ScoringResult result) {
     final calibs = result.calibrationPoints;
     if (calibs.length < 4) {
-      _zoomHint =
-          calibs.isEmpty ? 'Dartboard not detected' : 'Board not fully visible';
+      _zoomHint = calibs.isEmpty
+          ? ZoomHint.dartboardNotDetected
+          : ZoomHint.boardNotFullyVisible;
+      _zoomSpread = null;
       return;
     }
     double minX = 1, maxX = 0, minY = 1, maxY = 0;
@@ -1992,10 +2019,11 @@ class AutoScoringService extends ChangeNotifier {
       maxY = max(maxY, c.y);
     }
     final spread = max(maxX - minX, maxY - minY);
-    if (spread < 0.35) {
-      _zoomHint = 'Zoom in — board too far';
-    } else if (spread > 0.85) {
-      _zoomHint = 'Zoom out — board too close';
+    _zoomSpread = spread;
+    if (spread < kZoomSpreadMin) {
+      _zoomHint = ZoomHint.zoomIn;
+    } else if (spread > kZoomSpreadMax) {
+      _zoomHint = ZoomHint.zoomOut;
     } else {
       _zoomHint = null;
     }

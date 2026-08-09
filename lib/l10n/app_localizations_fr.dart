@@ -648,6 +648,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get zoomOutBoardTooClose => 'Dézoomer — cible trop proche';
 
   @override
+  String get autoFrameButton => 'Cadrer auto';
+
+  @override
+  String get autoFrameFailedHint => 'Recule ou déplace le téléphone';
+
+  @override
   String get dartboardDetectedGoodPosition => 'Cible détectée — bonne position';
 
   @override

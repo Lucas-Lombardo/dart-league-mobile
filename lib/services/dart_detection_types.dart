@@ -1,5 +1,23 @@
 import 'dart_scoring_service.dart';
 
+/// Acceptable on-screen board size, as the largest x/y extent of the 4
+/// calibration points in normalized image coords ("spread"). Shared by the
+/// in-game zoom hint (AutoScoringService._updateZoomHint) and the camera
+/// setup screen so they cannot drift apart.
+///
+/// The 0.50 floor is measured, not aesthetic: on the 2026-08-09 test leg,
+/// v7 below 0.50 spread went completely blind on up to 19% of frames
+/// (14 consecutive frames with 3 planted darts unseen), while at >= 0.50 it
+/// missed none. An earlier relaxation of setup to 0.35 "because the AI
+/// scores fine" was exactly wrong — it admitted the blind zone.
+const double kZoomSpreadMin = 0.50;
+const double kZoomSpreadMax = 0.85;
+
+/// Semantic camera-framing hint produced by the scorer / setup analysis.
+/// UI layers map it to a localized string — the service must never emit
+/// display text (the old hardcoded English leaked into the match pill).
+enum ZoomHint { dartboardNotDetected, boardNotFullyVisible, zoomIn, zoomOut }
+
 class Detection {
   final int classId; // 0-7 = p1-p8 (board control points), 8 = tip (dart tip)
   final String className; // "p1"-"p8" or "tip"

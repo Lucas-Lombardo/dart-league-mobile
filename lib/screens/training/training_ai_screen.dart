@@ -7,6 +7,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/game_provider.dart' show ScoreMultiplier;
+import '../../services/auto_framer.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/dart_scoring_service.dart';
@@ -268,6 +269,27 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       await _cameraService!.setZoomLevel(next);
       if (mounted) setState(() => _cameraZoom = next);
     } catch (_) {}
+  }
+
+  bool _autoFraming = false;
+  Future<void> _autoFrame() async {
+    if (_autoFraming || _cameraService == null) return;
+    HapticService.mediumImpact();
+    setState(() => _autoFraming = true);
+    final result = await AutoFramer.run(
+      readSpread: () => _ai?.zoomSpread,
+      readZoom: () => _cameraZoom,
+      setZoom: (z) async {
+        await _cameraService?.setZoomLevel(z);
+        if (mounted) setState(() => _cameraZoom = z);
+      },
+      minZoom: _cameraMinZoom,
+      maxZoom: _cameraMaxZoom,
+      isCancelled: () => !mounted || _cameraService == null,
+    );
+    if (!mounted) return;
+    setState(() => _autoFraming = false);
+    if (result == AutoFrameResult.framed) HapticService.heavyImpact();
   }
 
   Future<void> _switchCamera() async {
@@ -603,6 +625,8 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       currentZoom: _cameraZoom,
       minZoom: _cameraMinZoom,
       maxZoom: _cameraMaxZoom,
+      onAutoFrame: cam != null ? _autoFrame : null,
+      autoFraming: _autoFraming,
       onEditSlot: _editDartSlot,
       onRemoveLast: _removeLastDart,
       onToggleAi: _ai?.modelLoaded == true ? _toggleAi : null,

@@ -22,6 +22,18 @@ class NativeInference {
   /// fire every frame and flood the log. Flip on only to profile inference.
   static bool verboseTiming = false;
 
+  /// iOS delegate for the native interpreter ('auto' | 'cpu' | 'xnnpack' |
+  /// 'metal' | 'coreml'). 'auto' = the plugin's CoreML → Metal → CPU
+  /// cascade; any other value pins that rung (which is also how delegates
+  /// get benchmarked against each other on-device).
+  ///
+  /// 'xnnpack' is the measured default for v7: its YOLO26 graph is delegate-
+  /// hostile — the 2026-08-09 bench (iPhone de Lucas, full-frame ms) gave
+  /// xnnpack ~332ms, coreml ~518ms (only 48/632 nodes delegated, in 98
+  /// partitions), metal ~980ms, bare cpu ~1350ms. Re-bench before trusting
+  /// this for any NEW model — the ranking is a property of the graph.
+  static const String iosDelegate = 'xnnpack';
+
   // Both native plugins run everything on ONE serial thread (dvExecutor on
   // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —
   // typical under thermal throttling — therefore blocks every later call on
@@ -238,8 +250,10 @@ class NativeInference {
       } else {
         // iOS: load from bundle assets directly (works fine)
         final result = await _channel
-            .invokeMethod('loadModel',
-                {'modelName': ModelSelector.currentModelName})
+            .invokeMethod('loadModel', {
+              'modelName': ModelSelector.currentModelName,
+              'delegate': iosDelegate,
+            })
             .timeout(_loadTimeout);
         _loaded = result == true;
       }

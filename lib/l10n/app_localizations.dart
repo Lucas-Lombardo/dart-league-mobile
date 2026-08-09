@@ -236,6 +236,8 @@ abstract class AppLocalizations {
   String get boardNotFullyVisible;
   String get zoomInBoardTooFar;
   String get zoomOutBoardTooClose;
+  String get autoFrameButton;
+  String get autoFrameFailedHint;
   String get dartboardDetectedGoodPosition;
   String get scanningForDartboard;
   String get cameraRequiredButton;

@@ -643,6 +643,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get zoomOutBoardTooClose => 'Zoom out — board too close';
 
   @override
+  String get autoFrameButton => 'Auto-frame';
+
+  @override
+  String get autoFrameFailedHint => 'Move back or reposition your phone';
+
+  @override
   String get dartboardDetectedGoodPosition =>
       'Dartboard detected — good position';
 

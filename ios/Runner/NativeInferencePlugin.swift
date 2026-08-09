@@ -15,7 +15,7 @@ import Accelerate
 ///   analyze(rgba, width, height)     → {output, xScale, yScale, imageWidth, imageHeight}
 class NativeInferencePlugin: NSObject {
 
-    private enum DelegateKind { case coreml, metal, cpu }
+    private enum DelegateKind { case coreml, metal, xnnpack, cpu }
 
     private var interpreter: OpaquePointer?   // TfLiteInterpreter*
     private var model: OpaquePointer?         // TfLiteModel*
@@ -50,6 +50,11 @@ class NativeInferencePlugin: NSObject {
     // Name (e.g. "dartboard-v7_float16") of the currently loaded model; nil
     // before first load.
     private var loadedModelName: String?
+    // Delegate the current interpreter was requested with ("auto" = the
+    // CoreML → Metal → CPU cascade). A load asking for a different one
+    // rebuilds, exactly like a model switch — used by the Dart-side debug
+    // override to benchmark delegates against each other.
+    private var loadedDelegateChoice = "auto"
 
     // MARK: - Reusable preprocessing buffers
     // Sized lazily on first frame, reused after. Camera resolution is fixed
@@ -81,9 +86,13 @@ class NativeInferencePlugin: NSObject {
             // Optional {"modelName": "dartboard-v7_float16"} — which bundled
             // model to load.
             // Omitted → keep whatever is loaded, or default preference order.
-            let modelName = (call.arguments as? [String: Any])?["modelName"] as? String
+            // Optional {"delegate": "auto"|"cpu"|"metal"|"coreml"} — debug
+            // override of the delegate cascade (see loadedDelegateChoice).
+            let args = call.arguments as? [String: Any]
+            let modelName = args?["modelName"] as? String
+            let delegateChoice = (args?["delegate"] as? String) ?? "auto"
             inferenceQueue.async { [weak self] in
-                self?.loadModel(modelName: modelName, result: result)
+                self?.loadModel(modelName: modelName, delegateChoice: delegateChoice, result: result)
             }
         case "analyze":
             guard let args = call.arguments as? [String: Any],
@@ -151,7 +160,7 @@ class NativeInferencePlugin: NSObject {
 
     // MARK: - Model Loading
 
-    private func loadModel(modelName: String?, result: @escaping FlutterResult) {
+    private func loadModel(modelName: String?, delegateChoice: String = "auto", result: @escaping FlutterResult) {
         // Idempotent for the SAME model: this plugin is a singleton retained for
         // the app's lifetime, so an interpreter built earlier (e.g. by the
         // camera-setup screen before queueing) is still valid. The app loads a
@@ -169,12 +178,15 @@ class NativeInferencePlugin: NSObject {
         let buildCpuOnly = forceCpuOnce
         if interpreter != nil {
             let sameModel = modelName == nil || modelName == loadedModelName
-            if sameModel && loadedCpuOnly == buildCpuOnly {
+            if sameModel && loadedCpuOnly == buildCpuOnly
+                && delegateChoice == loadedDelegateChoice {
                 print("[NativeInference-iOS] model \(loadedModelName ?? "?") already loaded (delegate=\(delegateKind)) — reusing")
                 result(true)
                 return
             }
-            if sameModel {
+            if sameModel && delegateChoice != loadedDelegateChoice {
+                print("[NativeInference-iOS] delegate override changed \(loadedDelegateChoice) → \(delegateChoice) — rebuilding")
+            } else if sameModel {
                 print("[NativeInference-iOS] rebuilding \(loadedModelName ?? "?") with delegates (was CPU-only after a wedge recovery)")
             } else {
                 print("[NativeInference-iOS] switching model \(loadedModelName ?? "?") → \(modelName!)")
@@ -206,8 +218,40 @@ class NativeInferencePlugin: NSObject {
         // Right after a rebuildEngine (wedged driver) this ONE build is
         // CPU-only — creating a new delegate on a stuck driver can hang the
         // fresh queue too. Later loads try the delegates again.
+        // delegateChoice != "auto" (debug bench override) pins one rung of
+        // the cascade instead: "cpu" skips delegates entirely, "metal" /
+        // "coreml" try only that delegate (CPU fallback if it fails to build).
         if buildCpuOnly {
             print("[NativeInference-iOS] CPU-only build after rebuild — CPU 4 threads")
+        } else if delegateChoice == "cpu" {
+            print("[NativeInference-iOS] delegate override: CPU 4 threads (no delegate)")
+        } else if delegateChoice == "xnnpack" {
+            if let xnn = createXnnpackDelegate() {
+                TfLiteInterpreterOptionsAddDelegate(options, xnn)
+                delegate = xnn
+                delegateKind = .xnnpack
+                print("[NativeInference-iOS] delegate override: XNNPACK 4 threads")
+            } else {
+                print("[NativeInference-iOS] delegate override: XNNPACK unavailable — CPU 4 threads")
+            }
+        } else if delegateChoice == "metal" {
+            if let metal = createMetalDelegate() {
+                TfLiteInterpreterOptionsAddDelegate(options, metal)
+                delegate = metal
+                delegateKind = .metal
+                print("[NativeInference-iOS] delegate override: Metal")
+            } else {
+                print("[NativeInference-iOS] delegate override: Metal unavailable — CPU 4 threads")
+            }
+        } else if delegateChoice == "coreml" {
+            if let coreml = createCoreMLDelegate() {
+                TfLiteInterpreterOptionsAddDelegate(options, coreml)
+                delegate = coreml
+                delegateKind = .coreml
+                print("[NativeInference-iOS] delegate override: CoreML")
+            } else {
+                print("[NativeInference-iOS] delegate override: CoreML unavailable — CPU 4 threads")
+            }
         } else if let coreml = createCoreMLDelegate() {
             TfLiteInterpreterOptionsAddDelegate(options, coreml)
             delegate = coreml
@@ -242,6 +286,7 @@ class NativeInferencePlugin: NSObject {
 
         loadedModelName = modelName ?? defaultModelOrder.first(where: { modelPath.hasSuffix("\($0).tflite") })
         loadedCpuOnly = buildCpuOnly
+        loadedDelegateChoice = delegateChoice
         // Consume the one-shot only on a build that actually used it — a
         // failed attempt keeps it set so the caller's retry stays CPU-only.
         if buildCpuOnly { forceCpuOnce = false }
@@ -278,12 +323,19 @@ class NativeInferencePlugin: NSObject {
         return TFLGpuDelegateCreate(&opts)
     }
 
+    private func createXnnpackDelegate() -> UnsafeMutablePointer<TfLiteDelegate>? {
+        var opts = TfLiteXNNPackDelegateOptionsDefault()
+        opts.num_threads = 4
+        return TfLiteXNNPackDelegateCreate(&opts)
+    }
+
     private func deleteDelegateIfAny() {
         guard let d = delegate else { return }
         switch delegateKind {
-        case .coreml: TfLiteCoreMlDelegateDelete(d)
-        case .metal:  TFLGpuDelegateDelete(d)
-        case .cpu:    break
+        case .coreml:  TfLiteCoreMlDelegateDelete(d)
+        case .metal:   TFLGpuDelegateDelete(d)
+        case .xnnpack: TfLiteXNNPackDelegateDelete(d)
+        case .cpu:     break
         }
         delegate = nil
         delegateKind = .cpu

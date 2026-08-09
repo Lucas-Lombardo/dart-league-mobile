@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart'
     show TournamentGameState;
 import '../../services/agora_service.dart';
+import '../../services/auto_framer.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
 import '../../services/replay_buffer_service.dart';
@@ -1634,6 +1635,29 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try { await cameraFrameService!.setZoomLevel(next); if (mounted) setState(() => cameraZoom = next); } catch (_) {}
   }
 
+  /// AutoFramer servo behind the in-match AUTO chip: drives the camera zoom
+  /// until the scorer's measured spread is back in the reliable zone.
+  bool autoFraming = false;
+  Future<void> autoFrameCamera() async {
+    if (autoFraming || cameraFrameService == null) return;
+    HapticService.mediumImpact();
+    setState(() => autoFraming = true);
+    final result = await AutoFramer.run(
+      readSpread: () => autoScoringService?.zoomSpread,
+      readZoom: () => cameraZoom,
+      setZoom: (z) async {
+        await cameraFrameService?.setZoomLevel(z);
+        if (mounted) setState(() => cameraZoom = z);
+      },
+      minZoom: cameraMinZoom,
+      maxZoom: cameraMaxZoom,
+      isCancelled: () => !mounted || cameraFrameService == null,
+    );
+    if (!mounted) return;
+    setState(() => autoFraming = false);
+    if (result == AutoFrameResult.framed) HapticService.heavyImpact();
+  }
+
   // ─── Leave / pop ──────────────────────────────────────────────────────────────
 
   /// A ranked BO3 series is still live even when the current LEG has ended:
@@ -2440,6 +2464,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     currentZoom: cameraZoom,
                     minZoom: cameraMinZoom,
                     maxZoom: cameraMaxZoom,
+                    onAutoFrame: autoFrameCamera,
+                    autoFraming: autoFraming,
                     onEditDart: (index, dartScore) {
                       final (base, mul) = dartScoreToBackend(dartScore);
                       game.editDartThrow(index, base, mul);
