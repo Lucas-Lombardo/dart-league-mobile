@@ -28,6 +28,7 @@ import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
+import '../../services/dataset_capture_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/logo_watermark.dart';
@@ -452,6 +453,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // still run (async — it survives this screen; renders need only the clip
     // files, not the ring). No-op when the series-end transition already ran.
     processPendingReplayClips();
+    // Static and self-guarded, so unlike the replay tail it is re-fired here
+    // on purpose: it also drains a checkout-race capture that landed after
+    // the verdict's flush.
+    DatasetCaptureService.flush();
     WidgetsBinding.instance.removeObserver(this);
     _wakelockReassertTimer?.cancel();
     _wakelockReassertTimer = null;
@@ -604,6 +609,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       final matchOverNow = toreDownNow && !_tournamentSeriesGoesOn(game);
       if (matchOverNow || seriesEndedNow || tournamentSeriesEndedNow) {
         processPendingReplayClips();
+        // Same deferral contract for the dataset frames: raw copies queued
+        // mid-match, encode + upload only now that the call/AI load is gone.
+        DatasetCaptureService.flush();
       }
       // Replay ring turn gate: encode only while I throw (the local camera
       // films MY board — the opponent's turn is dead footage and half the
