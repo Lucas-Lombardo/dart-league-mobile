@@ -227,21 +227,6 @@ class AutoScoringService extends ChangeNotifier {
   // the next one (see the floor constants at the top of the file).
   final Stopwatch _sinceInferenceStart = Stopwatch();
 
-  // Thermal throttle: extra pause inserted between inference cycles when the
-  // OS reports the device is overheating. Zero in the normal state — the AI
-  // cadence is completely unchanged unless the phone is already hot, where
-  // slowing the duty cycle both cools the device down and avoids the
-  // GPU-driver wedges that froze matches. Indexed by NativeInference
-  // thermalLevel(): 0 normal, 1 elevated, 2 severe.
-  static const Duration _thermalPollInterval = Duration(seconds: 5);
-  static const List<Duration> _thermalExtraDelays = [
-    Duration.zero,
-    Duration(milliseconds: 250),
-    Duration(milliseconds: 600),
-  ];
-  Duration _thermalExtraDelay = Duration.zero;
-  final Stopwatch _thermalPollStopwatch = Stopwatch();
-
   // Dead-engine trip: consecutive ENGINE-level analyze failures, as flagged
   // by NativeInference.lastAnalyzeFailed (channel timeout/BUSY, model not
   // loaded, invoke errors). NOT ScoringResult.error — the parser also sets
@@ -635,36 +620,6 @@ class AutoScoringService extends ChangeNotifier {
       // Yield AFTER inference too, so the results (notifyListeners) can
       // trigger widget rebuilds before the next cycle starts.
       await Future.delayed(const Duration(milliseconds: 16));
-
-      // Thermal throttle — no-op (Duration.zero) unless the OS reports the
-      // device is overheating. The generation check at the top of the loop
-      // still runs right after, so a stop during the pause exits promptly.
-      await _maybeUpdateThermalThrottle();
-      if (_thermalExtraDelay > Duration.zero) {
-        await Future.delayed(_thermalExtraDelay);
-      }
-    }
-  }
-
-  /// Poll the device thermal status every [_thermalPollInterval] and update
-  /// the extra inter-inference delay. Cheap: one platform-thread method call
-  /// (never routed through the native inference executor).
-  Future<void> _maybeUpdateThermalThrottle() async {
-    final native = _nativeInference;
-    if (native == null) return;
-    if (_thermalPollStopwatch.isRunning &&
-        _thermalPollStopwatch.elapsed < _thermalPollInterval) {
-      return;
-    }
-    _thermalPollStopwatch
-      ..reset()
-      ..start();
-    final level = await native.thermalLevel();
-    final next = _thermalExtraDelays[level.clamp(0, 2)];
-    if (next != _thermalExtraDelay) {
-      _thermalExtraDelay = next;
-      debugPrint('[AutoScoring] thermal level=$level → '
-          '+${next.inMilliseconds}ms between inferences');
     }
   }
 

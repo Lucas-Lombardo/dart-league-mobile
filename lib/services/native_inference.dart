@@ -399,25 +399,6 @@ class NativeInference {
     }
   }
 
-  /// Normalized device thermal level: 0 = normal, 1 = elevated (device warm,
-  /// OS starting to throttle), 2 = severe (heavy throttling). Maps
-  /// PowerManager.THERMAL_STATUS_* (Android) and ProcessInfo.thermalState
-  /// (iOS), which happen to share the same cut-offs on their raw scales.
-  /// Natively answered on the platform thread (never the inference executor),
-  /// so it stays responsive even when inference is wedged. Returns 0 on any
-  /// error so callers never throttle by accident.
-  Future<int> thermalLevel() async {
-    try {
-      final raw = await _channel
-          .invokeMethod<int>('thermalStatus')
-          .timeout(const Duration(seconds: 2));
-      if (raw == null || raw <= 1) return 0;
-      return raw >= 3 ? 2 : 1;
-    } catch (_) {
-      return 0;
-    }
-  }
-
   void dispose() {
     _parser.dispose();
     _loaded = false;
