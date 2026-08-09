@@ -458,7 +458,10 @@ private class OverlayPainter(
         val rotated = rotation == 90 || rotation == 270
         displayW = (if (rotated) srcH else srcW).toFloat()
         displayH = (if (rotated) srcW else srcH).toFloat()
-        scale = displayW / 720f
+        // min: a landscape clip must scale from its HEIGHT — width-based
+        // scaling blew the overlay up 2.7× there and buried the board.
+        // Portrait is untouched (width is the min).
+        scale = kotlin.math.min(displayW, displayH) / 720f
         // Map display coordinates into the (possibly rotated) source frame,
         // so every draw below can think in upright 720-wide space.
         val m = Matrix()
@@ -495,6 +498,13 @@ private class OverlayPainter(
         if (slide <= 0f) return
         val alpha = (slide * 255).toInt()
         val lift = (1f - slide) * s(70f)
+        if (displayW > displayH) {
+            // Landscape: one compact TV-style lower third — the portrait
+            // pill + facing cards stacked over the short axis covered the
+            // board.
+            drawBroadcastBar(alpha, lift)
+            return
+        }
         val cardH = s(96f)
         val cardW = (displayW - s(32f) - s(14f)) / 2f
         val cardsTop = displayH - s(84f) - cardH + lift
@@ -505,6 +515,152 @@ private class OverlayPainter(
             s(16f) + cardW + s(14f), cardsTop, cardW, cardH, alpha,
             PINK, opp, oppLegs, oppScore, false,
         )
+    }
+
+    /**
+     * Landscape-only scoreboard: name · pips · score │ brand │ score · pips ·
+     * name in one bottom bar. Both sides get the width of the WIDER one, so
+     * the brand block sits exactly centered.
+     */
+    private fun drawBroadcastBar(alpha: Int, lift: Float) {
+        val h = s(56f)
+        val pad = s(17f)
+        val gap = s(13f)
+        val accentW = s(5f)
+        text.textAlign = Paint.Align.LEFT
+        text.textSize = s(15f)
+        text.letterSpacing = 0.1f
+        val meName = ellipsize(me, s(180f))
+        val oppName = ellipsize(opp, s(180f))
+        val nameCol = kotlin.math.max(text.measureText(meName), text.measureText(oppName))
+        text.letterSpacing = 0f
+        text.textSize = s(34f)
+        val scoreCol = kotlin.math.max(
+            text.measureText(startScore.toString()),
+            text.measureText(oppScore.toString()),
+        )
+        val count = legsTarget.coerceIn(1, 5)
+        val r = s(4.5f)
+        val pipGap = s(6f)
+        val pipsW = count * 2 * r + (count - 1) * pipGap
+        val sideW = accentW + pad + nameCol + gap + pipsW + gap + scoreCol + pad
+        val shieldH = s(36f)
+        val shieldW = logo?.let { shieldH * it.width / it.height } ?: 0f
+        val brandPad = s(15f)
+        val brandGap = if (shieldW > 0f) s(11f) else 0f
+        text.textSize = s(13f)
+        text.letterSpacing = 0.12f
+        var brandTextW = text.measureText(BRAND)
+        text.textSize = s(11f)
+        text.letterSpacing = 0.08f
+        brandTextW = kotlin.math.max(brandTextW, text.measureText(format))
+        text.letterSpacing = 0f
+        val brandW = brandPad + shieldW + brandGap + brandTextW + brandPad
+        val w = 2 * sideW + brandW
+        val x = (displayW - w) / 2f
+        val top = displayH - s(17f) - h + lift
+        val bar = RectF(x, top, x + w, top + h)
+
+        // Clip to the rounded bar so the accents/brand block keep the corners.
+        val path = Path().apply { addRoundRect(bar, s(9f), s(9f), Path.Direction.CW) }
+        canvas.save()
+        canvas.clipPath(path)
+        fill.shader = null
+        fill.style = Paint.Style.FILL
+        fill.color = PILL
+        fill.alpha = (alpha * 0.95f).toInt()
+        canvas.drawRect(bar, fill)
+        // Player accents on the outer edges, brand block delimited in the
+        // middle.
+        fill.color = Color.WHITE
+        fill.alpha = (alpha * 0.045f).toInt()
+        canvas.drawRect(RectF(x + sideW, top, x + sideW + brandW, top + h), fill)
+        fill.alpha = (alpha * 0.10f).toInt()
+        canvas.drawRect(RectF(x + sideW, top, x + sideW + s(1f), top + h), fill)
+        canvas.drawRect(
+            RectF(x + sideW + brandW - s(1f), top, x + sideW + brandW, top + h), fill,
+        )
+        fill.color = BLUE
+        fill.alpha = alpha
+        canvas.drawRect(RectF(x, top, x + accentW, top + h), fill)
+        fill.color = PINK
+        fill.alpha = alpha
+        canvas.drawRect(RectF(x + w - accentW, top, x + w, top + h), fill)
+
+        var bx = x + sideW + brandPad
+        logo?.let {
+            fill.color = Color.WHITE
+            fill.alpha = alpha
+            canvas.drawBitmap(
+                it, null,
+                RectF(bx, top + (h - shieldH) / 2, bx + shieldW, top + (h + shieldH) / 2),
+                fill,
+            )
+            bx += shieldW + brandGap
+        }
+        text.color = Color.WHITE
+        text.alpha = alpha
+        text.textSize = s(13f)
+        text.letterSpacing = 0.12f
+        canvas.drawText(BRAND, bx, top + s(26f), text)
+        text.color = MUTED
+        text.alpha = alpha
+        text.textSize = s(11f)
+        text.letterSpacing = 0.08f
+        canvas.drawText(format, bx, top + s(41f), text)
+        text.letterSpacing = 0f
+
+        fun side(x0: Float, accent: Int, name: String, legs: Int, score: Int,
+                 mine: Boolean, mirrored: Boolean) {
+            val nameX: Float
+            val pipsX: Float
+            val scoreX: Float
+            if (mirrored) {
+                scoreX = x0 + pad
+                pipsX = scoreX + scoreCol + gap
+                nameX = pipsX + pipsW + gap
+            } else {
+                nameX = x0 + pad
+                pipsX = nameX + nameCol + gap
+                scoreX = pipsX + pipsW + gap
+            }
+            text.textAlign = Paint.Align.CENTER
+            text.textSize = s(15f)
+            text.letterSpacing = 0.1f
+            text.color = if (mine) 0xFFE4EDFA.toInt() else MUTED
+            text.alpha = alpha
+            canvas.drawText(name, nameX + nameCol / 2, top + s(33f), text)
+            text.letterSpacing = 0f
+            text.textSize = s(34f)
+            text.color = if (mine) Color.WHITE else 0xFFB9C6DA.toInt()
+            text.alpha = alpha
+            canvas.drawText(score.toString(), scoreX + scoreCol / 2, top + s(40f), text)
+            var px = pipsX + r
+            for (i in 0 until count) {
+                if (i < legs) {
+                    fill.color = accent
+                    fill.alpha = alpha
+                } else {
+                    fill.color = Color.WHITE
+                    fill.alpha = (alpha * 0.18f).toInt()
+                }
+                canvas.drawCircle(px, top + h / 2, r, fill)
+                px += 2 * r + pipGap
+            }
+        }
+        side(x + accentW, BLUE, meName, myLegs, startScore, mine = true, mirrored = false)
+        side(
+            x + sideW + brandW, PINK, oppName, oppLegs, oppScore,
+            mine = false, mirrored = true,
+        )
+        canvas.restore()
+
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = s(1.5f)
+        fill.color = Color.WHITE
+        fill.alpha = (alpha * 0.14f).toInt()
+        canvas.drawRoundRect(bar, s(9f), s(9f), fill)
+        fill.style = Paint.Style.FILL
     }
 
     /**

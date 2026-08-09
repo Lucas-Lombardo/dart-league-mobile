@@ -186,7 +186,7 @@ class NativeInferencePlugin: NSObject {
             deleteDelegateIfAny()
         }
         guard let modelPath = findModelPath(preferred: modelName) else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dartboard-v7_float16.tflite/dartboard-v7s_float16.tflite not found in bundle", details: nil))
+            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dartboard-v7_float16.tflite not found in bundle", details: nil))
             return
         }
 
@@ -289,9 +289,9 @@ class NativeInferencePlugin: NSObject {
         delegateKind = .cpu
     }
 
-    // Small model first: matches DartsMind's MODEL_SMALLER-by-default strategy.
-    // Must track the bundled pair (ModelSelector small/bigModelAsset).
-    private let defaultModelOrder = ["dartboard-v7_float16", "dartboard-v7s_float16"]
+    // Must track the bundled model (ModelSelector.currentAsset) — single
+    // model since 2026-08-09 (v7s and the adaptive ladder were removed).
+    private let defaultModelOrder = ["dartboard-v7_float16"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

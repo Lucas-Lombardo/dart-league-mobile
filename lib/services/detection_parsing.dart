@@ -24,7 +24,7 @@ const List<String> kDetectionLabels = [
 // Two output formats coexist, dispatched on the output-tensor shape:
 //   [1, 13, 21504] — anchor head (DartsMind + v3..v6 exports):
 //                    parseOutputFloats, then classSpecificNms.
-//   [1, 300, 6]    — end-to-end head (YOLO26, v7s+): rows of
+//   [1, 300, 6]    — end-to-end head (YOLO26, v7+): rows of
 //                    [x1, y1, x2, y2, conf, cls], already deduplicated —
 //                    parseEndToEndOutput, NO NMS.
 // ---------------------------------------------------------------------------

@@ -340,7 +340,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get datasetShareDescription =>
-      'Partager des photos de ma cible pendant les matchs (Wi-Fi uniquement)';
+      'Partager des photos de ma cible en jeu (Wi-Fi uniquement)';
 
   // Settings > profile hero & account
   @override

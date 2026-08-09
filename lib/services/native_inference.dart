@@ -215,11 +215,8 @@ class NativeInference {
 
   Future<void> loadModel() async {
     try {
-      // Adaptive model ladder (DartsMind changeAIModelIfNeed port): small
-      // model by default, big model on devices whose persisted profile is
-      // fast enough. Native reuses the interpreter when the model is
-      // unchanged and rebuilds when the selector picked a different one.
-      await ModelSelector.ensureInitialized();
+      // Single model (v7). Native reuses the interpreter when the model file
+      // is unchanged, so reloads after a recovery are cheap.
       final asset = ModelSelector.currentAsset;
       if (Platform.isAndroid) {
         // Android: extract model to temp file via rootBundle (always works),
@@ -246,7 +243,6 @@ class NativeInference {
             .timeout(_loadTimeout);
         _loaded = result == true;
       }
-      if (_loaded) ModelSelector.markLoaded(asset);
       debugPrint('[NativeInference] loadModel: model=$asset loaded=$_loaded platform=${Platform.isAndroid ? "android" : "ios"}');
     } catch (e) {
       debugPrint('[NativeInference] loadModel error: $e');

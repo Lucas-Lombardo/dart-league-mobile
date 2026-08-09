@@ -1,148 +1,21 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart';
-
-import '../utils/storage_service.dart';
-
-/// Two-model speed/accuracy ladder, ported from DartsMind
-/// (Detector.changeAIModelIfNeed + DVSpeedChecker persistence).
+/// The AI scorer's single-model configuration.
 ///
-/// - Default is the SMALL model (ia-light — DartsMind's MODEL_SMALLER strategy).
-/// - The mean of the last [windowSize] real inference times decides switches:
-///   small → big when the mean is ≤ [upgradeAtMs] (device can afford accuracy),
-///   big → small when the mean is > [downgradeAtMs] (device can't keep up /
-///   is cooking). The 261–500ms band is a dead zone that prevents flapping.
-/// - The small-model speed profile is persisted with a best-ever ratchet
-///   (like DartsMind's checkInferenceAvgTime_t201) so the next session starts
-///   on the right model immediately.
-///
-/// Divergence from DartsMind, on purpose: UPGRADES are deferred to the next
-/// model load (match start / setup screen) instead of applied mid-match —
-/// on iOS a model rebuild re-runs the multi-second CoreML delegate
-/// compilation, which would freeze the AI mid-turn. DOWNGRADES are immediate
-/// on Android only (file-based reload, fast): on iOS they are deferred too,
-/// because the downgrade fires precisely when the device is hot/throttled —
-/// the moment a CoreML recompile is slowest and most likely to blow the load
-/// timeout, cascading into an engine rebuild and a CPU-only session. The
-/// thermal throttle (AutoScoringService) protects a struggling iPhone until
-/// the next match load applies the switch.
-///
-/// Times fed in are the native-measured PURE invoke cost when available
-/// (see NativeInference.lastNativeInferMs) — the same measure DartsMind's
-/// 260/500ms cut-offs were tuned for. The end-to-end fallback (preprocess +
-/// channel + parse) sits well above it and made downgrades fire too early.
+/// Until 2026-08-09 this was a two-model speed/accuracy ladder ported from
+/// DartsMind (v7 "light" / v7s "heavy", mean-inference-time switching, a
+/// persisted device speed profile). Decision (Lucas): v7 alone scores well
+/// enough — the ladder, the speed profile and the 19MB v7s asset are gone,
+/// and with them every mid-match model-switch failure mode (iOS CoreML
+/// recompile freezes on hot devices, forceCpu poisoning, downgrade reload
+/// wedges).
 class ModelSelector {
   ModelSelector._();
 
-  // v7 generation (YOLO26 end-to-end, [1,300,6] head — detection_parsing
-  // dispatches on the shape): v7 plays the historical "light" role, v7s the
-  // "heavy" one. Winners of the 6-model A/B campaign of 2026-08.
-  static const String smallModelAsset = 'assets/models/dartboard-v7_float16.tflite';
-  static const String bigModelAsset = 'assets/models/dartboard-v7s_float16.tflite';
-
-  /// TRIAL OVERRIDE — when non-empty, every loader (native iOS/Android, Dart
-  /// interpreter, isolate) uses this single model and the small/big ladder is
-  /// disabled. Set back to '' to restore adaptive selection.
-  static const String trialAsset = '';
-  static const int upgradeAtMs = 260; // DartsMind: ≤260 → MODEL_BETTER
-  static const int downgradeAtMs = 500; // DartsMind: >500 → MODEL_SMALLER
-  static const int windowSize = 16; // DartsMind: inferenceTimeArray >= 16
-
-  static String _currentAsset = smallModelAsset;
-  static String? _runningAsset;
-  static bool _initialized = false;
-  static bool _switchPending = false;
-  static final List<int> _window = <int>[];
-
-  /// The asset every loader should use for its next load.
-  static String get currentAsset =>
-      trialAsset.isNotEmpty ? trialAsset : _currentAsset;
+  /// v7 generation (YOLO26 end-to-end, [1,300,6] head — detection_parsing
+  /// dispatches on the shape). Winner of the 6-model A/B campaign of 2026-08.
+  static const String currentAsset =
+      'assets/models/dartboard-v7_float16.tflite';
 
   /// Model name without path/extension (what the iOS plugin expects).
   static String get currentModelName =>
       currentAsset.split('/').last.replaceAll('.tflite', '');
-
-  /// Resolve the initial model from the persisted device profile.
-  /// Idempotent; cheap after the first call.
-  static Future<void> ensureInitialized() async {
-    if (_initialized) return;
-    _initialized = true;
-    if (trialAsset.isNotEmpty) {
-      // Ladder disabled: recordInferenceMs is inert too, since _runningAsset
-      // matches neither ladder asset while the trial model is loaded.
-      debugPrint('[ModelSelector] TRIAL override active → $currentModelName');
-      return;
-    }
-    try {
-      final profileMs = await StorageService.getAiSmallModelAvgMs();
-      if (profileMs != null && profileMs <= upgradeAtMs) {
-        _currentAsset = bigModelAsset;
-      }
-      debugPrint('[ModelSelector] profile=${profileMs}ms → '
-          'start on $currentModelName');
-    } catch (e) {
-      debugPrint('[ModelSelector] profile read failed ($e) — '
-          'starting on $currentModelName');
-    }
-  }
-
-  /// Tell the selector which model a loader actually has running.
-  static void markLoaded(String asset) {
-    _runningAsset = asset;
-    _window.clear();
-    _switchPending = false;
-  }
-
-  /// Feed one per-frame cost. Every [windowSize] samples, re-evaluate the
-  /// ladder (DartsMind evaluates on the same cadence, forever).
-  static void recordInferenceMs(int ms) {
-    if (_runningAsset == null) return;
-    _window.add(ms);
-    if (_window.length < windowSize) return;
-    final mean = _window.reduce((a, b) => a + b) ~/ _window.length;
-    _window.clear();
-
-    if (_runningAsset == smallModelAsset) {
-      _persistSmallProfile(mean);
-      if (mean <= upgradeAtMs && _currentAsset != bigModelAsset) {
-        // Deferred: takes effect on the next loadModel (see class comment).
-        _currentAsset = bigModelAsset;
-        debugPrint('[ModelSelector] small mean=${mean}ms ≤ $upgradeAtMs — '
-            'next load upgrades to $currentModelName');
-      }
-    } else if (_runningAsset == bigModelAsset && mean > downgradeAtMs) {
-      _currentAsset = smallModelAsset;
-      if (!kIsWeb && Platform.isAndroid) {
-        _switchPending = true;
-        debugPrint('[ModelSelector] big mean=${mean}ms > $downgradeAtMs — '
-            'downgrading to $currentModelName now');
-      } else {
-        // iOS: deferred like upgrades (see class comment) — a mid-match
-        // switch means a CoreML recompile on an already-throttled device.
-        debugPrint('[ModelSelector] big mean=${mean}ms > $downgradeAtMs — '
-            'next load downgrades to $currentModelName');
-      }
-    }
-  }
-
-  /// True once when an immediate (downgrade) switch is due. The caller
-  /// reloads the model, which calls [markLoaded] and clears the flag.
-  static bool takePendingSwitch() {
-    if (!_switchPending) return false;
-    _switchPending = false;
-    return true;
-  }
-
-  /// Best-ever ratchet, like DartsMind: only overwrite with a faster time,
-  /// so one hot/throttled session can't permanently lock out the big model.
-  static Future<void> _persistSmallProfile(int mean) async {
-    try {
-      final stored = await StorageService.getAiSmallModelAvgMs();
-      if (stored == null || mean < stored) {
-        await StorageService.saveAiSmallModelAvgMs(mean);
-      }
-    } catch (e) {
-      debugPrint('[ModelSelector] profile write failed: $e');
-    }
-  }
 }

@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
-import 'model_selector.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
 
@@ -633,38 +632,6 @@ class AutoScoringService extends ChangeNotifier {
       await _fireCapture(captureFrame, captureRgba, captureBgra, captureYuv,
           cleanupFile, onDartDetected, onAutoConfirm);
 
-      // Adaptive model ladder: a sustained >500ms mean on the big model
-      // queues an immediate downgrade (heat/latency protection). ANDROID
-      // ONLY — the file-based reload there is fast; on iOS the same switch
-      // means a multi-second CoreML recompile on an already-throttled device,
-      // so ModelSelector defers it to the next match load instead (this block
-      // never fires on iOS). The reload is serialized here between
-      // inferences, never concurrent with one. If it fails outright the
-      // native side may have already dropped the old interpreter, so surface
-      // a clean "model not loaded" state instead of silently emitting error
-      // frames — recoverAutoScoring() then self-heals.
-      if (ModelSelector.takePendingSwitch() && _nativeInference != null) {
-        var switched = false;
-        for (var attempt = 0; attempt < 3 && !switched; attempt++) {
-          if (!_capturing || generation != _captureGeneration) break;
-          try {
-            await _nativeInference!.loadModel();
-            switched = true;
-          } catch (e) {
-            debugPrint('[AutoScoring] model downgrade reload failed '
-                '(attempt ${attempt + 1}/3): $e');
-            await Future.delayed(const Duration(milliseconds: 500));
-          }
-        }
-        if (!_capturing || generation != _captureGeneration) break;
-        if (!switched) {
-          _modelLoaded = false;
-          _initError = 'Model reload failed';
-          stopCapture();
-          break;
-        }
-      }
-
       // Yield AFTER inference too, so the results (notifyListeners) can
       // trigger widget rebuilds before the next cycle starts.
       await Future.delayed(const Duration(milliseconds: 16));
@@ -781,16 +748,6 @@ class AutoScoringService extends ChangeNotifier {
       }
       infSw.stop();
       _lastInferenceMs = infSw.elapsedMilliseconds;
-      // Feed the adaptive model ladder — successful native frames only
-      // (errors return fast and would drag the mean down artificially).
-      // Prefer the native-measured pure invoke time: the ladder's 260/500ms
-      // thresholds are DartsMind's PURE-inference cut-offs, and the
-      // end-to-end fallback (pixel copy + channel + parse) sits far enough
-      // above them to fire downgrades on devices that are actually fine.
-      if (_nativeInference != null && result.error == null) {
-        ModelSelector.recordInferenceMs(
-            _nativeInference!.lastNativeInferMs ?? _lastInferenceMs!);
-      }
 
 
       if (seq != _captureSeq || !_capturing) {

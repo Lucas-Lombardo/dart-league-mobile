@@ -338,7 +338,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get datasetShareDescription =>
-      'Share photos of my dartboard during matches (Wi-Fi only)';
+      'Share photos of my dartboard while I play (Wi-Fi only)';
 
   // Settings > profile hero & account
   @override

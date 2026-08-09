@@ -433,7 +433,11 @@ extension ReplayBufferPlugin {
   private func buildOverlayLayers(
     into parent: CALayer, timeline: [String: Any], size: CGSize, durationS: Double
   ) {
-    let s = size.width / 720.0
+    // min: a landscape clip must scale from its HEIGHT — width-based scaling
+    // blew the overlay up 2.7× there and buried the board. Portrait is
+    // untouched (width is the min).
+    let s = min(size.width, size.height) / 720.0
+    let landscape = size.width > size.height
 
     // ── Scoreboard (slide in at 0.3s) — two facing cards under a centered
     // brand lockup: at feed-thumbnail size a pair of big centered numbers
@@ -450,10 +454,7 @@ extension ReplayBufferPlugin {
     let shield = (timeline["logoPath"] as? String).flatMap {
       UIImage(contentsOfFile: $0)?.cgImage
     }
-
-    let cardH = 96 * s
-    let cardW = (size.width - 32 * s - 14 * s) / 2
-    let cardsTop = size.height - 84 * s - cardH
+    let format = timeline["format"] as? String ?? "RANKED"
 
     // One animated group: the whole scoreboard slides in as a single block.
     let board = CALayer()
@@ -461,15 +462,28 @@ extension ReplayBufferPlugin {
     board.opacity = 0
     parent.addSublayer(board)
 
-    board.addSublayer(brandPill(
-      bottom: cardsTop - 10 * s, s: s, width: size.width,
-      format: timeline["format"] as? String ?? "RANKED", shield: shield))
-    board.addSublayer(scoreCard(
-      x: 16 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: blue,
-      name: me, legs: myLegs, legsTarget: legsTarget, score: startScore, mine: true))
-    board.addSublayer(scoreCard(
-      x: 16 * s + cardW + 14 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: pink,
-      name: opp, legs: oppLegs, legsTarget: legsTarget, score: oppScore, mine: false))
+    if landscape {
+      // Landscape: one compact TV-style lower third — the portrait pill +
+      // facing cards stacked over the short axis covered the board.
+      board.addSublayer(broadcastBar(
+        size: size, s: s, format: format, shield: shield,
+        me: me, opp: opp, myLegs: myLegs, oppLegs: oppLegs,
+        legsTarget: legsTarget, myScore: startScore, oppScore: oppScore))
+    } else {
+      let cardH = 96 * s
+      let cardW = (size.width - 32 * s - 14 * s) / 2
+      let cardsTop = size.height - 84 * s - cardH
+
+      board.addSublayer(brandPill(
+        bottom: cardsTop - 10 * s, s: s, width: size.width,
+        format: format, shield: shield))
+      board.addSublayer(scoreCard(
+        x: 16 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: blue,
+        name: me, legs: myLegs, legsTarget: legsTarget, score: startScore, mine: true))
+      board.addSublayer(scoreCard(
+        x: 16 * s + cardW + 14 * s, y: cardsTop, w: cardW, h: cardH, s: s, accent: pink,
+        name: opp, legs: oppLegs, legsTarget: legsTarget, score: oppScore, mine: false))
+    }
 
     animate(board, key: "opacity", from: 0, to: 1, begin: 0.3, dur: 0.5)
     animate(board, key: "position.y", from: Double(board.position.y + 70 * s),
@@ -559,6 +573,121 @@ extension ReplayBufferPlugin {
       format, x: tx, y: 25 * s, w: w - tx, size: 11 * s,
       color: muted, align: .left, tracking: 0.08))
     return layer
+  }
+
+  /// Landscape-only scoreboard: name · pips · score │ brand │ score · pips ·
+  /// name in one bottom bar. Both sides get the width of the WIDER one, so
+  /// the brand block sits exactly centered.
+  private func broadcastBar(
+    size: CGSize, s: CGFloat, format: String, shield: CGImage?,
+    me: String, opp: String, myLegs: Int, oppLegs: Int, legsTarget: Int,
+    myScore: Int, oppScore: Int
+  ) -> CALayer {
+    let h = 56 * s
+    let pad = 17 * s
+    let gap = 13 * s
+    let accentW = 5 * s
+    let nameCol = min(
+      max(textWidth(me, size: 15 * s, tracking: 0.1),
+          textWidth(opp, size: 15 * s, tracking: 0.1)),
+      180 * s)
+    let scoreCol = max(
+      textWidth("\(myScore)", size: 34 * s, tracking: 0),
+      textWidth("\(oppScore)", size: 34 * s, tracking: 0))
+    let r = 4.5 * s
+    let pipGap = 6 * s
+    let pipsW = CGFloat(legsTarget) * 2 * r + CGFloat(legsTarget - 1) * pipGap
+    let sideW = accentW + pad + nameCol + gap + pipsW + gap + scoreCol + pad
+    let shieldH = 36 * s
+    let shieldW = shield.map { shieldH * CGFloat($0.width) / CGFloat($0.height) } ?? 0
+    let brandPad = 15 * s
+    let brandGap: CGFloat = shieldW > 0 ? 11 * s : 0
+    let brandTextW = max(
+      textWidth("DART RIVALS", size: 13 * s, tracking: 0.12),
+      textWidth(format, size: 11 * s, tracking: 0.08))
+    let brandW = brandPad + shieldW + brandGap + brandTextW + brandPad
+    let w = 2 * sideW + brandW
+
+    let bar = CALayer()
+    bar.frame = CGRect(
+      x: (size.width - w) / 2, y: size.height - 17 * s - h, width: w, height: h)
+    bar.backgroundColor = pill
+    bar.cornerRadius = 9 * s
+    bar.borderWidth = 1.5 * s
+    bar.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+    bar.masksToBounds = true
+
+    func rect(_ frame: CGRect, _ color: CGColor) {
+      let layer = CALayer()
+      layer.frame = frame
+      layer.backgroundColor = color
+      bar.addSublayer(layer)
+    }
+    // Player accents on the outer edges, brand block delimited in the middle.
+    rect(CGRect(x: 0, y: 0, width: accentW, height: h), blue)
+    rect(CGRect(x: w - accentW, y: 0, width: accentW, height: h), pink)
+    rect(
+      CGRect(x: sideW, y: 0, width: brandW, height: h),
+      UIColor.white.withAlphaComponent(0.045).cgColor)
+    let sep = UIColor.white.withAlphaComponent(0.10).cgColor
+    rect(CGRect(x: sideW, y: 0, width: 1 * s, height: h), sep)
+    rect(CGRect(x: sideW + brandW - 1 * s, y: 0, width: 1 * s, height: h), sep)
+
+    var bx = sideW + brandPad
+    if let shield = shield {
+      let shieldLayer = CALayer()
+      shieldLayer.contents = shield
+      shieldLayer.frame = CGRect(
+        x: bx, y: (h - shieldH) / 2, width: shieldW, height: shieldH)
+      bar.addSublayer(shieldLayer)
+      bx += shieldW + brandGap
+    }
+    bar.addSublayer(textLayer(
+      "DART RIVALS", x: bx, y: 13 * s, w: brandTextW + 2 * s, size: 13 * s,
+      color: UIColor.white.cgColor, align: .left, tracking: 0.12))
+    bar.addSublayer(textLayer(
+      format, x: bx, y: 30 * s, w: brandTextW + 2 * s, size: 11 * s,
+      color: muted, align: .left, tracking: 0.08))
+
+    func side(x0: CGFloat, accent: CGColor, name: String, legs: Int, score: Int,
+              mine: Bool, mirrored: Bool) {
+      let nameX: CGFloat, pipsX: CGFloat, scoreX: CGFloat
+      if mirrored {
+        scoreX = x0 + pad
+        pipsX = scoreX + scoreCol + gap
+        nameX = pipsX + pipsW + gap
+      } else {
+        nameX = x0 + pad
+        pipsX = nameX + nameCol + gap
+        scoreX = pipsX + pipsW + gap
+      }
+      bar.addSublayer(textLayer(
+        name, x: nameX, y: 17 * s, w: nameCol, size: 15 * s,
+        color: mine
+          ? UIColor(red: 0.894, green: 0.929, blue: 0.980, alpha: 1).cgColor : muted,
+        align: .center, tracking: 0.1))
+      bar.addSublayer(textLayer(
+        "\(score)", x: scoreX, y: 4 * s, w: scoreCol, size: 34 * s,
+        color: mine
+          ? UIColor.white.cgColor
+          : UIColor(red: 0.725, green: 0.776, blue: 0.855, alpha: 1).cgColor,
+        align: .center))
+      var px = pipsX
+      for i in 0..<legsTarget {
+        let pip = CALayer()
+        pip.frame = CGRect(x: px, y: h / 2 - r, width: 2 * r, height: 2 * r)
+        pip.cornerRadius = r
+        pip.backgroundColor = i < legs
+          ? accent : UIColor.white.withAlphaComponent(0.18).cgColor
+        bar.addSublayer(pip)
+        px += 2 * r + pipGap
+      }
+    }
+    side(x0: accentW, accent: blue, name: me, legs: myLegs, score: myScore,
+         mine: true, mirrored: false)
+    side(x0: sideW + brandW, accent: pink, name: opp, legs: oppLegs,
+         score: oppScore, mine: false, mirrored: true)
+    return bar
   }
 
   private func scoreCard(
