@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
+import 'dataset_capture_service.dart';
 import 'model_selector.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
@@ -52,9 +53,8 @@ typedef CaptureFrameCallback = Future<String?> Function();
 typedef CaptureRgbaCallback = (Uint8List, int, int)? Function();
 typedef CaptureBgraCallback = (Uint8List, int, int)? Function();
 
-/// Android YUV capture callback — returns raw YUV planes for native processing.
-/// Matches DartsMind's ZLVideoCapture: raw ImageProxy → native dvExecutor.
-typedef CaptureYuvCallback = ({
+/// One Android camera frame as raw YUV planes (with strides + rotation).
+typedef YuvFrame = ({
   Uint8List yPlane,
   Uint8List uPlane,
   Uint8List vPlane,
@@ -64,7 +64,11 @@ typedef CaptureYuvCallback = ({
   int uvRowStride,
   int uvPixelStride,
   int rotation,
-})? Function();
+});
+
+/// Android YUV capture callback — returns raw YUV planes for native processing.
+/// Matches DartsMind's ZLVideoCapture: raw ImageProxy → native dvExecutor.
+typedef CaptureYuvCallback = YuvFrame? Function();
 typedef CleanupFileCallback = Future<void> Function(String path);
 typedef OnDartDetectedCallback = void Function(int slotIndex, DartScore score);
 typedef OnAutoConfirmCallback = void Function();
@@ -293,6 +297,10 @@ class AutoScoringService extends ChangeNotifier {
   List<bool> _manualOverrideSlots = [false, false, false];
   List<bool> _removedSlots = [false, false, false];
 
+  // Dataset capture (see DatasetCaptureService): armed once per startCapture
+  // so a visit contributes at most ONE 3-dart frame, disarmed on capture.
+  bool _datasetCaptureArmed = false;
+
   // UI state
   String? _zoomHint;
   int? _lastInferenceMs;
@@ -494,6 +502,7 @@ class AutoScoringService extends ChangeNotifier {
     // exits on its next check.
     final generation = ++_captureGeneration;
     _dartsRemoved = false;
+    _datasetCaptureArmed = true;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
     _resetErrorStreak();
@@ -712,6 +721,12 @@ class AutoScoringService extends ChangeNotifier {
       final bool isAndroid = !kIsWeb && Platform.isAndroid;
       final infSw = Stopwatch()..start();
       ScoringResult result;
+      // The analyzed frame, retained for a potential dataset capture below.
+      // Each CameraImage owns its byte buffers, so the reference stays valid
+      // across the inference await; DatasetCaptureService copies on entry.
+      YuvFrame? datasetYuv;
+      (Uint8List, int, int)? datasetPixels;
+      bool datasetPixelsAreBgra = false;
 
       if (isAndroid && captureYuv != null && _nativeInference != null) {
         // ── Android path: DartsMind-style native YUV pipeline ──
@@ -719,6 +734,7 @@ class AutoScoringService extends ChangeNotifier {
         // Matches ZLVideoCapture → Detector.detectVideoBuffer exactly.
         final yuvData = captureYuv();
         if (yuvData == null || seq != _captureSeq || !_capturing) return;
+        datasetYuv = yuvData;
         result = await _nativeInference!.analyzeYuv(
           yPlane: yuvData.yPlane,
           uPlane: yuvData.uPlane,
@@ -739,12 +755,15 @@ class AutoScoringService extends ChangeNotifier {
             (_nativeInference != null) ? captureBgra?.call() : null;
         if (bgraData != null) {
           final (bgra, w, h) = bgraData;
+          datasetPixels = bgraData;
+          datasetPixelsAreBgra = true;
           result =
               await _nativeInference!.analyzeRgba(bgra, w, h, isBgra: true);
         } else {
           final rgbaData = captureRgba?.call();
           if (rgbaData != null) {
             final (rgba, w, h) = rgbaData;
+            datasetPixels = rgbaData;
             result = _nativeInference != null
                 ? await _nativeInference!.analyzeRgba(rgba, w, h)
                 : await _detector.analyzeRgba(rgba, w, h);
@@ -918,6 +937,33 @@ class AutoScoringService extends ChangeNotifier {
       }
       _consecutiveRemovalCount = 0;
       _prevDartCount = dartCount;
+
+      // Dataset capture: first successfully analyzed frame of this visit
+      // showing 3 darts → ONE native-resolution JPEG straight to R2 (see
+      // DatasetCaptureService — copies, encodes and uploads off this path).
+      if (_datasetCaptureArmed &&
+          result.error == null &&
+          dartCount >= 3 &&
+          DatasetCaptureService.isActive) {
+        _datasetCaptureArmed = false;
+        if (datasetYuv != null) {
+          DatasetCaptureService.captureYuv(
+            yPlane: datasetYuv.yPlane,
+            uPlane: datasetYuv.uPlane,
+            vPlane: datasetYuv.vPlane,
+            width: datasetYuv.width,
+            height: datasetYuv.height,
+            yRowStride: datasetYuv.yRowStride,
+            uvRowStride: datasetYuv.uvRowStride,
+            uvPixelStride: datasetYuv.uvPixelStride,
+            rotation: datasetYuv.rotation,
+          );
+        } else if (datasetPixels != null) {
+          final (pixels, w, h) = datasetPixels;
+          DatasetCaptureService.capturePixels(pixels, w, h,
+              isBgra: datasetPixelsAreBgra);
+        }
+      }
 
       // ---- DartsMind autoScore pipeline -----------------------------------
       _autoScore(result, onDartDetected);

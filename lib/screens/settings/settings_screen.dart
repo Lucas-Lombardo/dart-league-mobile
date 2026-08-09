@@ -11,6 +11,7 @@ import '../../models/user.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../services/api_service.dart';
+import '../../services/dataset_capture_service.dart';
 import '../../utils/app_theme.dart';
 import '../profile/replay_library_screen.dart';
 import '../../utils/dart_caller_service.dart';
@@ -35,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _appVersion = 'Loading...';
   bool _callerEnabled = DartCallerService.enabled;
   bool _hapticsEnabled = HapticService.isEnabled;
+  bool _datasetShareEnabled = DatasetCaptureService.shareEnabled;
   final Map<SoundCategory, bool> _soundEnabled = {
     for (final c in SoundCategory.values) c: DartSoundService.isEnabled(c),
   };
@@ -94,7 +96,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
           _buildSection(l10n.preferences.toUpperCase()),
-          _buildGroupCard([_buildLanguageRow(l10n)]),
+          _buildGroupCard([
+            _buildLanguageRow(l10n),
+            _buildToggleRow(
+              icon: Icons.center_focus_strong,
+              title: l10n.datasetShareTitle,
+              subtitle: l10n.datasetShareDescription,
+              value: _datasetShareEnabled,
+              onChanged: (value) {
+                HapticService.selectionClick();
+                setState(() => _datasetShareEnabled = value);
+                DatasetCaptureService.setShareEnabled(value);
+              },
+            ),
+          ]),
 
           const SizedBox(height: 24),
           _buildSection(l10n.soundsSection.toUpperCase()),

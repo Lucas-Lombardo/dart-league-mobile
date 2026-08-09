@@ -334,6 +334,14 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get hapticsDescription => 'Retours haptiques sur les actions';
 
+  // Settings > AI dataset sharing
+  @override
+  String get datasetShareTitle => 'Aider à améliorer l\'IA';
+
+  @override
+  String get datasetShareDescription =>
+      'Partager des photos de ma cible pendant les matchs (Wi-Fi uniquement)';
+
   // Settings > profile hero & account
   @override
   String get editProfile => 'Modifier le profil';

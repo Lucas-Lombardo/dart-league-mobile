@@ -28,6 +28,7 @@ import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
+import 'services/dataset_capture_service.dart';
 import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
 import 'utils/dart_caller_service.dart';
@@ -92,6 +93,7 @@ void main() async {
     await DartCallerService.loadPreference();
     await DartSoundService.loadPreferences();
     await HapticService.loadPreference();
+    await DatasetCaptureService.loadPreference();
   } catch (e) {
     debugPrint('⚠️ Sound preferences load failed: $e');
   }

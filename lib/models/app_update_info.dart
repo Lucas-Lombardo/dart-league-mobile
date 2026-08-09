@@ -10,12 +10,16 @@ class AppUpdateInfo {
   /// backend refuses tournament registration until the app is updated.
   final bool tournamentUpdateRequired;
 
+  /// Remote flag of the AI dataset capture (missing on old backends → false).
+  final bool datasetCaptureEnabled;
+
   const AppUpdateInfo({
     required this.updateAvailable,
     this.latestVersion,
     this.message,
     this.storeUrl,
     this.tournamentUpdateRequired = false,
+    this.datasetCaptureEnabled = false,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) => AppUpdateInfo(
@@ -24,5 +28,6 @@ class AppUpdateInfo {
         message: json['message'] as String?,
         storeUrl: json['storeUrl'] as String?,
         tournamentUpdateRequired: json['tournamentUpdateRequired'] == true,
+        datasetCaptureEnabled: json['datasetCaptureEnabled'] == true,
       );
 }

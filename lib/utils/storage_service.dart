@@ -107,6 +107,20 @@ class StorageService {
     return value == 'true';
   }
 
+  // Whether the user shares dartboard photos to train the detection AI
+  // (Settings > "Help improve the AI"). Default on, like the sound toggles.
+  static const String _datasetShareEnabledKey = 'dataset_share_enabled';
+
+  static Future<void> saveDatasetShareEnabled(bool enabled) async {
+    await _storage.write(key: _datasetShareEnabledKey, value: enabled.toString());
+  }
+
+  static Future<bool> getDatasetShareEnabled() async {
+    final value = await _storage.read(key: _datasetShareEnabledKey);
+    if (value == null) return true;
+    return value == 'true';
+  }
+
   // Whether to use the front (selfie) camera instead of the back one for the
   // dartboard feed. Remembered across screens and app launches so the last
   // choice sticks. Defaults off (back camera).

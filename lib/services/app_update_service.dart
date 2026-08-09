@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/app_update_info.dart';
 import 'api_service.dart';
+import 'dataset_capture_service.dart';
 
 /// Asks the backend whether a newer app version is available for this install.
 class AppUpdateService {
@@ -21,7 +22,11 @@ class AppUpdateService {
         includeAuth: false,
       );
       if (res is Map<String, dynamic>) {
-        return AppUpdateInfo.fromJson(res);
+        final info = AppUpdateInfo.fromJson(res);
+        // Arm/disarm the dataset capture for this session — this endpoint is
+        // the flag's only transport, and it already runs once per launch.
+        DatasetCaptureService.remoteEnabled = info.datasetCaptureEnabled;
+        return info;
       }
       return null;
     } catch (e) {

@@ -132,6 +132,10 @@ abstract class AppLocalizations {
   String get haptics;
   String get hapticsDescription;
 
+  // Settings > AI dataset sharing
+  String get datasetShareTitle;
+  String get datasetShareDescription;
+
   // Settings > profile hero & account
   String get editProfile;
   String get accountSection;
