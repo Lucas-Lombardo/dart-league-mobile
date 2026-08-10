@@ -50,6 +50,14 @@ class P2pRtcSession {
   /// Connected). The session reports; [P2pMatchVideo]'s loop decides.
   final void Function(String reason)? onImpaired;
 
+  /// Outgoing-video encoder budget (thermal audit 2026-08-10). Without caps
+  /// libwebrtc's BWE pushed the static 720p board scene to ~2.5 Mbps and the
+  /// encoder ran unconstrained for the whole match — a top heat source on
+  /// both phones (each pays its encode AND the peer's decode). DartsMind
+  /// ships the same scene at ~1.1 Mbps @ 15 fps with no visible difference.
+  static const int _maxVideoBitrateBps = 1100 * 1000;
+  static const int _maxVideoFps = 15;
+
   /// How often the decoded-frame counter is sampled once connected.
   static const Duration mediaCheckInterval = Duration(seconds: 3);
 
@@ -236,8 +244,9 @@ class P2pRtcSession {
         return;
       }
       final stream = await createLocalMediaStream('dartrivals-local');
-      await pc.addTrack(track, stream);
+      final sender = await pc.addTrack(track, stream);
       _hadLocalVideo = true;
+      await _capVideoSender(sender);
     }
 
     // Local media is final — process whatever the opponent sent meanwhile,
@@ -259,6 +268,29 @@ class P2pRtcSession {
     if (offerer) {
       final next = _signalChain.then((_) => _makeOffer());
       _signalChain = next.catchError((_) {});
+    }
+  }
+
+  /// Apply [_maxVideoBitrateBps]/[_maxVideoFps] to the video sender.
+  /// MAINTAIN_RESOLUTION: on a near-static board sharpness (reading the
+  /// darts) matters, motion doesn't — under pressure the encoder drops
+  /// frames instead of blurring the board.
+  Future<void> _capVideoSender(RTCRtpSender sender) async {
+    try {
+      final params = sender.parameters;
+      final encodings = params.encodings ?? <RTCRtpEncoding>[];
+      if (encodings.isEmpty) encodings.add(RTCRtpEncoding());
+      for (final encoding in encodings) {
+        encoding.maxBitrate = _maxVideoBitrateBps;
+        encoding.maxFramerate = _maxVideoFps;
+      }
+      params.encodings = encodings;
+      params.degradationPreference =
+          RTCDegradationPreference.MAINTAIN_RESOLUTION;
+      await sender.setParameters(params);
+    } catch (e) {
+      // An uncapped sender still calls fine — worse thermally, never fatally.
+      debugPrint('P2P: video sender caps failed: $e');
     }
   }
 

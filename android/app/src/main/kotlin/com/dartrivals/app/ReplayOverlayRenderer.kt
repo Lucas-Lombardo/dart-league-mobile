@@ -88,8 +88,8 @@ class ReplayOverlayRenderer(private val timeline: JSONObject) {
                 )
                 setInteger(MediaFormat.KEY_BIT_RATE, 4_000_000)
                 // Rate-control hint only (the cadence follows the decoded
-                // samples) — matches the ring's 24 fps capture.
-                setInteger(MediaFormat.KEY_FRAME_RATE, 24)
+                // samples) — matches the ring's 15 fps capture.
+                setInteger(MediaFormat.KEY_FRAME_RATE, 15)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             },
             null, null, MediaCodec.CONFIGURE_FLAG_ENCODE,

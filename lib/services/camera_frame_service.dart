@@ -31,15 +31,17 @@ class CameraFrameService {
   bool _isStreaming = false;
   bool _disposed = false;
 
-  // Session-wide camera frame rate. D8 capped it at 15 (no consumer took
-  // more); the replay ring is the one consumer that does — a 15 fps clip
-  // read as choppy on the first shareable exports (2026-08-03). Match modes
-  // (ring armed) run at 24: smooth enough to share, one fifth less per-frame
-  // pipeline than the 30 first tried. Solo modes (training, placement) have
-  // no ring and keep D8's 15 — the AI pulls ≤4/s and the RTC/Agora push is
-  // throttled to ~15 via _minPushInterval regardless.
-  static const int _replayCameraFps = 24;
-  static const int _defaultCameraFps = 15;
+  // Session-wide camera frame rate. D8 capped it at 15 (no consumer takes
+  // more: the AI pulls ≤4/s, the RTC/Agora push is throttled to ~15 via
+  // _minPushInterval, the ring encodes at the camera rate). Match modes
+  // briefly ran at 24 for smoother shareable clips (2026-08-03), but the
+  // 2026-08-10 thermal audit showed the extra 60% of per-frame pipeline was
+  // paid for the WHOLE match — including the opponent's turn, where the ring
+  // doesn't encode — so it's back to 15 everywhere: clips trade a bit of
+  // smoothness for a phone that stops throttling mid-match. The native
+  // encoder hints track this value (ReplayBufferPlugin.FRAME_RATE, the iOS
+  // writer/export settings, ReplayOverlayRenderer).
+  static const int _cameraFps = 15;
 
   // Push cadence into Agora: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
@@ -59,6 +61,14 @@ class CameraFrameService {
   final List<bool> _pushBufferBusy = [false, false];
   // Replay tee staging buffer — see _pushFrameToReplay.
   Uint8List? _replayBuffer;
+  // The frame currently staged in [_replayBuffer] (+ its format), so the P2P
+  // push can reuse that tight copy instead of filling a second identical one
+  // (thermal audit 2026-08-10: the double fill was ~1.4MB of extra memcpy on
+  // every my-turn frame). Safe because the method channel serializes both
+  // sends synchronously; Agora reads its buffer asynchronously and must keep
+  // its own pooled slot. Cleared on every camera callback.
+  CameraImage? _replayStagedFrame;
+  String? _replayStagedFormat;
   bool _replayMode = false;
 
   // Cache the latest frame for AI scoring capture
@@ -251,7 +261,7 @@ class CameraFrameService {
           // iOS: applied by camera_avfoundation via activeVideoM{in,ax}FrameDuration.
           // Android: applied by our vendored camera_android patch (see
           // packages/camera_android — stock only applies fps while recording).
-          fps: _replayMode ? _replayCameraFps : _defaultCameraFps,
+          fps: _cameraFps,
           imageFormatGroup: Platform.isAndroid
               ? ImageFormatGroup.yuv420
               : ImageFormatGroup.bgra8888,
@@ -414,9 +424,10 @@ class CameraFrameService {
     // Cap the push cadence at ~16 fps regardless of the actual camera rate
     // (the encoder runs at 15 fps; a device that ignores the fps cap must
     // not double the copy work).
-    // The replay ring takes every camera frame (24 fps smoothness is the
-    // point of a shareable clip); only the transport push below is
-    // throttled to its encoder's 15 fps.
+    // The replay ring takes every camera frame (the session cap is 15 fps);
+    // its tee runs first so the transport push below can reuse its staging
+    // copy on the frames both consume.
+    _replayStagedFrame = null;
     if (_replayMode) _pushFrameToReplay(image);
     final now = DateTime.now();
     if (_lastPushAt != null &&
@@ -459,6 +470,8 @@ class CameraFrameService {
           _fillNv21Buffer(image, buffer);
           format = 'nv21';
         }
+        _replayStagedFrame = image;
+        _replayStagedFormat = format;
         ReplayBufferService.pushFrame(
           buffer,
           image.width,
@@ -492,20 +505,31 @@ class CameraFrameService {
   /// returns (unlike Agora, which reads it asynchronously); back-pressure
   /// (drop when the platform side is behind) lives in RtcFramesService.
   void _pushFrameToP2p(CameraImage image) {
-    if (!RtcFramesService.hasTrack) return;
+    // sendActive: the opponent only renders our stream during OUR turn —
+    // bail before the tight copy, exactly like the replay gate.
+    if (!RtcFramesService.hasTrack || !RtcFramesService.sendActive) return;
     try {
       if (Platform.isAndroid) {
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-        final ySize = image.width * image.height;
-        final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
-        final buffer = _pushBuffer(0, ySize + uvSize * 2);
+        final Uint8List buffer;
         final String format;
-        if (uvPixelStride == 1) {
-          _fillI420Buffer(image, buffer);
-          format = 'i420';
+        if (identical(_replayStagedFrame, image)) {
+          // The replay tee already tight-copied this exact frame — both
+          // channel sends serialize synchronously, so one staging copy
+          // serves the two of them.
+          buffer = _replayBuffer!;
+          format = _replayStagedFormat!;
         } else {
-          _fillNv21Buffer(image, buffer);
-          format = 'nv21';
+          final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+          final ySize = image.width * image.height;
+          final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
+          buffer = _pushBuffer(0, ySize + uvSize * 2);
+          if (uvPixelStride == 1) {
+            _fillI420Buffer(image, buffer);
+            format = 'i420';
+          } else {
+            _fillNv21Buffer(image, buffer);
+            format = 'nv21';
+          }
         }
         final rotation = _effectiveRotation();
         if (!_firstPushLogged) {

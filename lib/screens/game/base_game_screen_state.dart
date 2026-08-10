@@ -617,6 +617,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // films MY board — the opponent's turn is dead footage and half the
       // encoder heat). Idempotent, safe on every notify.
       ReplayBufferService.setMyTurn(game.isMyTurn);
+      // Same turn gate for the outgoing P2P video (thermal audit 2026-08-10):
+      // the opponent's screen only renders OUR stream during OUR turn, so
+      // pushing + encoding during theirs heated both phones for a feed
+      // nobody displayed. Audio stays live; no-op in Agora/solo modes.
+      RtcFramesService.setSendActive(game.isMyTurn);
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();

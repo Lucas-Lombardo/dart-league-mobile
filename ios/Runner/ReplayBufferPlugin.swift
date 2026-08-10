@@ -132,9 +132,9 @@ class ReplayBufferPlugin: NSObject {
       AVVideoHeightKey: height,
       AVVideoCompressionPropertiesKey: [
         AVVideoAverageBitRateKey: Self.bitRate,
-        // Must track the Dart side's match-mode camera fps
-        // (CameraFrameService._replayCameraFps).
-        AVVideoExpectedSourceFrameRateKey: 24,
+        // Must track the Dart side's camera fps
+        // (CameraFrameService._cameraFps).
+        AVVideoExpectedSourceFrameRateKey: 15,
       ],
     ]
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -390,9 +390,9 @@ extension ReplayBufferPlugin {
 
     let videoComp = AVMutableVideoComposition()
     videoComp.renderSize = renderSize
-    // Matches the ring's 24 fps capture cadence — a 30 fps export would only
+    // Matches the ring's 15 fps capture cadence — a faster export would only
     // duplicate frames.
-    videoComp.frameDuration = CMTime(value: 1, timescale: 24)
+    videoComp.frameDuration = CMTime(value: 1, timescale: 15)
     let instruction = AVMutableVideoCompositionInstruction()
     instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)

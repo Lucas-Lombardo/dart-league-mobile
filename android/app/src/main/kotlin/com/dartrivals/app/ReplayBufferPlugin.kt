@@ -39,10 +39,10 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         private const val SEGMENT_MS = 3_000L
         private const val RING_SEGMENTS = 16
         private const val BIT_RATE = 4_000_000
-        // Must track the Dart side's match-mode camera fps
-        // (CameraFrameService._replayCameraFps) — rate-control hint and
+        // Must track the Dart side's camera fps
+        // (CameraFrameService._cameraFps) — rate-control hint and
         // concat frame gap both assume the real capture cadence.
-        private const val FRAME_RATE = 24
+        private const val FRAME_RATE = 15
     }
 
     private lateinit var channel: MethodChannel
