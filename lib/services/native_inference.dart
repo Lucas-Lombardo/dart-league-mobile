@@ -25,14 +25,19 @@ class NativeInference {
   /// iOS delegate for the native interpreter ('auto' | 'cpu' | 'xnnpack' |
   /// 'metal' | 'coreml'). 'auto' = the plugin's CoreML → Metal → CPU
   /// cascade; any other value pins that rung (which is also how delegates
-  /// get benchmarked against each other on-device).
+  /// get benchmarked against each other on-device — see
+  /// lib/dev/delegate_bench.dart).
   ///
-  /// 'xnnpack' is the measured default for v7: its YOLO26 graph is delegate-
-  /// hostile — the 2026-08-09 bench (iPhone de Lucas, full-frame ms) gave
-  /// xnnpack ~332ms, coreml ~518ms (only 48/632 nodes delegated, in 98
-  /// partitions), metal ~980ms, bare cpu ~1350ms. Re-bench before trusting
-  /// this for any NEW model — the ranking is a property of the graph.
-  static const String iosDelegate = 'xnnpack';
+  /// 'coreml' is the measured winner for dart-rival-ia-light: the 2026-08-10
+  /// bench (iPhone de Lucas, pure-invoke ms, cool phone) gave coreml ~56ms
+  /// median (Neural Engine — frees the 4 CPU threads the AI loop used to pin
+  /// at ~90% duty) vs xnnpack ~133ms; metal never finished (device
+  /// connection dropped during its delegate build) but was already beaten.
+  /// The previous 'xnnpack' pin came from the delegate-hostile v7/YOLO26
+  /// graph (2026-08-09: xnnpack ~332ms, coreml ~518ms with 48/632 nodes
+  /// delegated) — the ranking is a property of the graph, so re-bench before
+  /// trusting this for any NEW model.
+  static const String iosDelegate = 'coreml';
 
   // Both native plugins run everything on ONE serial thread (dvExecutor on
   // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —

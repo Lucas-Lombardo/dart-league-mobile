@@ -258,7 +258,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
           // 2026-08-10): these screens ran at the ~30 fps sensor default
           // while analysing 2–5 frames/s — pure pre-match heat soak, so the
           // phone reached the OS throttling threshold before the first dart.
-          fps: 15,
+          fps: CameraFrameService.cameraFps,
           // Same stream format as the in-game pipeline (CameraFrameService):
           // the AI loop reads raw frames off the image stream.
           imageFormatGroup: Platform.isAndroid

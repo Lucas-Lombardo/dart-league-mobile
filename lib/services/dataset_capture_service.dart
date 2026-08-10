@@ -138,8 +138,16 @@ class DatasetCaptureService {
     if (_flushing) return;
     _flushing = true;
     try {
-      while (_queue.isNotEmpty) {
-        final cap = _queue.removeAt(0);
+      // Snapshot the batch: the drain awaits network per frame and can still
+      // be running when the NEXT match (rematch, deferred dispose) starts
+      // queueing — draining the live queue would encode + upload the new
+      // match's frames during its live call, the exact load this deferral
+      // exists to avoid. The successor frames wait for that match's own
+      // verdict flush.
+      final batch = List.of(_queue);
+      _queue.clear();
+      while (batch.isNotEmpty) {
+        final cap = batch.removeAt(0);
         final path = cap.path;
         if (path == null) continue;
         try {

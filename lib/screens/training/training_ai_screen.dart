@@ -9,6 +9,7 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/game_provider.dart' show ScoreMultiplier;
 import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
+import '../../services/dataset_capture_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
@@ -83,6 +84,10 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     _ai = null;
     _cameraService?.dispose();
     _cameraService = null;
+    // Solo modes have no match verdict: without this, queued dataset frames
+    // sat unflushed until the 24-slot cap starved capture for the whole app
+    // session — including later online matches (review 2026-08-10).
+    DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
     super.dispose();

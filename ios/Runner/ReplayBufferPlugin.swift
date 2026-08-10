@@ -133,7 +133,7 @@ class ReplayBufferPlugin: NSObject {
       AVVideoCompressionPropertiesKey: [
         AVVideoAverageBitRateKey: Self.bitRate,
         // Must track the Dart side's camera fps
-        // (CameraFrameService._cameraFps).
+        // (CameraFrameService.cameraFps).
         AVVideoExpectedSourceFrameRateKey: 15,
       ],
     ]

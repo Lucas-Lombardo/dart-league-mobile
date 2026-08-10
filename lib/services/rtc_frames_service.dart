@@ -37,24 +37,20 @@ class RtcFramesService {
 
   // Turn gate (thermal audit 2026-08-10): the opponent's screen only renders
   // OUR stream during OUR turn (their "opponent turn" layout) — pushing and
-  // encoding during their turn heated both phones for a feed nobody
-  // displayed, ~half the match. The flag gates the staging copy
-  // (CameraFrameService checks it before any fill) and the track's `enabled`
-  // flip silences the native encoder + the peer's decoder, exactly like the
-  // mic mute. Audio is never touched.
+  // encoding at full rate during their turn heated both phones for a feed
+  // nobody displayed, ~half the match. The flag switches the push cadence in
+  // CameraFrameService._onCameraImage (full rate ↔ ~1 fps trickle). It must
+  // NOT silence the sender completely (no track.enabled flip, no zero-push):
+  // the peer's media watchdog samples framesDecoded and reads 6s of silence
+  // as a frozen call, which put the recovery loop into a rebuild cycle every
+  // opponent turn (review 2026-08-10). Audio is never touched.
   static bool _sendActive = true;
 
   static bool get sendActive => _sendActive;
 
   /// Idempotent; wired to the game-state listener (my turn = true).
   static void setSendActive(bool active) {
-    if (_sendActive == active) return;
     _sendActive = active;
-    try {
-      _track?.enabled = active;
-    } catch (e) {
-      debugPrint('[RtcFramesService] setSendActive($active) failed: $e');
-    }
   }
 
   /// Last createTrack failure, kept so the P2P session can embed it in the
@@ -102,10 +98,9 @@ class RtcFramesService {
         return null;
       }
       _track = MediaStreamTrackNative(id, id, 'video', true, '', const {});
-      // The native track is born enabled. Start the gate open too — a black
-      // call at match start would be a visible bug, a few seconds of extra
-      // encode is only heat; the game-state listener re-applies the real
-      // turn on its next notify.
+      // Start the gate open — a trickle-rate feed at match start would look
+      // frozen, a few seconds of full-rate encode is only heat; the
+      // game-state listener re-applies the real turn on its next notify.
       _sendActive = true;
       _pushErrorLogged = false;
       lastCreateError = null;

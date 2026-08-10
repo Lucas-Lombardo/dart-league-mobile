@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
+import 'dev/delegate_bench.dart';
 import 'services/api_service.dart';
 import 'services/dataset_capture_service.dart';
 import 'utils/app_navigator.dart';
@@ -42,6 +44,12 @@ final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<v
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Dev-only TFLite delegate bench (see lib/dev/delegate_bench.dart) —
+  // compiled out unless launched with --dart-define=DELEGATE_BENCH=true.
+  if (const bool.fromEnvironment('DELEGATE_BENCH')) {
+    unawaited(DelegateBench.run());
+  }
 
   // Context-free navigation (push-tap deep links) goes through this key.
   AppNavigator.navigatorKey = navigatorKey;

@@ -38,16 +38,26 @@ class CameraFrameService {
   // 2026-08-10 thermal audit showed the extra 60% of per-frame pipeline was
   // paid for the WHOLE match — including the opponent's turn, where the ring
   // doesn't encode — so it's back to 15 everywhere: clips trade a bit of
-  // smoothness for a phone that stops throttling mid-match. The native
-  // encoder hints track this value (ReplayBufferPlugin.FRAME_RATE, the iOS
-  // writer/export settings, ReplayOverlayRenderer).
-  static const int _cameraFps = 15;
+  // smoothness for a phone that stops throttling mid-match. Public: the
+  // camera-setup screens and the P2P encoder cap reference it so the value
+  // has ONE Dart home (it moved twice in a week; every desync re-opens a
+  // heat leak). The native encoder hints still mirror it by hand
+  // (ReplayBufferPlugin.FRAME_RATE, the iOS writer/export settings,
+  // ReplayOverlayRenderer) — keep them in step.
+  static const int cameraFps = 15;
 
   // Push cadence into Agora: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
   // assumed a 30 fps stream, which the D8 cap makes wrong.
   DateTime? _lastPushAt;
   static const Duration _minPushInterval = Duration(milliseconds: 60);
+  // P2P cadence while the turn gate is closed (opponent's turn): nobody
+  // displays our stream, but the peer's media watchdog samples framesDecoded
+  // every 3s and reads 6s of silence as a frozen call — a fully muted sender
+  // triggered a PeerConnection rebuild loop every opponent turn (review
+  // 2026-08-10). ~1 fps keeps the watchdog fed for ~7% of the full-rate
+  // encode/copy cost.
+  static const Duration _gatedPushInterval = Duration(seconds: 1);
 
   // Reusable push buffers. Allocating 1.4 MB (Android YUV) / 3.7 MB (iOS
   // BGRA) per pushed frame, 15×/s for a whole match, was a constant GC feed —
@@ -261,7 +271,7 @@ class CameraFrameService {
           // iOS: applied by camera_avfoundation via activeVideoM{in,ax}FrameDuration.
           // Android: applied by our vendored camera_android patch (see
           // packages/camera_android — stock only applies fps while recording).
-          fps: _cameraFps,
+          fps: cameraFps,
           imageFormatGroup: Platform.isAndroid
               ? ImageFormatGroup.yuv420
               : ImageFormatGroup.bgra8888,
@@ -430,8 +440,11 @@ class CameraFrameService {
     _replayStagedFrame = null;
     if (_replayMode) _pushFrameToReplay(image);
     final now = DateTime.now();
+    final pushInterval = _p2pMode && !RtcFramesService.sendActive
+        ? _gatedPushInterval
+        : _minPushInterval;
     if (_lastPushAt != null &&
-        now.difference(_lastPushAt!) < _minPushInterval) {
+        now.difference(_lastPushAt!) < pushInterval) {
       return;
     }
     _lastPushAt = now;
@@ -453,7 +466,6 @@ class CameraFrameService {
     if (!ReplayBufferService.wantsFrame) return;
     try {
       if (Platform.isAndroid) {
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
         final ySize = image.width * image.height;
         final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
         final needed = ySize + uvSize * 2;
@@ -462,14 +474,7 @@ class CameraFrameService {
           buffer = Uint8List(needed);
           _replayBuffer = buffer;
         }
-        final String format;
-        if (uvPixelStride == 1) {
-          _fillI420Buffer(image, buffer);
-          format = 'i420';
-        } else {
-          _fillNv21Buffer(image, buffer);
-          format = 'nv21';
-        }
+        final format = _fillTightYuv(image, buffer);
         _replayStagedFrame = image;
         _replayStagedFormat = format;
         ReplayBufferService.pushFrame(
@@ -505,9 +510,10 @@ class CameraFrameService {
   /// returns (unlike Agora, which reads it asynchronously); back-pressure
   /// (drop when the platform side is behind) lives in RtcFramesService.
   void _pushFrameToP2p(CameraImage image) {
-    // sendActive: the opponent only renders our stream during OUR turn —
-    // bail before the tight copy, exactly like the replay gate.
-    if (!RtcFramesService.hasTrack || !RtcFramesService.sendActive) return;
+    // No turn-gate bail here: the gate lives in _onCameraImage's cadence
+    // switch (full rate on my turn, ~1 fps trickle on the opponent's — the
+    // peer's stall watchdog needs SOME frames to keep flowing).
+    if (!RtcFramesService.hasTrack) return;
     try {
       if (Platform.isAndroid) {
         final Uint8List buffer;
@@ -519,17 +525,10 @@ class CameraFrameService {
           buffer = _replayBuffer!;
           format = _replayStagedFormat!;
         } else {
-          final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
           final ySize = image.width * image.height;
           final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
           buffer = _pushBuffer(0, ySize + uvSize * 2);
-          if (uvPixelStride == 1) {
-            _fillI420Buffer(image, buffer);
-            format = 'i420';
-          } else {
-            _fillNv21Buffer(image, buffer);
-            format = 'nv21';
-          }
+          format = _fillTightYuv(image, buffer);
         }
         final rotation = _effectiveRotation();
         if (!_firstPushLogged) {
@@ -589,21 +588,12 @@ class CameraFrameService {
       final int height;
 
       if (Platform.isAndroid) {
-        // DartsMind's YUVHelper checks pixelStride to determine format:
-        // pixelStride == 1 → planar I420
-        // pixelStride == 2 → interleaved NV21/NV12
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
         final ySize = image.width * image.height;
         final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
         buffer = _pushBuffer(slot, ySize + uvSize * 2);
-
-        if (uvPixelStride == 1) {
-          _fillI420Buffer(image, buffer);
-          format = VideoPixelFormat.videoPixelI420;
-        } else {
-          _fillNv21Buffer(image, buffer);
-          format = VideoPixelFormat.videoPixelNv21;
-        }
+        format = _fillTightYuv(image, buffer) == 'i420'
+            ? VideoPixelFormat.videoPixelI420
+            : VideoPixelFormat.videoPixelNv21;
         stride = image.width;
         height = image.height;
       } else {
@@ -666,6 +656,21 @@ class CameraFrameService {
       _pushBuffers[slot] = buf;
     }
     return buf;
+  }
+
+  /// Tight-copy [image]'s YUV planes into [buffer] and return the format tag
+  /// ('i420' | 'nv21') every native consumer expects. Single home for the
+  /// pixelStride dispatch (DartsMind's YUVHelper heuristic: 1 → planar I420,
+  /// 2 → interleaved NV21) shared by the replay tee and both transport
+  /// pushes — it used to be copy-pasted at each call site.
+  String _fillTightYuv(CameraImage image, Uint8List buffer) {
+    final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+    if (uvPixelStride == 1) {
+      _fillI420Buffer(image, buffer);
+      return 'i420';
+    }
+    _fillNv21Buffer(image, buffer);
+    return 'nv21';
   }
 
   /// Fill [buffer] with planar I420 (Y + U + V), padding removed.

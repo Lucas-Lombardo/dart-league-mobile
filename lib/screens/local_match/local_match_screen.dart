@@ -10,6 +10,7 @@ import '../../models/local_match_config.dart';
 import '../../providers/game_provider.dart' show ScoreMultiplier;
 import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
+import '../../services/dataset_capture_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
@@ -96,6 +97,9 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     _autoScoringService = null;
     _cameraService?.dispose();
     _cameraService = null;
+    // Same deferral contract as the online verdict flush — solo modes have
+    // no verdict, the screen teardown is their "match over".
+    DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
     super.dispose();

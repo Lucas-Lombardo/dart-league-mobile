@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.36+73
+version: 1.2.37+74
 
 environment:
   sdk: ^3.10.7
@@ -122,6 +122,18 @@ flutter:
     # files are ~16 MB, so nothing unwanted should ride along.
     - assets/models/dart-rival-ia-light.tflite
     - assets/models/check_inference.jpg
+    # Dev-only: real match frames for the on-device delegate accuracy bench
+    # (lib/dev/delegate_bench.dart). Kept COMMENTED OUT so the ~2.3 MB never
+    # ships in a real build — uncomment together with a DELEGATE_BENCH=true
+    # build to re-bench (e.g. for the planned YOLO26 retrain).
+    # - assets/dev_bench/f000039.jpg
+    # - assets/dev_bench/f000091.jpg
+    # - assets/dev_bench/f000141.jpg
+    # - assets/dev_bench/f000147.jpg
+    # - assets/dev_bench/f000168.jpg
+    # - assets/dev_bench/f000213.jpg
+    # - assets/dev_bench/f000234.jpg
+    # - assets/dev_bench/f000283.jpg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

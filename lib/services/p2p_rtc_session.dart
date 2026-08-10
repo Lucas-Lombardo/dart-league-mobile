@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/rtc_v2_config.dart';
+import 'camera_frame_service.dart';
 
 /// ONE negotiation attempt with the match opponent: one PeerConnection, one
 /// generation, one fixed role. When anything about it goes stale, nobody
@@ -55,8 +56,9 @@ class P2pRtcSession {
   /// encoder ran unconstrained for the whole match — a top heat source on
   /// both phones (each pays its encode AND the peer's decode). DartsMind
   /// ships the same scene at ~1.1 Mbps @ 15 fps with no visible difference.
+  /// The fps cap tracks the camera cadence — one Dart home for the value.
   static const int _maxVideoBitrateBps = 1100 * 1000;
-  static const int _maxVideoFps = 15;
+  static const int _maxVideoFps = CameraFrameService.cameraFps;
 
   /// How often the decoded-frame counter is sampled once connected.
   static const Duration mediaCheckInterval = Duration(seconds: 3);
