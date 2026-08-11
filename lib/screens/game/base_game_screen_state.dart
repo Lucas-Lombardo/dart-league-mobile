@@ -620,9 +620,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // Same turn gate for the outgoing P2P video (thermal audit 2026-08-10):
       // the opponent's screen only renders OUR stream during OUR turn, so
       // full-rate pushing + encoding during theirs heated both phones for a
-      // feed nobody displayed. Off = ~1 fps trickle, not silence — the
-      // peer's stall watchdog needs frames flowing (see RtcFramesService).
-      // Audio stays live; no-op in Agora/solo modes.
+      // feed nobody displayed. This notify IS the turn-change moment (the
+      // turn-finished sound below fires off it); the service closes 1s
+      // later (Lucas's spec) and then only trickles at ~1 fps — never
+      // silence, the peer's stall watchdog needs frames flowing (see
+      // RtcFramesService). Audio stays live; no-op in Agora/solo modes.
       RtcFramesService.setSendActive(game.isMyTurn);
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {

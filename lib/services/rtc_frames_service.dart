@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show Uint8List, debugPrint, kIsWeb;
@@ -39,18 +40,39 @@ class RtcFramesService {
   // OUR stream during OUR turn (their "opponent turn" layout) — pushing and
   // encoding at full rate during their turn heated both phones for a feed
   // nobody displayed, ~half the match. The flag switches the push cadence in
-  // CameraFrameService._onCameraImage (full rate ↔ ~1 fps trickle). It must
-  // NOT silence the sender completely (no track.enabled flip, no zero-push):
-  // the peer's media watchdog samples framesDecoded and reads 6s of silence
-  // as a frozen call, which put the recovery loop into a rebuild cycle every
-  // opponent turn (review 2026-08-10). Audio is never touched.
+  // CameraFrameService._onCameraImage (full rate ↔ ~1 fps trickle). Rule
+  // learned the hard way: NEVER silence the sender completely (no
+  // track.enabled flip, no zero-push) — the peer's media watchdog samples
+  // framesDecoded and reads 6s of silence as a frozen call, which put the
+  // recovery loop into a rebuild cycle every opponent turn (review
+  // 2026-08-10). Audio is never touched.
   static bool _sendActive = true;
+
+  // Closing is anchored on the turn-change notify (the same event that
+  // plays the turn-finished sound) + exactly 1s — Lucas's on-device spec
+  // (2026-08-10): the opponent is still looking at our board at the flip
+  // instant, one second later they are not. Reopening is immediate, and a
+  // turn flapping back within the second just cancels the pending close.
+  static Timer? _gateOffTimer;
+  static const Duration _gateOffDelay = Duration(seconds: 1);
 
   static bool get sendActive => _sendActive;
 
   /// Idempotent; wired to the game-state listener (my turn = true).
   static void setSendActive(bool active) {
-    _sendActive = active;
+    if (active) {
+      _gateOffTimer?.cancel();
+      _gateOffTimer = null;
+      _sendActive = true;
+      return;
+    }
+    // Already off, or the close is already scheduled — the listener repeats
+    // this on every notify of the opponent's turn.
+    if (!_sendActive || _gateOffTimer != null) return;
+    _gateOffTimer = Timer(_gateOffDelay, () {
+      _gateOffTimer = null;
+      _sendActive = false;
+    });
   }
 
   /// Last createTrack failure, kept so the P2P session can embed it in the
@@ -101,6 +123,8 @@ class RtcFramesService {
       // Start the gate open — a trickle-rate feed at match start would look
       // frozen, a few seconds of full-rate encode is only heat; the
       // game-state listener re-applies the real turn on its next notify.
+      _gateOffTimer?.cancel();
+      _gateOffTimer = null;
       _sendActive = true;
       _pushErrorLogged = false;
       lastCreateError = null;
@@ -164,6 +188,9 @@ class RtcFramesService {
       return;
     }
     _track = null;
+    // No stray close landing after teardown; the next createTrack reopens.
+    _gateOffTimer?.cancel();
+    _gateOffTimer = null;
     if (!isSupported) return;
     try {
       await _channel.invokeMethod<void>('dispose');

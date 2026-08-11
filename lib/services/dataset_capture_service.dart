@@ -30,7 +30,7 @@ class DatasetCaptureService {
   /// Remote kill-switch from /app/version-config (`datasetCaptureEnabled`).
   /// Fail-closed: stays off until the backend says otherwise, and drops back
   /// to off for the session when the backend refuses a presign (flag off,
-  /// 10k dataset complete, or per-user quota reached).
+  /// 20k dataset complete, or per-user quota reached).
   static bool remoteEnabled = false;
 
   static bool get shareEnabled => _shareEnabled;
