@@ -31,18 +31,24 @@ class DartSoundService {
   static const _lose = 'sounds/lose.wav';
   static const _matchFound = 'sounds/match_sound.mp3';
 
+  // Preload order, most time-critical first. match_sound is the only one that
+  // fires while the app is busy tearing down one screen and building another,
+  // and it used to sit LAST behind ~1.6 MB of wavs — see [_ensurePlayer].
   static const _allAssets = <String>[
+    _matchFound,
     _dartHit,
     _yourTurn,
     _turnFinished,
     _bust,
     _win,
     _lose,
-    _matchFound,
   ];
 
   static final Map<String, AudioPlayer> _players = {};
-  static Future<void>? _initFuture;
+  // In-flight load per asset, so concurrent plays of the same sound share one
+  // load instead of racing two setSource calls on two players.
+  static final Map<String, Future<void>> _loading = {};
+  static AudioContext? _context;
 
   static final Map<SoundCategory, bool> _categoryEnabled = {
     for (final c in SoundCategory.values) c: true,
@@ -62,53 +68,62 @@ class DartSoundService {
     }
   }
 
-  /// Idempotent. Concurrent callers share the same in-flight init Future, so
-  /// a burst of first-play calls won't race on setReleaseMode/setAudioContext.
-  static Future<void> init() {
-    return _initFuture ??= _doInit();
+  // playAndRecord + mixWithOthers (not ambient): ambient is silenced by the
+  // iOS ring/silent switch, so with the ringer off the game was completely
+  // mute. playAndRecord matches the WebRTC call's own session category, so the
+  // two coexist instead of one stealing the session. See DartCallerService.
+  static AudioContext _audioContext() => _context ??= AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playAndRecord,
+          options: const {
+            AVAudioSessionOptions.mixWithOthers,
+            AVAudioSessionOptions.defaultToSpeaker,
+            AVAudioSessionOptions.allowBluetooth,
+          },
+        ),
+        android: const AudioContextAndroid(),
+      );
+
+  /// Preloads every sound. Idempotent, and safe to call repeatedly: assets
+  /// already loaded (or loading) are skipped.
+  static Future<void> init() async {
+    for (final asset in _allAssets) {
+      await _ensurePlayer(asset);
+    }
   }
 
-  static Future<void> _doInit() async {
-    // playAndRecord + mixWithOthers (not ambient): ambient is silenced by the
-    // iOS ring/silent switch, so with the ringer off the game was completely
-    // mute. playAndRecord matches Agora's own session category, so the two
-    // coexist instead of one stealing the session. See DartCallerService.
-    final context = AudioContext(
-      iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playAndRecord,
-        options: const {
-          AVAudioSessionOptions.mixWithOthers,
-          AVAudioSessionOptions.defaultToSpeaker,
-          AVAudioSessionOptions.allowBluetooth,
-        },
-      ),
-      android: const AudioContextAndroid(),
-    );
-    var loaded = 0;
-    for (final asset in _allAssets) {
-      try {
-        final player = AudioPlayer();
-        await player.setReleaseMode(ReleaseMode.stop);
-        await player.setAudioContext(context);
-        await player.setSource(AssetSource(asset));
-        _players[asset] = player;
-        loaded++;
-      } catch (e) {
-        debugPrint('[DartSoundService] failed to load $asset: $e');
-      }
+  /// The player for ONE asset, loading it on first use.
+  ///
+  /// Deliberately per-asset rather than "load all seven, then play": the seven
+  /// assets total ~1.8 MB of bundle copies over the platform channel, and
+  /// making every sound wait for all of them meant match_sound — requested at
+  /// the single busiest moment of the app, while the game screen is being
+  /// built — could take so long to become playable that it effectively never
+  /// played. A sound now waits only for itself.
+  static Future<AudioPlayer?> _ensurePlayer(String asset) async {
+    final loaded = _players[asset];
+    if (loaded != null) return loaded;
+    await (_loading[asset] ??= _load(asset));
+    return _players[asset];
+  }
+
+  static Future<void> _load(String asset) async {
+    try {
+      final player = AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.setAudioContext(_audioContext());
+      await player.setSource(AssetSource(asset));
+      _players[asset] = player;
+    } catch (e) {
+      debugPrint('[DartSoundService] failed to load $asset: $e');
+      // A failure (platform channel hiccup) must not be cached forever:
+      // dropping the future lets the next play retry this asset.
+      _loading.remove(asset);
     }
-    // A total failure (platform channel hiccup) must not be cached forever:
-    // clearing the future lets the next play() retry the whole init.
-    if (loaded == 0) _initFuture = null;
   }
 
   static Future<void> _play(String asset) async {
-    if (_initFuture == null) {
-      await init();
-    } else {
-      await _initFuture;
-    }
-    final player = _players[asset];
+    final player = await _ensurePlayer(asset);
     if (player == null) return;
     try {
       await player.seek(Duration.zero);
@@ -145,6 +160,6 @@ class DartSoundService {
       } catch (_) {}
     }
     _players.clear();
-    _initFuture = null;
+    _loading.clear();
   }
 }

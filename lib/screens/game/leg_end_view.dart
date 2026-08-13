@@ -17,6 +17,12 @@ class LegEndView extends StatelessWidget {
   /// return true to allow the pop — the forfeit was confirmed and handled.
   final Future<bool> Function() onAttemptPop;
 
+  /// Optional banner pinned above the result — the "report their winning
+  /// visit" offer, shown to the player who just lost the leg. This screen and
+  /// the end-of-match one are the only two places the loser lands after a
+  /// checkout, so they are the only two places that visit can be reported.
+  final Widget? banner;
+
   const LegEndView({
     super.key,
     required this.wonLeg,
@@ -24,6 +30,7 @@ class LegEndView extends StatelessWidget {
     required this.opponentLegsWon,
     required this.legsNeeded,
     required this.onAttemptPop,
+    this.banner,
   });
 
   @override
@@ -51,6 +58,7 @@ class LegEndView extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (banner != null) banner!,
                     Container(
                       padding: EdgeInsets.all(isLandscape ? 16 : 24),
                       decoration: BoxDecoration(

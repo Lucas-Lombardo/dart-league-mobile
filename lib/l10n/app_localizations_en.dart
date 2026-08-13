@@ -296,7 +296,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceCaller => 'Voice caller';
 
   @override
-  String get voiceCallerDescription => 'Announce scores aloud';
+  String get voiceCallerDescription => 'Announce scores and checkouts aloud';
 
   // Settings > Sounds & vibrations
   @override
@@ -2742,4 +2742,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String statsVersus(String name) => 'vs $name';
   @override
   String statsDartsUnit(String value) => '$value darts';
+
+  @override
+  String get flagVisit => 'REPORT THEIR VISIT';
+  @override
+  String flagVisitWithScore(int score) => 'REPORT THEIR VISIT — $score';
+  @override
+  String flagVisitUndo(int seconds) => 'REPORTED — UNDO ($seconds)';
+  @override
+  String get flagVisitSent => 'VISIT REPORTED';
+  @override
+  String flagWinningVisit(int score) => 'Their winning visit: $score';
+  @override
+  String get flagAction => 'REPORT';
+  @override
+  String get flagDone => 'REPORTED';
+  @override
+  String get turnReportsTitle => 'YOUR REPORTS';
+  @override
+  String turnReportsIntro(int count) => count <= 1
+      ? 'You reported 1 visit. Tell us what you saw — without a reason it is not sent.'
+      : 'You reported $count visits. Tell us what you saw — without a reason they are not sent.';
+  @override
+  String turnReportLegTurn(int leg, int turn) => 'LEG $leg · VISIT $turn';
+  @override
+  String turnReportTurnOnly(int turn) => 'VISIT $turn';
+  @override
+  String turnReportWinningLabel(int leg) => 'LEG $leg · WINNING VISIT';
+  @override
+  String get turnReportWinningNoLeg => 'WINNING VISIT';
+  @override
+  String turnReportVisitScore(int score) => 'Their visit for $score';
+  @override
+  String get turnReportTodo => 'TO COMPLETE';
+  @override
+  String get turnReportReady => 'READY';
+  @override
+  String turnReportSubmit(int count) =>
+      count <= 1 ? 'SEND 1 REPORT' : 'SEND $count REPORTS';
+  @override
+  String get turnReportSkip => 'SKIP';
+  @override
+  String turnReportDropWarning(int count) => count <= 1
+      ? '1 report will be dropped if you continue now.'
+      : '$count reports will be dropped if you continue now.';
+  @override
+  String get turnReportDialogTitle => 'REPORT THIS VISIT';
+  @override
+  String get turnReportRemove => 'REMOVE THIS REPORT';
+  @override
+  String get turnReportSent => 'Report sent';
 }

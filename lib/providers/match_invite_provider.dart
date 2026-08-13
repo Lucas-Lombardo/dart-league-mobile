@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/rtc_v2_config.dart';
 import '../services/push_notification_service.dart';
 import '../services/socket_service.dart';
+import '../services/turn_report_service.dart';
 import '../utils/haptic_service.dart';
 import 'game_provider.dart';
 
@@ -276,6 +277,7 @@ class MatchInviteProvider with ChangeNotifier {
     // carry partial fields.
     if (incomingMatchId != null && incomingMatchId != _matchId) {
       _rtcV2Config = null;
+      TurnReportService.resetForMatch();
     }
     _matchId = incomingMatchId;
     _opponentId = data['opponentId'] as String?;
@@ -296,6 +298,7 @@ class MatchInviteProvider with ChangeNotifier {
     if (newAgoraUid != null) _agoraUid = newAgoraUid;
     if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    TurnReportService.applyMatchPayload(data);
 
     // Match is starting — clear any invite dialogs.
     _incoming = null;

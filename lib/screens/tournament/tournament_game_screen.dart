@@ -10,7 +10,9 @@ import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
 import '../game/leg_end_view.dart';
+import '../../services/turn_report_service.dart';
 import '../game/match_end_view.dart';
+import '../game/turn_reports_view.dart';
 import 'tournament_match_result_screen.dart';
 
 class TournamentGameScreen extends StatefulWidget {
@@ -95,32 +97,10 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
     updateLoadingMessage('Joining match...');
-    // The exact legacy Agora path — used directly when the payload had no
-    // rtcV2 block, and as the automatic fallback when the P2P session fails.
-    // Reads the provider AT CALL TIME so a fallback 10s in picks up
-    // credentials refreshed by a later payload.
-    Future<void> startAgora() async {
-      if (game.agoraAppId == null || game.agoraAppId!.isEmpty) return;
-      // Prefer the strict (uid-bound) token if the backend provided one;
-      // otherwise fall back to legacy uid=0 + legacy token.
-      final useStrict = game.hasStrictAgoraCredentials;
-      await initializeAgora(
-        appId: game.agoraAppId!,
-        token: useStrict
-            ? (game.agoraTokenStrict ?? '')
-            : (game.agoraToken ?? ''),
-        channelName: game.agoraChannelName ?? '',
-        uid: useStrict ? game.agoraUid : 0,
-      );
-    }
-
     await startMatchVideo(
       game: game,
       matchId: game.currentGameMatchId,
       opponentId: widget.opponentId,
-      startAgora: startAgora,
-      hasAgoraCredentials:
-          game.agoraAppId != null && game.agoraAppId!.isNotEmpty,
     );
   }
 
@@ -285,6 +265,19 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     final didWin = tGame.winnerId == auth.currentUser?.id;
     final isSeriesOver = tGame.tournamentState == TournamentGameState.seriesEnded;
 
+    // Step 1 of 2, same order as a ranked match: the visits flagged during
+    // play get their reason first, the result is confirmed after. Only at the
+    // END of the series — between legs the reports keep accumulating.
+    if (isSeriesOver &&
+        !turnReportsSettled &&
+        TurnReportService.pending.isNotEmpty) {
+      return TurnReportsView(
+        onEdit: (report) => editTurnReport(report),
+        onContinue: () =>
+            finishTurnReports(matchId: tGame.currentGameMatchId),
+      );
+    }
+
     final panel = Column(mainAxisSize: MainAxisSize.min, children: [
       Text(
         isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
@@ -350,6 +343,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       badgeText: widget.tournamentName,
       panel: panel,
       replayClips: matchReplayClips,
+      // Tournament legs land on this same screen rather than a LegEndView, so
+      // it carries the winning-visit offer for every leg, not just the last.
+      preCard: buildWinningVisitBanner(tGame, didWin: didWin),
     );
   }
 

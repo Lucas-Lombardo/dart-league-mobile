@@ -3,14 +3,12 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  agora_rtc_engine
   audioplayers_windows
   connectivity_plus
   firebase_core
   flutter_secure_storage_windows
   flutter_webrtc
   gal
-  iris_method_channel
   permission_handler_windows
   share_plus
   url_launcher_windows

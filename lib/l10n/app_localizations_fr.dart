@@ -298,7 +298,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get voiceCaller => 'Annonceur vocal';
 
   @override
-  String get voiceCallerDescription => 'Annonce les scores à voix haute';
+  String get voiceCallerDescription =>
+      'Annonce les scores et les finitions à voix haute';
 
   // Settings > Sounds & vibrations
   @override
@@ -2771,4 +2772,54 @@ class AppLocalizationsFr extends AppLocalizations {
   String statsVersus(String name) => 'vs $name';
   @override
   String statsDartsUnit(String value) => '$value fl.';
+
+  @override
+  String get flagVisit => 'SIGNALER SA VOLÉE';
+  @override
+  String flagVisitWithScore(int score) => 'SIGNALER SA VOLÉE — $score';
+  @override
+  String flagVisitUndo(int seconds) => 'SIGNALÉE — ANNULER ($seconds)';
+  @override
+  String get flagVisitSent => 'VOLÉE SIGNALÉE';
+  @override
+  String flagWinningVisit(int score) => 'Sa volée gagnante : $score';
+  @override
+  String get flagAction => 'SIGNALER';
+  @override
+  String get flagDone => 'SIGNALÉE';
+  @override
+  String get turnReportsTitle => 'VOS SIGNALEMENTS';
+  @override
+  String turnReportsIntro(int count) => count <= 1
+      ? 'Vous avez signalé 1 volée. Dites-nous ce que vous avez vu — sans raison, elle n\'est pas envoyée.'
+      : 'Vous avez signalé $count volées. Dites-nous ce que vous avez vu — sans raison, elles ne sont pas envoyées.';
+  @override
+  String turnReportLegTurn(int leg, int turn) => 'MANCHE $leg · TOUR $turn';
+  @override
+  String turnReportTurnOnly(int turn) => 'TOUR $turn';
+  @override
+  String turnReportWinningLabel(int leg) => 'MANCHE $leg · VOLÉE GAGNANTE';
+  @override
+  String get turnReportWinningNoLeg => 'VOLÉE GAGNANTE';
+  @override
+  String turnReportVisitScore(int score) => 'Sa volée à $score';
+  @override
+  String get turnReportTodo => 'À COMPLÉTER';
+  @override
+  String get turnReportReady => 'PRÊT';
+  @override
+  String turnReportSubmit(int count) =>
+      count <= 1 ? 'ENVOYER 1 SIGNALEMENT' : 'ENVOYER $count SIGNALEMENTS';
+  @override
+  String get turnReportSkip => 'PASSER';
+  @override
+  String turnReportDropWarning(int count) => count <= 1
+      ? '1 signalement sera abandonné si vous continuez maintenant.'
+      : '$count signalements seront abandonnés si vous continuez maintenant.';
+  @override
+  String get turnReportDialogTitle => 'SIGNALER LA VOLÉE';
+  @override
+  String get turnReportRemove => 'RETIRER CE SIGNALEMENT';
+  @override
+  String get turnReportSent => 'Signalement envoyé';
 }

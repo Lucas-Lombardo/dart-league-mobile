@@ -7,6 +7,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/tournament_round.dart';
 import '../../models/rtc_v2_config.dart';
+import '../../services/turn_report_service.dart';
 import '../../models/tournament.dart';
 import '../../services/socket_service.dart';
 import '../../services/tournament_service.dart';
@@ -161,6 +162,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       if (!mounted || data['matchId'] != widget.matchId) return;
       final gameMatchId = data['gameMatchId'] as String?;
       if (gameMatchId != null) {
+        // Same payload as the P2P block, same reason: this is where a
+        // tournament leg's capability verdict arrives.
+        TurnReportService.resetForMatch();
+        TurnReportService.applyMatchPayload(data);
         _navigateToGame(
           gameMatchId,
           agoraAppId: data['agoraAppId'] as String?,
@@ -235,6 +240,9 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           final gameMatchId = start['gameMatchId'] as String?;
           if (gameMatchId != null) {
             _statePoll?.cancel();
+            // The polling fallback carries the same block as the socket event.
+            TurnReportService.resetForMatch();
+            TurnReportService.applyMatchPayload(start);
             _navigateToGame(
               gameMatchId,
               agoraAppId: start['agoraAppId'] as String?,

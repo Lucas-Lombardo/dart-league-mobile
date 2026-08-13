@@ -5,6 +5,7 @@ import '../models/rtc_v2_config.dart';
 import '../services/matchmaking_service.dart';
 import '../services/match_service.dart';
 import '../services/socket_service.dart';
+import '../services/turn_report_service.dart';
 import '../utils/haptic_service.dart';
 import '../utils/dart_sound_service.dart';
 import 'game_provider.dart';
@@ -81,6 +82,7 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentUsername = null;
     _opponentElo = null;
     _rtcV2Config = null;
+    TurnReportService.resetForMatch();
     _agoraAppId = null;
     _agoraToken = null;
     _agoraTokenStrict = null;
@@ -90,6 +92,14 @@ class MatchmakingProvider with ChangeNotifier {
     _errorMessage = null;
     _currentUserId = userId;
     _eloRange = 250;
+
+    // Warm the audio players NOW, while the app is idle in the queue. The
+    // match-found jingle is usually the session's FIRST sound, and paying its
+    // load at match_found means paying it in the app's busiest moment: the
+    // dialog, the navigation, the game screen build, the camera and the RTC
+    // session all queue platform work in the same instant. That is where the
+    // jingle went missing — not muffled, never started.
+    unawaited(DartSoundService.init());
 
     // Reset game provider if it still has stale state from the previous match
     if (_gameProvider != null && (_gameProvider!.gameStarted || _gameProvider!.gameEnded)) {
@@ -292,6 +302,10 @@ class MatchmakingProvider with ChangeNotifier {
     if (newAgoraUid != null) _agoraUid = newAgoraUid;
     if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    // Same payload, same both-sides verdict. This is the ONLY event that
+    // carries it at the start of a match — game_started does not — so
+    // reading it anywhere else means no report bar until leg 2.
+    TurnReportService.applyMatchPayload(data);
 
     _isSearching = false;
     
@@ -361,6 +375,7 @@ class MatchmakingProvider with ChangeNotifier {
       _opponentElo = null;
       _playerElo = null;
       _rtcV2Config = null;
+      TurnReportService.resetForMatch();
       _agoraAppId = null;
       _agoraToken = null;
       _agoraTokenStrict = null;

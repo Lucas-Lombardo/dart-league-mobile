@@ -97,6 +97,11 @@ class P2pMatchVideo {
   // an unmuted player went silent for the rest of the match with no visible
   // symptom (the screen's mic icon still read "on").
   bool _micEnabled = false;
+  // Survives rebuilds, like _micEnabled: P2pRtcSession.connected describes the
+  // session it belongs to, and a rebuild throws that session away. Without a
+  // manager-level flag the terminal report of "worked for 5 minutes, then a
+  // renegotiation lost it" is byte-identical to "never connected at all".
+  bool _everConnected = false;
   int _rebuildCount = 0;
   DateTime? _impairedSince;
   String _lastImpairReason = 'connecting';
@@ -166,6 +171,7 @@ class P2pMatchVideo {
       // whatever the counter says by then.
       sendSignal: (data) => _emitSignal(gen, data),
       onConnected: () {
+        _everConnected = true;
         _noteProgress();
         onChanged();
       },
@@ -419,8 +425,15 @@ class P2pMatchVideo {
         ];
         SocketService.emit('rtc_v2_report', {
           'matchId': matchId,
+          // Agora is gone: there is no transport left to fall back TO, so the
+          // column is now a constant. Kept in the payload (rather than
+          // dropped) so rows stay comparable with the migration-era ones.
           'fellBack': false,
           ...payload,
+          // After the spread on purpose: this one spans every generation,
+          // where payload's `connected` describes the last session only, and
+          // a session-level key must never win over it.
+          'everConnected': _everConnected,
           if (parts.isNotEmpty && payload['reason'] == null)
             'reason': parts.join(', '),
         });

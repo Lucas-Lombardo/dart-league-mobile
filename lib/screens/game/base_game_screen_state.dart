@@ -4,13 +4,11 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../models/rtc_v2_config.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart'
     show TournamentGameState;
-import '../../services/agora_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/p2p_match_video.dart';
 import '../../services/replay_buffer_service.dart';
@@ -19,7 +17,9 @@ import '../../services/replay_overlay_timeline.dart';
 import '../../services/replay_upload_service.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/turn_report_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/media_permissions.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/dart_caller_service.dart';
 import '../../utils/app_theme.dart';
@@ -31,6 +31,7 @@ import '../../services/dart_scoring_service.dart';
 import '../../services/dataset_capture_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/game_turn_ui.dart';
+import '../../widgets/turn_report_banner.dart';
 import '../../widgets/logo_watermark.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/local_camera_preview.dart';
@@ -60,11 +61,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool gameStarted = false;
   bool gameEnded = false;
   // Tracks the seriesEnded transition (D7): the final BO3 leg must tear the
-  // Agora call down when ranked_match_won lands, not on its game_won.
+  // call down when ranked_match_won lands, not on its game_won.
   bool _sawSeriesEnded = false;
-  RtcEngine? agoraEngine;
   CameraFrameService? cameraFrameService;
-  int? customVideoTrackId;
   // ─── Replays ──────────────────────────────────────────────────────────────
 
   /// Format band burned into replay overlays — screens override with their
@@ -97,9 +96,149 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// gesture: the auto-capture of checkouts was dropped 2026-08-04, a replay
   /// is only ever something the player asked for.
   Widget? buildReplayCaptureButton(dynamic game) {
+    // Before my first dart the capture bar has nothing to record, so the slot
+    // is free — that is where the report bar lives (2026-08-13). One slot, two
+    // gestures, never both at once.
+    if (game.dartsThrown < 1 && _turnDartTimes.isEmpty) {
+      return buildTurnFlagButton(game);
+    }
     if (!ReplayBufferService.armed) return null;
-    if (game.dartsThrown < 1 && _turnDartTimes.isEmpty) return null;
     return ReplayCaptureButton(onCapture: () => captureTurnClip(game));
+  }
+
+  /// The report bar, or null when there is nothing to flag: no opponent visit
+  /// yet (I opened the leg), quota spent, that visit already flagged, or the
+  /// feature off for this match (old backend, old opponent — the server's
+  /// `turnReports` block is the both-sides verdict).
+  Widget? buildTurnFlagButton(dynamic game) {
+    if (!TurnReportService.enabled) return null;
+    final matchId = matchIdForLeave;
+    if (matchId == null) return null;
+    List<int> opponentRounds;
+    try {
+      opponentRounds = List<int>.from(game.opponentRounds as List);
+    } catch (_) {
+      return null;
+    }
+    if (opponentRounds.isEmpty) return null;
+    final turnIndex = opponentRounds.length;
+    if (TurnReportService.flagsInLeg(matchId) >= TurnReportService.maxPerLeg) {
+      return null;
+    }
+    final flagged = TurnReportService.alreadyFlagged(matchId, turnIndex);
+    return TurnFlagButton(
+      // The key ties the widget's countdown to the visit it targets: without
+      // it, the next turn reuses the element and inherits a running timer.
+      key: ValueKey('flag-$matchId-$turnIndex'),
+      volleyScore: opponentRounds.last,
+      alreadyFlagged: flagged,
+      onConfirmed: () => postTurnFlag(
+        matchId: matchId,
+        turnIndex: turnIndex,
+        volleyScore: opponentRounds.last,
+      ),
+    );
+  }
+
+  /// Posts the flag over the game socket. The server acks it, deduplicates on
+  /// [flagId] and relays the capture request to the opponent's device; the
+  /// reason is asked for at the end of the match, never here.
+  void postTurnFlag({
+    required String matchId,
+    required int turnIndex,
+    int? volleyScore,
+    bool isWinningVolley = false,
+  }) {
+    TurnReportService.postFlag({
+      'flagId': _newFlagId(matchId, turnIndex, isWinningVolley),
+      'matchId': matchId,
+      'turnIndex': turnIndex,
+      'volleyScore': ?volleyScore,
+      'isWinningVolley': isWinningVolley,
+    });
+  }
+
+  /// True once the end-of-match report list has been settled (sent, skipped,
+  /// or emptied), so the result screen takes over.
+  bool turnReportsSettled = false;
+
+  /// The winning-visit banner for the two end screens, or null when there is
+  /// nothing to offer: I won the leg (you don't report your own checkout), the
+  /// feature is off for this match, or it is already flagged.
+  Widget? buildWinningVisitBanner(dynamic game, {required bool didWin}) {
+    if (didWin) return null;
+    if (!TurnReportService.enabled) return null;
+    final matchId = matchIdForLeave;
+    if (matchId == null) return null;
+    List<int> opponentRounds;
+    try {
+      opponentRounds = List<int>.from(game.opponentRounds as List);
+    } catch (_) {
+      opponentRounds = const [];
+    }
+    // The checkout is the visit AFTER their last recorded one, and it scored
+    // exactly what they had left when it started.
+    final score = _opponentScoreAtVisitStart;
+    return WinningVisitBanner(
+      matchId: matchId,
+      volleyScore: score,
+      onFlag: () => postTurnFlag(
+        matchId: matchId,
+        turnIndex: opponentRounds.length + 1,
+        volleyScore: score,
+        isWinningVolley: true,
+      ),
+    );
+  }
+
+  /// Opens the app's existing report dialog for ONE flagged visit. Nothing is
+  /// sent here — the reason lands on the pending report and travels with the
+  /// others when the list is submitted.
+  Future<void> editTurnReport(PendingTurnReport report) {
+    final l10n = AppLocalizations.of(context);
+    // Awaiting the DIALOG, not the submit callback: a cancelled or dismissed
+    // dialog never calls onComplete, and the list screen must come back either
+    // way to re-read the row.
+    return showReportDialog(
+      title: l10n.turnReportDialogTitle,
+      subtitle: report.volleyScore != null
+          ? l10n.turnReportVisitScore(report.volleyScore!)
+          : null,
+      icon: Icons.flag,
+      showSuccessSnackBar: false,
+      onSubmit: (reason, comment) async {
+        report.reason = reason;
+        report.comment = comment;
+      },
+      onComplete: () {},
+    );
+  }
+
+  /// Sends the completed reports, drops the rest, and hands over to the
+  /// result screen.
+  void finishTurnReports({String? matchId, String? seriesId}) {
+    final hadAny = TurnReportService.pending.any((r) => r.isComplete);
+    TurnReportService.submit(matchId: matchId, seriesId: seriesId);
+    if (mounted) {
+      setState(() => turnReportsSettled = true);
+      if (hadAny) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLocalizations.of(context).turnReportSent),
+          backgroundColor: AppTheme.success,
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    }
+  }
+
+  /// Deterministic from what the flag targets, so a re-tap after a socket blip
+  /// carries the SAME id and the server's dedup collapses it into one case —
+  /// same contract as [_nextDartId] on the provider, minus the sequence, which
+  /// would defeat the point here.
+  String _newFlagId(String matchId, int turnIndex, bool isWinningVolley) {
+    final match = matchId.replaceAll('-', '');
+    final head = match.length >= 12 ? match.substring(0, 12) : match;
+    return 'f$head-${isWinningVolley ? 'w' : 't'}$turnIndex';
   }
 
   /// Cuts the clip of the current visit from the ring buffer (a cheap
@@ -176,6 +315,61 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // the end screen, never mid-game.
     matchReplayClips.add(clip);
     return true;
+  }
+
+  /// Cuts the visit I just finished out of the ring and hands it to
+  /// [TurnReportService], which keeps exactly one. Nothing leaves the device
+  /// here: the clip is only uploaded if the opponent flags that visit, and it
+  /// is deleted as soon as the next one replaces it.
+  ///
+  /// The cut is a passthrough concat (no re-encode), so paying it on every
+  /// visit is cheap — and it is what makes a flag answerable instantly instead
+  /// of racing the ring, which by then has moved on.
+  ///
+  /// Runs on the turn-change notify, right after [ReplayBufferService.setMyTurn]
+  /// closed the open segment, so the last seconds of the visit are in the ring.
+  Future<void> cacheVisitForReports(dynamic game) async {
+    if (!TurnReportService.enabled) return;
+    if (!ReplayBufferService.armed) return;
+    final matchId = matchIdForLeave;
+    if (matchId == null) return;
+    // No impact times means no visit was actually thrown (turn skipped, manual
+    // scoring with nothing detected) — there is nothing worth keeping.
+    if (_turnDartTimes.isEmpty) return;
+    final dartTimes = List.of(_turnDartTimes);
+    final from = dartTimes.first.subtract(const Duration(seconds: 2));
+    final floor = _replayWindowFloor;
+    final start = floor != null && from.isBefore(floor) ? floor : from;
+    int turnIndex = 0;
+    try {
+      turnIndex = (game.myRounds as List).length;
+    } catch (_) {}
+    try {
+      final captured = await ReplayBufferService.captureRange(start, DateTime.now());
+      if (captured == null) return;
+      await TurnReportService.cacheVisit(
+        path: captured.path,
+        matchId: matchId,
+        turnIndex: turnIndex,
+        dartTimes: dartTimes,
+        durationMs: captured.durationMs,
+      );
+    } catch (e) {
+      // A missing cache just means a flag on this visit comes back empty —
+      // never a reason to disturb the match.
+      debugPrint('[TurnReport] visit cache failed: $e');
+    }
+  }
+
+  /// Same cut as [cacheVisitForReports], but for the visit that ENDED the leg
+  /// and under a key that survives the rest of the series: the loser flags it
+  /// from the end-of-leg or end-of-match screen, well after the rolling cache
+  /// would have moved on.
+  Future<void> cacheWinningVisitForReports(dynamic game) async {
+    final matchId = matchIdForLeave;
+    if (matchId == null) return;
+    await cacheVisitForReports(game);
+    TurnReportService.keepAsWinningVisit(matchId);
   }
 
   // Clips waiting for their end-of-match overlay render + upload, in capture
@@ -292,6 +486,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // the manual-scoring fallback window (now − 20s) reached back into the
   // previous leg exactly like the stale [_turnDartTimes] did.
   DateTime? _replayWindowFloor;
+
+  /// The opponent's remaining score at the start of their current visit — what
+  /// a checkout on it is worth. See the turn-change block.
+  int? _opponentScoreAtVisitStart;
   /// Clips captured during this screen's match/series, newest last — handed
   /// to MatchEndView, where sharing happens.
   final List<ReplayClip> matchReplayClips = [];
@@ -319,16 +517,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // false). Track whether we actually backgrounded so we only re-sync after a
   // real paused state.
   bool _wasPausedSinceLastResume = false;
-  // Why: debounce remote-video recovery. onRemoteVideoStateChanged can fire
-  // repeatedly during a single freeze; we only want one mute/unmute toggle in
-  // flight at a time.
-  bool _remoteVideoRecoveryInFlight = false;
-  // Watchdog: if we haven't seen onUserJoined for the opponent within this
-  // window, force a mute/unmute cycle on the opponent's deterministic UID to
-  // wake up the remote subscription. Without this, the player can sit on a
-  // black "Waiting..." tile forever if the event was missed.
-  Timer? _remoteJoinedWatchdog;
-  static const Duration _remoteJoinedWatchdogDelay = Duration(seconds: 8);
 
   // ─── Wakelock re-assert ────────────────────────────────────────────────────────
   // Why: WakelockPlus is a single, non-refcounted window flag
@@ -441,6 +629,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       (_) { if (mounted) WakelockPlus.enable(); },
     );
     OrientationUtils.allowAll();
+    // Both roles of the report feature start listening here and stay attached
+    // for the whole screen — which spans a whole BO3/tournament series. The
+    // REPORTED side matters most: a player who never flags anything still has
+    // to answer a capture request, silently.
+    TurnReportService.listen();
     autoScoringService = AutoScoringService();
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -472,8 +665,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     _wakelockReassertTimer = null;
     _autoScoringLoadingWatchdog?.cancel();
     _autoScoringLoadingWatchdog = null;
-    _remoteJoinedWatchdog?.cancel();
-    _remoteJoinedWatchdog = null;
     _cancelStartStallTimer();
     disposeScreenSpecific();
     scoreAnimationController.dispose();
@@ -488,7 +679,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // and releases the native track.
     p2pVideo?.stopDetached();
     p2pVideo = null;
-    if (agoraEngine != null) { AgoraService.leaveChannel(agoraEngine!); AgoraService.dispose(); }
+    TurnReportService.stopListening();
+    // Drops the visits cached for this match, including the winning one the
+    // end screens could still flag. Runs at dispose and not at match end on
+    // purpose: those screens are still up until the player leaves them.
+    final reportedMatchId = matchIdForLeave;
+    if (reportedMatchId != null) TurnReportService.disposeMatch(reportedMatchId);
+    // A flag left uncompleted here (back button, app kill) is abandoned rather
+    // than carried into the next match's list; the server purges its row and
+    // clip within 24h.
+    TurnReportService.clearPending();
     super.dispose();
   }
 
@@ -552,6 +752,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         final auth = Provider.of<AuthProvider>(context, listen: false);
         if (game.winnerId == auth.currentUser?.id) {
           DartSoundService.playWin();
+          // I just checked out: the turn never flips after a winning visit, so
+          // the usual end-of-turn cache never runs for the one visit the loser
+          // is most likely to want looked at. Cut it now and keep it aside —
+          // their end-of-leg screen can still flag it minutes later.
+          cacheWinningVisitForReports(game);
         } else {
           DartSoundService.playLose();
         }
@@ -583,7 +788,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // the series verdict below ends the call instead. The Agora path
         // keeps its historical per-leg teardown.
         if (p2pVideo == null || !_tournamentSeriesGoesOn(game)) {
-          _endAgoraCall();
+          endMatchCall();
         }
       }
       // The FINAL leg ends while the series still reads as ongoing (game_won
@@ -592,7 +797,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       bool seriesEndedNow = false;
       try { seriesEndedNow = game.seriesEnded as bool; } catch (_) {}
       if (seriesEndedNow && !_sawSeriesEnded && !toreDownNow) {
-        _endAgoraCall();
+        endMatchCall();
       }
       _sawSeriesEnded = seriesEndedNow;
       // P2P + tournament: the per-leg teardown was skipped above, so end the
@@ -606,7 +811,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (p2pVideo != null &&
           tournamentSeriesEndedNow &&
           !_sawTournamentSeriesEnded) {
-        _endAgoraCall();
+        endMatchCall();
       }
       _sawTournamentSeriesEnded = tournamentSeriesEndedNow;
       // The match verdict is when the deferred replay renders + uploads run —
@@ -644,6 +849,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           _replayWindowFloor = DateTime.now();
         } else {
           DartSoundService.playTurnFinished();
+          // Their visit starts now, so their remaining score IS what a
+          // checkout would be worth. Snapshotted because a winning visit never
+          // lands in opponentRounds (a checkout produces no round_confirmed),
+          // and the end-screen banner would otherwise name the wrong number.
+          try {
+            _opponentScoreAtVisitStart = game.opponentScore as int?;
+          } catch (_) {}
+          // My visit just ended: cut it out of the ring and keep it locally,
+          // in case my opponent flags it. Nothing is sent — see
+          // [cacheVisitForReports].
+          cacheVisitForReports(game);
         }
       }
       // lastKnownCurrentPlayer == null means this is the FIRST run since the
@@ -746,6 +962,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           _lastCalledOpponentVisitSignature = null;
         }
       }
+      // Caller: announce "you require <n>" when we come to the throw on a
+      // finish (no-op otherwise). Deliberately AFTER the opponent-visit block:
+      // both can fire on the same notify when their third dart and the turn
+      // change land together, and the queue plays in enqueue order — a real
+      // caller says "one hundred and forty… you require one hundred and one",
+      // never the reverse.
+      if (justBecameMyTurn) {
+        DartCallerService.callCheckout(game.myScore as int);
+      }
       // Start/stop AI capture when supported
       if (autoScoringEnabled && !aiManuallyDisabled && _captureFrameCallback != null && autoScoringService!.modelLoaded) {
         final pendingNeedsStop = game.pendingConfirmation && (game.pendingType == 'bust' || game.pendingType == 'win');
@@ -795,12 +1020,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         });
       }
       if (game.needsAgoraReconnect == true) {
-        // Leg transitions (D7) reuse the live session; every other reconnect
-        // keeps the full rebuild — there the fresh engine IS the recovery.
-        bool legTransition = false;
-        try { legTransition = game.agoraLegTransition as bool; } catch (_) {}
         game.clearAgoraReconnectFlag();
-        reconnectRtcTransport(game, legTransition: legTransition);
+        reconnectRtcTransport(game);
       }
       if (game.gameEnded && game.pendingType == 'forfeit') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1016,23 +1237,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── RTC v2 (P2P) ─────────────────────────────────────────────────────────────
 
-  /// Starts match video on the right transport, and arms the rejoin
-  /// catch-up. The only entry point the screens need: P2P when the payload
-  /// carried an rtcV2 verdict (both clients support it), the untouched
-  /// legacy Agora path only for matches against an old client.
-  ///
-  /// [hasAgoraCredentials] is the screen's own check — the ranked screen
-  /// reads its widget params, the tournament screen its provider.
+  /// Starts match video, and arms the rejoin catch-up. The only entry point
+  /// the screens need. P2P is the sole transport: when the payload carries no
+  /// rtcV2 verdict yet, we start nothing here and let the sync-driven
+  /// [reconnectRtcTransport] launch the call as soon as one lands.
   Future<void> startMatchVideo({
     required dynamic game,
     required String? matchId,
     required String opponentId,
-    required Future<void> Function() startAgora,
-    required bool hasAgoraCredentials,
   }) async {
     final rtcV2 = _rtcV2ConfigOf(game);
-    // No matchId means no signaling scope: use Agora rather than start a
-    // call nobody can reach (the tournament screen's historical
+    // No matchId means no signaling scope — starting a call nobody can reach
+    // is worse than starting none (the tournament screen's historical
     // currentGameMatchId guard).
     if (rtcV2 != null && matchId != null && RtcFramesService.isSupported) {
       updateLoadingMessage('Starting camera...');
@@ -1041,9 +1257,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         opponentId: opponentId,
         config: rtcV2,
       );
-    } else if (hasAgoraCredentials) {
-      updateLoadingMessage('Starting camera...');
-      await startAgora();
     }
     game.addListener(handleSharedStateChange);
     updateLoadingMessage('Loading AI model...');
@@ -1052,7 +1265,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // spinner rather than the manual dartboard until the model loads. On the
     // P2P path the camera/AI are already up, hence the p2pVideo guard.
     if (autoScoringEnabled &&
-        agoraEngine == null &&
         p2pVideo == null &&
         !kIsWeb &&
         AutoScoringService.isSupported) {
@@ -1064,16 +1276,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // pending reconnect now instead of waiting for the next notification.
       if (game.needsAgoraReconnect == true) {
         game.clearAgoraReconnectFlag();
-        reconnectRtcTransport(game, legTransition: false);
+        reconnectRtcTransport(game);
       }
     }
   }
 
-  /// Shared RTC recovery for a consumed `needsAgoraReconnect` flag — called
-  /// from the provider listener AND from the screens' pre-listener catch-up.
-  /// Decides between: nothing (live P2P), a P2P (re)launch, or the legacy
-  /// Agora rebuild.
-  void reconnectRtcTransport(dynamic game, {required bool legTransition}) {
+  /// Shared RTC recovery for a consumed reconnect flag — called from the
+  /// provider listener AND from the screens' pre-listener catch-up. Either
+  /// re-drives the live session or launches one; never gives up on P2P,
+  /// because there is nothing else to give up TO.
+  void reconnectRtcTransport(dynamic game) {
     if (p2pVideo != null) {
       // P2P: nothing to re-key — the session spans legs and socket
       // reconnects. BUT the sync that brought us here proves the socket
@@ -1094,23 +1306,27 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     if (rtcV2 != null &&
         relaunchMatchId != null &&
         relaunchOpponentId != null &&
-        agoraEngine == null &&
         RtcFramesService.isSupported) {
       // The sync rehydrated an rtcV2 verdict but no session is live
       // (init raced the credentials, or this is a rejoin): relaunch
       // P2P — otherwise the surviving opponent's offers land on a screen
       // with no rtc_signal handler and both sides sit on dead video.
-      // `agoraEngine == null` matters: when Agora is already up (old-client
-      // match, credentials-first), P2P must NOT be stacked on top of the
-      // live call. Fire-and-forget like the initial init.
+      // Fire-and-forget like the initial init.
       initializeP2p(
         matchId: relaunchMatchId,
         opponentId: relaunchOpponentId,
         config: rtcV2,
       );
-    } else {
-      reconnectAgora(game, reuseSession: legTransition);
+      return;
     }
+    // Nothing to start yet — most often a sync that landed before the server
+    // had both players' sockets and so carried no rtcV2 block. Deliberately a
+    // no-op: this used to fall back to Agora, which captured the match on a
+    // transport the opponent was not using AND blocked every later P2P
+    // relaunch (2026-08-13). The next sync brings the verdict, and the
+    // in-flight init guard makes a duplicate call here harmless.
+    debugPrint('[BaseGameScreen] reconnectRtcTransport: no rtcV2 verdict yet '
+        '(match=$relaunchMatchId, opponent=$relaunchOpponentId) — waiting');
   }
 
   /// Defensive reads over the two provider shapes (GameProvider /
@@ -1163,7 +1379,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // Same permission gate as initializeAgora: camera for the app-owned
     // capture, mic for the WebRTC audio track.
     if (!kIsWeb) {
-      permissionsGranted = await AgoraService.requestPermissions();
+      permissionsGranted = await MediaPermissions.requestCameraAndMic();
       if (!permissionsGranted) {
         _p2pInitInFlight = false;
         if (mounted) {
@@ -1232,265 +1448,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
-  // ─── Agora ────────────────────────────────────────────────────────────────────
-  Future<void> initializeAgora({required String appId, required String token, required String channelName, int? uid}) async {
-    if (!kIsWeb) {
-      permissionsGranted = await AgoraService.requestPermissions();
-      if (!permissionsGranted) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).cameraAndMicPermissionRequired), backgroundColor: AppTheme.error));
-        return;
-      }
-    } else {
-      permissionsGranted = true;
-    }
-    final agoraUid = uid ?? 0;
-    try {
-      if (kIsWeb) {
-        // Web: use default Agora camera capture (custom video track not supported)
-        agoraEngine = await AgoraService.initializeEngineWeb(appId);
-        _registerAgoraHandlers();
-        await AgoraService.joinChannel(
-          engine: agoraEngine!,
-          token: token,
-          channelName: channelName,
-          uid: agoraUid,
-          customVideoTrackId: null, // use default camera on web
-        );
-      } else {
-        // Native: use custom video track with external video source
-        // 1. Init Agora engine (with external video source enabled)
-        agoraEngine = await AgoraService.initializeEngine(appId);
-
-        // 2. Create custom video track
-        customVideoTrackId = await AgoraService.createCustomVideoTrack();
-
-        // 3. Start Flutter camera and begin pushing frames to Agora
-        cameraFrameService = CameraFrameService();
-        await cameraFrameService!.initialize(
-          agoraEngine: agoraEngine!,
-          videoTrackId: customVideoTrackId!,
-          replayRing: true,
-        );
-
-        // 4. Register Agora event handlers
-        _registerAgoraHandlers();
-
-        // 5. Join channel with custom video track
-        await AgoraService.joinChannel(
-          engine: agoraEngine!,
-          token: token,
-          channelName: channelName,
-          uid: agoraUid,
-          customVideoTrackId: customVideoTrackId,
-        );
-
-        // 6. Init camera zoom from saved preferences
-        await initCameraZoom();
-
-        // 7. Init auto scoring — fire-and-forget so the game screen shows immediately.
-        // autoScoringLoading flag drives the UI loading state.
-        initAutoScoring();
-      }
-      _armRemoteVideoWatchdog();
-    } catch (e) {
-      debugPrint('[BaseGameScreen] initializeAgora error: $e');
-      if (mounted) setState(() => autoScoringLoading = false);
-    }
-  }
-
-  Future<void> reconnectAgora(dynamic game, {bool reuseSession = false}) async {
-    final appId = game.agoraAppId;
-    final channelName = game.agoraChannelName;
-    // Strict path (uid=hash(userId) + matching token) when available,
-    // legacy path (uid=0 + legacy token) otherwise. The strict path is what
-    // makes eager remote-view rendering work, but we never assume the
-    // backend has been upgraded — we look at what's actually in the provider.
-    final String? legacyToken = game.agoraToken as String?;
-    final String? strictToken = game.agoraTokenStrict as String?;
-    final int? providerUid = game.agoraUid as int?;
-    final bool useStrict = strictToken != null && strictToken.isNotEmpty && providerUid != null && providerUid != 0;
-    final String token = useStrict ? strictToken : (legacyToken ?? '');
-    final int agoraUid = useStrict ? providerUid : 0;
-    if (appId == null || appId.isEmpty || token.isEmpty || channelName == null || channelName.isEmpty) {
-      if (mounted) setState(() => autoScoringLoading = false);
-      return;
-    }
-    // Why: show the loading state up-front so the UI doesn't briefly render
-    // an empty game while the camera and engine are being torn down. Without
-    // this preempt, the "Chargement de l'auto-scoreur" indicator only kicks
-    // in inside initAutoScoring() — too late, after the screen has already
-    // flashed empty.
-    if (mounted && autoScoringEnabled && AutoScoringService.isSupported && !kIsWeb) {
-      setState(() => autoScoringLoading = true);
-      armAutoScoringLoadingWatchdog();
-    }
-    // Why: with deterministic UIDs we keep the opponent UID across reconnect
-    // — but until the engine is rebuilt we want the AgoraVideoView to
-    // un-bind from the old engine reference. We re-set remoteUid below after
-    // joinChannel succeeds.
-    try {
-      if (game.setRemoteUser is Function) {
-        game.setRemoteUser(null);
-      }
-    } catch (_) {}
-    final int? opponentUidForRecovery = game.opponentAgoraUid as int?;
-    // Preserve the user's mic preference across the reconnect so a resumed-
-    // from-background or a screenshot-induced reconnect doesn't silently
-    // re-mute the mic.
-    final wasUnmuted = !isAudioMuted;
-
-    // Restore mic state: if user had unmuted before the reconnect, re-publish
-    // the mic track. joinChannel always defaults to publishMicrophoneTrack:
-    // false, so without this the mic UI flips to muted on every reconnect.
-    Future<void> restoreMicState() async {
-      if (wasUnmuted && agoraEngine != null) {
-        try {
-          await agoraEngine!.updateChannelMediaOptions(
-            const ChannelMediaOptions(publishMicrophoneTrack: true),
-          );
-          await agoraEngine!.muteLocalAudioStream(false);
-          isAudioMuted = false;
-        } catch (e) {
-          debugPrint('[BaseGameScreen] restore mic error: $e');
-          isAudioMuted = true;
-        }
-      } else {
-        isAudioMuted = true;
-      }
-    }
-
-    // Re-assert publishing flags after a join — see the full path below for
-    // why this needs the retry (silently no-ops when racing Agora's state
-    // machine → "audio works but video is a black tile").
-    Future<void> reassertVideoPublish() async {
-      for (var attempt = 0; attempt < 3; attempt++) {
-        try {
-          await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(
-            publishCustomVideoTrack: true,
-            customVideoTrackId: customVideoTrackId,
-            publishCameraTrack: false,
-          ));
-          break;
-        } catch (e) {
-          debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) attempt ${attempt + 1} error: $e');
-          if (attempt == 2) {
-            debugPrint('[BaseGameScreen] updateChannelMediaOptions(video) gave up after 3 attempts');
-          } else {
-            await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
-          }
-        }
-      }
-    }
-
-    // D7 fast path — BO3 leg transition: engine, camera, custom track and
-    // loaded model are all healthy, only the CHANNEL changes (the server
-    // issues one per leg). Leave + join on the live engine instead of the
-    // multi-second teardown/rebuild whose model reload was the July
-    // hot-phone CoreML-recompile scenario. Any failure falls through to the
-    // full rebuild below, which recovers from arbitrary state.
-    if (reuseSession && !kIsWeb && agoraEngine != null &&
-        cameraFrameService != null && customVideoTrackId != null &&
-        autoScoringService != null) {
-      try {
-        await AgoraService.leaveChannel(agoraEngine!);
-        await AgoraService.joinChannel(
-          engine: agoraEngine!,
-          token: token,
-          channelName: channelName,
-          uid: agoraUid,
-          customVideoTrackId: customVideoTrackId,
-        );
-        await reassertVideoPublish();
-        autoScoringService!.stopCapture();
-        // New leg always starts with a clean round server-side; resetTurn +
-        // gate arming mirror the leg-change handling in the game listener.
-        final roundEmpty = ((readGame().currentRoundThrows as List).isEmpty) &&
-            ((readGame().unackedDartCount as int?) ?? 0) == 0;
-        if (roundEmpty) autoScoringService!.resetTurn();
-        initAutoScoring(armEmptyBoardGate: roundEmpty);
-        if (opponentUidForRecovery != null && opponentUidForRecovery != 0) {
-          try { game.setRemoteUser(opponentUidForRecovery); } catch (_) {}
-        }
-        _armRemoteVideoWatchdog();
-        await restoreMicState();
-        return;
-      } catch (e) {
-        debugPrint('[BaseGameScreen] leg-transition fast path failed, falling back to full rebuild: $e');
-      }
-    }
-
-    try {
-      // Tear down camera and Agora
-      await cameraFrameService?.dispose();
-      cameraFrameService = null;
-      customVideoTrackId = null;
-      if (agoraEngine != null) { agoraEngine = null; await AgoraService.dispose(); }
-      if (!kIsWeb && !permissionsGranted) { permissionsGranted = await AgoraService.requestPermissions(); if (!permissionsGranted) { if (mounted) setState(() => autoScoringLoading = false); return; } }
-
-      if (kIsWeb) {
-        // Web: use default Agora camera capture
-        agoraEngine = await AgoraService.initializeEngineWeb(appId);
-        _registerAgoraHandlers();
-        await AgoraService.joinChannel(
-          engine: agoraEngine!,
-          token: token,
-          channelName: channelName,
-          uid: agoraUid,
-          customVideoTrackId: null,
-        );
-      } else {
-        // Native: reinitialize with custom video track
-        agoraEngine = await AgoraService.initializeEngine(appId);
-        customVideoTrackId = await AgoraService.createCustomVideoTrack();
-        cameraFrameService = CameraFrameService();
-        await cameraFrameService!.initialize(
-          agoraEngine: agoraEngine!,
-          videoTrackId: customVideoTrackId!,
-          replayRing: true,
-        );
-        _registerAgoraHandlers();
-        await AgoraService.joinChannel(
-          engine: agoraEngine!,
-          token: token,
-          channelName: channelName,
-          uid: agoraUid,
-          customVideoTrackId: customVideoTrackId,
-        );
-        // Why: explicitly re-assert publishing flags after joinChannel.
-        // Without this, opponents intermittently fail to receive the rejoiner's
-        // video — joinChannel's options are sometimes not enough on rejoin.
-        // Retry with exponential backoff: the first call sometimes races with
-        // Agora's internal state machine and silently no-ops, which is the
-        // "audio works but video is a black tile" symptom.
-        await reassertVideoPublish();
-        cameraZoomInitialized = false;
-        await initCameraZoom();
-        autoScoringService!.stopCapture();
-        // Mid-turn (darts already thrown this visit): keep the AI's slot and
-        // emitted-dart bookkeeping. resetTurn() here wiped _emittedSlots, so
-        // the darts physically still in the board were detected as fresh and
-        // emitted a SECOND time. Only a clean board justifies a full reset,
-        // and only then is the empty-board gate safe to arm.
-        final roundEmpty = ((readGame().currentRoundThrows as List).isEmpty) &&
-            ((readGame().unackedDartCount as int?) ?? 0) == 0;
-        if (roundEmpty) autoScoringService!.resetTurn();
-        initAutoScoring(armEmptyBoardGate: roundEmpty);
-      }
-      // Re-seed remoteUid with the deterministic opponent UID so the remote
-      // AgoraVideoView re-binds to the new engine immediately, without
-      // waiting for the (potentially delayed) onUserJoined event.
-      if (opponentUidForRecovery != null && opponentUidForRecovery != 0) {
-        try { game.setRemoteUser(opponentUidForRecovery); } catch (_) {}
-      }
-      _armRemoteVideoWatchdog();
-      await restoreMicState();
-    } catch (_) {
-      if (mounted) setState(() => autoScoringLoading = false);
-    }
-  }
-
-  /// Ends the live call, whichever transport carries it (P2P session or
-  /// Agora engine), plus the shared camera pipeline.
+  /// Ends the live call (P2P session) plus the shared camera pipeline.
   ///
   /// Camera FIRST — same order as dispose(). It is the local, fast half
   /// (image stream, replay ring, AI tee) and it must stop feeding the
@@ -1499,109 +1457,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// stop dragged (telemetry emit, native track dispose) — 2026-08-04
   /// report: the deferred replay renders/uploads then crawled until the
   /// screen was left.
-  Future<void> _endAgoraCall() async {
+  Future<void> endMatchCall() async {
     try {
       autoScoringService?.stopCapture();
       await cameraFrameService?.dispose();
       cameraFrameService = null;
-      customVideoTrackId = null;
       if (p2pVideo != null) {
         await p2pVideo!.stop();
         p2pVideo = null;
       }
-      if (agoraEngine != null) {
-        await AgoraService.leaveChannel(agoraEngine!);
-        await AgoraService.dispose();
-        agoraEngine = null;
-      }
     } catch (e) {
-      debugPrint('[BaseGameScreen] _endAgoraCall error: $e');
+      debugPrint('[BaseGameScreen] endMatchCall error: $e');
     }
-  }
-
-  void _registerAgoraHandlers() {
-    agoraEngine!.registerEventHandler(RtcEngineEventHandler(
-      onJoinChannelSuccess: (_, _) { if (!mounted) return; readGame().setLocalUserJoined(true); },
-      onUserJoined: (_, uid, _) {
-        if (!mounted) return;
-        readGame().setRemoteUser(uid);
-        _remoteJoinedWatchdog?.cancel();
-        _remoteJoinedWatchdog = null;
-      },
-      onUserOffline: (_, uid, _) {
-        if (!mounted) return;
-        // On the legacy path we don't know the opponent UID ahead of time,
-        // so any offline = clear. On the strict path we keep the view bound
-        // to the deterministic opponent UID so reconnects re-render
-        // immediately without going through a black-tile intermediate state.
-        final g = readGame();
-        final bool hasStrict = (g.hasStrictAgoraCredentials as bool?) ?? false;
-        if (!hasStrict) {
-          g.setRemoteUser(null);
-          return;
-        }
-        final opponentUid = (g.opponentAgoraUid as int?) ?? 0;
-        if (opponentUid == 0 || uid != opponentUid) {
-          g.setRemoteUser(null);
-        }
-      },
-      // Why: when the opponent's stream freezes/fails, force a re-subscribe by
-      // toggling muteRemoteVideoStream. Without this, the local viewer sees a
-      // frozen frame indefinitely — there is no other code path that detects
-      // a remote freeze, since onUserOffline only fires on a real disconnect.
-      onRemoteVideoStateChanged: (_, uid, state, reason, _) {
-        if (!mounted) return;
-        if (state != RemoteVideoState.remoteVideoStateFrozen &&
-            state != RemoteVideoState.remoteVideoStateFailed) return;
-        debugPrint('[Agora] remote video $uid → $state (reason=$reason); recovering');
-        _recoverRemoteVideo(uid);
-      },
-      // Why: detect when the SDK has given up reconnecting on its own and
-      // proactively ask the server for a fresh token + re-join. Without this
-      // we only reconnect on AppLifecycleState.resumed, so a connection drop
-      // that happens while the app is foreground stays broken.
-      onConnectionStateChanged: (_, state, reason) {
-        debugPrint('[Agora] connection state → $state (reason=$reason)');
-        if (!mounted) return;
-        if (state == ConnectionStateType.connectionStateFailed) {
-          try { readGame().reconnectToMatch(); } catch (_) {}
-        }
-      },
-    ));
-  }
-
-  Future<void> _recoverRemoteVideo(int uid) async {
-    if (_remoteVideoRecoveryInFlight) return;
-    _remoteVideoRecoveryInFlight = true;
-    try {
-      await agoraEngine?.muteRemoteVideoStream(uid: uid, mute: true);
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
-      await agoraEngine?.muteRemoteVideoStream(uid: uid, mute: false);
-    } catch (e) {
-      debugPrint('[Agora] _recoverRemoteVideo error: $e');
-    } finally {
-      _remoteVideoRecoveryInFlight = false;
-    }
-  }
-
-  /// Watchdog that fires if onUserJoined has not arrived for the opponent
-  /// within [_remoteJoinedWatchdogDelay]. Only meaningful when both sides
-  /// are on the strict-UID path; on the legacy path the opponent's UID is
-  /// auto-assigned by Agora, so we can't pre-target a recovery.
-  void _armRemoteVideoWatchdog() {
-    _remoteJoinedWatchdog?.cancel();
-    final game = readGame();
-    final bool hasStrict = (game.hasStrictAgoraCredentials as bool?) ?? false;
-    if (!hasStrict) return;
-    _remoteJoinedWatchdog = Timer(_remoteJoinedWatchdogDelay, () async {
-      if (!mounted) return;
-      final g = readGame();
-      final int opponentUid = (g.opponentAgoraUid as int?) ?? 0;
-      if (opponentUid == 0 || agoraEngine == null) return;
-      debugPrint('[Agora] watchdog: forcing remote re-subscribe for uid=$opponentUid');
-      await _recoverRemoteVideo(opponentUid);
-    });
   }
 
   Future<void> initCameraZoom({int attempt = 0}) async {
@@ -1622,28 +1489,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   Future<void> toggleAudio() async {
-    // P2P: the audio track is pre-added disabled, so the toggle is a plain
-    // enabled flip — same isAudioMuted state handling as Agora.
-    if (p2pVideo != null) {
-      setState(() => isAudioMuted = !isAudioMuted);
-      await p2pVideo!.setMicEnabled(!isAudioMuted);
-      return;
-    }
-    if (agoraEngine == null) return;
+    // The audio track is pre-added disabled, so the toggle is a plain
+    // enabled flip.
+    if (p2pVideo == null) return;
     setState(() => isAudioMuted = !isAudioMuted);
-    await agoraEngine!.updateChannelMediaOptions(ChannelMediaOptions(publishMicrophoneTrack: !isAudioMuted));
-    await agoraEngine!.muteLocalAudioStream(isAudioMuted);
+    await p2pVideo!.setMicEnabled(!isAudioMuted);
   }
+
   Future<void> switchCamera() async {
-    // Web uses Agora's own capture — let the SDK flip it.
-    if (kIsWeb) {
-      try {
-        await agoraEngine?.switchCamera();
-      } catch (e) {
-        debugPrint('[BaseGameScreen] web switchCamera error: $e');
-      }
-      return;
-    }
     final svc = cameraFrameService;
     if (svc == null || switchingCamera) return;
     HapticService.lightImpact();
@@ -1835,7 +1688,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// Reason + optional comment dialog feeding the dispute endpoint. Defaults
   /// to the "report player" wording; tournaments restyle it as "refuse result"
   /// via the optional labels without changing the underlying call.
-  void showReportDialog({
+  /// Returns when the dialog closes, whichever way — submitted, cancelled or
+  /// dismissed. Callers that only care about the submit path can ignore it.
+  Future<void> showReportDialog({
     required Future<void> Function(String reason, String? comment) onSubmit,
     required VoidCallback onComplete,
     String? title,
@@ -1843,77 +1698,43 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     String? submitLabel,
     List<String>? reasons,
     IconData icon = Icons.flag,
+    // A per-visit report is only being FILLED IN here — it is sent later, from
+    // the list screen — so the "submitted" confirmation would be a lie.
+    bool showSuccessSnackBar = true,
   }) {
-    String? selectedReason;
-    final commentController = TextEditingController();
     final l10n = AppLocalizations.of(context);
-    final reasonList = reasons ??
-        [
-          l10n.reportReasonCheating,
-          l10n.reportReasonUnsportsmanlike,
-          l10n.reportReasonIncorrectScore,
-          l10n.reportReasonConnectionIssues,
-          l10n.reportReasonOther,
-        ];
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => gameDialogFrame(
-      accent: AppTheme.opponentPink,
-      icon: icon,
-      title: title ?? l10n.reportPlayer,
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(subtitle ?? l10n.selectReasonReporting, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-        const SizedBox(height: 16),
-        ...reasonList.map((r) => InkWell(
-          onTap: () => setDlg(() => selectedReason = r),
-          child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
-            Icon(selectedReason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selectedReason == r ? AppTheme.opponentPink : AppTheme.textSecondary),
-            const SizedBox(width: 12), Text(r, style: const TextStyle(color: Colors.white)),
-          ])),
-        )),
-        const SizedBox(height: 16),
-        Text(l10n.reportCommentLabel, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: commentController,
-          minLines: 3,
-          maxLines: 5,
-          maxLength: 500,
-          textInputAction: TextInputAction.newline,
-          cursorColor: AppTheme.opponentPink,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: l10n.reportCommentHint,
-            hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 14),
-            counterStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-            filled: true,
-            fillColor: AppTheme.surface,
-            contentPadding: const EdgeInsets.all(12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.opponentPink, width: 2)),
-          ),
-        ),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary))),
-        ElevatedButton(
-          onPressed: selectedReason == null ? null : () async {
-            HapticService.mediumImpact();
-            final comment = commentController.text.trim();
-            Navigator.of(ctx).pop();
-            final messenger = ScaffoldMessenger.of(context);
-            try {
-              await onSubmit(selectedReason!, comment.isEmpty ? null : comment);
-              if (mounted) messenger.showSnackBar(SnackBar(content: Text(l10n.disputeSubmitted), backgroundColor: AppTheme.success, duration: const Duration(seconds: 2)));
-            } catch (e) {
-              if (mounted) messenger.showSnackBar(SnackBar(content: Text(l10n.errorWithMessage.replaceAll('{message}', e.toString())), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
-            }
-            onComplete();
-          },
-          style: gameFilledButtonStyle(AppTheme.opponentPink),
-          child: Text(submitLabel ?? l10n.submitReport),
-        ),
-      ],
-    ))).then((_) => commentController.dispose());
+    return showDialog(
+      context: context,
+      builder: (ctx) => _ReportDialog(
+        icon: icon,
+        title: title ?? l10n.reportPlayer,
+        subtitle: subtitle ?? l10n.selectReasonReporting,
+        reasons: reasons ??
+            [
+              l10n.reportReasonCheating,
+              l10n.reportReasonUnsportsmanlike,
+              l10n.reportReasonIncorrectScore,
+              l10n.reportReasonConnectionIssues,
+              l10n.reportReasonOther,
+            ],
+        commentLabel: l10n.reportCommentLabel,
+        commentHint: l10n.reportCommentHint,
+        cancelLabel: l10n.cancel.toUpperCase(),
+        submitLabel: submitLabel ?? l10n.submitReport,
+        // Runs once the dialog has popped itself, so the messenger and the
+        // `mounted` checks below are the SCREEN's, exactly as before.
+        onSubmit: (reason, comment) async {
+          final messenger = ScaffoldMessenger.of(context);
+          try {
+            await onSubmit(reason, comment);
+            if (mounted && showSuccessSnackBar) messenger.showSnackBar(SnackBar(content: Text(l10n.disputeSubmitted), backgroundColor: AppTheme.success, duration: const Duration(seconds: 2)));
+          } catch (e) {
+            if (mounted) messenger.showSnackBar(SnackBar(content: Text(l10n.errorWithMessage.replaceAll('{message}', e.toString())), backgroundColor: AppTheme.error, duration: const Duration(seconds: 3)));
+          }
+          onComplete();
+        },
+      ),
+    );
   }
 
   // ─── Shared widget builders ────────────────────────────────────────────────────
@@ -1996,7 +1817,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
-  Widget buildOpponentTurnVideoLayout(dynamic game, {String channelId = ''}) {
+  Widget buildOpponentTurnVideoLayout(dynamic game) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     // Same "Waiting..." placeholder for the P2P and Agora branches.
     final Widget waitingPlaceholder = Container(
@@ -2020,38 +1841,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               (p2pVideo!.isRemoteReady && p2pVideo!.isLinkUp
                   ? (p2pVideo!.remoteView() ?? waitingPlaceholder)
                   : waitingPlaceholder)
-            else if (agoraEngine != null && game.remoteUid != null)
-              kIsWeb
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: RotatedBox(
-                      quarterTurns: 1,
-                      child: SizedBox(
-                        width: 720,
-                        height: 960,
-                        child: AgoraVideoView(
-                          controller: VideoViewController.remote(
-                            rtcEngine: agoraEngine!,
-                            canvas: VideoCanvas(
-                              uid: game.remoteUid!,
-                              renderMode: RenderModeType.renderModeHidden,
-                            ),
-                            connection: RtcConnection(channelId: channelId),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : AgoraVideoView(
-                    controller: VideoViewController.remote(
-                      rtcEngine: agoraEngine!,
-                      canvas: VideoCanvas(
-                        uid: game.remoteUid!,
-                        renderMode: RenderModeType.renderModeHidden,
-                      ),
-                      connection: RtcConnection(channelId: channelId),
-                    ),
-                  )
             else
               waitingPlaceholder,
             // ── Dart-hit flash (big "T20 / +60 pts" glow) ──
@@ -2199,7 +1988,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     dynamic game,
     AuthProvider auth,
     double safeTop, {
-    String? channelId,
     String? seriesTitle,
     int myLegs = 0,
     int opponentLegs = 0,
@@ -2222,10 +2010,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       opponentLegs: opponentLegs,
     );
 
-    final cameraView = buildOpponentTurnVideoLayout(
-      game,
-      channelId: channelId ?? game.agoraChannelName ?? '',
-    );
+    final cameraView = buildOpponentTurnVideoLayout(game);
 
     if (isLandscape) {
       return Container(
@@ -2310,10 +2095,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       return null;
     }
   }
-
-  /// Agora channel fallback when the provider doesn't hold one (ranked passes
-  /// the channel it was opened with).
-  String? get fallbackAgoraChannelId => null;
 
   /// "INITIALISATION DU MATCH..." spinner, shown until game_started /
   /// game_state_sync flips the provider's gameStarted. After
@@ -2463,11 +2244,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     iAmPlayer2: game.iAmPlayer2,
                     dartsThrown: game.dartsThrown,
                     captureButton: buildReplayCaptureButton(game),
-                    agoraEngine: agoraEngine,
                     localCameraPreview: !switchingCamera && cameraFrameService?.controller != null && cameraFrameService!.controller!.value.isInitialized
                         ? LocalCameraPreview(controller: cameraFrameService!.controller!)
                         : null,
-                    remoteUid: game.remoteUid,
                     isAudioMuted: isAudioMuted,
                     onToggleAudio: toggleAudio,
                     onSwitchCamera: switchCamera,
@@ -2497,7 +2276,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     game,
                     auth,
                     safeTop,
-                    channelId: game.agoraChannelName ?? fallbackAgoraChannelId ?? '',
                     seriesTitle: seriesTitle,
                     myLegs: game.myLegsWon,
                     opponentLegs: game.opponentLegsWon,
@@ -2512,5 +2290,117 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
+}
+
+/// The reason + comment dialog behind [BaseGameScreenState.showReportDialog].
+///
+/// A real widget, and not the [StatefulBuilder] it used to be, for ONE reason:
+/// the comment field's [TextEditingController] must live and die with the
+/// route. It was disposed from `showDialog(...).then(...)`, and that future
+/// completes the instant `Navigator.pop` is called — NOT when the route is
+/// gone (see `Route.didPop`: "routes should not wait for their exit animation").
+/// The field was therefore still on screen, and still the platform's text-input
+/// client, when its controller died: the IME's closing update then landed on a
+/// disposed notifier. That exception was thrown in the middle of the element
+/// deactivation walk and left the tree half torn down — `_dependents.isEmpty`,
+/// then "dirty widget in the wrong build scope", then the engine (device test
+/// 2026-08-13, validating a turn report killed the app).
+class _ReportDialog extends StatefulWidget {
+  const _ReportDialog({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.reasons,
+    required this.commentLabel,
+    required this.commentHint,
+    required this.cancelLabel,
+    required this.submitLabel,
+    required this.onSubmit,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<String> reasons;
+  final String commentLabel;
+  final String commentHint;
+  final String cancelLabel;
+  final String submitLabel;
+
+  /// Called with the chosen reason and the trimmed comment (null when empty),
+  /// right after this dialog popped itself.
+  final void Function(String reason, String? comment) onSubmit;
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  final TextEditingController _comment = TextEditingController();
+  String? _reason;
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    HapticService.mediumImpact();
+    final reason = _reason;
+    if (reason == null) return;
+    final comment = _comment.text.trim();
+    Navigator.of(context).pop();
+    widget.onSubmit(reason, comment.isEmpty ? null : comment);
+  }
+
+  @override
+  Widget build(BuildContext context) => gameDialogFrame(
+        accent: AppTheme.opponentPink,
+        icon: widget.icon,
+        title: widget.title,
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(widget.subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+          const SizedBox(height: 16),
+          ...widget.reasons.map((r) => InkWell(
+            onTap: () => setState(() => _reason = r),
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+              Icon(_reason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: _reason == r ? AppTheme.opponentPink : AppTheme.textSecondary),
+              const SizedBox(width: 12), Text(r, style: const TextStyle(color: Colors.white)),
+            ])),
+          )),
+          const SizedBox(height: 16),
+          Text(widget.commentLabel, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _comment,
+            minLines: 3,
+            maxLines: 5,
+            maxLength: 500,
+            textInputAction: TextInputAction.newline,
+            cursorColor: AppTheme.opponentPink,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: widget.commentHint,
+              hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 14),
+              counterStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+              filled: true,
+              fillColor: AppTheme.surface,
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.opponentPink, width: 2)),
+            ),
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(widget.cancelLabel, style: const TextStyle(color: AppTheme.textSecondary))),
+          ElevatedButton(
+            onPressed: _reason == null ? null : _submit,
+            style: gameFilledButtonStyle(AppTheme.opponentPink),
+            child: Text(widget.submitLabel),
+          ),
+        ],
+      );
 }
  

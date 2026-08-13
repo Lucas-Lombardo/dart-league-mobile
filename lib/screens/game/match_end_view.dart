@@ -34,6 +34,12 @@ class MatchEndView extends StatefulWidget {
   /// is one tap, everything else waits until the darts are done).
   final List<ReplayClip> replayClips;
 
+  /// Optional card slotted between the clips row and the action panel — today
+  /// the "report their winning visit" banner, which only the loser sees. Its
+  /// own card on purpose: reporting a visit and contesting the score are two
+  /// different things, and merging them into the result panel would blur that.
+  final Widget? preCard;
+
   const MatchEndView({
     super.key,
     required this.didWin,
@@ -44,6 +50,7 @@ class MatchEndView extends StatefulWidget {
     this.scoreCaption,
     this.badgeText,
     this.replayClips = const [],
+    this.preCard,
   });
 
   @override
@@ -146,6 +153,7 @@ class _MatchEndViewState extends State<MatchEndView>
                             _buildMomentsCard(),
                             const SizedBox(height: 14),
                           ],
+                          if (widget.preCard != null) widget.preCard!,
                           _buildPanelCard(),
                         ],
                       ),
@@ -167,6 +175,7 @@ class _MatchEndViewState extends State<MatchEndView>
                             _buildMomentsCard(),
                             const SizedBox(height: 14),
                           ],
+                          if (widget.preCard != null) widget.preCard!,
                           _buildPanelCard(),
                         ],
                       ),

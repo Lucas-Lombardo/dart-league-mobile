@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/rtc_v2_config.dart';
 import '../services/socket_service.dart';
+import '../services/turn_report_service.dart';
 
 enum ScoreMultiplier { single, double, triple }
 
@@ -904,6 +905,11 @@ class GameProvider with ChangeNotifier {
       }
     }
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    // Same both-sides verdict, same place: the server only puts the
+    // `turnReports` block in when BOTH devices declared they can play
+    // their part. No block = no report bar, which is also what an old
+    // backend and an old opponent produce.
+    TurnReportService.applyMatchPayload(data);
 
     _resetLegState();
     notifyListeners();
@@ -1230,6 +1236,11 @@ class GameProvider with ChangeNotifier {
     // Only past the foreign-match guards: a rejected sync (ghost match,
     // stale leg) must not overwrite our rtcV2 config either.
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    // Same both-sides verdict, same place: the server only puts the
+    // `turnReports` block in when BOTH devices declared they can play
+    // their part. No block = no report bar, which is also what an old
+    // backend and an old opponent produce.
+    TurnReportService.applyMatchPayload(data);
 
     final player1Id = data['player1Id'] as String?;
     final player1Score = data['player1Score'] as int?;

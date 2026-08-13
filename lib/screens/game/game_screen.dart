@@ -10,9 +10,11 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../widgets/rank_change_overlay.dart';
 import '../../widgets/elo_change_overlay.dart';
+import '../../services/turn_report_service.dart';
 import 'base_game_screen_state.dart';
 import 'leg_end_view.dart';
 import 'match_end_view.dart';
+import 'turn_reports_view.dart';
 
 class GameScreen extends StatefulWidget {
   final String matchId;
@@ -61,8 +63,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
   // The screen was opened with the match's Agora channel; the provider only
   // learns it from later payloads.
-  @override
-  String? get fallbackAgoraChannelId => widget.agoraChannelName;
 
   @override
   Widget buildAppBarTitle() => Row(children: [
@@ -117,41 +117,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     );
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
-    // The exact legacy Agora path — used directly when the payload had no
-    // rtcV2 block, and as the automatic fallback when the P2P session fails.
-    Future<void> startAgora() async {
-      // Read the PROVIDER at call time, widget params as fallback: on the
-      // rejoin path the screen is built with no credentials at all and
-      // everything (Agora + rtcV2) arrives via game_state_sync into the
-      // provider — a widget-only read made the automatic P2P→Agora fallback
-      // a silent no-op there (no video, no camera, no AI for the rest of
-      // the match). Same call-time pattern as the tournament screen.
-      final appId = game.agoraAppId ?? widget.agoraAppId;
-      final tokenStrict = game.agoraTokenStrict ?? widget.agoraTokenStrict;
-      final token = game.agoraToken ?? widget.agoraToken;
-      final channelName = game.agoraChannelName ?? widget.agoraChannelName;
-      final uid = game.agoraUid ?? widget.agoraUid;
-      if (appId == null || appId.isEmpty) return;
-      // Prefer the strict token (bound to a deterministic UID) when the
-      // backend provides it. Fall back to the legacy token + uid=0 so we
-      // remain compatible with backends that haven't been updated yet.
-      final useStrict =
-          tokenStrict != null && tokenStrict.isNotEmpty && uid != null && uid != 0;
-      await initializeAgora(
-        appId: appId,
-        token: useStrict ? tokenStrict : (token ?? ''),
-        channelName: channelName ?? '',
-        uid: useStrict ? uid : 0,
-      );
-    }
-
     await startMatchVideo(
       game: game,
       matchId: widget.matchId,
       opponentId: widget.opponentId,
-      startAgora: startAgora,
-      hasAgoraCredentials:
-          widget.agoraAppId != null && widget.agoraAppId!.isNotEmpty,
     );
   }
 
@@ -344,6 +313,19 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     final l10n = AppLocalizations.of(context);
     final didWin = game.winnerId == auth.currentUser?.id;
 
+    // Step 1 of 2: the visits flagged during the match need a reason before
+    // anything else. Only shown to a player who actually flagged something —
+    // for everyone else this is the screen they have always seen.
+    if (!turnReportsSettled && TurnReportService.pending.isNotEmpty) {
+      return TurnReportsView(
+        onEdit: (report) => editTurnReport(report),
+        onContinue: () => finishTurnReports(
+          matchId: game.matchId as String?,
+          seriesId: game.seriesId as String?,
+        ),
+      );
+    }
+
     final resultPanel = Column(mainAxisSize: MainAxisSize.min, children: [
       Text(l10n.matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
       const SizedBox(height: 8),
@@ -386,6 +368,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       // "play again?" rematch panel.
       panel: game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel,
       replayClips: matchReplayClips,
+      // The loser's only chance at the winning visit: they were sent straight
+      // here by game_won, with no confirmation step of their own to hang it on.
+      preCard: buildWinningVisitBanner(game, didWin: didWin),
     );
   }
 
@@ -402,6 +387,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       opponentLegsWon: game.opponentLegsWon,
       legsNeeded: game.legsNeeded,
       onAttemptPop: onWillPop,
+      // Same offer as on the end-of-match screen, one leg earlier: this is
+      // where the loser of legs 1 and 2 lands. The report joins the list and
+      // gets its reason with the others when the series ends.
+      banner: buildWinningVisitBanner(game, didWin: wonLeg),
     );
   }
 

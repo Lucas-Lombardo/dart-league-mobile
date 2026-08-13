@@ -2,37 +2,32 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
-import 'agora_service.dart';
 import 'replay_buffer_service.dart';
 import 'rtc_frames_service.dart';
 import '../utils/storage_service.dart';
 
 /// Owns the Flutter camera during gameplay and distributes frames to both
-/// Agora (for video calling) and AI scoring (for dart detection).
+/// the P2P video call and AI scoring (for dart detection).
 ///
-/// This mirrors DartsMind's approach: the app controls the camera via CameraX
-/// (here Flutter's camera package) and pushes custom frames to Agora instead
-/// of letting Agora control the camera directly.
+/// The app controls the camera via CameraX (here Flutter's camera package)
+/// and pushes the frames it captures into the WebRTC track itself, rather
+/// than letting the RTC stack own the camera.
 class CameraFrameService {
   CameraController? _controller;
-  int? _videoTrackId;
-  RtcEngine? _agoraEngine;
-  // RTC v2 (P2P): frames go to RtcFramesService (WebRTC track) instead of
-  // Agora. Mutually exclusive with [_agoraEngine]; both false/null in solo
-  // modes (training, placement).
+  // Online match: frames go to RtcFramesService (WebRTC track). False in solo
+  // modes (training, placement), where only the AI consumes them.
   bool _p2pMode = false;
   bool _isStreaming = false;
   bool _disposed = false;
 
   // Session-wide camera frame rate. D8 capped it at 15 (no consumer takes
-  // more: the AI pulls ≤4/s, the RTC/Agora push is throttled to ~15 via
+  // more: the AI pulls ≤4/s, the RTC push is throttled to ~15 via
   // _minPushInterval, the ring encodes at the camera rate). Match modes
   // briefly ran at 24 for smoother shareable clips (2026-08-03), but the
   // 2026-08-10 thermal audit showed the extra 60% of per-frame pipeline was
@@ -46,7 +41,7 @@ class CameraFrameService {
   // ReplayOverlayRenderer) — keep them in step.
   static const int cameraFps = 15;
 
-  // Push cadence into Agora: time-based (~16 fps max), robust to whatever
+  // Push cadence into the call: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
   // assumed a 30 fps stream, which the D8 cap makes wrong.
   DateTime? _lastPushAt;
@@ -59,24 +54,19 @@ class CameraFrameService {
   // encode/copy cost.
   static const Duration _gatedPushInterval = Duration(seconds: 1);
 
-  // Reusable push buffers. Allocating 1.4 MB (Android YUV) / 3.7 MB (iOS
+  // Reusable push buffer. Allocating 1.4 MB (Android YUV) / 3.7 MB (iOS
   // BGRA) per pushed frame, 15×/s for a whole match, was a constant GC feed —
   // the same allocation pressure behind the June "5s per dart" regression.
-  // Two slots alternate; a slot stays busy until its pushVideoFrame future
-  // completes (the Agora SDK has copied the bytes to native memory by then).
-  // Both busy → the frame is dropped, which is the back-pressure this path
-  // never had: the old fire-and-forget push queued unbounded copies when the
-  // channel fell behind.
-  final List<Uint8List?> _pushBuffers = [null, null];
-  final List<bool> _pushBufferBusy = [false, false];
+  // A single slot suffices: the method channel serializes the bytes during
+  // pushFrame, so the buffer is free again the moment it returns.
+  Uint8List? _pushBufferSlot;
   // Replay tee staging buffer — see _pushFrameToReplay.
   Uint8List? _replayBuffer;
   // The frame currently staged in [_replayBuffer] (+ its format), so the P2P
   // push can reuse that tight copy instead of filling a second identical one
   // (thermal audit 2026-08-10: the double fill was ~1.4MB of extra memcpy on
   // every my-turn frame). Safe because the method channel serializes both
-  // sends synchronously; Agora reads its buffer asynchronously and must keep
-  // its own pooled slot. Cleared on every camera callback.
+  // sends synchronously. Cleared on every camera callback.
   CameraImage? _replayStagedFrame;
   String? _replayStagedFormat;
   bool _replayMode = false;
@@ -130,7 +120,7 @@ class CameraFrameService {
   }
 
   /// ANDROID-ONLY clockwise rotation (degrees) for the raw sensor frame so the
-  /// board is upright — for the model AND as the Agora push rotation metadata
+  /// board is upright — for the model AND as the push rotation metadata
   /// (both share the same "rotate CW to upright" semantic). Portrait returns
   /// the sensor mount angle (the previously-shipped value); landscape
   /// compensates for the device's physical rotation so the board lands
@@ -202,23 +192,18 @@ class CameraFrameService {
     }
   }
 
-  /// Initialize the camera. When [agoraEngine] is non-null, also pushes frames
-  /// to the given custom video track. When [p2pMode] is true (RTC v2, no Agora
-  /// engine), frames go to [RtcFramesService.pushFrame] instead — same pooled
-  /// buffers, same cadence. Pass nulls for solo modes (training, placement)
-  /// where the local camera preview is shown directly via the exposed
-  /// [controller] and only AI scoring needs the frame stream.
+  /// Initialize the camera. When [p2pMode] is true, frames are pushed to
+  /// [RtcFramesService.pushFrame] for the video call. Leave it false for solo
+  /// modes (training, placement) where the local camera preview is shown
+  /// directly via the exposed [controller] and only AI scoring needs the
+  /// frame stream.
   ///
   /// [replayRing] additionally tees every frame into the native replay ring
-  /// buffer (see ReplayBufferService) — match modes only, transport-agnostic.
+  /// buffer (see ReplayBufferService) — match modes only.
   Future<void> initialize({
-    RtcEngine? agoraEngine,
-    int? videoTrackId,
     bool p2pMode = false,
     bool replayRing = false,
   }) async {
-    _agoraEngine = agoraEngine;
-    _videoTrackId = videoTrackId;
     _p2pMode = p2pMode;
     _replayMode = replayRing && ReplayBufferService.isSupported;
     if (_replayMode) ReplayBufferService.arm();
@@ -232,7 +217,7 @@ class CameraFrameService {
     if (!await _openCamera(requested)) return;
     if (_disposed) return;
 
-    // Start the image stream — each frame goes to Agora + cached for AI
+    // Start the image stream — each frame goes to the call + cached for AI
     await _awaitStream(_startImageStream());
   }
 
@@ -264,10 +249,10 @@ class CameraFrameService {
     CameraController buildController() => CameraController(
           selected,
           ResolutionPreset.high, // 720p
-          enableAudio: false, // Agora handles audio — avoid iOS AVAudioSession conflict
+          enableAudio: false, // WebRTC owns audio — avoid iOS AVAudioSession conflict
           // DartsMind caps its camera at 8–16 fps; the sensor default (~30)
           // doubles the whole per-frame pipeline for nothing: the AI consumes
-          // ≤4 frames/s and the Agora encoder is configured for 15 fps.
+          // ≤4 frames/s and the video encoder is configured for 15 fps.
           // iOS: applied by camera_avfoundation via activeVideoM{in,ax}FrameDuration.
           // Android: applied by our vendored camera_android patch (see
           // packages/camera_android — stock only applies fps while recording).
@@ -325,7 +310,7 @@ class CameraFrameService {
   }
 
   /// Flip between the back and front camera during gameplay. Tears down the
-  /// current controller, opens the other lens, resumes streaming to Agora + AI,
+  /// current controller, opens the other lens, resumes streaming to call + AI,
   /// and persists the choice so it carries to the next screen and next launch.
   /// No-op while a switch is already in flight or after [dispose].
   Future<void> switchCamera() async {
@@ -449,17 +434,13 @@ class CameraFrameService {
     }
     _lastPushAt = now;
 
-    if (_p2pMode) {
-      _pushFrameToP2p(image);
-    } else {
-      _pushFrameToAgora(image);
-    }
+    if (_p2pMode) _pushFrameToP2p(image);
   }
 
   /// Replay ring tee — third consumer of the same frames. Own staging buffer:
-  /// the pool slots belong to the transport pushes (Agora reads its slot
-  /// asynchronously), and the method channel serializes synchronously, so
-  /// this buffer is reusable as soon as the call returns.
+  /// the pooled buffer belongs to the transport push, and the method channel
+  /// serializes synchronously, so this buffer is reusable as soon as the call
+  /// returns.
   void _pushFrameToReplay(CameraImage image) {
     // The service only consumes frames of MY turn (and drops when the channel
     // is behind) — bail before the staging copy, not after.
@@ -502,13 +483,11 @@ class CameraFrameService {
     }
   }
 
-  /// P2P (RTC v2) twin of [_pushFrameToAgora]: same tight-buffer fill helpers
-  /// and pooled slot-0 buffer, same rotation semantics, but the frame goes to
-  /// the RtcFrames native companion (WebRTC video source) instead of the
-  /// Agora engine. The method channel serializes the bytes synchronously
-  /// during pushFrame, so the pooled buffer is reusable as soon as the call
-  /// returns (unlike Agora, which reads it asynchronously); back-pressure
-  /// (drop when the platform side is behind) lives in RtcFramesService.
+  /// Send the frame to the RtcFrames native companion (WebRTC video source).
+  /// The method channel serializes the bytes synchronously during pushFrame,
+  /// so the pooled buffer is reusable as soon as the call returns;
+  /// back-pressure (drop when the platform side is behind) lives in
+  /// RtcFramesService.
   void _pushFrameToP2p(CameraImage image) {
     // No turn-gate bail here: the gate lives in _onCameraImage's cadence
     // switch (full rate on my turn, ~1 fps trickle on the opponent's — the
@@ -527,7 +506,7 @@ class CameraFrameService {
         } else {
           final ySize = image.width * image.height;
           final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
-          buffer = _pushBuffer(0, ySize + uvSize * 2);
+          buffer = _pushBuffer(ySize + uvSize * 2);
           format = _fillTightYuv(image, buffer);
         }
         final rotation = _effectiveRotation();
@@ -545,7 +524,7 @@ class CameraFrameService {
         );
       } else {
         // iOS: BGRA8888, frames already upright in every orientation →
-        // rotation 0, exactly like the Agora push. The raw plane bytes go
+        // rotation 0. The raw plane bytes go
         // straight through (single copy inside the method-channel codec);
         // the native side strips any row padding via bytesPerRow.
         final plane = image.planes[0];
@@ -569,91 +548,13 @@ class CameraFrameService {
     }
   }
 
-  /// Push a camera frame to Agora as an external video frame.
-  /// Mirrors DartsMind: uses imageProxy.getImageInfo().getRotationDegrees()
-  /// and proper YUV format detection (I420 vs NV21).
-  /// No-op when running in solo mode without Agora.
-  void _pushFrameToAgora(CameraImage image) {
-    if (_agoraEngine == null || _videoTrackId == null) return;
-
-    try {
-      // Both pooled buffers still in flight → the channel is behind; drop
-      // this frame rather than queue another multi-MB copy.
-      final int slot = !_pushBufferBusy[0] ? 0 : (!_pushBufferBusy[1] ? 1 : -1);
-      if (slot == -1) return;
-
-      final Uint8List buffer;
-      final VideoPixelFormat format;
-      final int stride;
-      final int height;
-
-      if (Platform.isAndroid) {
-        final ySize = image.width * image.height;
-        final uvSize = (image.width ~/ 2) * (image.height ~/ 2);
-        buffer = _pushBuffer(slot, ySize + uvSize * 2);
-        format = _fillTightYuv(image, buffer) == 'i420'
-            ? VideoPixelFormat.videoPixelI420
-            : VideoPixelFormat.videoPixelNv21;
-        stride = image.width;
-        height = image.height;
-      } else {
-        // iOS: BGRA8888 — push raw pixels and pass rotation=0. The encoder
-        // is set to adaptive orientation mode so it won't add its own
-        // rotation pass on top of ours (fixedPortrait mode was stacking
-        // rotations and producing wrong orientation on Android receivers).
-        final bytes = image.planes[0].bytes;
-        buffer = _pushBuffer(slot, bytes.length);
-        buffer.setRange(0, bytes.length, bytes);
-        format = VideoPixelFormat.videoPixelBgra;
-        stride = image.planes[0].bytesPerRow ~/ 4;
-        height = image.height;
-      }
-
-      // Android frames stay in fixed sensor coordinates, so the rotation
-      // metadata must follow the device's physical orientation — a frozen
-      // _sensorOrientation is only right in portrait and made receivers
-      // render this device's landscape stream 90° sideways. In portrait
-      // _effectiveRotation() returns that same baseline, so portrait pushes
-      // are unchanged. iOS buffers already arrive upright in every
-      // orientation, so iOS keeps pushing 0.
-      final int frameRotation = Platform.isAndroid ? _effectiveRotation() : 0;
-
-      final frame = ExternalVideoFrame(
-        type: VideoBufferType.videoBufferRawData,
-        format: format,
-        buffer: buffer,
-        stride: stride,
-        height: height,
-        rotation: frameRotation,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      );
-
-      if (!_firstPushLogged) {
-        _firstPushLogged = true;
-        debugPrint(
-            '[CameraFrameService] first push: src=${image.width}x${image.height} '
-            'pushed=${stride}x$height rotation=$frameRotation format=$format');
-      }
-
-      // The slot stays busy until the SDK call completes — by then Agora has
-      // copied the bytes to native memory and the buffer is safe to overwrite.
-      _pushBufferBusy[slot] = true;
-      AgoraService.pushVideoFrame(
-        frame: frame,
-        videoTrackId: _videoTrackId!,
-      ).whenComplete(() => _pushBufferBusy[slot] = false);
-    } catch (e) {
-      debugPrint('[CameraFrameService] pushFrame error: $e');
-    }
-  }
-
-  /// Return the pooled buffer for [slot], reallocating only when the frame
-  /// size changed (camera resolution is fixed within a session).
-  Uint8List _pushBuffer(int slot, int length) {
-    var buf = _pushBuffers[slot];
+  /// Return the pooled push buffer, reallocating only when the frame size
+  /// changed (camera resolution is fixed within a session).
+  Uint8List _pushBuffer(int length) {
+    var buf = _pushBufferSlot;
     if (buf == null || buf.length != length) {
       buf = Uint8List(length);
-      _pushBuffers[slot] = buf;
+      _pushBufferSlot = buf;
     }
     return buf;
   }
@@ -1022,10 +923,10 @@ class CameraFrameService {
     _stopImageStream();
   }
 
-  /// Whether an online call (Agora or P2P) consumes our frames continuously —
-  /// the opponent watches our live video even between turns, so the stream
-  /// must never be gated on AI activity in these modes.
-  bool get _callAttached => _agoraEngine != null || _p2pMode;
+  /// Whether an online call consumes our frames continuously — the opponent
+  /// watches our live video even between turns, so the stream must never be
+  /// gated on AI activity in these modes.
+  bool get _callAttached => _p2pMode;
 
   /// Resume the camera (e.g. when app comes back to foreground).
   void resume() {
@@ -1037,12 +938,12 @@ class CameraFrameService {
   /// Gate the image stream on AI activity — DartsMind never burns pixel work
   /// while detection is off, and neither should we. When the AI capture loop
   /// stops (score confirmation/edit, opponent's turn, AI disabled) and no
-  /// Agora engine is attached, the image stream is stopped entirely: the
+  /// call is attached, the image stream is stopped entirely: the
   /// per-frame YUV marshaling into Dart (~40MB/s of buffer copies at 720p/30)
   /// is the biggest CONSTANT cost of a match, running even when nothing
   /// consumes the frames. The camera preview widget is unaffected.
   ///
-  /// In online matches (Agora OR P2P attached) this is a stream no-op — the
+  /// In online matches (a P2P call attached) this is a stream no-op — the
   /// opponent watches our live video between turns — but the flag is still
   /// recorded so [resume] behaves consistently.
   void setAiActive(bool active) {
@@ -1064,14 +965,8 @@ class CameraFrameService {
     await _awaitStream(_stopImageStream());
     _latestFrame = null;
 
-    if (_videoTrackId != null) {
-      await AgoraService.destroyCustomVideoTrack(_videoTrackId!);
-      _videoTrackId = null;
-    }
-
     await _controller?.dispose();
     _controller = null;
-    _agoraEngine = null;
     // The P2P track itself is owned by the game screen (RtcFramesService) —
     // only stop feeding it here.
     _p2pMode = false;

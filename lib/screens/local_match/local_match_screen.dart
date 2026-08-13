@@ -164,7 +164,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
 
     try {
       final cameraService = CameraFrameService();
-      await cameraService.initialize(agoraEngine: null, videoTrackId: null);
+      await cameraService.initialize();
       if (!mounted) {
         await cameraService.dispose();
         return;

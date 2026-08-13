@@ -126,7 +126,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       final cameraService = CameraFrameService();
       // Solo mode: no Agora — the service runs the camera + image stream and
       // caches the latest frame for AI scoring without pushing video anywhere.
-      await cameraService.initialize(agoraEngine: null, videoTrackId: null);
+      await cameraService.initialize();
       if (!mounted) {
         await cameraService.dispose();
         return;

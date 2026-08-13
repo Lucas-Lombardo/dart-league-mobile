@@ -520,6 +520,159 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
   }
 }
 
+/// The report bar, in the SAME slot as [ReplayCaptureButton] — the bottom edge
+/// of my camera panel. That slot is empty until my first dart of the visit
+/// (the capture button has nothing to record yet), which is exactly the window
+/// where flagging my opponent's previous visit makes sense: their visit is
+/// complete, its score is on screen, and I haven't started throwing.
+///
+/// Red rather than the capture bar's blue: same shape, same place, opposite
+/// colour — the two gestures can't be confused even without reading.
+///
+/// One tap arms it, then a 4-second window to undo. Nothing is asked of the
+/// opponent's device until that window closes, so a mis-tap costs nothing. The
+/// window is deliberately NOT a confirmation dialog: a modal mid-visit loses
+/// the camera and the AI, and a feature nobody can afford to open is a feature
+/// nobody uses.
+class TurnFlagButton extends StatefulWidget {
+  /// Fires when the undo window closes — this is what actually posts the flag.
+  final VoidCallback onConfirmed;
+
+  /// Score of the visit being flagged, shown in the label so the target is
+  /// unambiguous. Null renders the label without it (bust, unknown).
+  final int? volleyScore;
+
+  /// Already flagged this visit: inert until my first dart swaps the bar.
+  final bool alreadyFlagged;
+
+  const TurnFlagButton({
+    super.key,
+    required this.onConfirmed,
+    this.volleyScore,
+    this.alreadyFlagged = false,
+  });
+
+  @override
+  State<TurnFlagButton> createState() => _TurnFlagButtonState();
+}
+
+class _TurnFlagButtonState extends State<TurnFlagButton> {
+  /// Lucas's spec (2026-08-13). Long enough to catch a mis-tap, short enough
+  /// that the flag is gone before the visit is.
+  static const Duration _undoWindow = Duration(seconds: 4);
+
+  Timer? _countdown;
+  int _remaining = 0;
+  bool _sent = false;
+
+  @override
+  void dispose() {
+    _countdown?.cancel();
+    super.dispose();
+  }
+
+  void _tap() {
+    if (_sent || widget.alreadyFlagged) return;
+    HapticService.mediumImpact();
+    if (_countdown != null) {
+      // Second tap inside the window: cancel. Nothing was ever asked of the
+      // opponent's device, so there is nothing to take back.
+      _countdown!.cancel();
+      _countdown = null;
+      setState(() => _remaining = 0);
+      return;
+    }
+    setState(() => _remaining = _undoWindow.inSeconds);
+    _countdown = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _remaining--);
+      if (_remaining <= 0) {
+        timer.cancel();
+        _countdown = null;
+        _confirm();
+      }
+    });
+  }
+
+  /// Also called from outside the countdown: throwing a dart commits the flag
+  /// rather than leaving a decision hanging while the player aims.
+  void _confirm() {
+    if (_sent) return;
+    setState(() => _sent = true);
+    widget.onConfirmed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final counting = _countdown != null;
+    final done = _sent || widget.alreadyFlagged;
+
+    final String label;
+    if (done) {
+      label = l10n.flagVisitSent;
+    } else if (counting) {
+      label = l10n.flagVisitUndo(_remaining);
+    } else if (widget.volleyScore != null) {
+      label = l10n.flagVisitWithScore(widget.volleyScore!);
+    } else {
+      label = l10n.flagVisit;
+    }
+
+    final decoration = done
+        ? BoxDecoration(
+            color: AppTheme.opponentPink.withValues(alpha: 0.22),
+            border: Border(
+              top: BorderSide(
+                color: AppTheme.opponentPink.withValues(alpha: 0.5),
+              ),
+            ),
+          )
+        : BoxDecoration(
+            gradient: LinearGradient(
+              colors: counting
+                  ? const [Color(0xFFA83A44), Color(0xFF7C2A32)]
+                  : const [AppTheme.opponentPink, Color(0xFFA83A44)],
+            ),
+          );
+
+    return GestureDetector(
+      onTap: _tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: decoration,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              done ? Icons.flag : Icons.flag_outlined,
+              size: 17,
+              color: done ? AppTheme.opponentPinkBright : Colors.white,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: done ? AppTheme.opponentPinkBright : Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Center block of the turn header that alternates between "VOTRE MOY." and
 /// "MOY. ADV." every couple of seconds, tinting the value with the owner's
 /// color. Shows just the available one when the other is still null.

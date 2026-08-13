@@ -36,13 +36,15 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     }
   }
 
+  // Mirrors the backend's RANK_ASSIGNMENT (PlacementService) — preview only,
+  // the server is authoritative.
   static int _eloForWins(int wins) {
     switch (wins) {
       case 0: return 500;
-      case 1: return 1250;
-      case 2: return 1250;
-      case 3: return 1750;
-      case 4: return 2250;
+      case 1: return 800;
+      case 2: return 1000;
+      case 3: return 1300;
+      case 4: return 1700;
       default: return 500;
     }
   }

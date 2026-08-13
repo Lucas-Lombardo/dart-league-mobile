@@ -1078,6 +1078,32 @@ abstract class AppLocalizations {
   String statsCheckoutAttempts(int hits, int attempts);
   String statsVersus(String name);
   String statsDartsUnit(String value);
+
+  // ── Per-volley reports (2026-08-13) ─────────────────────────────────────
+  // The in-game bar shares the replay capture slot; the winning visit is
+  // flagged from the end-of-leg / end-of-match screens instead.
+  String get flagVisit;
+  String flagVisitWithScore(int score);
+  String flagVisitUndo(int seconds);
+  String get flagVisitSent;
+  String flagWinningVisit(int score);
+  String get flagAction;
+  String get flagDone;
+  String get turnReportsTitle;
+  String turnReportsIntro(int count);
+  String turnReportLegTurn(int leg, int turn);
+  String turnReportTurnOnly(int turn);
+  String turnReportWinningLabel(int leg);
+  String get turnReportWinningNoLeg;
+  String turnReportVisitScore(int score);
+  String get turnReportTodo;
+  String get turnReportReady;
+  String turnReportSubmit(int count);
+  String get turnReportSkip;
+  String turnReportDropWarning(int count);
+  String get turnReportDialogTitle;
+  String get turnReportRemove;
+  String get turnReportSent;
 }
 
 class _AppLocalizationsDelegate

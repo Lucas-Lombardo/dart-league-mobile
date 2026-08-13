@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../services/auto_scoring_service.dart';
 import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
@@ -22,9 +21,6 @@ class AutoScoreGameView extends StatelessWidget {
   final String opponentName;
   final String myName;
   final int dartsThrown;
-  final RtcEngine? agoraEngine;
-  final int? remoteUid;
-  final String? agoraChannelName;
   final Widget? localCameraPreview;
   final bool isAudioMuted;
   final VoidCallback? onToggleAudio;
@@ -71,9 +67,6 @@ class AutoScoreGameView extends StatelessWidget {
     required this.myName,
     this.pendingConfirmation = false,
     this.dartsThrown = 0,
-    this.agoraEngine,
-    this.remoteUid,
-    this.agoraChannelName,
     this.localCameraPreview,
     this.isAudioMuted = true,
     this.onToggleAudio,
@@ -121,16 +114,7 @@ class AutoScoreGameView extends StatelessWidget {
 
         // ── Camera feed + overlay controls ──
         final cameraPanel = GameCameraPanel(
-          videoView:
-              localCameraPreview ??
-              (agoraEngine != null
-                  ? AgoraVideoView(
-                      controller: VideoViewController(
-                        rtcEngine: agoraEngine!,
-                        canvas: const VideoCanvas(uid: 0),
-                      ),
-                    )
-                  : null),
+          videoView: localCameraPreview,
           borderColor: AppTheme.playerBlue,
           onBack: onBack,
           controls: [

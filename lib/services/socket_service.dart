@@ -7,6 +7,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../utils/api_config.dart';
 import '../utils/storage_service.dart';
 import 'api_service.dart';
+import 'replay_buffer_service.dart';
 import 'rtc_frames_service.dart';
 
 class SocketService {
@@ -82,6 +83,13 @@ class SocketService {
   // like the other flags so a backend rollback degrades to Agora.
   static bool _supportsRtcV2 = false;
 
+  // Server capability: per-volley reports (`flag_turn` in, `capture_turn` out,
+  // /turn-reports routes). Like rtcV2, the app never decides from this flag
+  // alone — the in-game bar keys off the `turnReports` block in the match
+  // payload, which is the server's BOTH-sides verdict. Reset on disconnect so
+  // a backend rollback simply removes the button.
+  static bool _supportsTurnReports = false;
+
   // True once the current socket has received the server's `authenticated`
   // handshake — the event that carries the capability flags above. Reset on
   // every disconnect, like the flags themselves, so it always describes the
@@ -114,6 +122,10 @@ class SocketService {
   /// Whether the server this socket is authenticated against can run match
   /// video as P2P WebRTC (`rtc_signal` relay + `rtcV2` payload block).
   static bool get supportsRtcV2 => _supportsRtcV2;
+
+  /// Whether the server this socket is authenticated against accepts
+  /// per-volley reports. See [_supportsTurnReports].
+  static bool get supportsTurnReports => _supportsTurnReports;
 
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
@@ -211,6 +223,14 @@ class SocketService {
       debugPrint('SocketService: server supportsRtcV2=$supportsRtcV2');
     }
     _supportsRtcV2 = supportsRtcV2;
+
+    final supportsTurnReports =
+        data is Map && data['supportsTurnReports'] == true;
+    if (supportsTurnReports != _supportsTurnReports) {
+      debugPrint(
+          'SocketService: server supportsTurnReports=$supportsTurnReports');
+    }
+    _supportsTurnReports = supportsTurnReports;
   }
 
   /// Supplies the CONNECT-packet auth payload, called by socket.io on every
@@ -247,7 +267,15 @@ class SocketService {
     // a web build declaring true made the server emit rtcV2 to the MOBILE
     // opponent, who then burned the 10s watchdog against a peer that never
     // signals before falling back to Agora.
-    cb({'token': token, 'supportsRtcV2': RtcFramesService.isSupported});
+    // supportsTurnReports rides the same handshake for the same reason, and
+    // is gated on the replay ring: without it this device could never produce
+    // the clip a flag asks for, and the server must not offer its opponent a
+    // button that yields an empty case.
+    cb({
+      'token': token,
+      'supportsRtcV2': RtcFramesService.isSupported,
+      'supportsTurnReports': ReplayBufferService.isSupported,
+    });
   }
 
   /// Local expiry check (30s skew) so we refresh BEFORE the server rejects us,
@@ -353,7 +381,11 @@ class SocketService {
             .enableReconnection()
             .setReconnectionDelay(2000)
             .setReconnectionDelayMax(10000)
-            .setAuth({'token': token, 'supportsRtcV2': RtcFramesService.isSupported})
+            .setAuth({
+              'token': token,
+              'supportsRtcV2': RtcFramesService.isSupported,
+              'supportsTurnReports': ReplayBufferService.isSupported,
+            })
             .build(),
       );
 
@@ -386,6 +418,7 @@ class SocketService {
         _supportsDartAck = false;
         _supportsChat = false;
         _supportsRtcV2 = false;
+        _supportsTurnReports = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();

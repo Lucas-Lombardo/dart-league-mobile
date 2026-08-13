@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.38+75
+version: 1.2.39+77
 
 environment:
   sdk: ^3.10.7
@@ -47,9 +47,8 @@ dependencies:
   # Phone model, sent as X-Device-Model so AI-scoring quality and thermal
   # issues can be correlated with actual hardware.
   device_info_plus: ^13.2.0
-  agora_rtc_engine: ^6.3.0
-  # RTC v2: P2P WebRTC for match video (signaling over the existing socket,
-  # TURN via Cloudflare). Coexists with Agora — session picked per match.
+  # P2P WebRTC for match video (signaling over the existing socket, TURN via
+  # Cloudflare). Sole video transport since the 2026-08-13 Agora removal.
   # PINNED EXACTLY: RtcFramesService imports src/native internals, the
   # Android companion reads a private field reflectively, and app/build.gradle
   # pins webrtc-sdk:android in lock-step with this version's libwebrtc — an
@@ -101,8 +100,11 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
-  # Stay on CocoaPods for iOS/macOS: agora_rtc_engine's Swift Package Manager
-  # packaging is broken (AgoraRtcWrapper headers not found at build time).
+  # Kept on CocoaPods for iOS/macOS. The original reason was agora_rtc_engine's
+  # broken SPM packaging; removing that dependency did NOT free us, because
+  # flutter_webrtc and tflite_flutter still ship no Package.swift (the 2026-08-13
+  # build prints them by name). Flipping this would take out match video and AI
+  # scoring at once — revisit only once both plugins adopt SPM.
   config:
     enable-swift-package-manager: false
 

@@ -174,7 +174,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       final cameraService = CameraFrameService();
       // Solo mode: no Agora. The service runs a continuous image stream and
       // caches the latest frame for AI scoring — no per-cycle start/stop.
-      await cameraService.initialize(agoraEngine: null, videoTrackId: null);
+      await cameraService.initialize();
       if (!mounted) { await cameraService.dispose(); setState(() => _autoScoringLoading = false); return; }
       if (!cameraService.isInitialized) {
         await cameraService.dispose();
@@ -534,6 +534,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       _autoScoringService?.resetTurn();
       _startAiCapture();
       DartSoundService.playYourTurn();
+      // Caller: announce "you require N" when the player comes to the throw on a
+      // finish (no-op otherwise), mirroring the online game screen.
+      DartCallerService.callCheckout(_myScore);
     }
   }
 

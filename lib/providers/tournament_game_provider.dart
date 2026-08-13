@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/rtc_v2_config.dart';
 import '../services/socket_service.dart';
+import '../services/turn_report_service.dart';
 import 'game_provider.dart' show ScoreMultiplier;
 
 enum TournamentGameState {
@@ -736,6 +737,11 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    // Same both-sides verdict, same place: the server only puts the
+    // `turnReports` block in when BOTH devices declared they can play
+    // their part. No block = no report bar, which is also what an old
+    // backend and an old opponent produce.
+    TurnReportService.applyMatchPayload(data);
 
     _cancelStartWatchdog();
     _gameStarted = true;
@@ -818,6 +824,11 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
+    // Same both-sides verdict, same place: the server only puts the
+    // `turnReports` block in when BOTH devices declared they can play
+    // their part. No block = no report bar, which is also what an old
+    // backend and an old opponent produce.
+    TurnReportService.applyMatchPayload(data);
 
     // Reset leg state for next leg. _gameStarted goes false again here, so
     // the next leg's game_started can be lost the same way as the first —
