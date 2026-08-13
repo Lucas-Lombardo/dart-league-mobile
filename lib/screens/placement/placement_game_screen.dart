@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -13,6 +14,7 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/camera_frame_service.dart';
 import '../../services/dataset_capture_service.dart';
 import '../../services/dart_scoring_service.dart';
+import '../../services/placement_debug_capture_service.dart';
 import '../../services/training_service.dart';
 import '../../utils/dart_caller_service.dart';
 import '../../utils/dart_sound_service.dart';
@@ -73,6 +75,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   double _cameraMinZoom = 1.0;
   double _cameraMaxZoom = 1.0;
 
+  // Diagnostic capture of the first placement match (see
+  // PlacementDebugCapture). Fires while the player's visit is still short of
+  // three darts: a frame taken then is the only thing that can distinguish
+  // "he never threw" from "he threw and the AI saw nothing".
+  Timer? _debugCaptureTimer;
+  static const Duration _debugCaptureInterval = Duration(seconds: 45);
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +92,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _myScore = provider.player1Score;
     _scoreBeforeRound = _myScore;
     _lastBotScore = provider.player2Score;
+    if (provider.mode == PlacementMode.placement) {
+      PlacementDebugCapture.startMatch(
+        matchId: provider.currentMatchId,
+        botDifficulty: provider.currentBotDifficulty,
+      );
+    }
     _autoScoringService = AutoScoringService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initCameraAndAI();
@@ -92,6 +107,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _debugCaptureTimer?.cancel();
+    PlacementDebugCapture.endMatch();
     _stopAiCapture();
     _autoScoringService?.dispose();
     _autoScoringService = null;
@@ -161,6 +178,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       if (!mounted) { await cameraService.dispose(); setState(() => _autoScoringLoading = false); return; }
       if (!cameraService.isInitialized) {
         await cameraService.dispose();
+        // No camera means no frame to diagnose with — say so, or this match
+        // looks exactly like a player who simply never threw.
+        unawaited(PlacementDebugCapture.note('camera_init_failed',
+            health: _debugHealth()));
         if (mounted) setState(() => _autoScoringLoading = false);
         return;
       }
@@ -184,9 +205,49 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       if (!mounted) { setState(() => _autoScoringLoading = false); return; }
       setState(() => _autoScoringLoading = false);
       if (_autoScoringService!.modelLoaded) _startAiCapture();
+      _startDebugCapture();
     } catch (e) {
+      unawaited(
+          PlacementDebugCapture.note('ai_init_threw', health: _debugHealth()));
       if (mounted) setState(() => _autoScoringLoading = false);
     }
+  }
+
+  /// Diagnostic dump of the first placement match: one frame as the board
+  /// comes into view, then one every [_debugCaptureInterval] for as long as
+  /// the current visit is still short of three darts. Deliberately keeps
+  /// firing when the model failed to load — "AI dead, board fine" is exactly
+  /// one of the answers we're after.
+  void _startDebugCapture() {
+    if (!PlacementDebugCapture.isActive) return;
+    unawaited(PlacementDebugCapture.capture(_cameraService,
+        reason: 'open', health: _debugHealth()));
+    _debugCaptureTimer?.cancel();
+    _debugCaptureTimer = Timer.periodic(_debugCaptureInterval, (_) {
+      if (!mounted || _gameEnded || _botTurnInProgress) return;
+      if (_currentRoundThrows.length >= 3) return;
+      unawaited(PlacementDebugCapture.capture(
+        _cameraService,
+        reason: 'idle_d${_currentRoundThrows.length}',
+        health: _debugHealth(),
+      ));
+    });
+  }
+
+  Map<String, dynamic> _debugHealth() {
+    final ai = _autoScoringService;
+    return {
+      'aiLoaded': ai?.modelLoaded ?? false,
+      'aiLoading': ai?.isModelLoading ?? false,
+      'aiError': ai?.initError,
+      'aiOff': _aiManuallyDisabled,
+      'inferMs': ai?.lastInferenceMs,
+      'framesAnalyzed': ai?.framesAnalyzed ?? 0,
+      'lastTips': ai?.lastDartTipCount ?? 0,
+      'lastCalibPts': ai?.lastCalibrationPointCount ?? 0,
+      'camera': _cameraService?.isInitialized ?? false,
+      'zoom': _cameraZoom,
+    };
   }
 
   void _onDartDetected(int slotIndex, DartScore dartScore) {
@@ -392,10 +453,29 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     DartSoundService.playTurnFinished();
-    _executeBotTurn(playerRoundScore: roundScore, playerRoundThrows: roundThrows);
+    // A visit validated with fewer than three darts is the symptom we're
+    // chasing — grab the board as it was when the player accepted it. (On an
+    // auto-confirm the darts are already out, which is itself informative:
+    // it says the player threw and pulled them.)
+    if (dartsThisRound < 3) {
+      unawaited(PlacementDebugCapture.capture(
+        _cameraService,
+        reason: 'visit_r${_myRoundScores.length}_d$dartsThisRound',
+        health: _debugHealth(),
+      ));
+    }
+    _executeBotTurn(
+      playerRoundScore: roundScore,
+      playerRoundThrows: roundThrows,
+      dartsThisRound: dartsThisRound,
+    );
   }
 
-  Future<void> _executeBotTurn({int? playerRoundScore, List<String>? playerRoundThrows}) async {
+  Future<void> _executeBotTurn({
+    int? playerRoundScore,
+    List<String>? playerRoundThrows,
+    int dartsThisRound = 0,
+  }) async {
     if (_botTurnInProgress || _gameEnded) return;
 
     setState(() => _botTurnInProgress = true);
@@ -409,6 +489,20 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       playerRoundThrows: playerRoundThrows,
       playerScoreAfterRound: _myScore,
     );
+
+    // Logged whatever the server answered: a visit the backend refused (a
+    // match already forfeited under the player's feet, a network drop) leaves
+    // no trace anywhere else, and a leg played against a frozen bot is
+    // precisely the kind of zombie match worth catching.
+    if (playerRoundScore != null) {
+      PlacementDebugCapture.recordVisit(
+        roundIndex: _myRoundScores.length,
+        dartsRegistered: dartsThisRound,
+        roundScore: playerRoundScore,
+        remaining: _myScore,
+        sentToServer: success,
+      );
+    }
 
     if (success && mounted) {
       // Bot just played a visit: record its 3-dart score (0 on bust).

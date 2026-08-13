@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.37+74
+version: 1.2.38+75
 
 environment:
   sdk: ^3.10.7
@@ -120,6 +120,11 @@ flutter:
     # everything inside it, including the .DS_Store the Finder keeps
     # recreating (.gitignore does not filter what Flutter bundles). These
     # files are ~16 MB, so nothing unwanted should ride along.
+    # The model the app runs (ModelSelector.currentAsset).
+    - assets/models/dartboard-v10_o2o_float16.tflite
+    # Previous model, kept bundled (3.9 MB) so a replay can be scored under
+    # both before v10 is trusted in ranked play. Drop this line once the A/B
+    # is settled — see ModelSelector.lightAsset.
     - assets/models/dart-rival-ia-light.tflite
     - assets/models/check_inference.jpg
     # Dev-only: real match frames for the on-device delegate accuracy bench

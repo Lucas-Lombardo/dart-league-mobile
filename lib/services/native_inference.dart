@@ -28,16 +28,27 @@ class NativeInference {
   /// get benchmarked against each other on-device — see
   /// lib/dev/delegate_bench.dart).
   ///
-  /// 'coreml' is the measured winner for dart-rival-ia-light: the 2026-08-10
-  /// bench (iPhone de Lucas, pure-invoke ms, cool phone) gave coreml ~56ms
-  /// median (Neural Engine — frees the 4 CPU threads the AI loop used to pin
-  /// at ~90% duty) vs xnnpack ~133ms; metal never finished (device
-  /// connection dropped during its delegate build) but was already beaten.
-  /// The previous 'xnnpack' pin came from the delegate-hostile v7/YOLO26
-  /// graph (2026-08-09: xnnpack ~332ms, coreml ~518ms with 48/632 nodes
-  /// delegated) — the ranking is a property of the graph, so re-bench before
-  /// trusting this for any NEW model.
-  static const String iosDelegate = 'coreml';
+  /// 'xnnpack' is the measured winner for dartboard-v10, in BOTH exports
+  /// (2026-08-13 bench, iPhone de Lucas, pure-invoke ms):
+  ///   int8dyn: xnnpack 106ms vs coreml 330ms — CoreML took 42 of 433 nodes
+  ///     across 98 partitions, so each invoke paid ~98 CPU↔ANE hand-offs.
+  ///   float16: xnnpack 106ms vs coreml 297ms, cold phone. The float16
+  ///     re-export handed the Android GPU delegate the whole graph (604/604
+  ///     nodes) and cut the Pixel 8 from 511ms to 66ms — it did nothing at
+  ///     all for CoreML here. Scoring is unaffected by the choice: 9/9 frames
+  ///     identical, mean tip distance 0.0px.
+  ///
+  /// The ranking is a property of the GRAPH, and it has now flipped twice:
+  /// v7/YOLO26 xnnpack 332ms vs coreml 518ms (48/632 nodes, 2026-08-09) →
+  /// dart-rival-ia-light coreml 56ms vs xnnpack 133ms (2026-08-10) → v10
+  /// back to xnnpack. Re-bench any NEW model, never predict.
+  ///
+  /// xnnpack measured 106ms at thermal=3 AND at thermal=1, so unlike the old
+  /// model (133ms cool / 215ms at thermal=2) this figure is not thermally
+  /// sensitive. It is however ~2× the 56ms the shipped light model reaches on
+  /// CoreML, and above the 66ms budget of a 15fps frame — the iOS cost of v10
+  /// is real and is a product decision, not a delegate one.
+  static const String iosDelegate = 'xnnpack';
 
   // Both native plugins run everything on ONE serial thread (dvExecutor on
   // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —
@@ -119,6 +130,7 @@ class NativeInference {
       numElements: shape[2],
       xScale: xScale,
       yScale: yScale,
+      layout: _parser.layout,
     );
     if (dets != null) {
       return _parser.scoreParsedDetections(dets, imageWidth, imageHeight);

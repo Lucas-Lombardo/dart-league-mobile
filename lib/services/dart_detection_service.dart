@@ -31,7 +31,15 @@ class DartDetectionService {
   bool _isLoaded = false;
   final bool useNativeDecode;
 
-  DartDetectionService({this.useNativeDecode = true});
+  /// Output contract of the model this instance parses for — class order and
+  /// per-kind confidence floors. Defaults to the bundled model; an A/B replay
+  /// harness runs two instances with the two layouts side by side.
+  final DetectionLayout layout;
+
+  DartDetectionService({
+    this.useNativeDecode = true,
+    this.layout = ModelSelector.currentLayout,
+  });
 
   Float32List? _inputBuffer;
   Uint8List? _outputBytes;
@@ -359,6 +367,7 @@ class DartDetectionService {
       _outputShape!,
       xScale: xScale,
       yScale: yScale,
+      layout: layout,
     );
     final parseMs = sw.elapsedMilliseconds;
     return scoreParsedDetections(
@@ -387,6 +396,7 @@ class DartDetectionService {
     var controlPoints = detections.where((d) => d.isControlPoint).toList();
     var dartTips = detections.where((d) => d.isTip).toList();
 
+    controlPoints = dropCollidingControlPoints(controlPoints);
     controlPoints = _extract4CPs(controlPoints);
     controlPoints = _applyCalibFallback(controlPoints);
 

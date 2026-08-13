@@ -295,6 +295,14 @@ class AutoScoringService extends ChangeNotifier {
   // UI state
   ZoomHint? _zoomHint;
   int? _lastInferenceMs;
+
+  // Health counters for the placement diagnostic dump: how many frames the
+  // model actually chewed through, and how many tips the last one produced.
+  // "0 frames analysed" and "frames analysed, 0 tips" are two very different
+  // failures and nothing else in the app can tell them apart after the fact.
+  int _framesAnalyzed = 0;
+  int _lastDartTipCount = 0;
+  int _lastCalibrationPointCount = 0;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
   // Turn auto-confirm fires only when the board is **fully empty** for this
@@ -389,6 +397,9 @@ class AutoScoringService extends ChangeNotifier {
   int get turnTotal => _turnTotal;
   ZoomHint? get zoomHint => _zoomHint;
   int? get lastInferenceMs => _lastInferenceMs;
+  int get framesAnalyzed => _framesAnalyzed;
+  int get lastDartTipCount => _lastDartTipCount;
+  int get lastCalibrationPointCount => _lastCalibrationPointCount;
   bool get dartsRemoved => _dartsRemoved;
   bool get waitingForEmptyBoard => _waitingForEmptyBoard;
 
@@ -719,6 +730,9 @@ class AutoScoringService extends ChangeNotifier {
       }
 
       final dartCount = result.dartTips.length;
+      _framesAnalyzed++;
+      _lastDartTipCount = dartCount;
+      _lastCalibrationPointCount = result.calibrationPoints.length;
       // Lightweight summary only when the full verbose trace is off — the
       // verbose dump (_dumpScoringState, end of _autoScore) already covers this.
       if (kDebugMode && !verboseScoringLog) {

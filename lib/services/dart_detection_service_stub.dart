@@ -3,10 +3,17 @@
 
 import 'dart:typed_data';
 import 'dart_detection_types.dart';
+import 'detection_parsing.dart';
+import 'model_selector.dart';
 export 'dart_detection_types.dart';
 
 class DartDetectionService {
-  DartDetectionService({bool useNativeDecode = true});
+  final DetectionLayout layout;
+
+  DartDetectionService({
+    bool useNativeDecode = true,
+    this.layout = ModelSelector.currentLayout,
+  });
 
   bool get isLoaded => false;
 

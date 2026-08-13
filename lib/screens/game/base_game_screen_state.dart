@@ -111,11 +111,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// still built HERE, because it freezes the scores as they are at the tap.
   Future<bool> captureTurnClip(dynamic game) async {
     final now = DateTime.now();
-    final from = _turnDartTimes.isNotEmpty
+    var from = _turnDartTimes.isNotEmpty
         ? _turnDartTimes.first.subtract(const Duration(seconds: 2))
         // No AI timestamps (manual scoring): a fixed window still covers the
         // visit — segment snapping widens it anyway.
         : now.subtract(const Duration(seconds: 20));
+    // Never reach back before this visit could have started (see
+    // [_replayWindowFloor]).
+    final floor = _replayWindowFloor;
+    if (floor != null && from.isBefore(floor)) from = floor;
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final captured = await ReplayBufferService.captureRange(from, now);
     if (captured == null) return false;
@@ -282,6 +286,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // Impact timestamps of MY current visit (AI-detected) — the replay pill's
   // capture window is [first dart − 2s, tap]. Cleared when my turn starts.
   final List<DateTime> _turnDartTimes = [];
+  // Earliest instant the current visit can have started: my turn beginning, or
+  // the new leg's start when the checkout kept the turn. The ring keeps
+  // encoding across that leg boundary (still my turn), so without this floor
+  // the manual-scoring fallback window (now − 20s) reached back into the
+  // previous leg exactly like the stale [_turnDartTimes] did.
+  DateTime? _replayWindowFloor;
   /// Clips captured during this screen's match/series, newest last — handed
   /// to MatchEndView, where sharing happens.
   final List<ReplayClip> matchReplayClips = [];
@@ -631,6 +641,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           DartSoundService.playYourTurn();
           // Fresh visit: the replay pill's capture window restarts here.
           _turnDartTimes.clear();
+          _replayWindowFloor = DateTime.now();
         } else {
           DartSoundService.playTurnFinished();
         }
@@ -658,6 +669,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         autoScoringService?.waitForEmptyBoardOnce();
         _lastCalledVisitSignature = null;
         _lastCalledOpponentVisitSignature = null;
+        // Same reason for the replay window: the checkout keeps the turn, so
+        // the turn-change clear below never runs and the impact times of the
+        // finishing visit survived into the new leg — a capture on the first
+        // visit of leg 2 then opened 2s before the PREVIOUS leg's checkout
+        // (25s clip holding the double + the 140, 2026-08-11 report).
+        _turnDartTimes.clear();
+        _replayWindowFloor = DateTime.now();
       }
       _lastKnownLeg = legNow;
       // Reset dart slots on turn change (always, even without AI capture) and

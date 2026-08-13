@@ -39,13 +39,15 @@ class OutputParseIsolate {
     required int numElements,
     required double xScale,
     required double yScale,
+    required DetectionLayout layout,
   }) async {
     if (!await _ensureSpawned()) return null;
     final id = _nextId++;
     final completer = Completer<List<Detection>>();
     _pending[id] = completer;
     try {
-      _toWorker!.send([id, outputBytes, numChannels, numElements, xScale, yScale]);
+      _toWorker!.send(
+          [id, outputBytes, numChannels, numElements, xScale, yScale, layout.id]);
       return await completer.future;
     } catch (e) {
       _pending.remove(id);
@@ -149,6 +151,9 @@ class OutputParseIsolate {
         final numElements = list[3] as int;
         final xScale = list[4] as double;
         final yScale = list[5] as double;
+        // The class order travels as a key, never as a bare index: the
+        // worker must parse under the SAME contract as the inline path.
+        final layout = DetectionLayout.byId(list[6] as String);
         if (bytes.offsetInBytes % 4 != 0) {
           bytes = Uint8List.fromList(bytes); // realign (rare)
         }
@@ -161,6 +166,7 @@ class OutputParseIsolate {
           [1, numChannels, numElements],
           xScale: xScale,
           yScale: yScale,
+          layout: layout,
         );
         out?.send([id, detections]);
       } catch (e) {

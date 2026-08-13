@@ -198,7 +198,7 @@ class NativeInferencePlugin: NSObject {
             deleteDelegateIfAny()
         }
         guard let modelPath = findModelPath(preferred: modelName) else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "dart-rival-ia-light.tflite not found in bundle", details: nil))
+            result(FlutterError(code: "MODEL_NOT_FOUND", message: "\(modelName ?? defaultModelOrder[0]).tflite not found in bundle", details: nil))
             return
         }
 
@@ -341,9 +341,10 @@ class NativeInferencePlugin: NSObject {
         delegateKind = .cpu
     }
 
-    // Must track the bundled model (ModelSelector.currentAsset) — single
-    // model since 2026-08-09 (v7s and the adaptive ladder were removed).
-    private let defaultModelOrder = ["dart-rival-ia-light"]
+    // Must track the bundled models (ModelSelector). Current model first,
+    // previous one as fallback — Dart always passes an explicit modelName,
+    // so this order only matters if that lookup misses.
+    private let defaultModelOrder = ["dartboard-v10_o2o_float16", "dart-rival-ia-light"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

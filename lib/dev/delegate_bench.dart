@@ -8,10 +8,48 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../services/dart_detection_service.dart';
+import '../services/detection_parsing.dart';
 import '../services/model_selector.dart';
 
 /// On-device TFLite delegate bench (iOS + Android) — dev tool, never part
-/// of the app. 2026-08-10 results, dart-rival-ia-light: iPhone de Lucas
+/// of the app.
+///
+/// 2026-08-13, dartboard-v10_o2o_float16 — the float16 re-export, and the
+/// answer to everything below. Pixel 8 gpu-auto 66ms (from 511ms) with
+/// "Replacing 604 out of 604 node(s)" and a 1-partition GPU graph, self-test
+/// 8/9 OK; cpu-forced 353ms. iPhone (thermal=1, cold) xnnpack 106ms vs coreml
+/// 297ms — fp16 did NOT rescue CoreML, so iosDelegate stays 'xnnpack'; note
+/// xnnpack measured 106ms at thermal=3 too, so that figure was never
+/// throttle-inflated. Delegates agree 9/9 on iPhone (0.0px) but only 6/8 on
+/// the Pixel, where the GPU really does run fp16 arithmetic — see the
+/// _extract4CPs note in the ACCURACY section below.
+/// The LAYOUT PROBE settled this export's contract, which "same as DartsMind"
+/// only half-covered: anchor tensor [1, 13, 21504], but boxes in CANVAS
+/// PIXELS and the dart at class 0. On a 3-dart frame dart=first yields
+/// p1..p8 ×1 + tip=3, dart=last yields p1=3 + tip=1 — unambiguous.
+///
+/// 2026-08-13, dartboard-v10_int8dyn — the export is ACCELERATOR-HOSTILE on
+/// both platforms, and the cause is the same on each: dynamic-range int8
+/// weights are a format neither the CoreML nor the GPU delegate can take,
+/// so both hand almost the whole graph back to the CPU.
+///   iPhone de Lucas: xnnpack 106ms median (load 21ms) vs coreml 330ms
+///     (load 634ms), whole run at thermal=3 so both are throttled but
+///     comparable. CoreML delegated 42/433 nodes over 98 partitions — that
+///     hand-off count IS the 3.1× gap. Scores identical 9/9, tips 0.1px.
+///     NativeInference.iosDelegate flipped back to 'xnnpack'.
+///   Pixel 8 (thermal=1 throughout): gpu-auto 511ms vs cpu-forced 461ms —
+///     the GPU path is SLOWER than no GPU at all. Logcat says why:
+///     "Replacing 12 out of 433 node(s) with delegate (TfLiteGpuDelegateV2)"
+///     then XNNPACK picks up 388/422 of the rest, so gpu-auto is the CPU run
+///     plus 3 pointless GPU round-trips. Scores identical 8/8, tips 0.1px
+///     (check_inference.jpg still dies on the landscape RGBA overrun).
+/// Against the shipped model this is a 2× iOS regression (light coreml 56ms
+/// cool) and a 9.5× Android one (light gpu 54ms) — v10 needs a float16 (or
+/// full-integer + setQuantizedModelsAllowed) re-export before it can ship,
+/// then a re-bench. Nothing here says anything about v10's ACCURACY, which
+/// this harness only ever compares delegate-vs-delegate.
+///
+/// 2026-08-10 results, dart-rival-ia-light: iPhone de Lucas
 /// coreml 56ms vs xnnpack 133ms (71 vs 215 at thermal=2), 9/9 identical
 /// scores; Pixel 8 gpu 54ms (self-test 9/9 OK) vs forced-cpu 426ms, 8/8
 /// identical scores; Galaxy S21 Ultra (Adreno 660) gpu 57ms (self-test 9/9
@@ -144,6 +182,10 @@ class DelegateBench {
       await Future.delayed(const Duration(seconds: 2));
     }
 
+    // Rides the engine the last delegate left loaded — deliberately NOT its
+    // own load, so no `load=` figure above is a "reusing" no-op.
+    await _probeLayouts(decoded.first);
+
     _log('===== SPEED =====');
     for (final line in speedSummaries) {
       _log(line);
@@ -152,6 +194,99 @@ class DelegateBench {
     _compare(decoded, results[_delegates[0]]!, results[_delegates[1]]!);
     _log('===== DONE =====');
     await _writeReport();
+  }
+
+  // ---- Phase 0: which class order did this export use? ---------------------
+
+  /// Parse ONE frame's raw output under EVERY [DetectionLayout] and print the
+  /// class histogram of each. Nothing in a .tflite says whether the dart is
+  /// class 0 or class 8 — both conventions emit 9 classes, and a mismatch
+  /// raises no error anywhere, it just reads the double ring as darts and the
+  /// darts as calibration points. A new export therefore has to be probed,
+  /// and the answer is unmistakable: the correct layout puts ONE detection in
+  /// each of p1..p8 (the wire intersections, always present) and 0-3 on
+  /// 'tip'; the wrong one inverts that shape.
+  ///
+  /// Reads the histogram BEFORE _extract4CPs and the dart filter — those trim
+  /// both layouts down to 4 control points and ≤3 tips, which would hide the
+  /// very difference being measured.
+  static Future<void> _probeLayouts(
+      ({String name, Uint8List rgba, int w, int h}) frame) async {
+    _log('===== LAYOUT PROBE (${frame.name}) =====');
+    try {
+      final response = await _channel.invokeMethod<Map>('analyze', {
+        'rgba': frame.rgba,
+        'width': frame.w,
+        'height': frame.h,
+        'isBgra': false,
+      }).timeout(const Duration(seconds: 30));
+      final aligned = Uint8List.fromList(response!['output'] as Uint8List);
+      final floats = aligned.buffer.asFloat32List();
+      final shape = deriveOutputShape(floats.length);
+      final xScale = (response['xScale'] as num).toDouble();
+      final yScale = (response['yScale'] as num).toDouble();
+      _log('output ${floats.length} floats → shape $shape '
+          '(${isEndToEndShape(shape) ? "end-to-end head, no NMS" : "anchor head + NMS"})');
+      if (isEndToEndShape(shape)) return;
+
+      // A 13×N float count is equally consistent with [1,13,N] (channels
+      // first, what parseOutputFloats reads) and [1,N,13] (channels last,
+      // what a TF SavedModel export often emits) — the count cannot tell
+      // them apart, so print the per-channel MAX under both readings. The
+      // true one is obvious: channels 0-3 are box geometry and 4-12 are
+      // confidences in [0,1], so a correct reading shows a handful of
+      // channels reaching ~1.0; the wrong one smears every channel to the
+      // same range. Maxima far above 1.0 mean raw logits (no sigmoid),
+      // which no threshold in the app would ever pass.
+      final n = shape[2];
+      String maxima(double Function(int c, int i) at) {
+        final out = <String>[];
+        for (int c = 0; c < 13; c++) {
+          var m = double.negativeInfinity;
+          for (int i = 0; i < n; i++) {
+            final v = at(c, i);
+            if (v > m) m = v;
+          }
+          out.add(m.toStringAsFixed(2));
+        }
+        return out.join(' ');
+      }
+
+      _log('  ch max as [1,13,$n]: ${maxima((c, i) => floats[n * c + i])}');
+      _log('  ch max as [1,$n,13]: ${maxima((c, i) => floats[i * 13 + c])}');
+
+      // Parse under every combination of the two axes the tensor keeps to
+      // itself: which class is the dart, and what unit the boxes are in.
+      // Exactly one should produce ~8 control points and 0-3 tips; the wrong
+      // class order inverts that shape, and the wrong unit yields nothing at
+      // all (every box fails the boundary check).
+      for (final dart in DartClassIndex.values) {
+        for (final units in BoxUnits.values) {
+          final candidate = DetectionLayout(
+            id: 'probe',
+            dartClassIndex: dart,
+            boxUnits: units,
+            tipThreshold: 0.50,
+            controlPointThreshold: kConfidenceThreshold,
+          );
+          final dets = parseModelOutput(floats, shape,
+              xScale: xScale, yScale: yScale, layout: candidate);
+          final hist = <String, int>{};
+          for (final d in dets) {
+            hist[d.className] = (hist[d.className] ?? 0) + 1;
+          }
+          final ordered = [
+            for (final label in kDetectionLabels)
+              if (hist[label] != null) '$label=${hist[label]}'
+          ];
+          _log('  dart=${dart.name} boxes=${units.name}: '
+              '${dets.length} detections '
+              '${ordered.isEmpty ? "(none)" : ordered.join(' ')}');
+        }
+      }
+    } catch (e) {
+      _log('layout probe failed ($e)');
+    }
   }
 
   // ---- Phase A: speed on a real frame --------------------------------------
@@ -311,12 +446,19 @@ class DelegateBench {
       if (tipDist != null) tipDistances.add(tipDist);
       final scoresA = ra.scores.map((s) => s.formatted).join(',');
       final scoresB = rb.scores.map((s) => s.formatted).join(',');
-      final sameScores = scoresA == scoresB &&
+      // Compare the score MULTISET, not the list order: the two delegates
+      // emit the same darts in a different row order often enough (4/9
+      // frames on 2026-08-13) that an order-sensitive check reported DIFF
+      // on visits both delegates scored identically. Nothing downstream
+      // cares about the order within one frame — the visit total does.
+      String sorted(ScoringResult r) =>
+          (r.scores.map((s) => s.formatted).toList()..sort()).join(',');
+      final sameScores = sorted(ra) == sorted(rb) &&
           ra.dartTips.length == rb.dartTips.length &&
           ra.totalScore == rb.totalScore;
       if (sameScores) identicalScores++;
       _log('$name: '
-          '${sameScores ? "MATCH" : "DIFF"} | '
+          '${sameScores ? (scoresA == scoresB ? "MATCH" : "MATCH(reordered)") : "DIFF"} | '
           'cal ${_delegates[0]}=$calA ${_delegates[1]}=$calB '
           'dist=${calDist?.toStringAsFixed(1) ?? "n/a"}px | '
           'tips ${ra.dartTips.length}vs${rb.dartTips.length} '

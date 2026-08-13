@@ -466,12 +466,14 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
+            // pubspec key "assets/models/dartboard-v10_o2o_float16.tflite" doesn't
             // work with Android's AssetManager directly.
             // NB: Dart normally loads via loadModelFile (temp file) — this
             // asset path is the fallback and must track the bundled model
-            // (ModelSelector.currentAsset).
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
+            // (ModelSelector.currentAsset). Loading the WRONG model here is
+            // not a crash but a silent misread: the two bundled models put
+            // the dart at opposite class indices (see DetectionLayout).
+            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dartboard-v10_o2o_float16.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)
             android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")

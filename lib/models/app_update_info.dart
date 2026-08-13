@@ -13,6 +13,10 @@ class AppUpdateInfo {
   /// Remote flag of the AI dataset capture (missing on old backends → false).
   final bool datasetCaptureEnabled;
 
+  /// Remote flag of the first-placement-match diagnostic capture (missing on
+  /// old backends → false).
+  final bool placementDebugEnabled;
+
   const AppUpdateInfo({
     required this.updateAvailable,
     this.latestVersion,
@@ -20,6 +24,7 @@ class AppUpdateInfo {
     this.storeUrl,
     this.tournamentUpdateRequired = false,
     this.datasetCaptureEnabled = false,
+    this.placementDebugEnabled = false,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) => AppUpdateInfo(
@@ -29,5 +34,6 @@ class AppUpdateInfo {
         storeUrl: json['storeUrl'] as String?,
         tournamentUpdateRequired: json['tournamentUpdateRequired'] == true,
         datasetCaptureEnabled: json['datasetCaptureEnabled'] == true,
+        placementDebugEnabled: json['placementDebugEnabled'] == true,
       );
 }
