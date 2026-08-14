@@ -44,9 +44,9 @@ import java.nio.FloatBuffer
  * rotation logic at all — the output MP4 keeps the source's orientation
  * hint, exactly like the raw clip.
  *
- * The renderer interprets the three timeline primitives (scoreboard, banner,
- * outro) and knows nothing about darts — see replay_overlay_timeline.dart
- * for the contract.
+ * The renderer interprets the two timeline primitives (scoreboard, outro)
+ * and knows nothing about darts — see replay_overlay_timeline.dart for the
+ * contract.
  */
 class ReplayOverlayRenderer(private val timeline: JSONObject) {
 
@@ -78,6 +78,20 @@ class ReplayOverlayRenderer(private val timeline: JSONObject) {
             if (format.containsKey(MediaFormat.KEY_DURATION))
                 format.getLong(MediaFormat.KEY_DURATION) / 1000
             else 0L
+        // The extractor hands the container's rotation down to the decoder,
+        // and whether a decoder then applies it to its output Surface is
+        // device-dependent. One that does hands GL already-rotated pixels; we
+        // then re-stamp the same rotation on the output and the clip plays
+        // DOUBLE-rotated — 180 + 180 shows the board upside down under an
+        // upright overlay, which is exactly the Android landscape replay
+        // reported 2026-08-14. Pin it to 0: the decoder must hand us the
+        // pixels as stored, and the hint we set below is the pipeline's one
+        // and only rotation. A no-op on decoders that never rotated.
+        format.setInteger(MediaFormat.KEY_ROTATION, 0)
+        android.util.Log.i(
+            "ReplayBuffer",
+            "render source ${srcW}x$srcH rotation=$rotation duration=${durationMs}ms",
+        )
 
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         encoder.configure(
@@ -430,8 +444,6 @@ private class OverlayPainter(
     private val startScore = timeline.optInt("startScore", 0)
     private val oppScore = timeline.optInt("oppScore", 0)
     private val handle = timeline.optString("handle", "")
-    private val bannerAtMs: Long
-    private val bannerText: String
     private val logo: Bitmap? =
         timeline.optString("logoPath", "").takeIf { it.isNotEmpty() }?.let {
             try { BitmapFactory.decodeFile(it) } catch (_: Exception) { null }
@@ -449,7 +461,6 @@ private class OverlayPainter(
         private const val BG = 0xFF0C1321.toInt()
         private const val BLUE = 0xFF5CA4E6.toInt()
         private const val PINK = 0xFFDC6069.toInt()
-        private const val GOLD = 0xFFEAB308.toInt()
         private const val SKY = 0xFF0EA5E9.toInt()
         private const val MUTED = 0xFF8FA0BC.toInt()
     }
@@ -471,17 +482,12 @@ private class OverlayPainter(
             270 -> { m.postRotate(90f); m.postTranslate(srcW.toFloat(), 0f) }
         }
         canvas.setMatrix(m)
-
-        val banner = timeline.optJSONObject("banner")
-        bannerAtMs = banner?.optLong("atMs", -1L) ?: -1L
-        bannerText = banner?.optString("text", "") ?: ""
     }
 
     /** Renders the overlay state at [tMs] and returns the bitmap. */
     fun frame(tMs: Long): Bitmap {
         bitmap.eraseColor(Color.TRANSPARENT)
         drawScoreboard(tMs)
-        drawBanner(tMs)
         drawOutro(tMs)
         return bitmap
     }
@@ -781,24 +787,6 @@ private class OverlayPainter(
             out = out.dropLast(1)
         }
         return "$out…"
-    }
-
-    private fun drawBanner(tMs: Long) {
-        if (bannerAtMs < 0 || tMs < bannerAtMs || tMs > bannerAtMs + 2200) return
-        val age = tMs - bannerAtMs
-        val inA = ease((age / 250f))
-        val outA = if (age > 1950) 1f - (age - 1950) / 250f else 1f
-        val alpha = (255 * inA * outA).toInt().coerceIn(0, 255)
-        val cy = displayH * 0.42f
-        val h = s(130f)
-        fill.color = GOLD
-        fill.alpha = alpha
-        canvas.drawRect(0f, cy - h / 2, displayW, cy + h / 2, fill)
-        text.color = 0xFF1A1608.toInt()
-        text.alpha = alpha
-        text.textAlign = Paint.Align.CENTER
-        text.textSize = s(76f) * (0.9f + 0.1f * inA)
-        canvas.drawText(bannerText, displayW / 2, cy + s(26f), text)
     }
 
     private fun drawOutro(tMs: Long) {

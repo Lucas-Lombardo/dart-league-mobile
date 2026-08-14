@@ -13,6 +13,7 @@ import '../../services/dart_detection_service_stub.dart'
     if (dart.library.io) '../../services/dart_detection_service.dart';
 import '../../services/native_inference.dart';
 import '../../widgets/board_placement_guide.dart';
+import '../../widgets/board_safe_video.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
@@ -418,7 +419,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// which both burned CPU for nothing (YUV→RGB pixel loop in Dart + JPEG
   /// encode + file write + native JPEG decode per capture) and could wedge
   /// the camera plugin when a dispose raced an in-flight stream toggle.
-  void _startAiFrameStream() {
+  Future<void> _startAiFrameStream() async {
     final controller = cameraController;
     if (_aiFrameStreamActive ||
         controller == null ||
@@ -426,10 +427,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         controller.value.isStreamingImages) {
       return;
     }
+    // Claim the slot before awaiting so a second loop iteration can't fire a
+    // concurrent start on the same controller.
+    _aiFrameStreamActive = true;
     try {
-      controller.startImageStream((image) => _latestAiFrame = image);
-      _aiFrameStreamActive = true;
+      await controller.startImageStream((image) => _latestAiFrame = image);
     } catch (e) {
+      // Release the slot so the next loop iteration retries. startImageStream
+      // reports failure asynchronously, so the previously un-awaited call left
+      // the flag set on a stream that never started: no frame ever reached the
+      // AI loop, the guide stayed on "searching" and the player could not
+      // leave setup. Seen on a Pixel 8 (NPE in Camera.startCapture) 2026-08-14.
+      _aiFrameStreamActive = false;
       debugPrint('[CameraSetup] startImageStream failed: $e');
     }
   }
@@ -455,7 +464,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       if (cameraReady && cameraController != null) {
         // (Re-)attach the frame stream — idempotent, and needed both when the
         // camera becomes ready after the model loaded and after a lens flip.
-        _startAiFrameStream();
+        await _startAiFrameStream();
         await _runAiCapture();
       }
       if (!_aiCapturing || !mounted) break;
@@ -467,11 +476,33 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
+  /// Clockwise rotation applied to the raw frame before inference. Android
+  /// delivers image-stream frames in FIXED sensor coordinates, so on a
+  /// portrait phone (sensorOrientation 90) the board reaches the model lying
+  /// on its side — measured on a Pixel 8 (2026-08-14): 1–2 calibration points
+  /// on the raw frame against 4 on every single rotated frame of the same
+  /// scene. That starved the framing gate and pinned the screen on "board not
+  /// fully visible" with a perfectly centered board, so Android players could
+  /// never leave setup. Same rotation the in-game pipeline uses, from the
+  /// same helper. iOS keeps 0: its plugin already delivers frames rotated to
+  /// the device orientation, and rotating again would tip the board over.
+  int get _setupAnalysisRotation {
+    if (!Platform.isAndroid) return 0;
+    final controller = cameraController;
+    if (controller == null) return 0;
+    return CameraFrameService.uprightRotationFor(
+      sensorOrientation: controller.description.sensorOrientation,
+      deviceOrientation: controller.value.deviceOrientation,
+      isFrontFacing:
+          controller.description.lensDirection == CameraLensDirection.front,
+    );
+  }
+
   /// Analyze a raw camera frame through the same native path the in-game
   /// scorer uses — no JPEG/file round-trip. Android sends the YUV planes
-  /// (rotation 0, matching the old unrotated JPEG path); iOS sends the BGRA
-  /// bytes and native does the channel swap on its background queue.
-  Future<ScoringResult> _analyzeSetupFrame(CameraImage frame) {
+  /// (rotated board-upright, see [_setupAnalysisRotation]); iOS sends the
+  /// BGRA bytes and native does the channel swap on its background queue.
+  Future<ScoringResult> _analyzeSetupFrame(CameraImage frame, int rotation) {
     if (Platform.isAndroid) {
       return _nativeInference!.analyzeYuv(
         yPlane: frame.planes[0].bytes,
@@ -482,7 +513,7 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         yRowStride: frame.planes[0].bytesPerRow,
         uvRowStride: frame.planes[1].bytesPerRow,
         uvPixelStride: frame.planes[1].bytesPerPixel ?? 1,
-        rotation: 0,
+        rotation: rotation,
       );
     }
     final plane = frame.planes[0];
@@ -509,7 +540,8 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     if (frame == null) return;
     _aiAnalyzing = true;
     try {
-      final result = await _analyzeSetupFrame(frame);
+      final rotation = _setupAnalysisRotation;
+      final result = await _analyzeSetupFrame(frame, rotation);
       if (!mounted) return;
       final calibs = result.calibrationPoints;
       // Cache-served calibration must never validate framing (it once let a
@@ -518,21 +550,23 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
           ? null
           : BoardFraming.compute(calibs,
               imageWidth: result.imageWidth, imageHeight: result.imageHeight);
-      // The setup analysis runs on the UNROTATED sensor frame (rotation 0 in
-      // _analyzeSetupFrame), so the measured tilt IS the raw-frame board
-      // angle — prime the replay ring's orientation hint before the match
-      // screen even opens (see CameraFrameService.reportBoardTilt).
+      // Prime the replay ring's orientation hint before the match screen even
+      // opens. The tilt is measured in the ANALYZED frame, so the rotation we
+      // applied to get there has to travel with it (see
+      // CameraFrameService.reportBoardTilt).
       if (framing?.tiltDegrees != null && Platform.isAndroid) {
         CameraFrameService.reportBoardTilt(
-          analysisRotation: 0,
+          analysisRotation: rotation,
           tiltDegrees: framing!.tiltDegrees!,
         );
       }
 
       // ── Framing states — size only, like before the placement guide ──
       // The position checks (fully-visible circle, centering, direction
-      // chevrons) mis-read Android's sensor-oriented frames and nagged the
-      // user to "move" forever; zoom instructions are the only guidance.
+      // chevrons) once nagged the user to "move" forever, because the frame
+      // reaching the model was sensor-oriented — now fixed at the source in
+      // [_setupAnalysisRotation]. Guidance stays zoom-only regardless: it is
+      // the one instruction a mounted phone can actually act on.
       // Same spread zone as the in-game hints (kZoomSpreadMin/Max).
       final GuideState state;
       if (framing == null) {
@@ -543,6 +577,15 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
         state = GuideState.tooFar;
       } else {
         state = GuideState.locked;
+      }
+
+      // One line per state CHANGE (not per frame): enough to tell a framing
+      // complaint apart from a detection failure without flooding the log.
+      if (state != guideState) {
+        debugPrint('[CameraSetup] guide ${guideState.name} -> ${state.name} '
+            'rotation=$rotation calibs=${calibs.length} '
+            'spread=${framing?.spread.toStringAsFixed(2) ?? '-'} '
+            'cache=${result.calibrationFromCache}');
       }
 
       final locked = state == GuideState.locked;
@@ -632,14 +675,17 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
           borderRadius: BorderRadius.circular(18),
           child: Stack(
             children: [
+              // Not cover: this screen's whole job is "is the board fully in
+              // frame?", and a preview cropped without limit answers it about
+              // a frame the model never sees — the player lines the board up
+              // inside a picture whose edges were thrown away. BoardSafeVideo
+              // only ever crops outside the board's square, so what they judge
+              // is what is analyzed.
               SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: previewW,
-                    height: previewH,
-                    child: CameraPreview(cameraController!),
-                  ),
+                child: BoardSafeVideo(
+                  sourceWidth: previewW,
+                  sourceHeight: previewH,
+                  child: CameraPreview(cameraController!),
                 ),
               ),
               Positioned(

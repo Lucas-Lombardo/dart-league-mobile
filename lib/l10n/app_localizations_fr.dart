@@ -821,6 +821,9 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get nextLeg => 'MANCHE SUIVANTE';
 
+  @override
+  String nextLegIn(int seconds) => 'MANCHE SUIVANTE DANS $seconds s';
+
   // Tournament Match Result Screen
   @override
   String get youAdvance => 'VOUS AVANCEZ !';

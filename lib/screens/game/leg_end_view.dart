@@ -23,6 +23,11 @@ class LegEndView extends StatelessWidget {
   /// checkout, so they are the only two places that visit can be reported.
   final Widget? banner;
 
+  /// Seconds still owed to this screen before the next leg may replace it
+  /// (see BaseGameScreenState.legEndMinDwell). 0 means the next leg is simply
+  /// not ready yet — the spinner keeps its open-ended "NEXT LEG" wording.
+  final int secondsLeft;
+
   const LegEndView({
     super.key,
     required this.wonLeg,
@@ -31,6 +36,7 @@ class LegEndView extends StatelessWidget {
     required this.legsNeeded,
     required this.onAttemptPop,
     this.banner,
+    this.secondsLeft = 0,
   });
 
   @override
@@ -99,7 +105,12 @@ class LegEndView extends StatelessWidget {
                     const CircularProgressIndicator(color: AppTheme.primary),
                     const SizedBox(height: 12),
                     Text(
-                      l10n.nextLeg,
+                      // Counting down while the screen is held open: without
+                      // the number, a screen that stays put for six seconds
+                      // reads as a freeze rather than as time being offered.
+                      secondsLeft > 0
+                          ? l10n.nextLegIn(secondsLeft)
+                          : l10n.nextLeg,
                       style: const TextStyle(
                           color: AppTheme.textSecondary,
                           fontSize: 14,

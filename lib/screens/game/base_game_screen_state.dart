@@ -191,6 +191,80 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
+  // ── Between-legs minimum dwell ─────────────────────────────────────────
+  //
+  // The server can send ranked_next_leg within a second of the checkout, and
+  // the between-legs screen is one of only two places the loser can ever flag
+  // the winning visit (see [buildWinningVisitBanner]). It was gone before the
+  // thumb arrived — "on n'a pas le temps de signaler, l'écran est trop
+  // rapide" (2026-08-14). So the screen now owes the player a fixed minimum
+  // on screen, counted down in plain sight, before the next leg may take it.
+  //
+  // Held for BOTH players, not just the loser: legs have no shot clock, so a
+  // few seconds cost nothing, while releasing one side early would put the
+  // two devices in different legs for the length of the hold.
+  static const Duration legEndMinDwell = Duration(seconds: 6);
+  DateTime? _legEndShownAt;
+  Timer? _legEndTicker;
+  Widget? _legEndBanner;
+  bool? _legEndWon;
+
+  /// Snapshot of "did I win the leg that just ended", taken the first time the
+  /// between-legs screen builds. The next leg's game_started clears
+  /// legWinnerId mid-hold, which would otherwise flip the screen to MANCHE
+  /// PERDUE under the winner's eyes.
+  bool legEndWonLeg(bool current) => _legEndWon ??= current;
+
+  /// The winning-visit banner for the between-legs screen, built ONCE when
+  /// that screen first appears and reused for the whole dwell: ranked_next_leg
+  /// lands mid-hold and swaps matchId while wiping the round history, so a
+  /// rebuilt banner would key its flag to the leg nobody has played yet.
+  Widget? legEndWinningVisitBanner(dynamic game, {required bool didWin}) =>
+      _legEndBanner ??= buildWinningVisitBanner(game, didWin: didWin);
+
+  /// Whole seconds still owed to the between-legs screen (0 = free to leave).
+  int get legEndSecondsLeft {
+    final shownAt = _legEndShownAt;
+    if (shownAt == null) return 0;
+    final left = legEndMinDwell - DateTime.now().difference(shownAt);
+    return left.isNegative ? 0 : (left.inMilliseconds / 1000).ceil();
+  }
+
+  /// True while the next leg has already started but the dwell isn't over —
+  /// the screen's build keeps returning the between-legs view.
+  bool get legEndHoldActive => legEndSecondsLeft > 0;
+
+  /// Arms the dwell the first time the between-legs screen is built, and runs
+  /// a 1s ticker so the countdown repaints and the hold releases itself.
+  void armLegEndDwell() {
+    _legEndShownAt ??= DateTime.now();
+    if (_legEndTicker != null) return;
+    _legEndTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        _legEndTicker = null;
+        return;
+      }
+      final stillHolding = legEndHoldActive;
+      setState(() {});
+      if (!stillHolding) {
+        timer.cancel();
+        _legEndTicker = null;
+      }
+    });
+  }
+
+  /// Re-arms the dwell for the next leg. Called from the live-match build:
+  /// the board is on screen, so the previous leg's hold is spent.
+  void clearLegEndDwell() {
+    if (_legEndShownAt == null) return;
+    _legEndShownAt = null;
+    _legEndBanner = null;
+    _legEndWon = null;
+    _legEndTicker?.cancel();
+    _legEndTicker = null;
+  }
+
   /// Opens the app's existing report dialog for ONE flagged visit. Nothing is
   /// sent here — the reason lands on the pending report and travels with the
   /// others when the list is submitted.
@@ -260,7 +334,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final floor = _replayWindowFloor;
     if (floor != null && from.isBefore(floor)) from = floor;
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final captured = await ReplayBufferService.captureRange(from, now);
+    final captured = await ReplayBufferService.captureRange(
+      from,
+      now,
+      rotationDegrees: CameraFrameService.calibratedUprightRotation,
+    );
     if (captured == null) return false;
     // A checkout capture usually happens from the win dialog, while the
     // final dart is still PENDING confirmation: the provider has not applied
@@ -274,9 +352,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     Map<String, dynamic>? timeline;
     try {
       timeline = buildReplayOverlayTimeline(
-        clipStartWallMs: captured.startWallMs,
-        dartTimes: List.of(_turnDartTimes),
-        dartNotations: List<String>.from(game.currentRoundThrows as List),
         myRemainingScore: pendingWin ? 0 : game.myScore as int,
         opponentScore: game.opponentScore as int,
         myName: auth.currentUser?.username ?? 'YOU',
@@ -285,9 +360,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         opponentLegs: game.opponentLegsWon as int,
         legsTarget: _replayLegsTarget(game),
         seriesTitle: replayFormatLabel ?? _replayDefaultFormat(game),
-        // Video dressing only — the gold band reads the visit itself, not any
-        // clip category.
-        checkout: pendingWin || (game.myScore as int) == 0,
         logoPath: await materializeReplayLogo(),
       );
     } catch (e) {
@@ -345,7 +417,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       turnIndex = (game.myRounds as List).length;
     } catch (_) {}
     try {
-      final captured = await ReplayBufferService.captureRange(start, DateTime.now());
+      final captured = await ReplayBufferService.captureRange(
+        start,
+        DateTime.now(),
+        rotationDegrees: CameraFrameService.calibratedUprightRotation,
+      );
       if (captured == null) return;
       await TurnReportService.cacheVisit(
         path: captured.path,
@@ -665,6 +741,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     _wakelockReassertTimer = null;
     _autoScoringLoadingWatchdog?.cancel();
     _autoScoringLoadingWatchdog = null;
+    _legEndTicker?.cancel();
+    _legEndTicker = null;
     _cancelStartStallTimer();
     disposeScreenSpecific();
     scoreAnimationController.dispose();

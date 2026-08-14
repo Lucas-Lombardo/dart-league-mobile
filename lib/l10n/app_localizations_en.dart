@@ -815,6 +815,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get nextLeg => 'NEXT LEG';
 
+  @override
+  String nextLegIn(int seconds) => 'NEXT LEG IN ${seconds}s';
+
   // Tournament Match Result Screen
   @override
   String get youAdvance => 'YOU ADVANCE!';

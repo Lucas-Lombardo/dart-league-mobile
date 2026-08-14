@@ -331,7 +331,7 @@ class ReplayBufferPlugin: NSObject {
 
 // MARK: - Broadcast overlay burn-in
 //
-// Interprets the three timeline primitives (scoreboard, banner, outro)
+// Interprets the two timeline primitives (scoreboard, outro)
 // with CoreAnimation layers composited by AVFoundation during a short
 // re-encode — see replay_overlay_timeline.dart for the contract. Layout runs
 // in a 720-wide design grid scaled to the render size; `isGeometryFlipped`
@@ -343,7 +343,6 @@ extension ReplayBufferPlugin {
   private var bg: CGColor { UIColor(red: 0.047, green: 0.075, blue: 0.129, alpha: 1).cgColor }
   private var blue: CGColor { UIColor(red: 0.361, green: 0.643, blue: 0.902, alpha: 1).cgColor }
   private var pink: CGColor { UIColor(red: 0.863, green: 0.376, blue: 0.412, alpha: 1).cgColor }
-  private var gold: CGColor { UIColor(red: 0.918, green: 0.702, blue: 0.031, alpha: 1).cgColor }
   private var sky: CGColor { UIColor(red: 0.055, green: 0.647, blue: 0.914, alpha: 1).cgColor }
   private var muted: CGColor { UIColor(red: 0.561, green: 0.627, blue: 0.737, alpha: 1).cgColor }
 
@@ -488,24 +487,6 @@ extension ReplayBufferPlugin {
     animate(board, key: "opacity", from: 0, to: 1, begin: 0.3, dur: 0.5)
     animate(board, key: "position.y", from: Double(board.position.y + 70 * s),
             to: Double(board.position.y), begin: 0.3, dur: 0.5)
-
-    // ── Banner ──
-    if let banner = timeline["banner"] as? [String: Any],
-       let bAt = (banner["atMs"] as? NSNumber).map({ $0.doubleValue / 1000.0 }) {
-      let band = CALayer()
-      band.frame = CGRect(
-        x: 0, y: size.height * 0.42 - 65 * s, width: size.width, height: 130 * s)
-      band.backgroundColor = gold
-      band.opacity = 0
-      band.addSublayer(textLayer(
-        banner["text"] as? String ?? "", x: 0, y: 18 * s, w: size.width,
-        size: 76 * s,
-        color: UIColor(red: 0.102, green: 0.086, blue: 0.031, alpha: 1).cgColor,
-        align: .center))
-      parent.addSublayer(band)
-      switchOpacity(band, to: 1, at: bAt, dur: 0.25)
-      switchOpacity(band, to: 0, at: bAt + 1.95, dur: 0.25)
-    }
 
     // ── Outro end card ──
     guard durationS > 2 else { return }

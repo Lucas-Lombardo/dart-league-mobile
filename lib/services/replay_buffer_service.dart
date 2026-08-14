@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'camera_frame_service.dart';
+
 /// Dart facade of the native rolling replay buffer (ReplayBufferPlugin.kt /
 /// .swift): the camera pipeline tees every match frame here, the native side
 /// keeps a ring of self-contained 3s MP4 segments (~48s of my-turn camera),
@@ -108,12 +110,25 @@ class ReplayBufferService {
   /// free). Null when the ring has nothing there. [startWallMs] is the wall
   /// clock of the clip's first frame — what the overlay timeline aligns on,
   /// [durationMs] the length the library shows next to the clip.
-  static Future<ReplayCapture?> captureRange(DateTime from, DateTime to) async {
+  ///
+  /// [rotationDegrees], when given, overrides the orientation hint the ring
+  /// stamped on its segments (Android only). The segments carry whatever was
+  /// known while they were recorded; the caller knows better AT CUT TIME,
+  /// once the AI calibration has settled where the 20 actually is.
+  static Future<ReplayCapture?> captureRange(
+    DateTime from,
+    DateTime to, {
+    int? rotationDegrees,
+  }) async {
     if (!isSupported) return null;
+    debugPrint('[ReplayBufferService] cutting clip, orientation hint '
+        '${rotationDegrees ?? "(segment stamps)"} — '
+        '${CameraFrameService.rotationDiagnostics}');
     try {
       final res = await _channel.invokeMethod<Map>('capture', {
         'fromMs': from.millisecondsSinceEpoch,
         'toMs': to.millisecondsSinceEpoch,
+        'rotation': ?rotationDegrees,
       });
       final path = res?['path'] as String?;
       if (path == null) return null;

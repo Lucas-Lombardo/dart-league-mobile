@@ -377,11 +377,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
   /// Between-legs screen for ranked BO3 — the shared [LegEndView]. No buttons:
   /// ranked_next_leg drives the transition (gameEnded flips back to false and
-  /// the board returns).
+  /// the board returns), but never before the screen has had its minimum time
+  /// on screen (see [armLegEndDwell]).
   Widget _buildLegEndScreen(GameProvider game, AuthProvider auth) {
-    final wonLeg = game.legWinnerId == auth.currentUser?.id ||
-        (game.legWinnerId == null && game.winnerId == auth.currentUser?.id);
+    armLegEndDwell();
+    // Snapshotted, not re-read: the next leg's game_started can land while
+    // this screen is still held open, and it clears legWinnerId.
+    final wonLeg = legEndWonLeg(game.legWinnerId == auth.currentUser?.id ||
+        (game.legWinnerId == null && game.winnerId == auth.currentUser?.id));
     return LegEndView(
+      secondsLeft: legEndSecondsLeft,
       wonLeg: wonLeg,
       myLegsWon: game.myLegsWon,
       opponentLegsWon: game.opponentLegsWon,
@@ -390,7 +395,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       // Same offer as on the end-of-match screen, one leg earlier: this is
       // where the loser of legs 1 and 2 lands. The report joins the list and
       // gets its reason with the others when the series ends.
-      banner: buildWinningVisitBanner(game, didWin: wonLeg),
+      banner: legEndWinningVisitBanner(game, didWin: wonLeg),
     );
   }
 
@@ -544,9 +549,18 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
         return _buildLegEndScreen(game, auth);
       }
 
+      // The next leg can arrive within a second of the checkout; the loser's
+      // window to report the winning visit lives on the screen it replaces,
+      // so the board waits out the dwell (a series ending still wins — the
+      // final screen carries the same offer).
+      if (game.isRankedSeries && !game.seriesEnded && legEndHoldActive) {
+        return _buildLegEndScreen(game, auth);
+      }
+
       if (game.matchId == null || !game.gameStarted) return buildInitializingScreen();
       if (game.gameEnded && game.pendingType != 'forfeit') return buildEndScreen(game, auth);
 
+      clearLegEndDwell();
       return buildLiveMatchBody(game, auth);
     } catch (e, stackTrace) {
       return Scaffold(

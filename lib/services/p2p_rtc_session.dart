@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/rtc_v2_config.dart';
+import '../widgets/board_safe_video.dart';
 import 'camera_frame_service.dart';
 
 /// ONE negotiation attempt with the match opponent: one PeerConnection, one
@@ -304,9 +305,35 @@ class P2pRtcSession {
     _localAudioTrack?.enabled = enabled;
   }
 
-  Widget remoteView() => RTCVideoView(
-        remoteRenderer,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+  /// The sender's frame aspect follows THEIR phone's orientation (portrait
+  /// 9:16, landscape 16:9) while our panel's follows OURS. `cover` cropped
+  /// that mismatch straight off the dartboard, `contain` answered it with half
+  /// a panel of black bars — so the view is sized by [BoardSafeVideo] instead,
+  /// which keeps the board whole and crops only what surrounds it. The inner
+  /// fit is `cover` on purpose: the box it gets already has the stream's exact
+  /// ratio, so cover and contain agree inside it.
+  ///
+  /// The renderer reports its resolution asynchronously (and re-reports it
+  /// when the peer rotates), hence the listenable — and `contain` until the
+  /// first resolution lands, so nothing is cropped on a guess.
+  Widget remoteView() => ValueListenableBuilder<RTCVideoValue>(
+        valueListenable: remoteRenderer,
+        builder: (context, value, _) {
+          if (value.width <= 0 || value.height <= 0) {
+            return RTCVideoView(
+              remoteRenderer,
+              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+            );
+          }
+          return BoardSafeVideo(
+            sourceWidth: value.width,
+            sourceHeight: value.height,
+            child: RTCVideoView(
+              remoteRenderer,
+              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+            ),
+          );
+        },
       );
 
   void _handleConnected() {

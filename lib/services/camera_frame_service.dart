@@ -104,9 +104,12 @@ class CameraFrameService {
   // rotation there would tip the already-upright board sideways (a 20 read as
   // a 6).
 
-  /// Physical device rotation away from portraitUp, in degrees (Android only).
-  int _deviceRotationDegrees() {
-    switch (_controller?.value.deviceOrientation) {
+  /// UI rotation away from portraitUp, in degrees. Same table as
+  /// camera_android's DeviceOrientationManager.getVideoOrientation — the
+  /// plugin that hands us both the frames and the orientation, so its
+  /// convention is the one that has to be matched.
+  static int _deviceRotationDegreesOf(DeviceOrientation? orientation) {
+    switch (orientation) {
       case DeviceOrientation.landscapeRight:
         return 90;
       case DeviceOrientation.portraitDown:
@@ -119,30 +122,59 @@ class CameraFrameService {
     }
   }
 
+  /// Pure form of [_effectiveRotation], shared with the camera-setup screens:
+  /// the clockwise rotation (degrees) that lands the raw Android sensor frame
+  /// board-upright. Setup used to hard-code 0 here, which fed the model a
+  /// sideways board on every portrait phone — the detector then lost
+  /// calibration points and the placement gate never unlocked.
+  ///
+  /// This is camera_android's own getVideoOrientation, reimplemented: UI angle
+  /// (negated for a front lens, whose sensor faces the other way) plus the
+  /// sensor mount angle. The hand-rolled version it replaces special-cased
+  /// landscape with a flat +180 and was right only for a BACK lens: on the
+  /// FRONT lens both landscape orientations came out exactly 180° off, which
+  /// is the upside-down landscape replay reported on Android 2026-08-14 (20 at
+  /// the bottom, 3 at the top). portraitDown was 180° off on both lenses.
+  static int uprightRotationFor({
+    required int sensorOrientation,
+    required DeviceOrientation? deviceOrientation,
+    bool isFrontFacing = false,
+  }) {
+    final angle = _deviceRotationDegreesOf(deviceOrientation);
+    final signed = isFrontFacing ? -angle : angle;
+    return (signed + sensorOrientation + 720) % 360;
+  }
+
   /// ANDROID-ONLY clockwise rotation (degrees) for the raw sensor frame so the
   /// board is upright — for the model AND as the push rotation metadata
-  /// (both share the same "rotate CW to upright" semantic). Portrait returns
-  /// the sensor mount angle (the previously-shipped value); landscape
-  /// compensates for the device's physical rotation so the board lands
-  /// upright/flipped, never sideways.
+  /// (both share the same "rotate CW to upright" semantic).
   /// Must never be called on the iOS paths — those pass a literal 0.
   int _effectiveRotation() {
-    final baseline = _sensorOrientation ?? 0;
     final o = _controller?.value.deviceOrientation;
-    int rot = baseline;
-    if (o == DeviceOrientation.landscapeLeft ||
-        o == DeviceOrientation.landscapeRight) {
-      // In landscape the board was coming out 180° upside-down (20 scored as
-      // 3), so we add 180 to land it upright. CRITICAL: only an upright (0°)
-      // frame scores correctly — 180° inverts the whole board — so this must
-      // resolve to upright. Both landscape orientations need the same +180
-      // here because they produce the same (inverted) frame.
-      rot = (baseline - _deviceRotationDegrees() + 180 + 360) % 360;
-    }
+    final rot = uprightRotationFor(
+      sensorOrientation: _sensorOrientation ?? 0,
+      deviceOrientation: o,
+      isFrontFacing: _lensDirection == CameraLensDirection.front,
+    );
+    // Snapshotted for [rotationDiagnostics]: an "upside-down replay" report is
+    // only answerable if the inputs the decision was made from are in the log
+    // next to the decision itself.
+    _lastSensorOrientation = _sensorOrientation;
+    _lastDeviceOrientation = o;
+    _lastLens = _lensDirection;
+    _lastEffectiveRotation = rot;
     if (o != _lastLoggedOrientation) {
+      final changed = _lastLoggedOrientation != null;
       _lastLoggedOrientation = o;
       debugPrint('[CameraFrameService] deviceOrientation=$o '
-          'sensor=$_sensorOrientation effectiveRotation=$rot');
+          'sensor=$_sensorOrientation lens=$_lensDirection '
+          'effectiveRotation=$rot');
+      // The phone physically turned, so the raw sensor frame turned with it
+      // and any calibration measured before is about a scene that no longer
+      // exists. Dropping it falls back to the (orientation-aware) sensor value
+      // for the frame or two it takes the AI to measure the new pose — keeping
+      // it would stamp landscape footage with a portrait hint.
+      if (changed) invalidateBoardTilt();
     }
     return rot;
   }
@@ -163,14 +195,27 @@ class CameraFrameService {
   static int? _calibrationUprightRotation;
   static int _uprightCandidate = -1;
   static int _uprightStreak = 0;
+  static double? _lastMeasuredTilt;
+  static int? _lastMeasuredAnalysisRotation;
+
+  // Inputs of the last [_effectiveRotation], for [rotationDiagnostics].
+  static int? _lastSensorOrientation;
+  static DeviceOrientation? _lastDeviceOrientation;
+  static CameraLensDirection? _lastLens;
+  static int? _lastEffectiveRotation;
 
   /// Report a fresh board-orientation measurement from the AI calibration.
   /// [analysisRotation] is the clockwise rotation that was applied to the raw
   /// frame before inference; [tiltDegrees] the board's clockwise tilt
   /// measured in that analyzed frame (see [BoardFraming.tiltDegrees]). Their
-  /// difference is the rotation that plays the RAW frame board-upright —
-  /// quantized to the nearest 90° (all an MP4 hint can encode) and adopted
-  /// only after 3 consecutive identical measurements, so one bad calibration
+  /// difference is the rotation that plays the RAW frame board-upright,
+  /// quantized to the nearest 90° (all an MP4 hint can encode).
+  ///
+  /// The FIRST measurement is adopted at once, because the alternative is the
+  /// sensor guess and this is strictly better than it: the subtraction cancels
+  /// out whatever [analysisRotation] was, right or wrong, so the result only
+  /// depends on where the 20 actually is. Only CHANGING an established value
+  /// waits for 3 consecutive agreeing measurements, so one bad calibration
   /// frame can't flip the ring's orientation mid-match.
   static void reportBoardTilt({
     required int analysisRotation,
@@ -178,19 +223,50 @@ class CameraFrameService {
   }) {
     final upright = (analysisRotation - tiltDegrees) % 360;
     final quantized = (((upright + 360) % 360 + 45) ~/ 90) * 90 % 360;
+    _lastMeasuredTilt = tiltDegrees;
+    _lastMeasuredAnalysisRotation = analysisRotation;
     if (quantized == _uprightCandidate) {
       _uprightStreak++;
     } else {
       _uprightCandidate = quantized;
       _uprightStreak = 1;
     }
-    if (_uprightStreak >= 3 && _calibrationUprightRotation != quantized) {
+    final adopt = _calibrationUprightRotation == null || _uprightStreak >= 3;
+    if (adopt && _calibrationUprightRotation != quantized) {
       debugPrint('[CameraFrameService] replay rotation hint from calibration: '
           '$quantized° (analysisRotation=$analysisRotation '
           'tilt=${tiltDegrees.toStringAsFixed(1)}°)');
       _calibrationUprightRotation = quantized;
     }
   }
+
+  /// Forget the measured board orientation — see the caller in
+  /// [_effectiveRotation]. The next AI frame re-establishes it immediately.
+  static void invalidateBoardTilt() {
+    _calibrationUprightRotation = null;
+    _uprightCandidate = -1;
+    _uprightStreak = 0;
+  }
+
+  /// The best known "rotate the raw frame CW by this to see the 20 on top",
+  /// or null before any calibration has landed. Read when a clip is CUT, not
+  /// only when frames are pushed: the ring stamps each segment with whatever
+  /// was known while it was recording, so a clip spanning the moment the
+  /// calibration first landed used to inherit the sensor guess from its
+  /// older (dominant) segments.
+  static int? get calibratedUprightRotation => _calibrationUprightRotation;
+
+  /// Every input the replay orientation decision rests on, in one line. Logged
+  /// when a clip is cut so an "upside-down replay" report names its own cause
+  /// instead of costing a reproduction session.
+  static String get rotationDiagnostics =>
+      'calibrated=$_calibrationUprightRotation '
+      '(streak=$_uprightStreak candidate=$_uprightCandidate '
+      'lastTilt=${_lastMeasuredTilt?.toStringAsFixed(1)} '
+      'lastAnalysisRotation=$_lastMeasuredAnalysisRotation) '
+      'sensorGuess=$_lastEffectiveRotation '
+      '(sensorOrientation=$_lastSensorOrientation '
+      'deviceOrientation=$_lastDeviceOrientation lens=$_lastLens)';
 
   /// Initialize the camera. When [p2pMode] is true, frames are pushed to
   /// [RtcFramesService.pushFrame] for the video call. Leave it false for solo

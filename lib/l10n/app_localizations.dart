@@ -308,6 +308,9 @@ abstract class AppLocalizations {
   String get legComplete;
   String get firstToLegsWins;
   String get nextLeg;
+  // Countdown wording while the between-legs screen is deliberately held open
+  // (it is the loser's only window to report the winning visit).
+  String nextLegIn(int seconds);
   // Short "legs" unit shown next to a BO3 series score (e.g. "2 - 1 legs").
   String get legsShort;
 

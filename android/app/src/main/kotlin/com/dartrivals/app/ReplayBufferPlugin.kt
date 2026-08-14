@@ -309,10 +309,14 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         while (segments.size > RING_SEGMENTS) segments.removeFirst().file.delete()
     }
 
-    /** args: fromMs, toMs (epoch millis) → {path, startWallMs, durationMs}, or null. */
+    /**
+     * args: fromMs, toMs (epoch millis), rotation (optional orientation-hint
+     * override) → {path, startWallMs, durationMs}, or null.
+     */
     private fun capture(call: MethodCall, result: MethodChannel.Result) {
         val fromMs = (call.argument<Number>("fromMs"))?.toLong()
         val toMs = (call.argument<Number>("toMs"))?.toLong()
+        val rotationOverride = (call.argument<Number>("rotation"))?.toInt()
         if (fromMs == null || toMs == null) {
             result.success(null)
             return
@@ -334,7 +338,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
                 val picked = segments.filter { it.endWallMs >= fromMs && it.startWallMs <= toMs }
                 if (picked.isNotEmpty()) {
-                    val (path, durationMs) = concat(picked)
+                    val (path, durationMs) = concat(picked, rotationOverride)
                     payload = mapOf(
                         "path" to path,
                         "startWallMs" to picked.first().startWallMs,
@@ -379,8 +383,13 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     /** Passthrough concat — no decode, no re-encode. */
-    /** Returns the concatenated clip's path and its duration in milliseconds. */
-    private fun concat(picked: List<Segment>): Pair<String, Long> {
+    /**
+     * Returns the concatenated clip's path and its duration in milliseconds.
+     * [rotationOverride], when non-null, wins over the segments' own stamps:
+     * the caller learns the true board orientation from the AI calibration,
+     * which can settle AFTER the oldest segments of the window were recorded.
+     */
+    private fun concat(picked: List<Segment>, rotationOverride: Int? = null): Pair<String, Long> {
         val out = File(clipsDir(), "clip_${System.currentTimeMillis()}.mp4")
         val outMuxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         var outTrack = -1
@@ -406,12 +415,15 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 extractor.selectTrack(videoTrack)
                 if (!started) {
                     outTrack = outMuxer.addTrack(extractor.getTrackFormat(videoTrack))
-                    // One hint rules the whole clip; segments can disagree
-                    // when the hint source updates mid-match (e.g. the
-                    // calibration-derived value replacing the sensor guess),
-                    // so take the dominant rotation, not the first's.
-                    val rotation = picked.groupingBy { it.rotation }
-                        .eachCount().maxByOrNull { it.value }!!.key
+                    // One hint rules the whole clip. The caller's value is the
+                    // authority when it has one (calibration, measured at cut
+                    // time); otherwise segments can disagree — mid-match hint
+                    // changes — so take the dominant rotation, not the first's.
+                    val rotation = rotationOverride
+                        ?: picked.groupingBy { it.rotation }
+                            .eachCount().maxByOrNull { it.value }!!.key
+                    android.util.Log.i("ReplayBuffer", "clip orientation hint=$rotation" +
+                        (if (rotationOverride != null) " (from calibration)" else " (dominant segment)"))
                     outMuxer.setOrientationHint(rotation)
                     outMuxer.start()
                     started = true

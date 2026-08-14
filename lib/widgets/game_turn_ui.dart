@@ -354,62 +354,70 @@ class GameCameraPanel extends StatelessWidget {
               ),
             ),
 
-          // ── Camera guidance pills (bottom center, above the zoom pill):
+          // ── Camera guidance pills, dead center of the panel:
           // "remove your darts" while the empty-board gate is armed, and the
-          // AI's zoom/detection hint. Compact centered pills so they read as
-          // status, not as a blocking banner.
-          Positioned(
-            bottom: 60,
-            left: 16,
-            right: 16,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showRemoveDartsHint)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
+          // AI's zoom/detection hint. They used to sit above the zoom pill,
+          // where the two overlapped and neither could be read (2026-08-14);
+          // the middle is also the one spot that can't collide with the
+          // controls pinned to the panel's edges. IgnorePointer so a pill
+          // over the video never eats a pinch-zoom.
+          if (showRemoveDartsHint || hint != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.black87,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            l10n.removeDartsFromBoardHint,
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                        if (showRemoveDartsHint)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent.withValues(alpha: 0.95),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.black87,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    l10n.removeDartsFromBoardHint,
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                        if (showRemoveDartsHint && hint != null)
+                          const SizedBox(height: 8),
+                        if (hint != null) _hintTextPill(l10n),
                       ],
                     ),
                   ),
-                if (showRemoveDartsHint && hint != null)
-                  const SizedBox(height: 8),
-                if (hint != null) _hintTextPill(l10n),
-              ],
+                ),
+              ),
             ),
-          ),
 
           // ── Zoom pill (bottom center; above the capture bar when docked) ──
           if (onZoomIn != null && onZoomOut != null)
@@ -803,23 +811,30 @@ class TurnScoreHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // scaleDown: in landscape each side column is a quarter of the
+                // screen, and back button + VOUS + TOUR n overflowed it by
+                // ~23px (2026-08-14). Shrinking beats clipping the round chip.
                 SizedBox(
                   height: badgeRowHeight,
-                  child: Row(
-                    children: [
-                      if (leading != null) ...[
-                        leading!,
-                        const SizedBox(width: 8),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        if (leading != null) ...[
+                          leading!,
+                          const SizedBox(width: 8),
+                        ],
+                        GameChip(text: l10n.you, color: AppTheme.playerBlue),
+                        if (seriesTitle != null && roundNumber != null) ...[
+                          const SizedBox(width: 8),
+                          GameChip(
+                            text: l10n.roundChip(roundNumber!),
+                            color: AppTheme.textSecondary,
+                          ),
+                        ],
                       ],
-                      GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                      if (seriesTitle != null && roundNumber != null) ...[
-                        const SizedBox(width: 8),
-                        GameChip(
-                          text: l10n.roundChip(roundNumber!),
-                          color: AppTheme.textSecondary,
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -889,28 +904,32 @@ class TurnScoreHeader extends StatelessWidget {
               children: [
                 SizedBox(
                   height: badgeRowHeight,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: AppTheme.opponentPink,
-                          shape: BoxShape.circle,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.opponentPink,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        AppLocalizations.of(context).playingBadge,
-                        style: const TextStyle(
-                          color: AppTheme.opponentPinkBright,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
+                        const SizedBox(width: 5),
+                        Text(
+                          AppLocalizations.of(context).playingBadge,
+                          style: const TextStyle(
+                            color: AppTheme.opponentPinkBright,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
