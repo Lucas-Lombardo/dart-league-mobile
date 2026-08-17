@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -11,7 +9,6 @@ import '../../providers/placement_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../services/auto_scoring_service.dart';
-import '../../services/camera_frame_service.dart';
 import '../../services/dataset_capture_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../services/placement_debug_capture_service.dart';
@@ -22,12 +19,13 @@ import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
-import '../../utils/storage_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
 import '../../widgets/queue_searching_banner.dart';
+import '../game/leg_end_view.dart';
+import 'bot_camera_ai_mixin.dart';
 
 class PlacementGameScreen extends StatefulWidget {
   const PlacementGameScreen({super.key});
@@ -37,7 +35,7 @@ class PlacementGameScreen extends StatefulWidget {
 }
 
 class _PlacementGameScreenState extends State<PlacementGameScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, BotCameraAiMixin {
   bool _botTurnInProgress = false;
   bool _gameEnded = false;
   String? _winnerId;
@@ -58,22 +56,28 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   final List<int> _botRoundScores = [];
   int _lastBotScore = 501;
 
+  // Bot visits in the CURRENT leg only — the header's round number.
+  // _botRoundScores keeps accumulating across legs for the match average, so
+  // it can't drive the display in a series.
+  int _botRoundsThisLeg = 0;
+
+  // Bot-training series (BO3-BO11): between-legs screen state. Placement
+  // matches stay single-leg and never enter this branch.
+  bool _showingLegEnd = false;
+  bool _lastLegWon = false;
+  int _legEndSecondsLeft = 0;
+  Timer? _legEndTimer;
+
   // Post-match stat screen state (bot-training only).
   bool _statsLoading = false;
   double? _overallBotAverage;
   bool _endIsBotTraining = false;
+  int _endMyLegs = 0;
+  int _endBotLegs = 0;
+  int _endBestOf = 1;
 
-  // Auto-scoring (local camera)
-  CameraFrameService? _cameraService;
-  AutoScoringService? _autoScoringService;
-  bool _autoScoringEnabled = false;
-  bool _autoScoringLoading = false;
-  bool _aiManuallyDisabled = false;
-  bool _aiPausedForEdit = false;
-  bool _switchingCamera = false;
-  double _cameraZoom = 1.0;
-  double _cameraMinZoom = 1.0;
-  double _cameraMaxZoom = 1.0;
+  // Auto-scoring (local camera): fields and controls come from
+  // BotCameraAiMixin, shared with the cricket bot screen.
 
   // Diagnostic capture of the first placement match (see
   // PlacementDebugCapture). Fires while the player's visit is still short of
@@ -98,22 +102,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         botDifficulty: provider.currentBotDifficulty,
       );
     }
-    _autoScoringService = AutoScoringService();
+    autoScoringService = AutoScoringService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _initCameraAndAI();
+      await initCameraAndAI();
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _legEndTimer?.cancel();
     _debugCaptureTimer?.cancel();
     PlacementDebugCapture.endMatch();
-    _stopAiCapture();
-    _autoScoringService?.dispose();
-    _autoScoringService = null;
-    _cameraService?.dispose();
-    _cameraService = null;
+    disposeCameraAndAI();
     // Same deferral contract as the online verdict flush — solo modes have
     // no verdict, the screen teardown is their "match over".
     DatasetCaptureService.flush();
@@ -125,12 +126,16 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
-      _stopAiCapture();
-      _cameraService?.pause();
+      stopAiCapture();
+      cameraService?.pause();
     } else if (state == AppLifecycleState.resumed) {
-      _cameraService?.resume();
-      if (_autoScoringEnabled && !_aiManuallyDisabled && !_gameEnded && !_botTurnInProgress) {
-        _startAiCapture();
+      cameraService?.resume();
+      if (autoScoringEnabled &&
+          !aiManuallyDisabled &&
+          !_gameEnded &&
+          !_botTurnInProgress &&
+          !_showingLegEnd) {
+        startAiCapture();
       }
     }
   }
@@ -158,60 +163,20 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
   }
 
-  // ─── Auto-scoring ──────────────────────────────────────────────────────────
+  // ─── Auto-scoring (BotCameraAiMixin hooks) ─────────────────────────────────
 
-  Future<void> _initCameraAndAI() async {
-    if (kIsWeb) return;
-    if (!AutoScoringService.isSupported) return;
+  @override
+  void onCameraAiReady() => _startDebugCapture();
 
-    if (!mounted) return;
-    setState(() {
-      _autoScoringEnabled = true;
-      _autoScoringLoading = true;
-    });
-
-    try {
-      final cameraService = CameraFrameService();
-      // Solo mode: no Agora. The service runs a continuous image stream and
-      // caches the latest frame for AI scoring — no per-cycle start/stop.
-      await cameraService.initialize();
-      if (!mounted) { await cameraService.dispose(); setState(() => _autoScoringLoading = false); return; }
-      if (!cameraService.isInitialized) {
-        await cameraService.dispose();
-        // No camera means no frame to diagnose with — say so, or this match
-        // looks exactly like a player who simply never threw.
-        unawaited(PlacementDebugCapture.note('camera_init_failed',
-            health: _debugHealth()));
-        if (mounted) setState(() => _autoScoringLoading = false);
-        return;
-      }
-      _cameraService = cameraService;
-      // Solo mode: stop the 30fps image stream whenever the AI loop is off —
-      // no Agora viewer needs the frames.
-      _autoScoringService?.onCaptureActiveChanged = cameraService.setAiActive;
-
-      try {
-        final minZoom = await cameraService.getMinZoomLevel();
-        final maxZoom = await cameraService.getMaxZoomLevel();
-        final savedZoom = await StorageService.getCameraZoom();
-        final clampedZoom = savedZoom.clamp(minZoom, maxZoom);
-        await cameraService.setZoomLevel(clampedZoom);
-        if (mounted) setState(() { _cameraMinZoom = minZoom; _cameraMaxZoom = maxZoom; _cameraZoom = clampedZoom; });
-      } catch (e) {
-        debugPrint('[PlacementGame] Zoom config failed: $e');
-      }
-
-      await _autoScoringService!.loadModel();
-      if (!mounted) { setState(() => _autoScoringLoading = false); return; }
-      setState(() => _autoScoringLoading = false);
-      if (_autoScoringService!.modelLoaded) _startAiCapture();
-      _startDebugCapture();
-    } catch (e) {
-      unawaited(
-          PlacementDebugCapture.note('ai_init_threw', health: _debugHealth()));
-      if (mounted) setState(() => _autoScoringLoading = false);
-    }
+  /// No camera (or the AI init threw) means no frame to diagnose with — say
+  /// so, or this match looks exactly like a player who simply never threw.
+  @override
+  void onCameraAiInitFailed(String stage) {
+    unawaited(PlacementDebugCapture.note(stage, health: _debugHealth()));
   }
+
+  @override
+  void onAiAutoConfirm() => _confirmRound();
 
   /// Diagnostic dump of the first placement match: one frame as the board
   /// comes into view, then one every [_debugCaptureInterval] for as long as
@@ -220,14 +185,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   /// one of the answers we're after.
   void _startDebugCapture() {
     if (!PlacementDebugCapture.isActive) return;
-    unawaited(PlacementDebugCapture.capture(_cameraService,
+    unawaited(PlacementDebugCapture.capture(cameraService,
         reason: 'open', health: _debugHealth()));
     _debugCaptureTimer?.cancel();
     _debugCaptureTimer = Timer.periodic(_debugCaptureInterval, (_) {
       if (!mounted || _gameEnded || _botTurnInProgress) return;
       if (_currentRoundThrows.length >= 3) return;
       unawaited(PlacementDebugCapture.capture(
-        _cameraService,
+        cameraService,
         reason: 'idle_d${_currentRoundThrows.length}',
         health: _debugHealth(),
       ));
@@ -235,23 +200,24 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   Map<String, dynamic> _debugHealth() {
-    final ai = _autoScoringService;
+    final ai = autoScoringService;
     return {
       'aiLoaded': ai?.modelLoaded ?? false,
       'aiLoading': ai?.isModelLoading ?? false,
       'aiError': ai?.initError,
-      'aiOff': _aiManuallyDisabled,
+      'aiOff': aiManuallyDisabled,
       'inferMs': ai?.lastInferenceMs,
       'framesAnalyzed': ai?.framesAnalyzed ?? 0,
       'lastTips': ai?.lastDartTipCount ?? 0,
       'lastCalibPts': ai?.lastCalibrationPointCount ?? 0,
-      'camera': _cameraService?.isInitialized ?? false,
-      'zoom': _cameraZoom,
+      'camera': cameraService?.isInitialized ?? false,
+      'zoom': cameraZoom,
     };
   }
 
-  void _onDartDetected(int slotIndex, DartScore dartScore) {
-    if (!mounted || _botTurnInProgress || _gameEnded) return;
+  @override
+  void onAiDartDetected(int slotIndex, DartScore dartScore) {
+    if (!mounted || _botTurnInProgress || _gameEnded || _showingLegEnd) return;
     final (base, mul) = dartScoreToBackend(dartScore);
     HapticService.mediumImpact();
     DartSoundService.playDartHit(base, mul);
@@ -267,75 +233,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     if (_isWin) {
-      _stopAiCapture();
+      stopAiCapture();
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
     } else if (_isBust) {
-      _stopAiCapture();
+      stopAiCapture();
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
-    }
-  }
-
-  void _startAiCapture() {
-    if (_autoScoringService == null || _cameraService == null) return;
-    if (_aiManuallyDisabled || _aiPausedForEdit) return;
-    final camService = _cameraService!;
-    _autoScoringService!.startCapture(
-      captureFrame: () => camService.captureFrame(),
-      captureRgba: () => camService.captureRgba(),
-      captureBgra: () => camService.captureBgra(),
-      captureYuv: () => camService.captureYuvPlanes(),
-      cleanupFile: (path) async { try { await File(path).delete(); } catch (_) {} },
-      onDartDetected: _onDartDetected,
-      onAutoConfirm: () { if (mounted) { HapticService.heavyImpact(); _confirmRound(); } },
-    );
-  }
-
-  void _stopAiCapture() {
-    _autoScoringService?.stopCapture();
-  }
-
-  void _toggleAi() {
-    if (!mounted) return;
-    setState(() {
-      _aiManuallyDisabled = !_aiManuallyDisabled;
-      if (_aiManuallyDisabled) {
-        _stopAiCapture();
-      } else if (_autoScoringService != null && _autoScoringService!.modelLoaded) {
-        _startAiCapture();
-      }
-    });
-  }
-
-  Future<void> _zoomIn() async {
-    if (_cameraService == null) return;
-    final next = (_cameraZoom + 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
-    try { await _cameraService!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
-  }
-
-  Future<void> _zoomOut() async {
-    if (_cameraService == null) return;
-    final next = (_cameraZoom - 0.1).clamp(_cameraMinZoom, _cameraMaxZoom);
-    try { await _cameraService!.setZoomLevel(next); if (mounted) setState(() => _cameraZoom = next); } catch (_) {}
-  }
-
-
-  Future<void> _switchCamera() async {
-    final svc = _cameraService;
-    if (svc == null || _switchingCamera) return;
-    HapticService.lightImpact();
-    setState(() => _switchingCamera = true);
-    try {
-      await svc.switchCamera();
-      // Refresh the zoom bounds for the new lens (front cameras often can't zoom).
-      try {
-        final minZoom = await svc.getMinZoomLevel();
-        final maxZoom = await svc.getMaxZoomLevel();
-        final clamped = _cameraZoom.clamp(minZoom, maxZoom);
-        await svc.setZoomLevel(clamped);
-        if (mounted) setState(() { _cameraMinZoom = minZoom; _cameraMaxZoom = maxZoom; _cameraZoom = clamped; });
-      } catch (_) {}
-    } finally {
-      if (mounted) setState(() => _switchingCamera = false);
     }
   }
 
@@ -418,7 +320,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }
 
   void _confirmRound() {
-    _stopAiCapture();
+    stopAiCapture();
 
     final int roundScore;
     final List<String> roundThrows = _currentRoundThrows.map((t) => t.notation).toList();
@@ -459,7 +361,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     // it says the player threw and pulled them.)
     if (dartsThisRound < 3) {
       unawaited(PlacementDebugCapture.capture(
-        _cameraService,
+        cameraService,
         reason: 'visit_r${_myRoundScores.length}_d$dartsThisRound',
         health: _debugHealth(),
       ));
@@ -505,6 +407,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     }
 
     if (success && mounted) {
+      _botRoundsThisLeg++;
       // Bot just played a visit: record its 3-dart score (0 on bust).
       final botRoundScore =
           placement.botIsBust ? 0 : (_lastBotScore - placement.player2Score);
@@ -524,15 +427,15 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       await Future.delayed(const Duration(milliseconds: 1200));
 
       if (placement.botIsCheckout && placement.player2Score == 0) {
-        _handleGameEnd(null);
+        _onBotCheckout();
         return;
       }
     }
 
     if (mounted) {
-      setState(() { _botTurnInProgress = false; _aiManuallyDisabled = false; _aiPausedForEdit = false; });
-      _autoScoringService?.resetTurn();
-      _startAiCapture();
+      setState(() { _botTurnInProgress = false; aiManuallyDisabled = false; aiPausedForEdit = false; });
+      autoScoringService?.resetTurn();
+      startAiCapture();
       DartSoundService.playYourTurn();
       // Caller: announce "you require N" when the player comes to the throw on a
       // finish (no-op otherwise), mirroring the online game screen.
@@ -571,14 +474,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _bustDialogShowing = false;
               Navigator.pop(ctx);
               setState(() {
-                _aiPausedForEdit = true;
+                aiPausedForEdit = true;
                 _isBust = false;
                 _currentRoundThrows.clear();
                 _dartsThrown = 0;
                 _myScore = _scoreBeforeRound;
               });
-              _autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
+              autoScoringService?.stopCapture();
+              for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
             },
             child: Text(l10n.editDarts),
           ),
@@ -626,14 +529,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               _winDialogShowing = false;
               Navigator.pop(ctx);
               setState(() {
-                _aiPausedForEdit = true;
+                aiPausedForEdit = true;
                 _isWin = false;
                 _currentRoundThrows.clear();
                 _dartsThrown = 0;
                 _myScore = _scoreBeforeRound;
               });
-              _autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) { _autoScoringService?.clearDart(i); }
+              autoScoringService?.stopCapture();
+              for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
             },
             child: Text(l10n.editDarts),
           ),
@@ -641,9 +544,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
             onPressed: () {
               _winDialogShowing = false;
               Navigator.pop(ctx);
-              final auth = context.read<AuthProvider>();
               DartSoundService.playWin();
-              _handleGameEnd(auth.currentUser?.id);
+              _onPlayerCheckout();
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
             child: Text(l10n.confirmWin),
@@ -653,38 +555,131 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     ).then((_) => _winDialogShowing = false);
   }
 
-  void _handleGameEnd(String? winnerId) async {
-    // When the player wins mid-visit, _confirmRound is bypassed — fold the
-    // final (unconfirmed) round into our local rounds list so the match
-    // average reflects every dart actually thrown.
-    if (_currentRoundThrows.isNotEmpty) {
-      final roundScore = _scoreBeforeRound - _myScore;
-      if (!_isBust && roundScore >= 0) {
-        _myRoundScores.add(roundScore);
-      } else {
-        _myRoundScores.add(0);
-      }
+  /// Folds the in-flight (unconfirmed) visit into the round history — a
+  /// checkout mid-visit bypasses _confirmRound, so without this the match
+  /// average and dart count would miss the winning darts.
+  void _foldCurrentRound() {
+    if (_currentRoundThrows.isEmpty) return;
+    final roundScore = _scoreBeforeRound - _myScore;
+    _myRoundScores.add(!_isBust && roundScore >= 0 ? roundScore : 0);
+    _totalDartsThrown += _currentRoundThrows.length;
+    _currentRoundThrows = [];
+    _dartsThrown = 0;
+  }
+
+  /// Player confirmed their checkout: single-leg flows end the match, a
+  /// bot-training series records the leg and moves on.
+  void _onPlayerCheckout() {
+    final placement = context.read<PlacementProvider>();
+    final auth = context.read<AuthProvider>();
+    _foldCurrentRound();
+    if (placement.mode != PlacementMode.botTraining || placement.bestOf <= 1) {
+      _handleGameEnd(auth.currentUser?.id);
+      return;
     }
+    if (placement.recordBotLegResult(playerWon: true)) {
+      _handleGameEnd(auth.currentUser?.id);
+    } else {
+      _showLegEnd(won: true);
+    }
+  }
+
+  /// Bot reached zero: same split as [_onPlayerCheckout], other side.
+  void _onBotCheckout() {
+    final placement = context.read<PlacementProvider>();
+    if (placement.mode != PlacementMode.botTraining || placement.bestOf <= 1) {
+      _handleGameEnd(null);
+      return;
+    }
+    if (placement.recordBotLegResult(playerWon: false)) {
+      _handleGameEnd(null);
+    } else {
+      _showLegEnd(won: false);
+    }
+  }
+
+  void _showLegEnd({required bool won}) {
+    stopAiCapture();
+    if (!won) DartSoundService.playLose();
+    setState(() {
+      _showingLegEnd = true;
+      _lastLegWon = won;
+      _legEndSecondsLeft = 5;
+      _isWin = false;
+      _isBust = false;
+      _botTurnInProgress = false;
+    });
+    _legEndTimer?.cancel();
+    _legEndTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_legEndSecondsLeft <= 1) {
+        t.cancel();
+        _startNextLeg();
+      } else {
+        setState(() => _legEndSecondsLeft--);
+      }
+    });
+  }
+
+  void _startNextLeg() {
+    if (!mounted) return;
+    final placement = context.read<PlacementProvider>();
+    placement.startNextBotLeg();
+    setState(() {
+      _showingLegEnd = false;
+      _myScore = placement.startingScore;
+      _scoreBeforeRound = placement.startingScore;
+      _dartsThrown = 0;
+      _currentRoundThrows = [];
+      _isBust = false;
+      _isWin = false;
+      _lastBotScore = placement.startingScore;
+      _botRoundsThisLeg = 0;
+      aiManuallyDisabled = false;
+      aiPausedForEdit = false;
+    });
+    autoScoringService?.resetTurn();
+    for (int i = 0; i < 3; i++) {
+      autoScoringService?.clearDart(i);
+    }
+    if (placement.playerStartsLeg) {
+      DartSoundService.playYourTurn();
+      startAiCapture();
+    } else {
+      // Alternation: the bot opens this leg before the player's first visit.
+      _executeBotTurn();
+    }
+  }
+
+  void _handleGameEnd(String? winnerId) async {
+    _foldCurrentRound();
 
     final placement = context.read<PlacementProvider>();
     final auth = context.read<AuthProvider>();
     final wasPlacement = placement.mode == PlacementMode.placement;
     final isBotTraining = placement.mode == PlacementMode.botTraining;
+    // completeMatch clears the bot config — capture what the end screen and
+    // the per-mode history filter still need.
+    final modeWire = placement.botConfig?.modeWire;
 
     setState(() {
       _gameEnded = true;
       _winnerId = winnerId;
       _endIsBotTraining = isBotTraining;
       _statsLoading = isBotTraining;
+      _endMyLegs = placement.myLegs;
+      _endBotLegs = placement.botLegs;
+      _endBestOf = placement.bestOf;
     });
 
     if (winnerId == null) {
       DartSoundService.playLose();
     }
-    // Include any darts in the current (unconfirmed) round — when the player
-    // wins mid-visit, _confirmRound is bypassed and those darts haven't been
-    // rolled into _totalDartsThrown yet.
-    final totalDarts = _totalDartsThrown + _currentRoundThrows.length;
+    // _foldCurrentRound already rolled any in-flight darts into the total.
+    final totalDarts = _totalDartsThrown;
     final matchAverage = _myAverage;
     final result = await placement.completeMatch(
       winnerId,
@@ -705,15 +700,26 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (isBotTraining) {
       // Stay on the end screen and load the historical bot-training average
       // so the player can see both this match's stat and their overall trend.
+      // Only sessions of the same game mode count — comparing a 301 average
+      // to a 501 one (or an MPR) would be meaningless. Legacy sessions have
+      // no details.mode; their bucket is their starting score.
       try {
         final sessions = await TrainingService.listSessions(
           type: TrainingType.botTraining,
           limit: 50,
         );
+        bool sameMode(Map<String, dynamic> d) {
+          if (modeWire == null) return true;
+          final m = d['mode'];
+          if (m is String) return m == modeWire;
+          final ss = d['startingScore'];
+          return ss is num && '${ss.toInt()}' == modeWire;
+        }
+
         final averages = <double>[];
         for (final s in sessions) {
           final d = s.details;
-          if (d == null) continue;
+          if (d == null || !sameMode(d)) continue;
           final a = d['playerAverage'];
           if (a is num && a > 0) averages.add(a.toDouble());
         }
@@ -748,6 +754,17 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       return _buildGameEndScreen(didWin, isBotTraining: _endIsBotTraining);
     }
 
+    if (_showingLegEnd) {
+      return LegEndView(
+        wonLeg: _lastLegWon,
+        myLegsWon: placement.myLegs,
+        opponentLegsWon: placement.botLegs,
+        legsNeeded: placement.legsToWin,
+        secondsLeft: _legEndSecondsLeft,
+        onAttemptPop: _showLeaveDialog,
+      );
+    }
+
     if (placement.currentMatchId == null) {
       return Scaffold(
         backgroundColor: AppTheme.background,
@@ -774,7 +791,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         body: Stack(
           children: [
             // Main content
-            _autoScoringLoading && !_botTurnInProgress
+            autoScoringLoading && !_botTurnInProgress
               ? Container(
                   color: AppTheme.background,
                   child: Center(
@@ -790,7 +807,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                 )
               : !_botTurnInProgress
                 ? AutoScoreGameView(
-                    scoringService: _autoScoringService!,
+                    scoringService: autoScoringService!,
                     onConfirm: () {
                       HapticService.heavyImpact();
                       if (_isWin) { _showWinDialog(); } else if (_isBust) { _showBustDialog(); } else { _confirmRound(); }
@@ -805,15 +822,18 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     startingScore: placement.startingScore,
                     myAverage: _myAverage,
                     opponentAverage: _botAverage,
-                    localCameraPreview: !_switchingCamera && _cameraService?.controller != null && _cameraService!.isInitialized
-                        ? LocalCameraPreview(controller: _cameraService!.controller!)
+                    seriesTitle: _seriesTitle(placement),
+                    myLegs: placement.myLegs,
+                    opponentLegs: placement.botLegs,
+                    localCameraPreview: !switchingCamera && cameraService?.controller != null && cameraService!.isInitialized
+                        ? LocalCameraPreview(controller: cameraService!.controller!)
                         : null,
-                    onSwitchCamera: _switchCamera,
-                    onZoomIn: _zoomIn,
-                    onZoomOut: _zoomOut,
-                    currentZoom: _cameraZoom,
-                    minZoom: _cameraMinZoom,
-                    maxZoom: _cameraMaxZoom,
+                    onSwitchCamera: switchCamera,
+                    onZoomIn: zoomIn,
+                    onZoomOut: zoomOut,
+                    currentZoom: cameraZoom,
+                    minZoom: cameraMinZoom,
+                    maxZoom: cameraMaxZoom,
                     onEditDart: (index, dartScore) {
                       final (base, mul) = dartScoreToBackend(dartScore);
                       if (index < _currentRoundThrows.length) {
@@ -826,10 +846,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                       }
                       _recalculateScore();
                       if (_isWin) {
-                        _stopAiCapture();
+                        stopAiCapture();
                         WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showWinDialog(); });
                       } else if (_isBust) {
-                        _stopAiCapture();
+                        stopAiCapture();
                         WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _showBustDialog(); });
                       } else {
                         // Why: the dart edit modal stops capture so detections
@@ -837,11 +857,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                         // capture restarts via the GameProvider listener; bot
                         // training has no such listener, so restart explicitly
                         // — otherwise removal detection can't auto-end the turn.
-                        _startAiCapture();
+                        startAiCapture();
                       }
                     },
-                    onToggleAi: _autoScoringService!.modelLoaded ? _toggleAi : null,
-                    aiEnabled: !_aiManuallyDisabled,
+                    onToggleAi: autoScoringService!.modelLoaded ? toggleAi : null,
+                    aiEnabled: !aiManuallyDisabled,
                     onBack: () async {
                       final shouldLeave = await _showLeaveDialog();
                       if (shouldLeave && context.mounted) Navigator.of(context).pop();
@@ -868,6 +888,16 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     );
   }
 
+  /// "BO5 · Manche 2" for a bot-training series, null for single-leg flows —
+  /// same string the ranked series shows, so the score bar center matches.
+  String? _seriesTitle(PlacementProvider placement) {
+    if (placement.mode != PlacementMode.botTraining || placement.bestOf <= 1) {
+      return null;
+    }
+    return 'BO${placement.bestOf} · '
+        '${AppLocalizations.of(context).legNumber(placement.currentLeg)}';
+  }
+
   Widget _buildBotTurnScreen(
     PlacementProvider placement,
     AuthProvider auth,
@@ -882,9 +912,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       opponentName: botName,
       myScore: _myScore,
       opponentScore: placement.player2Score,
-      roundNumber: _botRoundScores.length + 1,
+      roundNumber: _botRoundsThisLeg + 1,
       myAverage: _myAverage,
       opponentAverage: _botAverage,
+      seriesTitle: _seriesTitle(placement),
+      myLegs: placement.myLegs,
+      opponentLegs: placement.botLegs,
       leading: GameControlButton(
         icon: Icons.arrow_back_ios_new,
         color: AppTheme.textSecondary,
@@ -1178,6 +1211,25 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     style: AppTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
+                  if (isBotTraining && _endBestOf > 1) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      '$_endMyLegs – $_endBotLegs',
+                      style: AppTheme.displayLarge.copyWith(
+                        color: Colors.white,
+                        fontSize: 34,
+                      ),
+                    ),
+                    Text(
+                      l10n.legsShort.toUpperCase(),
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 32),
                   if (!isBotTraining) ...[
                     const CircularProgressIndicator(color: AppTheme.primary),
@@ -1292,7 +1344,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
 String _botName(BuildContext context, PlacementProvider placement) {
   final l10n = AppLocalizations.of(context);
   if (placement.mode == PlacementMode.botTraining && placement.botRank != null) {
-    return l10n.botRankBotName(_rankLabel(l10n, placement.botRank!));
+    return l10n.botRankBotName(botRankDisplayLabel(l10n, placement.botRank!));
   }
   return l10n.botName(placement.currentBotDifficulty ?? 1);
 }
@@ -1300,12 +1352,13 @@ String _botName(BuildContext context, PlacementProvider placement) {
 String _botIsThrowingLabel(BuildContext context, PlacementProvider placement) {
   final l10n = AppLocalizations.of(context);
   if (placement.mode == PlacementMode.botTraining && placement.botRank != null) {
-    return l10n.botRankIsThrowing(_rankLabel(l10n, placement.botRank!));
+    return l10n.botRankIsThrowing(botRankDisplayLabel(l10n, placement.botRank!));
   }
   return l10n.botNameIsThrowing(placement.currentBotDifficulty ?? 1);
 }
 
-String _rankLabel(AppLocalizations l10n, BotRank rank) {
+/// Localized rank name — shared with the cricket bot screen.
+String botRankDisplayLabel(AppLocalizations l10n, BotRank rank) {
   switch (rank) {
     case BotRank.bronze:
       return l10n.rankBronze;

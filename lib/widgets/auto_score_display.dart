@@ -56,6 +56,16 @@ class AutoScoreGameView extends StatelessWidget {
   final int myLegs;
   final int opponentLegs;
 
+  /// Replaces the X01 [UserScoreBar] (cricket board + points). Null keeps
+  /// today's layout untouched.
+  final Widget? scorePanel;
+
+  /// Overrides the visit TOTAL display ("+3 marques"). Null = X01 points sum.
+  final String? visitTotalText;
+
+  /// Per-dart chip subtitle ("1 marque", "+60 pts"). Null = X01 "60 pts".
+  final String? Function(int index, String notation)? chipSubtitle;
+
   const AutoScoreGameView({
     super.key,
     required this.scoringService,
@@ -90,6 +100,9 @@ class AutoScoreGameView extends StatelessWidget {
     this.seriesTitle,
     this.myLegs = 0,
     this.opponentLegs = 0,
+    this.scorePanel,
+    this.visitTotalText,
+    this.chipSubtitle,
     this.onBack,
   });
 
@@ -161,7 +174,11 @@ class AutoScoreGameView extends StatelessWidget {
                 ),
               ),
             ),
-            VisitTotal(total: turnTotal, color: AppTheme.playerBlueBright),
+            VisitTotal(
+              total: turnTotal,
+              color: AppTheme.playerBlueBright,
+              text: visitTotalText,
+            ),
           ],
         );
 
@@ -177,6 +194,9 @@ class AutoScoreGameView extends StatelessWidget {
                   child: DartVisitChip(
                     notation: score != null ? shortDartLabel(score) : null,
                     accent: AppTheme.playerBlue,
+                    subtitle: score != null
+                        ? chipSubtitle?.call(i, shortDartLabel(score))
+                        : null,
                     showEditLabel: score != null,
                     capturing: scoringService.isCapturing,
                     onTap: () => _editDart(context, i, score),
@@ -196,15 +216,16 @@ class AutoScoreGameView extends StatelessWidget {
           ),
         );
 
-        final scoreBar = UserScoreBar(
-          myName: myName,
-          opponentName: opponentName,
-          myScore: myScore,
-          opponentScore: opponentScore,
-          seriesTitle: seriesTitle,
-          myLegs: myLegs,
-          opponentLegs: opponentLegs,
-        );
+        final scoreBar = scorePanel ??
+            UserScoreBar(
+              myName: myName,
+              opponentName: opponentName,
+              myScore: myScore,
+              opponentScore: opponentScore,
+              seriesTitle: seriesTitle,
+              myLegs: myLegs,
+              opponentLegs: opponentLegs,
+            );
 
         // ── Bottom row: AUTO VALIDATION chip + CONFIRM button ──
         final showAutoValidation =

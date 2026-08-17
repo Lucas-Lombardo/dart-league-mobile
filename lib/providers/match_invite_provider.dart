@@ -12,11 +12,18 @@ class IncomingInvite {
   final String inviterId;
   final String inviterUsername;
 
+  /// 'x01' (default) | 'cricket_score' | 'cricket_noscore'. Additive server
+  /// field — an old backend never sends it, so it falls back to x01.
+  final String gameMode;
+
   IncomingInvite({
     required this.inviteId,
     required this.inviterId,
     required this.inviterUsername,
+    this.gameMode = 'x01',
   });
+
+  bool get isCricket => gameMode.startsWith('cricket');
 }
 
 /// Drives the friend-invite (non-ranked "friendly" match) flow on the client.
@@ -36,7 +43,9 @@ class MatchInviteProvider with ChangeNotifier {
 
   // Outgoing invite (inviter side).
   String? _outgoingInviteId;
+  String? _outgoingFriendId;
   String? _outgoingFriendUsername;
+  String _outgoingGameMode = 'x01';
   bool _outgoingWaiting = false;
   String? _outgoingResolved; // 'declined' once the friend declines / accept fails
 
@@ -63,6 +72,7 @@ class MatchInviteProvider with ChangeNotifier {
   IncomingInvite? get incoming => _incoming;
   bool get outgoingWaiting => _outgoingWaiting;
   String? get outgoingFriendUsername => _outgoingFriendUsername;
+  String get outgoingGameMode => _outgoingGameMode;
   String? get outgoingResolved => _outgoingResolved;
   bool get friendlyMatchFound => _friendlyMatchFound;
   String? get matchId => _matchId;
@@ -124,7 +134,9 @@ class MatchInviteProvider with ChangeNotifier {
     _cleanupListeners();
     _incoming = null;
     _outgoingInviteId = null;
+    _outgoingFriendId = null;
     _outgoingFriendUsername = null;
+    _outgoingGameMode = 'x01';
     _outgoingWaiting = false;
     _outgoingResolved = null;
     _friendlyMatchFound = false;
@@ -152,25 +164,58 @@ class MatchInviteProvider with ChangeNotifier {
 
   // ----- Actions (from UI) -----
 
-  Future<void> invite(String friendId, {String? friendUsername}) async {
+  /// [gameMode] 'x01' (default) or 'cricket_score' / 'cricket_noscore'. The
+  /// X01 payload stays exactly {friendId} — byte-identical to before cricket
+  /// existed — so an old backend keeps behaving as today.
+  Future<void> invite(
+    String friendId, {
+    String? friendUsername,
+    String gameMode = 'x01',
+  }) async {
     try {
       await SocketService.ensureConnected();
       if (!_started) {
         _registerListeners();
         _started = true;
       }
+      _outgoingFriendId = friendId;
       _outgoingFriendUsername = friendUsername;
+      _outgoingGameMode = gameMode;
       _outgoingResolved = null;
+      _lastError = null;
+      // The previous invite's id is dead the moment we re-send (the server
+      // supersedes it): a Cancel tapped before the new invite_sent ack must
+      // not emit cancel_invite with the stale id — it would cancel nothing
+      // and leave the fresh invite pending for its full TTL.
+      _outgoingInviteId = null;
       // Don't raise the waiting dialog yet: this runs from the camera-setup
       // screen which pops itself immediately after. We let the server's
       // invite_sent ack flip outgoingWaiting so the dialog appears only after
       // that pop (otherwise the pop would dismiss the dialog by mistake).
-      SocketService.emit('invite_friend', {'friendId': friendId});
+      final isCricket = gameMode.startsWith('cricket');
+      SocketService.emit('invite_friend', {
+        'friendId': friendId,
+        if (isCricket) 'gameMode': 'cricket',
+        if (isCricket)
+          'cricketScoreMode':
+              gameMode == 'cricket_noscore' ? 'noScore' : 'score',
+      });
     } catch (e) {
       _outgoingWaiting = false;
       _lastError = 'server_error';
       notifyListeners();
     }
+  }
+
+  /// "Offer a 501 instead": re-invites the same friend in X01 after a cricket
+  /// invite was refused (opponent_needs_update). The waiting screen stays put.
+  Future<void> retryAsX01() async {
+    final friendId = _outgoingFriendId;
+    if (friendId == null) return;
+    _outgoingResolved = null;
+    _lastError = null;
+    notifyListeners();
+    await invite(friendId, friendUsername: _outgoingFriendUsername);
   }
 
   void accept(String inviteId) {
@@ -196,8 +241,13 @@ class MatchInviteProvider with ChangeNotifier {
   void _clearOutgoing() {
     _outgoingWaiting = false;
     _outgoingInviteId = null;
+    _outgoingFriendId = null;
     _outgoingFriendUsername = null;
+    _outgoingGameMode = 'x01';
     _outgoingResolved = null;
+    // A failed invite must not leak its error into the next one — the waiting
+    // screen would open already "resolved".
+    _lastError = null;
     notifyListeners();
   }
 
@@ -235,6 +285,7 @@ class MatchInviteProvider with ChangeNotifier {
       inviteId: inviteId,
       inviterId: inviterId,
       inviterUsername: data['inviterUsername'] as String? ?? 'A friend',
+      gameMode: data['gameMode'] as String? ?? 'x01',
     );
     HapticService.heavyImpact();
     notifyListeners();
@@ -247,9 +298,13 @@ class MatchInviteProvider with ChangeNotifier {
   }
 
   void _handleInviteDeclined(dynamic data) {
-    // Inviter side: the friend declined or the accept failed.
+    // Inviter side: the friend declined or the accept failed. A cricket
+    // invite refused because the friend's app predates the mode keeps its
+    // reason, so the waiting screen can offer "send a 501 instead".
     _outgoingWaiting = false;
-    _outgoingResolved = 'declined';
+    _outgoingResolved = data is Map && data['reason'] == 'opponent_needs_update'
+        ? 'opponent_needs_update'
+        : 'declined';
     notifyListeners();
   }
 

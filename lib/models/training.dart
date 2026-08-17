@@ -131,6 +131,40 @@ class TrainingSessionRecord {
   }
 }
 
+/// Per-game-mode breakdown of the bot-training stats ('501', '301', '201',
+/// 'cricket_score', 'cricket_noscore'). [averageScore] is the 3-dart average
+/// for X01 buckets and the MPR (marks per round) for cricket ones.
+class BotModeStats {
+  final String mode;
+  final int sessions;
+  final num? winRate;
+  final num? averageScore;
+  final DateTime? lastPlayedAt;
+
+  BotModeStats({
+    required this.mode,
+    required this.sessions,
+    required this.winRate,
+    required this.averageScore,
+    required this.lastPlayedAt,
+  });
+
+  static BotModeStats? fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final mode = json['mode'];
+    if (mode is! String) return null;
+    return BotModeStats(
+      mode: mode,
+      sessions: (json['sessions'] as num?)?.toInt() ?? 0,
+      winRate: json['winRate'] as num?,
+      averageScore: json['averageScore'] as num?,
+      lastPlayedAt: json['lastPlayedAt'] != null
+          ? DateTime.tryParse(json['lastPlayedAt'] as String)
+          : null,
+    );
+  }
+}
+
 class TrainingTypeStats {
   final TrainingType type;
   final int sessions;
@@ -142,6 +176,10 @@ class TrainingTypeStats {
   final bool higherIsBetter;
   final num? winRate;
 
+  /// Bot training only: per-mode breakdown (null for other types or when the
+  /// backend predates it).
+  final List<BotModeStats>? modes;
+
   TrainingTypeStats({
     required this.type,
     required this.sessions,
@@ -152,6 +190,7 @@ class TrainingTypeStats {
     required this.totalDarts,
     required this.higherIsBetter,
     this.winRate,
+    this.modes,
   });
 
   factory TrainingTypeStats.fromJson(Map<String, dynamic> json) {
@@ -167,6 +206,12 @@ class TrainingTypeStats {
       totalDarts: (json['totalDarts'] as num?)?.toInt() ?? 0,
       higherIsBetter: json['higherIsBetter'] as bool? ?? true,
       winRate: json['winRate'] as num?,
+      modes: json['modes'] is List
+          ? (json['modes'] as List)
+                .map(BotModeStats.fromJson)
+                .whereType<BotModeStats>()
+                .toList()
+          : null,
     );
   }
 

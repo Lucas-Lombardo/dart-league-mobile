@@ -2115,6 +2115,87 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingBotGameTypeHint201 => 'Quick match';
 
   @override
+  String get botSetupTitle => 'Bot match';
+
+  @override
+  String get botSetupModeSection => 'Game mode';
+
+  @override
+  String get botSetupFormatSection => 'Format';
+
+  @override
+  String get botSetupOpponentSection => 'Opponent';
+
+  @override
+  String get starterAlternates => 'The thrower alternates each leg';
+
+  @override
+  String get cricketLabel => 'Cricket';
+
+  @override
+  String get cricketSetupHint => 'Close 15–20 and the bull before the bot';
+
+  @override
+  String get cricketScoreLabel => 'Score';
+
+  @override
+  String get cricketNoScoreLabel => 'No score';
+
+  @override
+  String get cricketScoreHint =>
+      'A closed number keeps scoring until the bot closes it';
+
+  @override
+  String get cricketNoScoreHint => 'Pure race: first to close everything';
+
+  @override
+  String botModeStatsSummary(int games, int winPct, String metric) =>
+      '$games ${games <= 1 ? 'match' : 'matches'} · $winPct% wins · $metric';
+
+  @override
+  String avgShort(String value) => '$value avg';
+
+  @override
+  String mprShort(String value) => '$value MPR';
+
+  @override
+  String get mprLabel => 'MPR (marks / round)';
+
+  @override
+  String get statsFilterAll => 'All';
+
+  @override
+  String cricketMarks(int n) => n <= 1 ? '$n mark' : '$n marks';
+
+  @override
+  String get cricketAllClosedTitle => 'Board closed!';
+
+  @override
+  String get cricketAllClosedBody =>
+      'All your numbers are closed — leg won?';
+
+  @override
+  String get botVisitConnectionError =>
+      'Connection issue — the bot skipped its visit';
+
+  @override
+  String challengeFriendTitle(String username) => 'Challenge $username';
+
+  @override
+  String get challengeChooseGame =>
+      'Pick the game — your friend will see it on the invite.';
+
+  @override
+  String get friendlyX01Hint => 'The classic — 501, double out';
+
+  @override
+  String get opponentNeedsUpdateCricket =>
+      'Your friend needs to update the app to play Cricket.';
+
+  @override
+  String get proposeX01Instead => 'Offer a 501 instead';
+
+  @override
   String get matchAverageLabel => 'Match average';
 
   @override

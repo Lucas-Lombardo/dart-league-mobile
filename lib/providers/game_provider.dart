@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../models/cricket.dart';
 import '../models/rtc_v2_config.dart';
 import '../services/socket_service.dart';
 import '../services/turn_report_service.dart';
@@ -62,6 +63,15 @@ class GameProvider with ChangeNotifier {
   bool _rematchWaiting = false;
   bool _rematchDeclined = false;
   bool _opponentWantsRematch = false;
+
+  // Cricket friendly match state, mirrored from the server's additive
+  // `gameMode` / `cricket {...}` payload fields. 'x01' + empty maps for every
+  // other match — nothing below is consulted then.
+  String _gameMode = 'x01';
+  Map<int, int> _cricketP1Marks = {};
+  Map<int, int> _cricketP2Marks = {};
+  int _cricketP1Points = 0;
+  int _cricketP2Points = 0;
 
   // Ranked BO3 series state (mirrors TournamentGameProvider's legs/series
   // machinery). All defaults describe a classic BO1 match: _seriesId stays
@@ -156,6 +166,26 @@ class GameProvider with ChangeNotifier {
   bool get rematchWaiting => _rematchWaiting;
   bool get rematchDeclined => _rematchDeclined;
   bool get opponentWantsRematch => _opponentWantsRematch;
+
+  // Cricket getters.
+  String get gameMode => _gameMode;
+  bool get isCricket => _gameMode.startsWith('cricket');
+
+  /// The authoritative cricket board, mapped to my/opponent sides. Null for
+  /// X01 matches.
+  CricketState? get cricketState {
+    if (!isCricket) return null;
+    final iAmPlayer1 = _myUserId == _player1Id;
+    return CricketState.fromWire(
+      scoreMode: _gameMode == 'cricket_noscore'
+          ? CricketScoreMode.noScore
+          : CricketScoreMode.score,
+      myMarks: iAmPlayer1 ? _cricketP1Marks : _cricketP2Marks,
+      oppMarks: iAmPlayer1 ? _cricketP2Marks : _cricketP1Marks,
+      myPoints: iAmPlayer1 ? _cricketP1Points : _cricketP2Points,
+      oppPoints: iAmPlayer1 ? _cricketP2Points : _cricketP1Points,
+    );
+  }
 
   // Ranked BO3 series getters.
   bool get isRankedSeries => _seriesId != null;
@@ -568,6 +598,7 @@ class GameProvider with ChangeNotifier {
     _opponentScore = 501;
 
     _applySeriesFields(data);
+    _applyCricketFields(data);
 
     notifyListeners();
   }
@@ -615,6 +646,7 @@ class GameProvider with ChangeNotifier {
 
   void _handleScoreUpdated(dynamic data) {
     if (_isForeignMatch(data)) return;
+    _applyCricketFields(data);
 
     // Why: auto-resync the turn when round_complete was missed (e.g. brief
     // socket disconnect that left the client out of the room). The server
@@ -685,6 +717,7 @@ class GameProvider with ChangeNotifier {
   void _handleRoundComplete(dynamic data) {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != null && eventMatchId != _matchId) return;
+    _applyCricketFields(data);
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
@@ -1082,6 +1115,7 @@ class GameProvider with ChangeNotifier {
 
   void _handlePendingWin(dynamic data) {
     if (_isForeignMatch(data)) return;
+    _applyCricketFields(data);
 
     // Only show dialog if this is MY pending win, not opponent's
     final playerId = data['playerId'] as String?;
@@ -1232,6 +1266,7 @@ class GameProvider with ChangeNotifier {
     // state: that let another provider's sync populate this one and take over
     // its event handlers.
     if (_matchId == null) return;
+    _applyCricketFields(data);
 
     // Only past the foreign-match guards: a rejected sync (ghost match,
     // stale leg) must not overwrite our rtcV2 config either.
@@ -1403,6 +1438,7 @@ class GameProvider with ChangeNotifier {
 
   void _handleDartUndone(dynamic data) {
     if (_isForeignMatch(data)) return;
+    _applyCricketFields(data);
     // Update scores
     final player1Score = data['player1Score'] as int?;
     final player2Score = data['player2Score'] as int?;
@@ -1751,6 +1787,34 @@ class GameProvider with ChangeNotifier {
   }
 
   /// Helper to correctly map player1Score/player2Score to myScore/opponentScore
+  /// Adopt the additive cricket fields a payload may carry. Call AFTER the
+  /// foreign-match guards only. No-op for X01 payloads.
+  void _applyCricketFields(dynamic data) {
+    if (data is! Map) return;
+    final gm = data['gameMode'] as String?;
+    if (gm != null) _gameMode = gm;
+    final cricket = data['cricket'];
+    if (cricket is Map) {
+      _cricketP1Marks = _parseCricketMarks(cricket['p1Marks']);
+      _cricketP2Marks = _parseCricketMarks(cricket['p2Marks']);
+      _cricketP1Points = (cricket['p1Points'] as num?)?.toInt() ?? 0;
+      _cricketP2Points = (cricket['p2Points'] as num?)?.toInt() ?? 0;
+    }
+  }
+
+  Map<int, int> _parseCricketMarks(dynamic raw) {
+    final marks = <int, int>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final target = int.tryParse('$key');
+        if (target != null && value is num) {
+          marks[target] = value.toInt().clamp(0, 3);
+        }
+      });
+    }
+    return marks;
+  }
+
   void _updateScoresFromPlayerScores(int player1Score, int player2Score) {
     final isPlayer1 = _myUserId == _player1Id;
     if (isPlayer1) {
@@ -1856,6 +1920,11 @@ class GameProvider with ChangeNotifier {
     _rematchWaiting = false;
     _rematchDeclined = false;
     _opponentWantsRematch = false;
+    _gameMode = 'x01';
+    _cricketP1Marks = {};
+    _cricketP2Marks = {};
+    _cricketP1Points = 0;
+    _cricketP2Points = 0;
     _resetSeriesState();
     debugPrint('GAME DEBUG: reset() done - gameStarted=$_gameStarted, gameEnded=$_gameEnded');
     notifyListeners();

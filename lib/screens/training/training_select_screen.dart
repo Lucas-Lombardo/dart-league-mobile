@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../models/bot_rank.dart';
 import '../../models/training.dart';
-import '../../providers/placement_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
-import '../placement/placement_camera_setup_screen.dart';
+import 'bot_training_setup_screen.dart';
 import 'logic/atc_mode.dart';
 import 'logic/atc_strategy.dart';
 import 'logic/bobs_27_strategy.dart';
@@ -402,112 +399,15 @@ void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
   );
 }
 
-/// Opens the rank picker bottomsheet and, if a rank is chosen, configures the
-/// PlacementProvider for bot-training mode before routing through the existing
-/// placement camera setup → placement game screens.
+/// Opens the bot match configurator (mode, format, rank on one screen) — it
+/// routes through the placement camera setup → game screens on "play".
+/// Kept as the single entry point so the hero card and the stats tab both
+/// land on the same flow.
 Future<void> openBotTrainingPicker(BuildContext context) async {
   HapticService.mediumImpact();
-  final l10n = AppLocalizations.of(context);
-  final rank = await showModalBottomSheet<BotRank>(
-    context: context,
-    backgroundColor: AppTheme.surface,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (_) => _ModeSheet<BotRank>(
-      title: l10n.trainingBotPickRank,
-      options: [
-        _SheetOption(
-          label: l10n.rankBronze,
-          hint: l10n.trainingBotAvg(BotRank.bronze.targetAverage),
-          value: BotRank.bronze,
-          color: const Color(0xFFCD7F32),
-        ),
-        _SheetOption(
-          label: l10n.rankSilver,
-          hint: l10n.trainingBotAvg(BotRank.silver.targetAverage),
-          value: BotRank.silver,
-          color: const Color(0xFFC0C0C0),
-        ),
-        _SheetOption(
-          label: l10n.rankGold,
-          hint: l10n.trainingBotAvg(BotRank.gold.targetAverage),
-          value: BotRank.gold,
-          color: const Color(0xFFFFD700),
-        ),
-        _SheetOption(
-          label: l10n.rankPlatinum,
-          hint: l10n.trainingBotAvg(BotRank.platinum.targetAverage),
-          value: BotRank.platinum,
-          color: const Color(0xFF9CB6C6),
-        ),
-        _SheetOption(
-          label: l10n.rankDiamond,
-          hint: l10n.trainingBotAvg(BotRank.diamond.targetAverage),
-          value: BotRank.diamond,
-          color: const Color(0xFF63D6F2),
-        ),
-        _SheetOption(
-          label: l10n.rankPro,
-          hint: l10n.trainingBotAvg(BotRank.pro.targetAverage),
-          value: BotRank.pro,
-          color: const Color(0xFF7C3AED),
-        ),
-        _SheetOption(
-          label: l10n.rankMaster,
-          hint: l10n.trainingBotAvg(BotRank.master.targetAverage),
-          value: BotRank.master,
-          color: AppTheme.error,
-        ),
-      ],
-    ),
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const BotTrainingSetupScreen()),
   );
-  if (rank == null || !context.mounted) return;
-  HapticService.mediumImpact();
-
-  // Second sheet: pick the game length (501 / 301 / 201).
-  final startingScore = await showModalBottomSheet<int>(
-    context: context,
-    backgroundColor: AppTheme.surface,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (_) => _ModeSheet<int>(
-      title: l10n.trainingBotPickGameType,
-      options: [
-        _SheetOption(
-          label: '501',
-          hint: l10n.trainingBotGameTypeHint501,
-          value: 501,
-          color: AppTheme.primary,
-        ),
-        _SheetOption(
-          label: '301',
-          hint: l10n.trainingBotGameTypeHint301,
-          value: 301,
-          color: AppTheme.accent,
-        ),
-        _SheetOption(
-          label: '201',
-          hint: l10n.trainingBotGameTypeHint201,
-          value: 201,
-          color: AppTheme.success,
-        ),
-      ],
-    ),
-  );
-  if (startingScore == null || !context.mounted) return;
-  HapticService.mediumImpact();
-  context.read<PlacementProvider>().startBotTrainingMatch(
-    rank,
-    startingScore: startingScore,
-  );
-  if (!context.mounted) return;
-  await Navigator.of(
-    context,
-  ).push(MaterialPageRoute(builder: (_) => const PlacementCameraSetupScreen()));
 }
 
 /// Opens the double picker and, if the player validates a selection, starts an

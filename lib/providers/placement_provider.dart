@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../models/bot_match_config.dart';
 import '../models/bot_rank.dart';
 import '../models/training.dart';
 import '../services/bot_training_service.dart';
@@ -158,6 +159,7 @@ class PlacementProvider extends ChangeNotifier {
   // Active match state
   PlacementMode _mode = PlacementMode.placement;
   BotRank? _botRank;
+  BotMatchConfig? _botConfig;
   String? _currentMatchId;
   int? _currentBotDifficulty;
   int _startingScore = 501;
@@ -168,12 +170,19 @@ class PlacementProvider extends ChangeNotifier {
   bool _botIsCheckout = false;
   bool _botIsBust = false;
 
+  // Bot-training series state (placement stays a single leg: bestOf 1).
+  int _myLegs = 0;
+  int _botLegs = 0;
+  int _currentLeg = 1;
+  bool _playerStartsLeg = true;
+
   PlacementStatus? get status => _status;
   ActivePlacementMatch? get activeMatch => _activeMatch;
   bool get isLoading => _isLoading;
   String? get error => _error;
   PlacementMode get mode => _mode;
   BotRank? get botRank => _botRank;
+  BotMatchConfig? get botConfig => _botConfig;
   String? get currentMatchId => _currentMatchId;
   int? get currentBotDifficulty => _currentBotDifficulty;
   int get startingScore => _startingScore;
@@ -183,6 +192,43 @@ class PlacementProvider extends ChangeNotifier {
   List<BotThrow> get lastBotThrows => _lastBotThrows;
   bool get botIsCheckout => _botIsCheckout;
   bool get botIsBust => _botIsBust;
+
+  int get bestOf => _botConfig?.bestOf ?? 1;
+  int get legsToWin => _botConfig?.legsToWin ?? 1;
+  int get myLegs => _myLegs;
+  int get botLegs => _botLegs;
+  int get currentLeg => _currentLeg;
+
+  /// Whether the player throws first in the current leg. Leg 1 is the
+  /// player's, then the starter alternates like an online series.
+  bool get playerStartsLeg => _playerStartsLeg;
+
+  bool get botMatchOver => _myLegs >= legsToWin || _botLegs >= legsToWin;
+
+  /// Ends the current bot-training leg. Returns true when the series is over.
+  bool recordBotLegResult({required bool playerWon}) {
+    if (playerWon) {
+      _myLegs++;
+    } else {
+      _botLegs++;
+    }
+    notifyListeners();
+    return botMatchOver;
+  }
+
+  /// Resets scores for the next leg of a bot-training series and flips the
+  /// starter, mirroring the online alternation.
+  void startNextBotLeg() {
+    _currentLeg++;
+    _playerStartsLeg = !_playerStartsLeg;
+    _player1Score = _startingScore;
+    _player2Score = _startingScore;
+    _isPlayerTurn = _playerStartsLeg;
+    _lastBotThrows = [];
+    _botIsCheckout = false;
+    _botIsBust = false;
+    notifyListeners();
+  }
 
   Future<void> loadStatus() async {
     _isLoading = true;
@@ -268,15 +314,20 @@ class PlacementProvider extends ChangeNotifier {
 
   /// Start a bot-training match (no backend match record — the result is
   /// submitted as a TrainingSession when the game ends).
-  void startBotTrainingMatch(BotRank rank, {int startingScore = 501}) {
+  void startBotTrainingMatch(BotMatchConfig config) {
     _mode = PlacementMode.botTraining;
-    _botRank = rank;
+    _botRank = config.rank;
+    _botConfig = config;
     _currentMatchId = 'training-${DateTime.now().millisecondsSinceEpoch}';
     _currentBotDifficulty = null;
-    _startingScore = startingScore;
-    _player1Score = startingScore;
-    _player2Score = startingScore;
+    _startingScore = config.startingScore;
+    _player1Score = config.startingScore;
+    _player2Score = config.startingScore;
     _isPlayerTurn = true;
+    _myLegs = 0;
+    _botLegs = 0;
+    _currentLeg = 1;
+    _playerStartsLeg = true;
     _lastBotThrows = [];
     _botIsCheckout = false;
     _botIsBust = false;
@@ -361,6 +412,7 @@ class PlacementProvider extends ChangeNotifier {
     String? currentUserId,
     int? dartsThrown,
     double? matchPlayerAverage,
+    Map<String, dynamic>? extraDetails,
   }) async {
     if (_currentMatchId == null) return null;
 
@@ -372,6 +424,7 @@ class PlacementProvider extends ChangeNotifier {
       if (_mode == PlacementMode.botTraining) {
         final won = winnerId != null && winnerId == currentUserId;
         final rank = _botRank;
+        final config = _botConfig;
         await TrainingService.submit(
           type: TrainingType.botTraining,
           score: won ? 1 : 0,
@@ -381,14 +434,23 @@ class PlacementProvider extends ChangeNotifier {
             'targetAverage': rank?.targetAverage,
             'won': won,
             'startingScore': _startingScore,
+            // Stats bucket + format — additive keys the backend groups on.
+            // Historic sessions have neither; their bucket is derived from
+            // startingScore server-side.
+            if (config != null) 'mode': config.modeWire,
+            if (config != null) 'format': config.bestOf,
+            'legsWon': _myLegs,
+            'legsLost': _botLegs,
             'player1RemainingAtEnd': player1Score ?? _player1Score,
             'player2RemainingAtEnd': _player2Score,
             if (matchPlayerAverage != null) 'playerAverage': matchPlayerAverage,
+            if (extraDetails != null) ...extraDetails,
           },
         );
         _currentMatchId = null;
         _currentBotDifficulty = null;
         _botRank = null;
+        _botConfig = null;
         _mode = PlacementMode.placement;
         _activeMatch = null;
         _isLoading = false;
@@ -440,6 +502,11 @@ class PlacementProvider extends ChangeNotifier {
     _currentBotDifficulty = null;
     _mode = PlacementMode.placement;
     _botRank = null;
+    _botConfig = null;
+    _myLegs = 0;
+    _botLegs = 0;
+    _currentLeg = 1;
+    _playerStartsLeg = true;
     _startingScore = 501;
     _player1Score = 501;
     _player2Score = 501;

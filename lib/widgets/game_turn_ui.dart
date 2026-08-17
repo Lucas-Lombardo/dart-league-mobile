@@ -1015,6 +1015,10 @@ class DartVisitChip extends StatelessWidget {
   final VoidCallback? onRemove;
   final bool capturing;
 
+  /// Line under the notation. Null keeps the X01 default ("60 pts");
+  /// cricket passes its own ("1 marque", "+60 pts").
+  final String? subtitle;
+
   const DartVisitChip({
     super.key,
     this.notation,
@@ -1024,6 +1028,7 @@ class DartVisitChip extends StatelessWidget {
     this.onTap,
     this.onRemove,
     this.capturing = false,
+    this.subtitle,
   });
 
   @override
@@ -1057,7 +1062,7 @@ class DartVisitChip extends StatelessWidget {
               ),
             ),
             Text(
-              l10n.ptsLabel(notationPoints(notation!)),
+              subtitle ?? l10n.ptsLabel(notationPoints(notation!)),
               style: const TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 11,
@@ -1200,7 +1205,11 @@ class VisitTotal extends StatelessWidget {
   final int total;
   final Color color;
 
-  const VisitTotal({super.key, required this.total, required this.color});
+  /// Overrides the numeric display. Null keeps X01's "$total"; cricket
+  /// passes "+3 marques" / "+60 pts".
+  final String? text;
+
+  const VisitTotal({super.key, required this.total, required this.color, this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -1220,7 +1229,7 @@ class VisitTotal extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          '$total',
+          text ?? '$total',
           style: TextStyle(
             color: color,
             fontSize: 26,
@@ -1239,7 +1248,11 @@ class VisitTotal extends StatelessWidget {
 class DartHitFlash extends StatefulWidget {
   final List<String> throws;
 
-  const DartHitFlash({super.key, required this.throws});
+  /// Subtitle under the notation. Null keeps the X01 "+60 pts"; cricket
+  /// passes marks ("3 marques").
+  final String Function(String notation)? subtitleOf;
+
+  const DartHitFlash({super.key, required this.throws, this.subtitleOf});
 
   @override
   State<DartHitFlash> createState() => _DartHitFlashState();
@@ -1317,7 +1330,8 @@ class _DartHitFlashState extends State<DartHitFlash>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      l10n.plusPts(notationPoints(_notation!)),
+                      widget.subtitleOf?.call(_notation!) ??
+                          l10n.plusPts(notationPoints(_notation!)),
                       style: const TextStyle(
                         color: AppTheme.opponentPinkBright,
                         fontSize: 24,

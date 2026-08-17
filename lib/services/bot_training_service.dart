@@ -16,4 +16,27 @@ class BotTrainingService {
     if (response is Map<String, dynamic>) return response;
     return <String, dynamic>{};
   }
+
+  /// Run one cricket bot visit. Stateless like the X01 endpoint: the client
+  /// sends the whole board and applies the returned throws with its own
+  /// CricketState rules.
+  static Future<Map<String, dynamic>> cricketBotTurn({
+    required BotRank rank,
+    required String scoreMode,
+    required Map<String, int> botMarks,
+    required Map<String, int> playerMarks,
+    required int botPoints,
+    required int playerPoints,
+  }) async {
+    final response = await ApiService.post('/trainings/cricket-bot-turn', {
+      'rank': rank.apiValue,
+      'scoreMode': scoreMode,
+      'botMarks': botMarks,
+      'playerMarks': playerMarks,
+      'botPoints': botPoints,
+      'playerPoints': playerPoints,
+    });
+    if (response is Map<String, dynamic>) return response;
+    return <String, dynamic>{};
+  }
 }

@@ -283,7 +283,7 @@ class _TrainingStatCard extends StatelessWidget {
                   ),
                 )
               else if (stats.type == TrainingType.botTraining)
-                _botTrainingRow(l10n)
+                _BotTrainingModes(stats: stats)
               else if (stats.type == TrainingType.importantDoubles)
                 _percentRow(l10n)
               else
@@ -393,38 +393,6 @@ class _TrainingStatCard extends StatelessWidget {
     );
   }
 
-  Widget _botTrainingRow(AppLocalizations l10n) {
-    final winRate = stats.winRate;
-    final winValue = winRate == null ? '—' : '${(winRate * 100).round()}%';
-    return Row(
-      children: [
-        Expanded(
-          child: _metric(
-            label: l10n.trainingGames,
-            value: '${stats.sessions}',
-            color: AppTheme.textSecondary,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.avgScore,
-            value: _formatNum(stats.averageScore),
-            color: AppTheme.primary,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.winRate,
-            value: winValue,
-            color: AppTheme.success,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _divider() =>
       Container(width: 1, height: 36, color: AppTheme.surfaceLight);
 
@@ -512,5 +480,191 @@ class _TrainingStatCard extends StatelessWidget {
       case TrainingType.importantDoubles:
         return kImportantDoublesColor;
     }
+  }
+}
+
+/// Bot-training card body: a mode filter (Tous / 501 / 301 / Cricket) over
+/// the three metrics. "Tous" shows the historic all-modes aggregate; the
+/// cricket chip merges both variants and switches the middle metric to MPR.
+/// Chips only appear for modes actually played (and at least two of them).
+class _BotTrainingModes extends StatefulWidget {
+  final TrainingTypeStats stats;
+
+  const _BotTrainingModes({required this.stats});
+
+  @override
+  State<_BotTrainingModes> createState() => _BotTrainingModesState();
+}
+
+class _BotTrainingModesState extends State<_BotTrainingModes> {
+  String _filter = 'all';
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final modes = widget.stats.modes ?? const <BotModeStats>[];
+
+    final available = <String>[
+      if (modes.any((m) => m.mode == '501' && m.sessions > 0)) '501',
+      if (modes.any((m) => m.mode == '301' && m.sessions > 0)) '301',
+      if (modes.any((m) => m.mode.startsWith('cricket') && m.sessions > 0))
+        'cricket',
+    ];
+    final showChips = available.length > 1 ||
+        (available.length == 1 && available.first != '501');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showChips) ...[
+          Row(
+            children: [
+              _chip(l10n.statsFilterAll, 'all'),
+              for (final mode in available) ...[
+                const SizedBox(width: 6),
+                _chip(mode == 'cricket' ? l10n.cricketLabel : mode, mode),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+        _metricsRow(l10n),
+      ],
+    );
+  }
+
+  Widget _chip(String label, String value) {
+    final selected = _filter == value;
+    return GestureDetector(
+      onTap: () {
+        HapticService.lightImpact();
+        setState(() => _filter = value);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary.withValues(alpha: 0.13)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primary
+                : AppTheme.surfaceLight.withValues(alpha: 0.8),
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : AppTheme.textSecondary,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metricsRow(AppLocalizations l10n) {
+    int sessions;
+    num? avg;
+    num? winRate;
+    var isCricket = false;
+
+    if (_filter == 'all') {
+      sessions = widget.stats.sessions;
+      avg = widget.stats.averageScore;
+      winRate = widget.stats.winRate;
+      // The backend's global average only aggregates X01 sessions (cricket
+      // ones carry an MPR, not a 3-dart average). Next to a session count
+      // that includes cricket it would pass one mode's average off as the
+      // whole history's — show nothing and let the per-mode chips answer.
+      final modes = widget.stats.modes ?? const <BotModeStats>[];
+      final hasCricket =
+          modes.any((m) => m.mode.startsWith('cricket') && m.sessions > 0);
+      final hasX01 =
+          modes.any((m) => !m.mode.startsWith('cricket') && m.sessions > 0);
+      if (hasCricket && hasX01) avg = null;
+    } else if (_filter == 'cricket') {
+      isCricket = true;
+      final buckets = (widget.stats.modes ?? const <BotModeStats>[])
+          .where((m) => m.mode.startsWith('cricket'))
+          .toList();
+      sessions = buckets.fold(0, (a, b) => a + b.sessions);
+      num winSum = 0;
+      num avgSum = 0;
+      var avgWeight = 0;
+      for (final b in buckets) {
+        winSum += (b.winRate ?? 0) * b.sessions;
+        if (b.averageScore != null) {
+          avgSum += b.averageScore! * b.sessions;
+          avgWeight += b.sessions;
+        }
+      }
+      winRate = sessions > 0 ? winSum / sessions : null;
+      avg = avgWeight > 0 ? avgSum / avgWeight : null;
+    } else {
+      final bucket = (widget.stats.modes ?? const <BotModeStats>[])
+          .where((m) => m.mode == _filter)
+          .toList();
+      sessions = bucket.isEmpty ? 0 : bucket.first.sessions;
+      avg = bucket.isEmpty ? null : bucket.first.averageScore;
+      winRate = bucket.isEmpty ? null : bucket.first.winRate;
+    }
+
+    String fmt(num? v) {
+      if (v == null) return '—';
+      if (v == v.toInt()) return v.toInt().toString();
+      return v.toStringAsFixed(1);
+    }
+
+    Widget metric(String label, String value, Color color) {
+      return Expanded(
+        child: Column(
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget divider() =>
+        Container(width: 1, height: 36, color: AppTheme.surfaceLight);
+
+    return Row(
+      children: [
+        metric(l10n.trainingGames, '$sessions', AppTheme.textSecondary),
+        divider(),
+        metric(
+          isCricket ? 'MPR' : l10n.avgScore,
+          isCricket && avg != null ? avg.toStringAsFixed(2) : fmt(avg),
+          AppTheme.primary,
+        ),
+        divider(),
+        metric(
+          l10n.winRate,
+          winRate == null ? '—' : '${(winRate * 100).round()}%',
+          AppTheme.success,
+        ),
+      ],
+    );
   }
 }

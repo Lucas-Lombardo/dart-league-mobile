@@ -90,6 +90,11 @@ class SocketService {
   // a backend rollback simply removes the button.
   static bool _supportsTurnReports = false;
 
+  // Whether the server can run cricket friendly matches (gameMode on
+  // invite_friend + the cricket engine). Gates the mode picker: against an
+  // older backend the sheet is skipped and every invite stays X01.
+  static bool _supportsCricket = false;
+
   // True once the current socket has received the server's `authenticated`
   // handshake — the event that carries the capability flags above. Reset on
   // every disconnect, like the flags themselves, so it always describes the
@@ -126,6 +131,10 @@ class SocketService {
   /// Whether the server this socket is authenticated against accepts
   /// per-volley reports. See [_supportsTurnReports].
   static bool get supportsTurnReports => _supportsTurnReports;
+
+  /// Whether the server this socket is authenticated against can run cricket
+  /// friendly matches. See [_supportsCricket].
+  static bool get supportsCricket => _supportsCricket;
 
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
@@ -231,6 +240,12 @@ class SocketService {
           'SocketService: server supportsTurnReports=$supportsTurnReports');
     }
     _supportsTurnReports = supportsTurnReports;
+
+    final supportsCricket = data is Map && data['supportsCricket'] == true;
+    if (supportsCricket != _supportsCricket) {
+      debugPrint('SocketService: server supportsCricket=$supportsCricket');
+    }
+    _supportsCricket = supportsCricket;
   }
 
   /// Supplies the CONNECT-packet auth payload, called by socket.io on every
@@ -275,6 +290,7 @@ class SocketService {
       'token': token,
       'supportsRtcV2': RtcFramesService.isSupported,
       'supportsTurnReports': ReplayBufferService.isSupported,
+      'supportsCricket': true,
     });
   }
 
@@ -385,6 +401,7 @@ class SocketService {
               'token': token,
               'supportsRtcV2': RtcFramesService.isSupported,
               'supportsTurnReports': ReplayBufferService.isSupported,
+              'supportsCricket': true,
             })
             .build(),
       );
@@ -419,6 +436,7 @@ class SocketService {
         _supportsChat = false;
         _supportsRtcV2 = false;
         _supportsTurnReports = false;
+        _supportsCricket = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -537,6 +555,7 @@ class SocketService {
     _supportsDartAck = false;
     _supportsChat = false;
     _supportsRtcV2 = false;
+    _supportsCricket = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();

@@ -45,11 +45,16 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
       vsync: this,
       duration: const Duration(milliseconds: 2400),
     )..repeat();
+    _armTimeout();
+  }
 
-    // Backend invites expire after ~150s (FRIEND_INVITE_TTL_MS) — long enough
-    // for an offline friend to open the app from the push and accept. Keep the
-    // local timeout just past that so we only show "expired" once the
-    // server-side invite is truly gone, then release it.
+  /// Backend invites expire after ~150s (FRIEND_INVITE_TTL_MS) — long enough
+  /// for an offline friend to open the app from the push and accept. Keep the
+  /// local timeout just past that so we only show "expired" once the
+  /// server-side invite is truly gone, then release it. Re-armed when a
+  /// refused cricket invite is re-sent as a 501.
+  void _armTimeout() {
+    _timeout?.cancel();
     _timeout = Timer(const Duration(seconds: 155), () {
       if (!mounted) return;
       final p = context.read<MatchInviteProvider>();
@@ -58,6 +63,13 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
         setState(() => _expired = true);
       }
     });
+  }
+
+  void _retryAsX01() {
+    HapticService.mediumImpact();
+    context.read<MatchInviteProvider>().retryAsX01();
+    setState(() => _expired = false);
+    _armTimeout();
   }
 
   @override
@@ -85,9 +97,16 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
     Navigator.of(context).maybePop();
   }
 
+  /// The friend's app can't play cricket — surfaced by the server at send,
+  /// replay or accept time. The one refusal with a recourse (offer a 501).
+  bool _needsUpdate(MatchInviteProvider p) =>
+      p.outgoingResolved == 'opponent_needs_update' ||
+      p.lastError == 'opponent_needs_update';
+
   String _statusText(AppLocalizations l10n, MatchInviteProvider p) {
     if (_expired) return l10n.inviteCancelledMsg;
-    if (p.outgoingResolved == 'declined') return l10n.inviteDeclinedMsg;
+    if (_needsUpdate(p)) return l10n.opponentNeedsUpdateCricket;
+    if (p.outgoingResolved != null) return l10n.inviteDeclinedMsg;
     if (p.lastError != null) {
       switch (p.lastError) {
         case 'friend_not_premium':
@@ -111,7 +130,7 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
     final l10n = AppLocalizations.of(context);
     final p = context.watch<MatchInviteProvider>();
     final resolved =
-        _expired || p.outgoingResolved == 'declined' || p.lastError != null;
+        _expired || p.outgoingResolved != null || p.lastError != null;
 
     return PopScope(
       canPop: true,
@@ -130,14 +149,45 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
                 children: [
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      l10n.friendlyMatchLabel.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                        letterSpacing: 2,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          l10n.friendlyMatchLabel.toUpperCase(),
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (p.outgoingGameMode.startsWith('cricket')) ...[
+                          const SizedBox(width: 9),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 3),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppTheme.success.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(99),
+                              border: Border.all(
+                                color:
+                                    AppTheme.success.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Text(
+                              '${l10n.cricketLabel} · ${p.outgoingGameMode == 'cricket_noscore' ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}'
+                                  .toUpperCase(),
+                              style: const TextStyle(
+                                color: AppTheme.success,
+                                fontSize: 9,
+                                letterSpacing: 1.2,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   Expanded(
@@ -183,26 +233,71 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
                       ),
                     ),
                   ),
+                  if (resolved && _needsUpdate(p) && !_expired) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: ElevatedButton(
+                        onPressed: _retryAsX01,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: Text(
+                          l10n.proposeX01Instead.toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   SizedBox(
                     width: double.infinity,
                     height: 54,
                     child: resolved
-                        ? ElevatedButton(
-                            onPressed: _back,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: Text(
-                              l10n.close,
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1),
-                            ),
-                          )
+                        ? (_needsUpdate(p) && !_expired
+                            ? OutlinedButton(
+                                onPressed: _back,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.textSecondary,
+                                  side: BorderSide(
+                                      color: AppTheme.textSecondary
+                                          .withValues(alpha: 0.4),
+                                      width: 2),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(16)),
+                                ),
+                                child: Text(
+                                  l10n.close,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1),
+                                ),
+                              )
+                            : ElevatedButton(
+                                onPressed: _back,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primary,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(16)),
+                                ),
+                                child: Text(
+                                  l10n.close,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1),
+                                ),
+                              ))
                         : OutlinedButton(
                             onPressed: _cancelAndLeave,
                             style: OutlinedButton.styleFrom(

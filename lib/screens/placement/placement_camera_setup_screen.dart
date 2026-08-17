@@ -7,7 +7,11 @@ import '../shared/camera_setup_mixin.dart';
 import 'placement_game_screen.dart';
 
 class PlacementCameraSetupScreen extends StatefulWidget {
-  const PlacementCameraSetupScreen({super.key});
+  /// Screen pushed once the camera is validated. Defaults to the X01
+  /// [PlacementGameScreen]; the cricket bot flow injects its own screen.
+  final Widget Function()? gameScreenBuilder;
+
+  const PlacementCameraSetupScreen({super.key, this.gameScreenBuilder});
 
   @override
   State<PlacementCameraSetupScreen> createState() =>
@@ -47,7 +51,7 @@ class _PlacementCameraSetupScreenState
     if (!mounted) return;
     final result = await AppNavigator.toScreen<Map<String, dynamic>>(
       context,
-      const PlacementGameScreen(),
+      widget.gameScreenBuilder?.call() ?? const PlacementGameScreen(),
     );
     if (mounted) {
       AppNavigator.back(context, result);

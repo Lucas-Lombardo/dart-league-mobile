@@ -593,6 +593,8 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   /// Play-slot bar when a friend invite is pending; tapping it asks the
   /// player to accept or decline.
   Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
+    final hint = l10n.invitedYouToMatch
+        .replaceAll('{username}', invite.inviterUsername);
     return _playSlotBar(
       gradient: const LinearGradient(
         colors: [Color(0xFF10B981), Color(0xFF059669)],
@@ -601,8 +603,31 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       icon: Icons.sports_esports,
       label: l10n.joinMatch,
       onTap: () => _onFriendInviteTapped(invite),
-      hint: l10n.invitedYouToMatch
-          .replaceAll('{username}', invite.inviterUsername),
+      hint: invite.isCricket ? '$hint · ${l10n.cricketLabel}' : hint,
+    );
+  }
+
+  /// "CRICKET · SCORE" chip for a cricket invite (dialog + bar hint).
+  Widget _inviteModeChip(IncomingInvite invite, AppLocalizations l10n) {
+    final variant = invite.gameMode == 'cricket_noscore'
+        ? l10n.cricketNoScoreLabel
+        : l10n.cricketScoreLabel;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.success.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        '${l10n.cricketLabel} · $variant'.toUpperCase(),
+        style: const TextStyle(
+          color: AppTheme.success,
+          fontSize: 10,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 
@@ -621,10 +646,20 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         backgroundColor: AppTheme.surface,
         title: Text(l10n.matchInviteTitle,
             style: const TextStyle(color: Colors.white)),
-        content: Text(
-          l10n.invitedYouToMatch
-              .replaceAll('{username}', invite.inviterUsername),
-          style: const TextStyle(color: AppTheme.textSecondary),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (invite.isCricket) ...[
+              _inviteModeChip(invite, l10n),
+              const SizedBox(height: 10),
+            ],
+            Text(
+              l10n.invitedYouToMatch
+                  .replaceAll('{username}', invite.inviterUsername),
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+          ],
         ),
         actions: [
           TextButton(

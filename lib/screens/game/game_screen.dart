@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/cricket.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
@@ -358,12 +359,24 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       )),
     ]);
 
+    // Cricket friendly: the meaningful final score is points (score mode) or
+    // closed targets (no-score) — the X01 columns never moved.
+    final cricket = cricketStateOf(game);
+    final cricketScoreLine = cricket == null
+        ? null
+        : cricket.scoreMode == CricketScoreMode.noScore
+            ? '${cricket.myClosedCount}/${kCricketTargets.length} – ${cricket.oppClosedCount}/${kCricketTargets.length}'
+            : '${cricket.myPoints} – ${cricket.oppPoints}';
+    final cricketCaption = cricket == null
+        ? null
+        : '${l10n.cricketLabel} · ${cricket.scoreMode == CricketScoreMode.noScore ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}';
+
     return MatchEndView(
       didWin: didWin,
       title: didWin ? l10n.victory : l10n.defeat,
       subtitle: didWin ? l10n.provenLegend : l10n.trainingPath,
-      scoreLine: game.isRankedSeries == true ? '${game.myLegsWon} – ${game.opponentLegsWon}' : null,
-      scoreCaption: game.isRankedSeries == true ? l10n.bestOfN(game.bestOf as int) : null,
+      scoreLine: game.isRankedSeries == true ? '${game.myLegsWon} – ${game.opponentLegsWon}' : cricketScoreLine,
+      scoreCaption: game.isRankedSeries == true ? l10n.bestOfN(game.bestOf as int) : cricketCaption,
       // Friendly matches don't affect ELO — swap the accept/report panel for a
       // "play again?" rematch panel.
       panel: game.isFriendly ? _buildFriendlyEndPanel(game) : resultPanel,

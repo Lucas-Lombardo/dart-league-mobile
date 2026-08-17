@@ -2137,6 +2137,87 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainingBotGameTypeHint201 => 'Partie rapide';
 
   @override
+  String get botSetupTitle => 'Match contre le Bot';
+
+  @override
+  String get botSetupModeSection => 'Mode de jeu';
+
+  @override
+  String get botSetupFormatSection => 'Format';
+
+  @override
+  String get botSetupOpponentSection => 'Adversaire';
+
+  @override
+  String get starterAlternates => 'Le lanceur alterne à chaque manche';
+
+  @override
+  String get cricketLabel => 'Cricket';
+
+  @override
+  String get cricketSetupHint => 'Ferme les 15–20 et le Bull avant le bot';
+
+  @override
+  String get cricketScoreLabel => 'Score';
+
+  @override
+  String get cricketNoScoreLabel => 'Sans score';
+
+  @override
+  String get cricketScoreHint =>
+      'Un numéro fermé rapporte des points tant que le bot ne l\'a pas fermé';
+
+  @override
+  String get cricketNoScoreHint => 'Course pure : premier à tout fermer';
+
+  @override
+  String botModeStatsSummary(int games, int winPct, String metric) =>
+      '$games ${games <= 1 ? 'match' : 'matchs'} · $winPct % de victoires · $metric';
+
+  @override
+  String avgShort(String value) => 'moy. $value';
+
+  @override
+  String mprShort(String value) => '$value MPR';
+
+  @override
+  String get mprLabel => 'MPR (marques / volée)';
+
+  @override
+  String get statsFilterAll => 'Tous';
+
+  @override
+  String cricketMarks(int n) => n <= 1 ? '$n marque' : '$n marques';
+
+  @override
+  String get cricketAllClosedTitle => 'Tableau fermé !';
+
+  @override
+  String get cricketAllClosedBody =>
+      'Tous tes numéros sont fermés — manche gagnée ?';
+
+  @override
+  String get botVisitConnectionError =>
+      'Problème de connexion — le bot a passé sa volée';
+
+  @override
+  String challengeFriendTitle(String username) => 'Défier $username';
+
+  @override
+  String get challengeChooseGame =>
+      'Choisis le jeu — ton ami le verra sur l\'invitation.';
+
+  @override
+  String get friendlyX01Hint => 'Le classique — 501, finish sur un double';
+
+  @override
+  String get opponentNeedsUpdateCricket =>
+      'Ton ami doit mettre à jour l\'app pour jouer au Cricket.';
+
+  @override
+  String get proposeX01Instead => 'Proposer un 501 à la place';
+
+  @override
   String get matchAverageLabel => 'Moyenne du match';
 
   @override

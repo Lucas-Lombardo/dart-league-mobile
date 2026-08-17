@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../models/cricket.dart';
 import '../../models/rtc_v2_config.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -25,6 +26,7 @@ import '../../utils/dart_caller_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
+import '../../widgets/cricket_board.dart';
 import '../../utils/storage_service.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
@@ -1014,7 +1016,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           final sig = throws.join(',');
           if (sig != _lastCalledVisitSignature) {
             _lastCalledVisitSignature = sig;
-            DartCallerService.callScore(game.currentRoundScore as int);
+            // Cricket has no called score — the totals are marks, not points.
+            if (cricketStateOf(game) == null) {
+              DartCallerService.callScore(game.currentRoundScore as int);
+            }
           }
         } else if (throws.isEmpty) {
           _lastCalledVisitSignature = null;
@@ -1033,8 +1038,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           final sig = oppThrows.join(',');
           if (sig != _lastCalledOpponentVisitSignature) {
             _lastCalledOpponentVisitSignature = sig;
-            DartCallerService.callScore(
-                oppThrows.fold<int>(0, (sum, n) => sum + notationPoints(n)));
+            if (cricketStateOf(game) == null) {
+              DartCallerService.callScore(
+                  oppThrows.fold<int>(0, (sum, n) => sum + notationPoints(n)));
+            }
           }
         } else if (oppThrows.isEmpty) {
           _lastCalledOpponentVisitSignature = null;
@@ -1046,7 +1053,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // change land together, and the queue plays in enqueue order — a real
       // caller says "one hundred and forty… you require one hundred and one",
       // never the reverse.
-      if (justBecameMyTurn) {
+      if (justBecameMyTurn && cricketStateOf(game) == null) {
         DartCallerService.callCheckout(game.myScore as int);
       }
       // Start/stop AI capture when supported
@@ -1702,14 +1709,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } else {
       debugPrint('[Replay] checkout bar hidden: ring not armed');
     }
+    final isCricket = cricketStateOf(game) != null;
     showGameDialog(
       context,
       accent: AppTheme.success,
       icon: Icons.emoji_events,
-      title: l10n.checkout,
+      title: isCricket ? l10n.cricketAllClosedTitle : l10n.checkout,
       bottomBar: checkoutBar,
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (notation != null && notation.isNotEmpty) ...[
+        if (isCricket) ...[
+          Text(l10n.cricketAllClosedBody, style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+        ] else if (notation != null && notation.isNotEmpty) ...[
           Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
           const SizedBox(height: 8),
         ],
@@ -1897,6 +1908,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   Widget buildOpponentTurnVideoLayout(dynamic game) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
+    final cricket = cricketStateOf(game);
     // Same "Waiting..." placeholder for the P2P and Agora branches.
     final Widget waitingPlaceholder = Container(
       color: AppTheme.gamePanelEmpty,
@@ -1922,7 +1934,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             else
               waitingPlaceholder,
             // ── Dart-hit flash (big "T20 / +60 pts" glow) ──
-            DartHitFlash(throws: opponentThrows),
+            DartHitFlash(
+              throws: opponentThrows,
+              subtitleOf: cricket != null
+                  ? (n) => AppLocalizations.of(context)
+                      .cricketMarks(cricketNotationMarks(n))
+                  : null,
+            ),
             // ── Pink border ──
             Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.opponentPink, width: 2), borderRadius: BorderRadius.circular(22))),
             // ── Brand bug (top center), like a TV channel logo ──
@@ -1991,11 +2009,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Widget buildOpponentVisitSection(dynamic game) {
     final l10n = AppLocalizations.of(context);
     final throws = game.opponentRoundThrows as List<String>;
+    final cricket = cricketStateOf(game);
     final total = throws.fold<int>(0, (sum, n) => sum + notationPoints(n));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (cricket != null) ...[
+          CricketBoardStrip(state: cricket, showLegend: false),
+          const SizedBox(height: 12),
+        ],
         Row(children: [
           Expanded(
             child: Text(
@@ -2010,7 +2033,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               ),
             ),
           ),
-          VisitTotal(total: total, color: AppTheme.opponentPinkBright),
+          VisitTotal(
+            total: total,
+            color: AppTheme.opponentPinkBright,
+            text: cricket != null ? cricketVisitTotal(throws) : null,
+          ),
         ]),
         const SizedBox(height: 8),
         SizedBox(
@@ -2024,6 +2051,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                   child: DartVisitChip(
                     notation: notation,
                     accent: AppTheme.surfaceLight,
+                    subtitle: cricket != null && notation != null
+                        ? l10n.cricketMarks(cricketNotationMarks(notation))
+                        : null,
                     highlighted: notation != null && i == throws.length - 1,
                   ),
                 ),
@@ -2074,14 +2104,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final disconnectBanner = buildOpponentDisconnectBanner(game);
 
+    // Cricket: the X01 score columns stay at their defaults server-side, so
+    // the header shows points (score mode) or closed counts (no-score).
+    final cricket = cricketStateOf(game);
+    final noScore = cricket?.scoreMode == CricketScoreMode.noScore;
     final header = TurnScoreHeader(
       myName: auth.currentUser?.username ?? 'You',
       opponentName: opponentUsername,
-      myScore: game.myScore,
-      opponentScore: game.opponentScore,
+      myScore: cricket != null
+          ? (noScore ? cricket.myClosedCount : cricket.myPoints)
+          : game.myScore,
+      opponentScore: cricket != null
+          ? (noScore ? cricket.oppClosedCount : cricket.oppPoints)
+          : game.opponentScore,
       roundNumber: roundNumberOf(game, forOpponent: true),
-      myAverage: myAvgOrNull(game),
-      opponentAverage: opponentAvgOrNull(game),
+      myAverage: cricket != null ? null : myAvgOrNull(game),
+      opponentAverage: cricket != null ? null : opponentAvgOrNull(game),
       leading: buildGameBackButton(),
       seriesTitle: seriesTitle,
       myLegs: myLegs,
@@ -2172,6 +2210,58 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } catch (_) {
       return null;
     }
+  }
+
+  /// The authoritative cricket board of a cricket friendly, or null for every
+  /// X01 match (and for providers that don't track cricket at all — the
+  /// duck-typed read mirrors seriesTitleOf).
+  CricketState? cricketStateOf(dynamic game) {
+    try {
+      return game.cricketState as CricketState?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Raw marks a notation is worth on the cricket numbers — the display
+  /// approximation used for chip subtitles and visit totals (the authoritative
+  /// marks/points live server-side; the board block is what's exact).
+  int cricketNotationMarks(String notation) {
+    if (notation.length < 2) return 0;
+    final base = int.tryParse(notation.substring(1)) ?? -1;
+    if (!kCricketTargets.contains(base)) return 0;
+    if (notation[0] == 'T') return base == 25 ? 0 : 3;
+    if (notation[0] == 'D') return 2;
+    return 1;
+  }
+
+  String cricketVisitTotal(List<String> throws) {
+    final marks = throws.fold<int>(0, (sum, n) => sum + cricketNotationMarks(n));
+    return '+$marks';
+  }
+
+  /// Cricket replacement for the X01 score bar: board strip + points bar.
+  Widget cricketScorePanel(
+    CricketState cricketState,
+    dynamic game,
+    AuthProvider auth,
+    String? seriesTitle,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CricketBoardStrip(state: cricketState),
+        const SizedBox(height: 10),
+        CricketScoreBar(
+          myName: auth.currentUser?.username ?? 'You',
+          opponentName: opponentUsername,
+          state: cricketState,
+          seriesTitle: seriesTitle,
+          myLegs: game.myLegsWon,
+          opponentLegs: game.opponentLegsWon,
+        ),
+      ],
+    );
   }
 
   /// "INITIALISATION DU MATCH..." spinner, shown until game_started /
@@ -2284,6 +2374,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Widget buildLiveMatchBody(dynamic game, AuthProvider auth) {
     final safeTop = MediaQuery.of(context).padding.top;
     final seriesTitle = seriesTitleOf(game);
+    final cricket = cricketStateOf(game);
 
     return PopScope(
       canPop: false,
@@ -2348,6 +2439,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     seriesTitle: seriesTitle,
                     myLegs: game.myLegsWon,
                     opponentLegs: game.opponentLegsWon,
+                    scorePanel: cricket != null
+                        ? cricketScorePanel(cricket, game, auth, seriesTitle)
+                        : null,
+                    visitTotalText: cricket != null
+                        ? cricketVisitTotal(
+                            (game.currentRoundThrows as List).cast<String>())
+                        : null,
+                    chipSubtitle: cricket != null
+                        ? (i, notation) => AppLocalizations.of(context)
+                            .cricketMarks(cricketNotationMarks(notation))
+                        : null,
                   )
                 // Opponent's turn
                 : buildOpponentTurnScreenShared(

@@ -120,4 +120,16 @@ class StorageService {
     if (value == null) return false;
     return value == 'true';
   }
+
+  // Last bot-training setup (mode, format, rank) as a JSON string — restored
+  // when the setup screen opens so replaying "your" match is zero taps.
+  static const String _botMatchConfigKey = 'bot_match_config';
+
+  static Future<void> saveBotMatchConfig(String configJson) async {
+    await _storage.write(key: _botMatchConfigKey, value: configJson);
+  }
+
+  static Future<String?> getBotMatchConfig() async {
+    return await _storage.read(key: _botMatchConfigKey);
+  }
 }
