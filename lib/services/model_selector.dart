@@ -50,6 +50,25 @@ class ModelSelector {
   static const String v10FloatAsset =
       'assets/models/dartboard-v10_o2o_float16.tflite';
 
+  /// Same weights as [v10FloatAsset], with the two attention blocks' adjoint
+  /// BATCH_MATMULs rewritten as an explicit TRANSPOSE + plain BATCH_MATMUL.
+  ///
+  /// The Android GPU delegate computes `BATCH_MATMUL` with `adjX=true` WRONG —
+  /// measured on a Pixel 8, the q·kᵀ tensor comes back with 212% relative
+  /// error while its input is still accurate to 6e-3, and the whole attention
+  /// output is corrupted downstream. Nothing reports it: the delegate takes
+  /// all 604 nodes and returns plausible numbers. The visible effect is that
+  /// every calibration ceiling drops ~0.10 (0.977 → 0.87), which on some
+  /// frames pushes a control point under its 0.80 floor, and on some devices
+  /// lifts the dart channel over its 0.50 one — the phantom darts.
+  ///
+  /// Materializing the adjoint costs nothing: still one partition, 608/608
+  /// nodes, 61ms on a Pixel 8 vs 64.6ms before. Ceiling deviation GPU vs CPU
+  /// falls from 0.071-0.119 to 3e-4-6e-4 across the bench frames.
+  /// Produced by autoscoreur/scripts/deadjoint_batchmatmul.py.
+  static const String v10FloatGpuFixAsset =
+      'assets/models/dartboard-v10_o2o_float16_gpufix.tflite';
+
   /// Original DartsMind light model (anchor head [1, 13, 21504], dart at
   /// class 8). Kept bundled so a replay can be scored under both models
   /// before v10 is trusted in ranked play — pair it with
@@ -57,7 +76,7 @@ class ModelSelector {
   static const String lightAsset = 'assets/models/dart-rival-ia-light.tflite';
 
   /// The model the app actually runs.
-  static const String currentAsset = v10FloatAsset;
+  static const String currentAsset = v10FloatGpuFixAsset;
   static const DetectionLayout currentLayout =
       DetectionLayout.anchorPixelsDartFirst;
 

@@ -176,6 +176,9 @@ class DelegateBench {
       // Accuracy pass rides the same load as the speed pass — the delegate
       // is still the loaded one here.
       results[delegate] = await _analyzeRealFrames(delegate, decoded);
+      for (final f in decoded) {
+        await _probeCeilings(delegate, f);
+      }
       // Partial write after each delegate: a crash mid-bench still leaves
       // the completed blocks readable.
       await _writeReport();
@@ -192,6 +195,7 @@ class DelegateBench {
     }
     _log('===== ACCURACY =====');
     _compare(decoded, results[_delegates[0]]!, results[_delegates[1]]!);
+    _compareCeilings();
     _log('===== DONE =====');
     await _writeReport();
   }
@@ -287,6 +291,87 @@ class DelegateBench {
     } catch (e) {
       _log('layout probe failed ($e)');
     }
+  }
+
+  // ---- Phase 0b: per-class confidence ceilings, per delegate ---------------
+
+  /// delegate -> frame -> the 9 per-class ceilings.
+  static final Map<String, Map<String, List<double>>> _ceilings = {};
+
+  /// The ceiling of a class is the max of its channel over every anchor — the
+  /// single number `parseOutputFloats` actually thresholds. Comparing whole
+  /// output tensors between delegates hides what matters here: a mean over
+  /// 21504 anchors stays microscopic while the handful of anchors that fire
+  /// move a lot, and it is exactly those that decide whether a calibration
+  /// point clears its 0.80 floor or a dart clears its 0.50 one.
+  ///
+  /// Recorded while [delegate] is the loaded one, so it must be called inside
+  /// the delegate loop and never after it.
+  static Future<void> _probeCeilings(String delegate,
+      ({String name, Uint8List rgba, int w, int h}) frame) async {
+    try {
+      final response = await _channel.invokeMethod<Map>('analyze', {
+        'rgba': frame.rgba,
+        'width': frame.w,
+        'height': frame.h,
+        'isBgra': false,
+      }).timeout(const Duration(seconds: 30));
+      final aligned = Uint8List.fromList(response!['output'] as Uint8List);
+      final floats = aligned.buffer.asFloat32List();
+      final shape = deriveOutputShape(floats.length);
+      if (isEndToEndShape(shape)) return;
+      final n = shape[2];
+      final out = <double>[];
+      for (var c = 4; c < shape[1]; c++) {
+        var m = 0.0;
+        final base = n * c;
+        for (var i = 0; i < n; i++) {
+          final v = floats[base + i];
+          if (v > m) m = v;
+        }
+        out.add(m);
+      }
+      (_ceilings[delegate] ??= {})[frame.name] = out;
+    } catch (e) {
+      _log('$delegate ${frame.name}: ceiling probe failed ($e)');
+    }
+  }
+
+  static void _compareCeilings() {
+    final a = _ceilings[_delegates[0]] ?? const {};
+    final b = _ceilings[_delegates[1]] ?? const {};
+    _log('===== CEILINGS (${_delegates[0]} vs ${_delegates[1]}) =====');
+    var worst = 0.0;
+    var worstWhere = 'n/a';
+    for (final name in a.keys) {
+      final va = a[name]!;
+      final vb = b[name];
+      if (vb == null || vb.length != va.length) {
+        _log('$name: INCOMPARABLE');
+        continue;
+      }
+      var maxDiff = 0.0;
+      var at = 0;
+      for (var i = 0; i < va.length; i++) {
+        final d = (va[i] - vb[i]).abs();
+        if (d > maxDiff) {
+          maxDiff = d;
+          at = i;
+        }
+      }
+      if (maxDiff > worst) {
+        worst = maxDiff;
+        worstWhere = '$name class$at';
+      }
+      String fmt(List<double> v) =>
+          v.map((x) => x.toStringAsFixed(3)).join(' ');
+      _log('$name\n'
+          '  ${_delegates[0]}: ${fmt(va)}\n'
+          '  ${_delegates[1]}: ${fmt(vb)}\n'
+          '  maxdiff=${maxDiff.toStringAsFixed(4)} @class$at');
+    }
+    _log('CEILING VERDICT: max |delta| = ${worst.toStringAsFixed(4)} '
+        '($worstWhere) — target <= 0.01');
   }
 
   // ---- Phase A: speed on a real frame --------------------------------------
