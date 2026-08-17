@@ -537,8 +537,16 @@ abstract class AppLocalizations {
   String get trainingNoSessionsYet;
   String get trainingCompleteSessionToTrack;
   String get trainingSelectTitle;
+  String get trainingCategoriesLabel;
+  String get trainingCategoryDoubles;
+  String get trainingCategoryCheckouts;
+  String get trainingCategoryScoring;
+  String get trainingCategoryGames;
+  String trainingCategoryGameCount(int count);
   String get trainingAroundTheClock;
   String get trainingAroundTheClockDescription;
+  String get trainingAroundTheClockDoublesDescription;
+  String get trainingAroundTheClockScoringDescription;
   String get trainingAroundTheClockDouble;
   String get trainingAroundTheClockTriple;
   String get trainingAtcPickModeTitle;

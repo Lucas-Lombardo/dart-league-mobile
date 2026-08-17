@@ -1385,11 +1385,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingSelectTitle => 'Trainings';
 
   @override
+  String get trainingCategoriesLabel => 'Categories';
+
+  @override
+  String get trainingCategoryDoubles => 'Doubles';
+
+  @override
+  String get trainingCategoryCheckouts => 'Checkouts';
+
+  @override
+  String get trainingCategoryScoring => 'Scoring';
+
+  @override
+  String get trainingCategoryGames => 'Games';
+
+  @override
+  String trainingCategoryGameCount(int count) =>
+      count == 1 ? '1 game' : '$count games';
+
+  @override
   String get trainingAroundTheClock => 'Around the Clock';
 
   @override
   String get trainingAroundTheClockDescription =>
       'Hit 1 through 20 in order, then bullseye. Single, double or triple mode.';
+
+  @override
+  String get trainingAroundTheClockDoublesDescription =>
+      'Hit D1 through D20 in order, then the double bull. Only doubles count.';
+
+  @override
+  String get trainingAroundTheClockScoringDescription =>
+      'Hit 1 through 20 in order, then bullseye. Single or triple mode.';
 
   @override
   String get trainingAroundTheClockDouble => 'Around the Clock (Doubles)';

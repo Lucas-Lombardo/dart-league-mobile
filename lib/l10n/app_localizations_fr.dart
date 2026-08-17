@@ -1398,11 +1398,38 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainingSelectTitle => 'Entraînements';
 
   @override
+  String get trainingCategoriesLabel => 'Catégories';
+
+  @override
+  String get trainingCategoryDoubles => 'Doubles';
+
+  @override
+  String get trainingCategoryCheckouts => 'Checkouts';
+
+  @override
+  String get trainingCategoryScoring => 'Scoring';
+
+  @override
+  String get trainingCategoryGames => 'Jeux';
+
+  @override
+  String trainingCategoryGameCount(int count) =>
+      count == 1 ? '1 jeu' : '$count jeux';
+
+  @override
   String get trainingAroundTheClock => 'Around the Clock';
 
   @override
   String get trainingAroundTheClockDescription =>
       'Touchez 1 à 20 dans l\'ordre puis le centre. Mode simple, double ou triple.';
+
+  @override
+  String get trainingAroundTheClockDoublesDescription =>
+      'D1 à D20 dans l\'ordre, puis le double bull. Seuls les doubles comptent.';
+
+  @override
+  String get trainingAroundTheClockScoringDescription =>
+      'Touchez 1 à 20 dans l\'ordre puis le centre. Mode simple ou triple.';
 
   @override
   String get trainingAroundTheClockDouble => 'Around the Clock (Doubles)';

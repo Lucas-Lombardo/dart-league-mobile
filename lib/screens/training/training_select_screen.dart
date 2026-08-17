@@ -24,6 +24,14 @@ import 'training_ai_screen.dart';
 /// thing.
 const Color kImportantDoublesColor = Color(0xFF199E70);
 
+/// Accent of the Checkouts family — the purple the Checkout 81/121 drill was
+/// already charted in.
+const Color kCheckoutsColor = Color(0xFF7C3AED);
+
+/// The four training families the hub groups the drills into, below the
+/// always-visible bot hero card.
+enum TrainingCategory { doubles, checkouts, scoring, games }
+
 class TrainingSelectScreen extends StatelessWidget {
   const TrainingSelectScreen({super.key});
 
@@ -49,7 +57,140 @@ class TrainingSelectScreen extends StatelessWidget {
               icon: Icons.smart_toy,
             ),
           ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Text(
+                l10n.trainingCategoriesLabel.toUpperCase(),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.6,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  height: 1,
+                  color: AppTheme.surfaceLight.withValues(alpha: 0.65),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _CategoryTile(
+                    title: l10n.trainingCategoryDoubles,
+                    gameCount: 3,
+                    icon: Icons.my_location,
+                    color: kImportantDoublesColor,
+                    gameIcons: const [
+                      Icons.my_location,
+                      Icons.gps_fixed,
+                      Icons.schedule,
+                    ],
+                    onTap: () =>
+                        _openCategory(context, TrainingCategory.doubles),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _CategoryTile(
+                    title: l10n.trainingCategoryCheckouts,
+                    gameCount: 2,
+                    icon: Icons.flag_outlined,
+                    color: kCheckoutsColor,
+                    gameIcons: const [
+                      Icons.center_focus_strong,
+                      Icons.flag_outlined,
+                    ],
+                    onTap: () =>
+                        _openCategory(context, TrainingCategory.checkouts),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _CategoryTile(
+                    title: l10n.trainingCategoryScoring,
+                    gameCount: 2,
+                    icon: Icons.local_fire_department,
+                    color: AppTheme.error,
+                    gameIcons: const [
+                      Icons.local_fire_department,
+                      Icons.schedule,
+                    ],
+                    onTap: () =>
+                        _openCategory(context, TrainingCategory.scoring),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _CategoryTile(
+                    title: l10n.trainingCategoryGames,
+                    gameCount: 1,
+                    icon: Icons.emoji_events,
+                    color: AppTheme.secondary,
+                    gameIcons: const [Icons.emoji_events],
+                    onTap: () => _openCategory(context, TrainingCategory.games),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One training family: the games behind the hub tile the player tapped, as
+/// the full cards (description + rules) the flat list used to show.
+class TrainingCategoryScreen extends StatelessWidget {
+  final TrainingCategory category;
+
+  const TrainingCategoryScreen({super.key, required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(_title(l10n))),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: _tiles(context, l10n),
+      ),
+    );
+  }
+
+  String _title(AppLocalizations l10n) {
+    switch (category) {
+      case TrainingCategory.doubles:
+        return l10n.trainingCategoryDoubles;
+      case TrainingCategory.checkouts:
+        return l10n.trainingCategoryCheckouts;
+      case TrainingCategory.scoring:
+        return l10n.trainingCategoryScoring;
+      case TrainingCategory.games:
+        return l10n.trainingCategoryGames;
+    }
+  }
+
+  List<Widget> _tiles(BuildContext context, AppLocalizations l10n) {
+    switch (category) {
+      case TrainingCategory.doubles:
+        return [
           _TrainingTile(
             title: l10n.trainingImportantDoubles,
             description: l10n.trainingImportantDoublesDescription,
@@ -62,21 +203,6 @@ class TrainingSelectScreen extends StatelessWidget {
               body: l10n.trainingRulesImportantDoubles,
               color: kImportantDoublesColor,
               icon: Icons.my_location,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _TrainingTile(
-            title: l10n.trainingAroundTheClock,
-            description: l10n.trainingAroundTheClockDescription,
-            icon: Icons.schedule,
-            color: AppTheme.primary,
-            onTap: () => _openAtc(context),
-            onInfo: () => showTrainingRulesSheet(
-              context,
-              title: l10n.trainingAroundTheClock,
-              body: l10n.trainingRulesAroundTheClock,
-              color: AppTheme.primary,
-              icon: Icons.schedule,
             ),
           ),
           const SizedBox(height: 12),
@@ -96,20 +222,23 @@ class TrainingSelectScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _TrainingTile(
-            title: l10n.trainingHighScore,
-            description: l10n.trainingHighScoreDescription,
-            icon: Icons.local_fire_department,
-            color: AppTheme.error,
-            onTap: () => _startWithStrategy(context, HighScoreStrategy()),
+            title: l10n.trainingAroundTheClockDouble,
+            description: l10n.trainingAroundTheClockDoublesDescription,
+            icon: Icons.schedule,
+            color: AppTheme.primary,
+            onTap: () =>
+                _startWithStrategy(context, AtcStrategy(mode: AtcMode.double)),
             onInfo: () => showTrainingRulesSheet(
               context,
-              title: l10n.trainingHighScore,
-              body: l10n.trainingRulesHighScore,
-              color: AppTheme.error,
-              icon: Icons.local_fire_department,
+              title: l10n.trainingAroundTheClockDouble,
+              body: l10n.trainingRulesAroundTheClock,
+              color: AppTheme.primary,
+              icon: Icons.schedule,
             ),
           ),
-          const SizedBox(height: 12),
+        ];
+      case TrainingCategory.checkouts:
+        return [
           _TrainingTile(
             title: l10n.trainingCheckout50,
             description: l10n.trainingCheckout50Description,
@@ -129,110 +258,148 @@ class TrainingSelectScreen extends StatelessWidget {
             title: l10n.trainingCheckout81_121,
             description: l10n.trainingCheckout81_121Description,
             icon: Icons.flag_outlined,
-            color: const Color(0xFF7C3AED),
+            color: kCheckoutsColor,
             onTap: () => _openCheckoutPicker(context),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingCheckout81_121,
               body: l10n.trainingRulesCheckout81_121,
-              color: const Color(0xFF7C3AED),
+              color: kCheckoutsColor,
               icon: Icons.flag_outlined,
+            ),
+          ),
+        ];
+      case TrainingCategory.scoring:
+        return [
+          _TrainingTile(
+            title: l10n.trainingHighScore,
+            description: l10n.trainingHighScoreDescription,
+            icon: Icons.local_fire_department,
+            color: AppTheme.error,
+            onTap: () => _startWithStrategy(context, HighScoreStrategy()),
+            onInfo: () => showTrainingRulesSheet(
+              context,
+              title: l10n.trainingHighScore,
+              body: l10n.trainingRulesHighScore,
+              color: AppTheme.error,
+              icon: Icons.local_fire_department,
             ),
           ),
           const SizedBox(height: 12),
           _TrainingTile(
+            title: l10n.trainingAroundTheClock,
+            description: l10n.trainingAroundTheClockScoringDescription,
+            icon: Icons.schedule,
+            color: AppTheme.primary,
+            onTap: () => _openAtcSingleTriple(context),
+            onInfo: () => showTrainingRulesSheet(
+              context,
+              title: l10n.trainingAroundTheClock,
+              body: l10n.trainingRulesAroundTheClock,
+              color: AppTheme.primary,
+              icon: Icons.schedule,
+            ),
+          ),
+        ];
+      case TrainingCategory.games:
+        return [
+          _TrainingTile(
             title: l10n.trainingJdcChallenge,
             description: l10n.trainingJdcChallengeDescription,
             icon: Icons.emoji_events,
-            color: const Color(0xFFEAB308),
+            color: AppTheme.accent,
             onTap: () => _startWithStrategy(context, JdcChallengeStrategy()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingJdcChallenge,
               body: l10n.trainingRulesJdcChallenge,
-              color: const Color(0xFFEAB308),
+              color: AppTheme.accent,
               icon: Icons.emoji_events,
             ),
           ),
-        ],
-      ),
-    );
+        ];
+    }
   }
+}
 
-  Future<void> _openAtc(BuildContext context) async {
-    HapticService.mediumImpact();
-    final l10n = AppLocalizations.of(context);
-    final mode = await showModalBottomSheet<AtcMode>(
-      context: context,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _ModeSheet(
-        title: l10n.trainingAtcPickModeTitle,
-        options: [
-          _SheetOption(
-            label: l10n.trainingAtcSingle,
-            hint: l10n.trainingAtcSingleHint,
-            value: AtcMode.single,
-            color: AppTheme.primary,
-          ),
-          _SheetOption(
-            label: l10n.trainingAtcDouble,
-            hint: l10n.trainingAtcDoubleHint,
-            value: AtcMode.double,
-            color: AppTheme.success,
-          ),
-          _SheetOption(
-            label: l10n.trainingAtcTriple,
-            hint: l10n.trainingAtcTripleHint,
-            value: AtcMode.triple,
-            color: AppTheme.error,
-          ),
-        ],
-      ),
-    );
-    if (mode == null || !context.mounted) return;
-    _startWithStrategy(context, AtcStrategy(mode: mode));
-  }
+void _openCategory(BuildContext context, TrainingCategory category) {
+  HapticService.mediumImpact();
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => TrainingCategoryScreen(category: category),
+    ),
+  );
+}
 
-  Future<void> _openCheckoutPicker(BuildContext context) async {
-    HapticService.mediumImpact();
-    final l10n = AppLocalizations.of(context);
-    final start = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _ModeSheet(
-        title: l10n.trainingCheckoutPickScore,
-        options: [
-          _SheetOption(
-            label: '81',
-            hint: l10n.trainingCheckout81Hint,
-            value: 81,
-            color: AppTheme.primary,
-          ),
-          _SheetOption(
-            label: '121',
-            hint: l10n.trainingCheckout121Hint,
-            value: 121,
-            color: AppTheme.accent,
-          ),
-        ],
-      ),
-    );
-    if (start == null || !context.mounted) return;
-    _startWithStrategy(context, CheckoutFinishStrategy(startScore: start));
-  }
+/// Mode sheet for the Scoring-family Around the Clock card. The Doubles mode
+/// has its own card in the Doubles family, so only Single and Triple remain.
+Future<void> _openAtcSingleTriple(BuildContext context) async {
+  HapticService.mediumImpact();
+  final l10n = AppLocalizations.of(context);
+  final mode = await showModalBottomSheet<AtcMode>(
+    context: context,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => _ModeSheet(
+      title: l10n.trainingAtcPickModeTitle,
+      options: [
+        _SheetOption(
+          label: l10n.trainingAtcSingle,
+          hint: l10n.trainingAtcSingleHint,
+          value: AtcMode.single,
+          color: AppTheme.primary,
+        ),
+        _SheetOption(
+          label: l10n.trainingAtcTriple,
+          hint: l10n.trainingAtcTripleHint,
+          value: AtcMode.triple,
+          color: AppTheme.error,
+        ),
+      ],
+    ),
+  );
+  if (mode == null || !context.mounted) return;
+  _startWithStrategy(context, AtcStrategy(mode: mode));
+}
 
-  void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
-    HapticService.mediumImpact();
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TrainingAiScreen(strategy: strategy)),
-    );
-  }
+Future<void> _openCheckoutPicker(BuildContext context) async {
+  HapticService.mediumImpact();
+  final l10n = AppLocalizations.of(context);
+  final start = await showModalBottomSheet<int>(
+    context: context,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => _ModeSheet(
+      title: l10n.trainingCheckoutPickScore,
+      options: [
+        _SheetOption(
+          label: '81',
+          hint: l10n.trainingCheckout81Hint,
+          value: 81,
+          color: AppTheme.primary,
+        ),
+        _SheetOption(
+          label: '121',
+          hint: l10n.trainingCheckout121Hint,
+          value: 121,
+          color: AppTheme.accent,
+        ),
+      ],
+    ),
+  );
+  if (start == null || !context.mounted) return;
+  _startWithStrategy(context, CheckoutFinishStrategy(startScore: start));
+}
+
+void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
+  HapticService.mediumImpact();
+  Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => TrainingAiScreen(strategy: strategy)),
+  );
 }
 
 /// Opens the rank picker bottomsheet and, if a rank is chosen, configures the
@@ -731,6 +898,107 @@ class _TrainingTile extends StatelessWidget {
                 )
               else
                 const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Square hub tile for a training family. The shape is the signal: full-width
+/// cards launch a game, tiles open a category — with the games it contains
+/// echoed as a mini icon row at the bottom.
+class _CategoryTile extends StatelessWidget {
+  final String title;
+  final int gameCount;
+  final IconData icon;
+  final Color color;
+  final List<IconData> gameIcons;
+  final VoidCallback onTap;
+
+  const _CategoryTile({
+    required this.title,
+    required this.gameCount,
+    required this.icon,
+    required this.color,
+    required this.gameIcons,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                l10n.trainingCategoryGameCount(gameCount).toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Spacer(),
+              Row(
+                children: [
+                  for (final gameIcon in gameIcons)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 5),
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: AppTheme.textSecondary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppTheme.surfaceLight.withValues(
+                              alpha: 0.65,
+                            ),
+                          ),
+                        ),
+                        child: Icon(
+                          gameIcon,
+                          color: AppTheme.textSecondary,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
