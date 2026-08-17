@@ -316,6 +316,13 @@ class P2pRtcSession {
   /// The renderer reports its resolution asynchronously (and re-reports it
   /// when the peer rotates), hence the listenable — and `contain` until the
   /// first resolution lands, so nothing is cropped on a guess.
+  ///
+  /// `value.width/height` are the frame's PRE-rotation dimensions: WebRTC
+  /// ships Android camera frames unrotated plus a rotation flag (CVO), and
+  /// RTCVideoView applies that flag at paint time. Sizing the box from the
+  /// raw dimensions gave a portrait Android sender a landscape box around a
+  /// portrait picture, and the inner `cover` zoomed ~1.8× straight into the
+  /// board — so the box must be sized from the DISPLAYED (rotated) ones.
   Widget remoteView() => ValueListenableBuilder<RTCVideoValue>(
         valueListenable: remoteRenderer,
         builder: (context, value, _) {
@@ -325,9 +332,10 @@ class P2pRtcSession {
               objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
             );
           }
+          final rotated = value.rotation == 90 || value.rotation == 270;
           return BoardSafeVideo(
-            sourceWidth: value.width,
-            sourceHeight: value.height,
+            sourceWidth: rotated ? value.height : value.width,
+            sourceHeight: rotated ? value.width : value.height,
             child: RTCVideoView(
               remoteRenderer,
               objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
