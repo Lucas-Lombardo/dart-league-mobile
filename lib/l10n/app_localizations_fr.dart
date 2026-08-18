@@ -2939,4 +2939,39 @@ class AppLocalizationsFr extends AppLocalizations {
   String get turnReportRemove => 'RETIRER CE SIGNALEMENT';
   @override
   String get turnReportSent => 'Signalement envoyé';
+
+  @override
+  String get spectateLiveTitle => 'En direct';
+  @override
+  String get spectateLiveNow => 'EN CE MOMENT';
+  @override
+  String get spectateRankedSection => 'CLASSÉ';
+  @override
+  String get spectateTournamentsSection => 'TOURNOIS';
+  @override
+  String get spectateWatch => 'Regarder';
+  @override
+  String spectateMatchesLive(int count) =>
+      count == 1 ? 'match en direct' : 'matchs en direct';
+  @override
+  String spectateMatchCountBadge(int count) =>
+      count == 1 ? '1 MATCH' : '$count MATCHS';
+  @override
+  String get spectateNoLiveMatches => 'Aucun match en direct pour le moment';
+  @override
+  String get spectateVirtualBoard => 'CIBLE VIRTUELLE';
+  @override
+  String spectateVisitOf(String name) => 'VOLÉE DE $name';
+  @override
+  String get spectateLastVisits => 'DERNIÈRES VOLÉES';
+  @override
+  String get spectateLeave => 'QUITTER';
+  @override
+  String get spectateUnavailable => 'Spectateur indisponible pour ce match';
+  @override
+  String get spectateMatchOver => 'Match terminé';
+  @override
+  String get spectateConnecting => 'Connexion au match…';
+  @override
+  String get spectateWaitingNextLeg => 'En attente de la manche suivante…';
 }

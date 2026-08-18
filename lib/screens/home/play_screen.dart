@@ -9,7 +9,10 @@ import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../widgets/activity_pill.dart';
+import '../../widgets/live_matches_pill.dart';
 import '../../services/presence_service.dart';
+import '../../services/socket_service.dart';
+import '../../services/spectate_service.dart';
 import '../../services/user_service.dart';
 import '../../services/match_service.dart';
 import '../../services/tournament_service.dart';
@@ -51,6 +54,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   bool _inActiveTournament = false;
   String? _activeTournamentName;
   ActivitySnapshot? _activity;
+  int _liveCount = 0;
 
   @override
   void initState() {
@@ -73,6 +77,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
     _loadActivity();
+    _loadLiveCount();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshSubscription();
       // Live tournament state: the provider is refreshed by its 30s poll,
@@ -111,6 +116,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     _refreshSubscription();
     _loadPlacementStatusIfUnranked();
     _loadActivity();
+    _loadLiveCount();
   }
 
   /// Feeds the activity pulse card; the card stays hidden until (and unless)
@@ -119,6 +125,24 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final snapshot = await PresenceService.fetchActivity();
     if (mounted && snapshot != null) {
       setState(() => _activity = snapshot);
+    }
+  }
+
+  /// Feeds the live-matches pill; 0 (no capability, error, nothing live)
+  /// keeps the classic activity pill in place. Gated on the handshake's
+  /// supportsSpectate so a pre-spectate backend is never polled (guaranteed
+  /// 404 otherwise).
+  Future<void> _loadLiveCount() async {
+    try {
+      await SocketService.ensureAuthenticated();
+    } catch (_) {}
+    if (!SocketService.supportsSpectate) {
+      if (mounted && _liveCount != 0) setState(() => _liveCount = 0);
+      return;
+    }
+    final live = await SpectateService.fetchLive();
+    if (mounted) {
+      setState(() => _liveCount = live?.liveCount ?? 0);
     }
   }
 
@@ -855,6 +879,7 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
           _checkPendingTournamentMatch(),
           _checkActiveTournamentStatus(),
           _loadActivity(),
+          _loadLiveCount(),
         ]);
       },
       child: SingleChildScrollView(
@@ -880,7 +905,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
               progress: progress,
             ),
           const SizedBox(height: 20),
-          if (_activity != null) ...[
+          // While spectatable matches are running, the activity pill hands
+          // its slot to the live pill (entry point of the "En direct" hub).
+          if (_liveCount > 0) ...[
+            LiveMatchesPill(count: _liveCount),
+            const SizedBox(height: 14),
+          ] else if (_activity != null) ...[
             ActivityPill(snapshot: _activity!),
             const SizedBox(height: 14),
           ],

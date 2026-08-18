@@ -2909,4 +2909,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get turnReportRemove => 'REMOVE THIS REPORT';
   @override
   String get turnReportSent => 'Report sent';
+
+  @override
+  String get spectateLiveTitle => 'Live now';
+  @override
+  String get spectateLiveNow => 'LIVE NOW';
+  @override
+  String get spectateRankedSection => 'RANKED';
+  @override
+  String get spectateTournamentsSection => 'TOURNAMENTS';
+  @override
+  String get spectateWatch => 'Watch';
+  @override
+  String spectateMatchesLive(int count) =>
+      count == 1 ? 'live match' : 'live matches';
+  @override
+  String spectateMatchCountBadge(int count) =>
+      count == 1 ? '1 MATCH' : '$count MATCHES';
+  @override
+  String get spectateNoLiveMatches => 'No live matches right now';
+  @override
+  String get spectateVirtualBoard => 'VIRTUAL BOARD';
+  @override
+  String spectateVisitOf(String name) => "$name'S VISIT";
+  @override
+  String get spectateLastVisits => 'LAST VISITS';
+  @override
+  String get spectateLeave => 'LEAVE';
+  @override
+  String get spectateUnavailable => 'Spectating unavailable for this match';
+  @override
+  String get spectateMatchOver => 'Match over';
+  @override
+  String get spectateConnecting => 'Connecting to the match…';
+  @override
+  String get spectateWaitingNextLeg => 'Waiting for the next leg…';
 }

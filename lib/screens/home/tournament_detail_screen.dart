@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
@@ -11,7 +13,10 @@ import '../../utils/tournament_registration_gate.dart';
 import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/round_labels.dart';
+import '../../services/socket_service.dart';
+import '../../services/spectate_service.dart';
 import '../../widgets/trophy_image.dart';
+import '../spectate/spectator_match_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 
 String _initials(String? username) {
@@ -628,6 +633,12 @@ class _BracketTab extends StatelessWidget {
           onSelected: onRoundSelected,
         ),
         const SizedBox(height: 12),
+        // Live matches one can spectate right now — hidden while nothing is
+        // live (or against a backend without the spectate endpoint).
+        _LiveNowSection(
+          tournamentId: tournament.id,
+          currentUserId: currentUserId,
+        ),
         // Persistent explanation for a player whose own match is frozen by a
         // dispute — without it they have no way to understand why they haven't
         // advanced (the one-time dialog at refusal time is long gone, and the
@@ -1765,6 +1776,231 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
           ),
         );
       },
+    );
+  }
+}
+
+/// "EN CE MOMENT" — live matches of this tournament, spectatable in one tap.
+/// Self-contained: fetches /spectate/live on mount and every 30s, filters on
+/// this tournament, and hides itself entirely when nothing is live (including
+/// against an older backend without the endpoint). The viewer's own match is
+/// excluded — they resume it through the join flow, never as a spectator.
+class _LiveNowSection extends StatefulWidget {
+  final String tournamentId;
+  final String? currentUserId;
+
+  const _LiveNowSection({
+    required this.tournamentId,
+    required this.currentUserId,
+  });
+
+  @override
+  State<_LiveNowSection> createState() => _LiveNowSectionState();
+}
+
+class _LiveNowSectionState extends State<_LiveNowSection> {
+  List<LiveTournamentMatch> _matches = const [];
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    // Same gate as the home pill: never poll a backend without the endpoint.
+    try {
+      await SocketService.ensureAuthenticated();
+    } catch (_) {}
+    if (!SocketService.supportsSpectate) return;
+    final live = await SpectateService.fetchLive();
+    if (!mounted) return;
+    final group = live?.tournaments
+        .where((t) => t.tournamentId == widget.tournamentId)
+        .toList();
+    setState(() {
+      _matches = (group == null || group.isEmpty)
+          ? const []
+          : group.first.matches
+              .where((m) =>
+                  m.player1.id != widget.currentUserId &&
+                  m.player2.id != widget.currentUserId)
+              .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_matches.isEmpty) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              l10n.spectateLiveNow,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                height: 1,
+                color: AppTheme.surfaceLight.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final match in _matches) ...[
+          _LiveNowRow(match: match, onWatch: () => _watch(match)),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  void _watch(LiveTournamentMatch match) {
+    final l10n = AppLocalizations.of(context);
+    HapticService.lightImpact();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => SpectatorMatchScreen(
+          matchId: match.matchId,
+          title:
+              localizedRoundLabelRaw(l10n, match.roundName, match.roundNumber)
+                  .toUpperCase(),
+          seedTournament: match,
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveNowRow extends StatelessWidget {
+  final LiveTournamentMatch match;
+  final VoidCallback onWatch;
+
+  const _LiveNowRow({required this.match, required this.onWatch});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return InkWell(
+      onTap: onWatch,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${match.player1.username} vs ${match.player2.username}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${match.player1LegsWon}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.playerBlue,
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' – ',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.textSecondary
+                                    .withValues(alpha: 0.6),
+                              ),
+                            ),
+                            TextSpan(
+                              text: '${match.player2LegsWon}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.opponentPink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.visibility_outlined,
+                          size: 13, color: AppTheme.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${match.spectatorCount}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.primary, AppTheme.primaryDark],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                l10n.spectateWatch,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -42,6 +42,13 @@ class SocketService {
   // actually registered.
   static final Map<String, Object> _handlerOwners = {};
 
+  // Multi-consumer registry, additive next to the single-slot one: several
+  // owners can listen to the SAME event without displacing each other or the
+  // single-slot handler. Needed by the spectator screens, which listen to the
+  // very event names the game providers own (score_updated, game_state_sync,
+  // …) — registering those through on() would silently unhook a live match.
+  static final Map<String, Map<Object, Function(dynamic)>> _sharedHandlers = {};
+
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   static Timer? _reconnectRestartTimer;
 
@@ -95,6 +102,11 @@ class SocketService {
   // older backend the sheet is skipped and every invite stays X01.
   static bool _supportsCricket = false;
 
+  // Whether the server accepts spectate_match / leave_spectate and serves
+  // GET /spectate/live. Gates the whole "En direct" surface: against an older
+  // backend the live pill and hub simply never appear.
+  static bool _supportsSpectate = false;
+
   // True once the current socket has received the server's `authenticated`
   // handshake — the event that carries the capability flags above. Reset on
   // every disconnect, like the flags themselves, so it always describes the
@@ -135,6 +147,10 @@ class SocketService {
   /// Whether the server this socket is authenticated against can run cricket
   /// friendly matches. See [_supportsCricket].
   static bool get supportsCricket => _supportsCricket;
+
+  /// Whether the server this socket is authenticated against supports the
+  /// spectator mode. See [_supportsSpectate].
+  static bool get supportsSpectate => _supportsSpectate;
 
   /// Whether the current socket has completed the `authenticated` handshake.
   static bool get isAuthenticated => _isAuthenticated;
@@ -246,6 +262,12 @@ class SocketService {
       debugPrint('SocketService: server supportsCricket=$supportsCricket');
     }
     _supportsCricket = supportsCricket;
+
+    final supportsSpectate = data is Map && data['supportsSpectate'] == true;
+    if (supportsSpectate != _supportsSpectate) {
+      debugPrint('SocketService: server supportsSpectate=$supportsSpectate');
+    }
+    _supportsSpectate = supportsSpectate;
   }
 
   /// Supplies the CONNECT-packet auth payload, called by socket.io on every
@@ -437,6 +459,7 @@ class SocketService {
         _supportsRtcV2 = false;
         _supportsTurnReports = false;
         _supportsCricket = false;
+        _supportsSpectate = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
           l();
@@ -511,6 +534,11 @@ class SocketService {
       _handlers.forEach((event, handler) {
         _socket!.on(event, handler);
       });
+      _sharedHandlers.forEach((event, byOwner) {
+        for (final handler in byOwner.values) {
+          _socket!.on(event, handler);
+        }
+      });
 
       _socket!.connect();
     } catch (e) {
@@ -556,12 +584,14 @@ class SocketService {
     _supportsChat = false;
     _supportsRtcV2 = false;
     _supportsCricket = false;
+    _supportsSpectate = false;
     if (_socket != null) {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
       if (!preserveHandlers) {
         _handlers.clear();
+        _sharedHandlers.clear();
       }
     }
   }
@@ -597,6 +627,12 @@ class SocketService {
   static void debugDispatch(String event, dynamic data) {
     if (event == 'authenticated') _handleAuthenticated(data);
     _handlers[event]?.call(data);
+    final shared = _sharedHandlers[event];
+    if (shared != null) {
+      for (final handler in List.of(shared.values)) {
+        handler(data);
+      }
+    }
   }
 
   @visibleForTesting
@@ -609,8 +645,10 @@ class SocketService {
     _supportsDartAck = false;
     _supportsChat = false;
     _supportsRtcV2 = false;
+    _supportsSpectate = false;
     _handlers.clear();
     _handlerOwners.clear();
+    _sharedHandlers.clear();
     _disconnectListeners.clear();
     _reconnectListeners.clear();
     _connectFailedListeners.clear();
@@ -648,6 +686,35 @@ class SocketService {
     // Socket may be mid-rebuild (token refresh); connect() attaches every
     // tracked handler to the new instance, so storing it is enough.
     _socket?.on(event, handler);
+  }
+
+  /// Register [handler] for [event] in the multi-consumer registry: it
+  /// coexists with the single-slot handler and with other owners' shared
+  /// handlers for the same event. Re-registering with the same [owner]
+  /// replaces only that owner's handler. Survives socket rebuilds like the
+  /// single-slot registry (re-attached inside connect()).
+  static void onShared(String event, Function(dynamic) handler,
+      {required Object owner}) {
+    final byOwner = _sharedHandlers.putIfAbsent(event, () => {});
+    final previous = byOwner[owner];
+    if (previous != null) {
+      _socket?.off(event, previous);
+    }
+    byOwner[owner] = handler;
+    _socket?.on(event, handler);
+  }
+
+  /// Remove [owner]'s shared handler for [event]. Other owners' handlers and
+  /// the single-slot handler are untouched.
+  static void offShared(String event, {required Object owner}) {
+    final byOwner = _sharedHandlers[event];
+    final handler = byOwner?.remove(owner);
+    if (byOwner != null && byOwner.isEmpty) {
+      _sharedHandlers.remove(event);
+    }
+    if (handler != null) {
+      _socket?.off(event, handler);
+    }
   }
 
   /// Remove the handler for [event]. With [owner] set, this is a no-op unless

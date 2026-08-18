@@ -1142,6 +1142,24 @@ abstract class AppLocalizations {
   String get turnReportDialogTitle;
   String get turnReportRemove;
   String get turnReportSent;
+
+  // Spectator mode
+  String get spectateLiveTitle;
+  String get spectateLiveNow;
+  String get spectateRankedSection;
+  String get spectateTournamentsSection;
+  String get spectateWatch;
+  String spectateMatchesLive(int count);
+  String spectateMatchCountBadge(int count);
+  String get spectateNoLiveMatches;
+  String get spectateVirtualBoard;
+  String spectateVisitOf(String name);
+  String get spectateLastVisits;
+  String get spectateLeave;
+  String get spectateUnavailable;
+  String get spectateMatchOver;
+  String get spectateConnecting;
+  String get spectateWaitingNextLeg;
 }
 
 class _AppLocalizationsDelegate

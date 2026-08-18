@@ -5,7 +5,14 @@ import '../models/tournament.dart';
 /// The model's [TournamentMatch.roundNameDisplay] is English-only; screens
 /// must go through this instead.
 String localizedRoundLabel(AppLocalizations l10n, TournamentMatch match) {
-  switch (match.roundName) {
+  return localizedRoundLabelRaw(l10n, match.roundName, match.roundNumber);
+}
+
+/// Same labels from raw fields, for data that isn't a [TournamentMatch]
+/// (e.g. the spectate live feed).
+String localizedRoundLabelRaw(
+    AppLocalizations l10n, String roundName, int roundNumber) {
+  switch (roundName) {
     case 'final':
       return l10n.roundFinalLabel;
     case 'semi_final':
@@ -19,6 +26,6 @@ String localizedRoundLabel(AppLocalizations l10n, TournamentMatch match) {
     case 'round_of_64':
       return l10n.roundOf64Label;
     default:
-      return l10n.roundNLabel(match.roundNumber);
+      return l10n.roundNLabel(roundNumber);
   }
 }
