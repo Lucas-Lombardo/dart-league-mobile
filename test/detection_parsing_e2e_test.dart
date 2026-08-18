@@ -68,13 +68,12 @@ void main() {
       }
     });
 
-    test('the bundled assets are paired with the right layout', () {
-      expect(ModelSelector.layoutForAsset(ModelSelector.v10Asset),
-          DetectionLayout.e2eDartFirst);
-      expect(ModelSelector.layoutForAsset(ModelSelector.lightAsset),
-          DetectionLayout.anchorDartLast);
-      expect(ModelSelector.currentLayout,
-          ModelSelector.layoutForAsset(ModelSelector.currentAsset));
+    test('the bundled assets share the DartsMind anchor layout', () {
+      // Both device tiers (light/heavy) parse under the same contract, so
+      // whichever one init() picks, the const layout stays correct.
+      expect(ModelSelector.currentLayout, DetectionLayout.anchorDartLast);
+      expect(ModelSelector.currentAsset,
+          anyOf(ModelSelector.lightAsset, ModelSelector.heavyAsset));
     });
   });
 

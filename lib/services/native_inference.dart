@@ -28,27 +28,13 @@ class NativeInference {
   /// get benchmarked against each other on-device — see
   /// lib/dev/delegate_bench.dart).
   ///
-  /// 'xnnpack' is the measured winner for dartboard-v10, in BOTH exports
-  /// (2026-08-13 bench, iPhone de Lucas, pure-invoke ms):
-  ///   int8dyn: xnnpack 106ms vs coreml 330ms — CoreML took 42 of 433 nodes
-  ///     across 98 partitions, so each invoke paid ~98 CPU↔ANE hand-offs.
-  ///   float16: xnnpack 106ms vs coreml 297ms, cold phone. The float16
-  ///     re-export handed the Android GPU delegate the whole graph (604/604
-  ///     nodes) and cut the Pixel 8 from 511ms to 66ms — it did nothing at
-  ///     all for CoreML here. Scoring is unaffected by the choice: 9/9 frames
-  ///     identical, mean tip distance 0.0px.
-  ///
-  /// The ranking is a property of the GRAPH, and it has now flipped twice:
-  /// v7/YOLO26 xnnpack 332ms vs coreml 518ms (48/632 nodes, 2026-08-09) →
-  /// dart-rival-ia-light coreml 56ms vs xnnpack 133ms (2026-08-10) → v10
-  /// back to xnnpack. Re-bench any NEW model, never predict.
-  ///
-  /// xnnpack measured 106ms at thermal=3 AND at thermal=1, so unlike the old
-  /// model (133ms cool / 215ms at thermal=2) this figure is not thermally
-  /// sensitive. It is however ~2× the 56ms the shipped light model reaches on
-  /// CoreML, and above the 66ms budget of a 15fps frame — the iOS cost of v10
-  /// is real and is a product decision, not a delegate one.
-  static const String iosDelegate = 'xnnpack';
+  /// 'auto' lands on CoreML, the measured winner for the DartsMind anchor
+  /// models: dart-rival-ia-light 56ms coreml vs 133ms xnnpack (2026-08-10,
+  /// iPhone de Lucas). The ranking is a property of the GRAPH and has flipped
+  /// between models before (v7/YOLO26 favored xnnpack, 2026-08-09) — and
+  /// dart-rival-ia-heavy has NOT been benched. Re-bench any new model, never
+  /// predict.
+  static const String iosDelegate = 'auto';
 
   // Both native plugins run everything on ONE serial thread (dvExecutor on
   // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —
@@ -71,9 +57,7 @@ class NativeInference {
 
   /// Pure model-invoke time (ms) of the last successful analyze, measured on
   /// the native side — excludes preprocess, channel marshaling and Dart-side
-  /// parsing. Null until the first successful frame. This is what feeds the
-  /// ModelSelector ladder: its 260/500ms thresholds are DartsMind's
-  /// pure-inference cut-offs, not end-to-end figures.
+  /// parsing. Null until the first successful frame.
   int? lastNativeInferMs;
 
   /// True when the last analyze call failed at the ENGINE level: model not
@@ -244,8 +228,9 @@ class NativeInference {
 
   Future<void> loadModel() async {
     try {
-      // Single model (v7). Native reuses the interpreter when the model file
-      // is unchanged, so reloads after a recovery are cheap.
+      // Per-device model, resolved once by ModelSelector.init(). Native
+      // reuses the interpreter when the model file is unchanged, so reloads
+      // after a recovery are cheap.
       final asset = ModelSelector.currentAsset;
       if (Platform.isAndroid) {
         // Android: extract model to temp file via rootBundle (always works),

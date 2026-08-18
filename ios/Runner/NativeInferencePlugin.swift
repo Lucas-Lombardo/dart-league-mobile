@@ -341,10 +341,10 @@ class NativeInferencePlugin: NSObject {
         delegateKind = .cpu
     }
 
-    // Must track the bundled models (ModelSelector). Current model first,
-    // previous one as fallback — Dart always passes an explicit modelName,
-    // so this order only matters if that lookup misses.
-    private let defaultModelOrder = ["dartboard-v10_o2o_float16", "dart-rival-ia-light"]
+    // Must track the bundled models (ModelSelector). Dart always passes an
+    // explicit modelName (the per-device light/heavy choice), so this order
+    // only matters if that lookup misses — light first, safe on any device.
+    private let defaultModelOrder = ["dart-rival-ia-light", "dart-rival-ia-heavy"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/
@@ -421,8 +421,8 @@ class NativeInferencePlugin: NSObject {
             "yScale": yScale,
             "imageWidth": width,
             "imageHeight": height,
-            // Pure invoke time — feeds the Dart-side ModelSelector ladder,
-            // whose thresholds are pure-inference cut-offs (DartsMind).
+            // Pure invoke time — surfaced to Dart as
+            // NativeInference.lastNativeInferMs (timing diagnostics).
             "inferenceMs": inferenceMs,
         ] as [String: Any])
     }

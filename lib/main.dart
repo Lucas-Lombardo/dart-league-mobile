@@ -31,6 +31,7 @@ import 'screens/home_screen.dart';
 import 'dev/delegate_bench.dart';
 import 'services/api_service.dart';
 import 'services/dataset_capture_service.dart';
+import 'services/model_selector.dart';
 import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
 import 'utils/dart_caller_service.dart';
@@ -91,6 +92,11 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   
+  // Pick the AI model for this device (light on weak phones, heavy on
+  // capable ones) before anything can call loadModel. Self-guarded: a failed
+  // probe keeps the light model, which runs everywhere.
+  await ModelSelector.init();
+
   // Load the sound & haptics preferences so they're ready before any match.
   // Guarded like the Firebase/IAP inits above: these read flutter_secure_
   // storage, which throws a PlatformException on a corrupted Android keystore

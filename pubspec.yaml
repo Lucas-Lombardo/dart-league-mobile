@@ -122,12 +122,10 @@ flutter:
     # everything inside it, including the .DS_Store the Finder keeps
     # recreating (.gitignore does not filter what Flutter bundles). These
     # files are ~16 MB, so nothing unwanted should ride along.
-    # The model the app runs (ModelSelector.currentAsset).
-    - assets/models/dartboard-v10_o2o_float16_gpufix.tflite
-    # Previous model, kept bundled (3.9 MB) so a replay can be scored under
-    # both before v10 is trusted in ranked play. Drop this line once the A/B
-    # is settled — see ModelSelector.lightAsset.
+    # The models the app runs — ModelSelector.init() picks ONE per device:
+    # light (3.9 MB) on weak phones, heavy (12.8 MB) on capable ones.
     - assets/models/dart-rival-ia-light.tflite
+    - assets/models/dart-rival-ia-heavy.tflite
     - assets/models/check_inference.jpg
     # Dev-only: real match frames for the on-device delegate accuracy bench
     # (lib/dev/delegate_bench.dart). Kept COMMENTED OUT so the ~2.3 MB never

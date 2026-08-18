@@ -466,14 +466,14 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             // Use FlutterAssets to get the correct path inside the APK.
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/dartboard-v10_o2o_float16.tflite" doesn't
+            // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
             // work with Android's AssetManager directly.
-            // NB: Dart normally loads via loadModelFile (temp file) — this
-            // asset path is the fallback and must track the bundled model
-            // (ModelSelector.currentAsset). Loading the WRONG model here is
-            // not a crash but a silent misread: the two bundled models put
-            // the dart at opposite class indices (see DetectionLayout).
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dartboard-v10_o2o_float16.tflite")
+            // NB: Dart normally loads via loadModelFile (temp file) with the
+            // per-device model ModelSelector picked. This no-arg fallback
+            // can't know that choice, so it loads the light model — safe on
+            // any device, and both bundled models share one output layout so
+            // a mismatch costs speed, never a misread.
+            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)
             android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")
@@ -675,8 +675,8 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             response["yScale"] = yScale
             response["imageWidth"] = width
             response["imageHeight"] = height
-            // Pure invoke time — feeds the Dart-side ModelSelector ladder,
-            // whose thresholds are pure-inference cut-offs (DartsMind).
+            // Pure invoke time — surfaced to Dart as
+            // NativeInference.lastNativeInferMs (timing diagnostics).
             response["inferenceMs"] = inferenceMs
 
             mainHandler.post { result.success(response) }
@@ -823,7 +823,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             response["yScale"] = yScale
             response["imageWidth"] = bw
             response["imageHeight"] = bh
-            // Pure invoke time for the ModelSelector ladder (see analyze()).
+            // Pure invoke time (see analyze()).
             response["inferenceMs"] = inferenceMs
 
             mainHandler.post { result.success(response) }
