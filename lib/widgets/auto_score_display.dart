@@ -56,9 +56,14 @@ class AutoScoreGameView extends StatelessWidget {
   final int myLegs;
   final int opponentLegs;
 
-  /// Replaces the X01 [UserScoreBar] (cricket board + points). Null keeps
-  /// today's layout untouched.
+  /// Extra content below the visit chips (cricket "BO3 · Manche" caption
+  /// line). Purely additive — the score itself always lives on the camera.
   final Widget? scorePanel;
+
+  /// Translucent panel docked to the bottom of the camera feed (cricket marks
+  /// HUD). Null on X01 → the view docks its own [CameraScoreBand] there, so
+  /// the score is readable without scrolling (2026-08-18 no-scroll redesign).
+  final Widget? cameraOverlay;
 
   /// Overrides the visit TOTAL display ("+3 marques"). Null = X01 points sum.
   final String? visitTotalText;
@@ -101,6 +106,7 @@ class AutoScoreGameView extends StatelessWidget {
     this.myLegs = 0,
     this.opponentLegs = 0,
     this.scorePanel,
+    this.cameraOverlay,
     this.visitTotalText,
     this.chipSubtitle,
     this.onBack,
@@ -124,6 +130,21 @@ class AutoScoreGameView extends StatelessWidget {
         final safeBottom = MediaQuery.of(context).padding.bottom;
         final isLandscape =
             MediaQuery.of(context).orientation == Orientation.landscape;
+
+        // 2026-08-18 no-scroll redesign: the score lives ON the camera as a
+        // translucent overlay. Cricket passes its marks HUD; X01 gets the
+        // score band by default.
+        final effectiveCameraOverlay =
+            cameraOverlay ??
+            CameraScoreBand(
+              myName: myName,
+              opponentName: opponentName,
+              myScore: myScore,
+              opponentScore: opponentScore,
+              seriesTitle: seriesTitle,
+              myLegs: myLegs,
+              opponentLegs: opponentLegs,
+            );
 
         // ── Camera feed + overlay controls ──
         final cameraPanel = GameCameraPanel(
@@ -154,6 +175,7 @@ class AutoScoreGameView extends StatelessWidget {
           onZoomIn: onZoomIn,
           onZoomOut: onZoomOut,
           bottomBar: captureButton,
+          bottomOverlay: effectiveCameraOverlay,
         );
 
         // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──
@@ -215,17 +237,6 @@ class AutoScoreGameView extends StatelessWidget {
             }),
           ),
         );
-
-        final scoreBar = scorePanel ??
-            UserScoreBar(
-              myName: myName,
-              opponentName: opponentName,
-              myScore: myScore,
-              opponentScore: opponentScore,
-              seriesTitle: seriesTitle,
-              myLegs: myLegs,
-              opponentLegs: opponentLegs,
-            );
 
         // ── Bottom row: AUTO VALIDATION chip + CONFIRM button ──
         final showAutoValidation =
@@ -341,21 +352,16 @@ class AutoScoreGameView extends StatelessWidget {
                       safeBottom + 8,
                     ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                visitLabel,
-                                const SizedBox(height: 8),
-                                chipsRow,
-                                const SizedBox(height: 10),
-                                scoreBar,
-                              ],
-                            ),
-                          ),
-                        ),
+                        visitLabel,
+                        const SizedBox(height: 8),
+                        chipsRow,
+                        if (scorePanel != null) ...[
+                          const SizedBox(height: 10),
+                          scorePanel!,
+                        ],
+                        const Spacer(),
                         const SizedBox(height: 8),
                         bottomRow,
                       ],
@@ -380,7 +386,7 @@ class AutoScoreGameView extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: SingleChildScrollView(
+                child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -388,8 +394,10 @@ class AutoScoreGameView extends StatelessWidget {
                       visitLabel,
                       const SizedBox(height: 8),
                       chipsRow,
-                      const SizedBox(height: 10),
-                      scoreBar,
+                      if (scorePanel != null) ...[
+                        const SizedBox(height: 12),
+                        scorePanel!,
+                      ],
                     ],
                   ),
                 ),

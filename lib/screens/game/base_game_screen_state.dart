@@ -1906,7 +1906,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     );
   }
 
-  Widget buildOpponentTurnVideoLayout(dynamic game) {
+  /// [bottomOverlay] is the opponent-visit ticker docked to the bottom of the
+  /// feed; [leading] a back button and [roundChipText] a "TOUR n" pill, both
+  /// top-left — used by the cricket layout, whose screen has no header
+  /// (2026-08-18 no-scroll redesign).
+  Widget buildOpponentTurnVideoLayout(
+    dynamic game, {
+    Widget? bottomOverlay,
+    Widget? leading,
+    String? roundChipText,
+  }) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     final cricket = cricketStateOf(game);
     // Same "Waiting..." placeholder for the P2P and Agora branches.
@@ -1950,8 +1959,40 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               right: 0,
               child: Center(child: LogoWatermark()),
             ),
-            // ── Live badge ──
-            const Positioned(top: 12, left: 12, child: LiveBadge()),
+            // ── Back button (cricket: the screen has no header to host it) ──
+            if (leading != null) Positioned(top: 10, left: 10, child: leading),
+            // ── Live badge (slides right when a back button is docked) ──
+            Positioned(
+              top: 12,
+              left: leading != null ? 58 : 12,
+              child: const LiveBadge(),
+            ),
+            // ── "TOUR n" pill (cricket: replaces the header's round chip) ──
+            if (roundChipText != null)
+              Positioned(
+                top: 58,
+                left: 10,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.gameBackground.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppTheme.surfaceLight.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Text(
+                    roundChipText,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
             // ── Mic / camera controls ──
             Positioned(
               top: 10,
@@ -1970,6 +2011,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 ),
               ]),
             ),
+            // ── Opponent-visit ticker docked to the feed's bottom edge ──
+            if (bottomOverlay != null)
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 12,
+                child: IgnorePointer(child: bottomOverlay),
+              ),
           ],
         ),
       );
@@ -2002,67 +2051,6 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } catch (_) {
       return null;
     }
-  }
-
-  /// "VOLÉE DE (name) … TOTAL n" label row + the three visit chips for the
-  /// opponent's current visit.
-  Widget buildOpponentVisitSection(dynamic game) {
-    final l10n = AppLocalizations.of(context);
-    final throws = game.opponentRoundThrows as List<String>;
-    final cricket = cricketStateOf(game);
-    final total = throws.fold<int>(0, (sum, n) => sum + notationPoints(n));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (cricket != null) ...[
-          CricketBoardStrip(state: cricket, showLegend: false),
-          const SizedBox(height: 12),
-        ],
-        Row(children: [
-          Expanded(
-            child: Text(
-              l10n.visitOf(opponentUsername.toUpperCase()),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-          VisitTotal(
-            total: total,
-            color: AppTheme.opponentPinkBright,
-            text: cricket != null ? cricketVisitTotal(throws) : null,
-          ),
-        ]),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 74,
-          child: Row(
-            children: List.generate(3, (i) {
-              final notation = i < throws.length ? throws[i] : null;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
-                  child: DartVisitChip(
-                    notation: notation,
-                    accent: AppTheme.surfaceLight,
-                    subtitle: cricket != null && notation != null
-                        ? l10n.cricketMarks(cricketNotationMarks(notation))
-                        : null,
-                    highlighted: notation != null && i == throws.length - 1,
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ],
-    );
   }
 
   /// Yellow "opponent disconnected" strip (unchanged behavior, shared here so
@@ -2100,33 +2088,166 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     int myLegs = 0,
     int opponentLegs = 0,
   }) {
+    final l10n = AppLocalizations.of(context);
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final disconnectBanner = buildOpponentDisconnectBanner(game);
-
-    // Cricket: the X01 score columns stay at their defaults server-side, so
-    // the header shows points (score mode) or closed counts (no-score).
     final cricket = cricketStateOf(game);
-    final noScore = cricket?.scoreMode == CricketScoreMode.noScore;
+
+    // 2026-08-18 no-scroll redesign: the opponent's visit lives ON the feed
+    // as a slim ticker — the big chip row below the camera is gone, so
+    // nothing below the camera ever scrolls.
+    final throws = game.opponentRoundThrows as List<String>;
+    final ticker = VisitTicker(
+      label: l10n.visitOf(opponentUsername.toUpperCase()),
+      throws: throws,
+      totalValue: cricket != null
+          ? cricketVisitTotal(throws)
+          : '+${throws.fold<int>(0, (sum, n) => sum + notationPoints(n))}',
+      totalLabel: cricket != null
+          ? l10n.cricketMarksShort(cricketVisitMarks(throws))
+          : l10n.pointsShortUpper,
+    );
+    final roundNumber = roundNumberOf(game, forOpponent: true);
+
+    if (cricket != null) {
+      // Cricket: no header — the camera sits exactly where it is on my own
+      // turn (the feed no longer jumps when the turn flips), the full board
+      // strip + score bar go below, back button and round chip move onto
+      // the feed.
+      final cameraView = buildOpponentTurnVideoLayout(
+        game,
+        bottomOverlay: ticker,
+        leading: buildGameBackButton(),
+        roundChipText:
+            roundNumber != null ? l10n.roundChip(roundNumber) : null,
+      );
+      final boardPanel = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CricketBoardStrip(state: cricket),
+          const SizedBox(height: 10),
+          CricketScoreBar(
+            myName: auth.currentUser?.username ?? 'You',
+            opponentName: opponentUsername,
+            state: cricket,
+            seriesTitle: seriesTitle,
+            myLegs: myLegs,
+            opponentLegs: opponentLegs,
+          ),
+        ],
+      );
+
+      if (isLandscape) {
+        return Container(
+          color: AppTheme.gameBackground,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(height: safeTop),
+              if (disconnectBanner != null) disconnectBanner,
+              Expanded(
+                child: Row(children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                      child: cameraView,
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          boardPanel,
+                          const Spacer(),
+                          const SizedBox(height: 8),
+                          const OpponentWarningBanner(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+              SizedBox(height: safeBottom),
+            ],
+          ),
+        );
+      }
+
+      return Container(
+        color: AppTheme.gameBackground,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(12, safeTop + 4, 12, 0),
+              child: SizedBox(
+                height: gameCameraHeight(context),
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: cameraView),
+                    // Overlaid on the feed instead of taking layout height:
+                    // the fixed column below the camera has no scroll
+                    // fallback and no slack for an in-flow banner.
+                    if (disconnectBanner != null)
+                      Positioned(
+                        top: 56,
+                        left: 10,
+                        right: 10,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: ColoredBox(
+                            color: AppTheme.gameBackground.withValues(
+                              alpha: 0.88,
+                            ),
+                            child: disconnectBanner,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: boardPanel,
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
+              child: const OpponentWarningBanner(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // X01: the header keeps only the big remaining scores, per the validated
+    // design — the visit ticker, back button and round chip all live on the
+    // feed, exactly like cricket.
     final header = TurnScoreHeader(
       myName: auth.currentUser?.username ?? 'You',
       opponentName: opponentUsername,
-      myScore: cricket != null
-          ? (noScore ? cricket.myClosedCount : cricket.myPoints)
-          : game.myScore,
-      opponentScore: cricket != null
-          ? (noScore ? cricket.oppClosedCount : cricket.oppPoints)
-          : game.opponentScore,
-      roundNumber: roundNumberOf(game, forOpponent: true),
-      myAverage: cricket != null ? null : myAvgOrNull(game),
-      opponentAverage: cricket != null ? null : opponentAvgOrNull(game),
-      leading: buildGameBackButton(),
+      myScore: game.myScore,
+      opponentScore: game.opponentScore,
+      myAverage: myAvgOrNull(game),
+      opponentAverage: opponentAvgOrNull(game),
       seriesTitle: seriesTitle,
       myLegs: myLegs,
       opponentLegs: opponentLegs,
+      showBadges: false,
     );
-
-    final cameraView = buildOpponentTurnVideoLayout(game);
+    final cameraView = buildOpponentTurnVideoLayout(
+      game,
+      bottomOverlay: ticker,
+      leading: buildGameBackButton(),
+      roundChipText:
+          roundNumber != null ? l10n.roundChip(roundNumber) : null,
+    );
 
     if (isLandscape) {
       return Container(
@@ -2147,17 +2268,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
-                    child: Column(children: [
-                      header,
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: buildOpponentVisitSection(game),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const OpponentWarningBanner(),
-                    ]),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        header,
+                        const Spacer(),
+                        const SizedBox(height: 8),
+                        const OpponentWarningBanner(),
+                      ],
+                    ),
                   ),
                 ),
               ]),
@@ -2185,12 +2304,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               child: cameraView,
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: buildOpponentVisitSection(game),
-            ),
-          ),
+          const Spacer(),
           Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
             child: const OpponentWarningBanner(),
@@ -2235,32 +2349,23 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     return 1;
   }
 
-  String cricketVisitTotal(List<String> throws) {
-    final marks = throws.fold<int>(0, (sum, n) => sum + cricketNotationMarks(n));
-    return '+$marks';
-  }
+  /// Total marks of a visit's notations — one fold shared by the my-turn
+  /// total and the opponent ticker so the two can't drift apart.
+  int cricketVisitMarks(List<String> throws) =>
+      throws.fold<int>(0, (sum, n) => sum + cricketNotationMarks(n));
 
-  /// Cricket replacement for the X01 score bar: board strip + points bar.
-  Widget cricketScorePanel(
-    CricketState cricketState,
-    dynamic game,
-    AuthProvider auth,
-    String? seriesTitle,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        CricketBoardStrip(state: cricketState),
-        const SizedBox(height: 10),
-        CricketScoreBar(
-          myName: auth.currentUser?.username ?? 'You',
-          opponentName: opponentUsername,
-          state: cricketState,
-          seriesTitle: seriesTitle,
-          myLegs: game.myLegsWon,
-          opponentLegs: game.opponentLegsWon,
-        ),
-      ],
+  String cricketVisitTotal(List<String> throws) =>
+      '+${cricketVisitMarks(throws)}';
+
+  /// Below-chips slot on MY cricket turn: the board + scores live on the
+  /// camera ([CricketCameraHud]), so all that remains here is the discreet
+  /// "BO3 · Manche n · 0 – 0" caption (2026-08-18 no-scroll redesign).
+  Widget? cricketSeriesCaption(dynamic game, String? seriesTitle) {
+    if (seriesTitle == null) return null;
+    return SeriesCaptionLine(
+      seriesTitle: seriesTitle,
+      myLegs: game.myLegsWon,
+      opponentLegs: game.opponentLegsWon,
     );
   }
 
@@ -2440,7 +2545,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     myLegs: game.myLegsWon,
                     opponentLegs: game.opponentLegsWon,
                     scorePanel: cricket != null
-                        ? cricketScorePanel(cricket, game, auth, seriesTitle)
+                        ? cricketSeriesCaption(game, seriesTitle)
+                        : null,
+                    cameraOverlay: cricket != null
+                        ? CricketCameraHud(
+                            state: cricket,
+                            myName: auth.currentUser?.username ?? 'You',
+                            opponentName: opponentUsername,
+                          )
                         : null,
                     visitTotalText: cricket != null
                         ? cricketVisitTotal(

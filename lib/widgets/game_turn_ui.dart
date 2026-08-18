@@ -227,6 +227,11 @@ class GameCameraPanel extends StatelessWidget {
   /// button). When present, the zoom pill slides up above it.
   final Widget? bottomBar;
 
+  /// Translucent overlay docked just above [bottomBar] (cricket marks HUD,
+  /// X01 score band) — the 2026-08-18 no-scroll redesign. The zoom pill
+  /// slides up above it.
+  final Widget? bottomOverlay;
+
   const GameCameraPanel({
     super.key,
     this.videoView,
@@ -241,6 +246,7 @@ class GameCameraPanel extends StatelessWidget {
     this.onZoomIn,
     this.onZoomOut,
     this.bottomBar,
+    this.bottomOverlay,
   });
 
   Widget _hintTextPill(AppLocalizations l10n) {
@@ -419,26 +425,56 @@ class GameCameraPanel extends StatelessWidget {
               ),
             ),
 
-          // ── Zoom pill (bottom center; above the capture bar when docked) ──
-          if (onZoomIn != null && onZoomOut != null)
-            Positioned(
-              bottom: bottomBar != null ? 56 : 12,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: ZoomPill(
-                  zoom: zoom,
-                  minZoom: minZoom,
-                  maxZoom: maxZoom,
-                  onZoomIn: onZoomIn,
-                  onZoomOut: onZoomOut,
-                ),
+          // ── Bottom stack: zoom pill over the optional overlay (marks HUD /
+          // score band) over the docked capture bar. One column so each piece
+          // slides up when something appears below it. Text scale is clamped
+          // so accessibility sizes can't silently push the stack past the
+          // panel's top edge (the Positioned column has unbounded height and
+          // ClipRRect would cut it without any overflow warning).
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (onZoomIn != null && onZoomOut != null)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom:
+                            bottomOverlay != null || bottomBar != null ? 8 : 12,
+                      ),
+                      child: Center(
+                        child: ZoomPill(
+                          zoom: zoom,
+                          minZoom: minZoom,
+                          maxZoom: maxZoom,
+                          onZoomIn: onZoomIn,
+                          onZoomOut: onZoomOut,
+                        ),
+                      ),
+                    ),
+                  if (bottomOverlay != null)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        10,
+                        0,
+                        10,
+                        bottomBar != null ? 10 : 12,
+                      ),
+                      // The overlay is display-only — never let it eat a
+                      // pinch-zoom aimed at the video (same rule as the
+                      // guidance pills above).
+                      child: IgnorePointer(child: bottomOverlay!),
+                    ),
+                  ?bottomBar,
+                ],
               ),
             ),
-
-          // ── Capture bar docked to the bottom edge (piste D, 2026-08-03) ──
-          if (bottomBar != null)
-            Positioned(bottom: 0, left: 0, right: 0, child: bottomBar!),
+          ),
         ],
       ),
     );
@@ -774,6 +810,11 @@ class TurnScoreHeader extends StatelessWidget {
   final int myLegs;
   final int opponentLegs;
 
+  /// False hides the badge row entirely (back / VOUS / TOUR / JOUE) — the
+  /// online opponent screen moved those onto the camera feed, keeping only
+  /// names + scores here (2026-08-18 redesign).
+  final bool showBadges;
+
   const TurnScoreHeader({
     super.key,
     required this.myName,
@@ -787,6 +828,7 @@ class TurnScoreHeader extends StatelessWidget {
     this.seriesTitle,
     this.myLegs = 0,
     this.opponentLegs = 0,
+    this.showBadges = true,
   });
 
   @override
@@ -814,30 +856,32 @@ class TurnScoreHeader extends StatelessWidget {
                 // scaleDown: in landscape each side column is a quarter of the
                 // screen, and back button + VOUS + TOUR n overflowed it by
                 // ~23px (2026-08-14). Shrinking beats clipping the round chip.
-                SizedBox(
-                  height: badgeRowHeight,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        if (leading != null) ...[
-                          leading!,
-                          const SizedBox(width: 8),
+                if (showBadges) ...[
+                  SizedBox(
+                    height: badgeRowHeight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          if (leading != null) ...[
+                            leading!,
+                            const SizedBox(width: 8),
+                          ],
+                          GameChip(text: l10n.you, color: AppTheme.playerBlue),
+                          if (seriesTitle != null && roundNumber != null) ...[
+                            const SizedBox(width: 8),
+                            GameChip(
+                              text: l10n.roundChip(roundNumber!),
+                              color: AppTheme.textSecondary,
+                            ),
+                          ],
                         ],
-                        GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                        if (seriesTitle != null && roundNumber != null) ...[
-                          const SizedBox(width: 8),
-                          GameChip(
-                            text: l10n.roundChip(roundNumber!),
-                            color: AppTheme.textSecondary,
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
+                  const SizedBox(height: 4),
+                ],
                 Text(
                   myName.toUpperCase(),
                   maxLines: 1,
@@ -858,17 +902,18 @@ class TurnScoreHeader extends StatelessWidget {
           ),
           Column(
             children: [
-              SizedBox(
-                height: badgeRowHeight,
-                child: Center(
-                  child: seriesTitle == null && roundNumber != null
-                      ? GameChip(
-                          text: l10n.roundChip(roundNumber!),
-                          color: AppTheme.textSecondary,
-                        )
-                      : const SizedBox.shrink(),
+              if (showBadges)
+                SizedBox(
+                  height: badgeRowHeight,
+                  child: Center(
+                    child: seriesTitle == null && roundNumber != null
+                        ? GameChip(
+                            text: l10n.roundChip(roundNumber!),
+                            color: AppTheme.textSecondary,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ),
-              ),
               // Series mode: title sits on the names line, legs score on the
               // scores line (mirrors the two side columns).
               if (seriesTitle != null) ...[
@@ -902,37 +947,39 @@ class TurnScoreHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                SizedBox(
-                  height: badgeRowHeight,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.opponentPink,
-                            shape: BoxShape.circle,
+                if (showBadges) ...[
+                  SizedBox(
+                    height: badgeRowHeight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.opponentPink,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          AppLocalizations.of(context).playingBadge,
-                          style: const TextStyle(
-                            color: AppTheme.opponentPinkBright,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
+                          const SizedBox(width: 5),
+                          Text(
+                            AppLocalizations.of(context).playingBadge,
+                            style: const TextStyle(
+                              color: AppTheme.opponentPinkBright,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
+                  const SizedBox(height: 4),
+                ],
                 Text(
                   opponentName.toUpperCase(),
                   maxLines: 1,
@@ -1451,19 +1498,20 @@ class _OpponentWarningBannerState extends State<OpponentWarningBanner>
   }
 }
 
-/// Your-turn bottom score bar: "VOUS (name) 490  VS  (opponent) 501".
-class UserScoreBar extends StatelessWidget {
+/// Translucent score band docked to the bottom of MY camera panel (X01):
+/// "VATI99 288 · BO3 · MANCHE 1 0–0 · 355 DODO180" — the remaining score is
+/// readable next to the feed without scrolling (2026-08-18 no-scroll
+/// redesign; it replaced the below-chips score bar).
+class CameraScoreBand extends StatelessWidget {
   final String myName;
   final String opponentName;
   final int myScore;
   final int opponentScore;
-  // BO3 series context ("BO3 · Manche 2"). When set, the center shows it over
-  // the colored legs score over the "manches" caption instead of the VS label.
   final String? seriesTitle;
   final int myLegs;
   final int opponentLegs;
 
-  const UserScoreBar({
+  const CameraScoreBand({
     super.key,
     required this.myName,
     required this.opponentName,
@@ -1477,68 +1525,57 @@ class UserScoreBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // The remaining score is the one thing the player reads from throwing
-    // distance (~2m) — keep it big.
-    const scoreStyle = TextStyle(
-      fontSize: 46,
-      fontWeight: FontWeight.w800,
-      height: 1.05,
-      letterSpacing: -1,
-    );
+    Widget side({required bool mine}) {
+      final name = (mine ? myName : opponentName).toUpperCase();
+      final score = mine ? myScore : opponentScore;
+      return Column(
+        crossAxisAlignment: mine
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: mine ? AppTheme.playerBlue : AppTheme.opponentPink,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$score',
+              style: TextStyle(
+                color: mine
+                    ? AppTheme.playerBlueBright
+                    : AppTheme.opponentPinkBright,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.gamePanelEmpty,
-        borderRadius: BorderRadius.circular(16),
+        color: AppTheme.gameBackground.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+        ),
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        myName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.playerBlue,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '$myScore',
-                    style: scoreStyle.copyWith(
-                      color: AppTheme.playerBlueBright,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          Expanded(child: Align(alignment: Alignment.centerLeft, child: side(mine: true))),
           seriesTitle != null
               ? Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1547,26 +1584,16 @@ class UserScoreBar extends StatelessWidget {
                       seriesTitle!.toUpperCase(),
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
+                        letterSpacing: 1,
                       ),
                     ),
                     const SizedBox(height: 2),
                     SeriesLegsScore(
                       myLegs: myLegs,
                       opponentLegs: opponentLegs,
-                      fontSize: 24,
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      l10n.legsShort.toUpperCase(),
-                      style: TextStyle(
-                        color: AppTheme.textSecondary.withValues(alpha: 0.7),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
+                      fontSize: 12,
                     ),
                   ],
                 )
@@ -1574,44 +1601,174 @@ class UserScoreBar extends StatelessWidget {
                   l10n.vsLabel,
                   style: TextStyle(
                     color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.5,
                   ),
                 ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  opponentName.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.opponentPinkBright,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '$opponentScore',
-                    style: scoreStyle.copyWith(
-                      color: AppTheme.opponentPinkBright.withValues(
-                        alpha: 0.65,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          Expanded(child: Align(alignment: Alignment.centerRight, child: side(mine: false))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Slim opponent-visit ticker overlaid on the live feed: "VOLÉE DE X ·
+/// [17][—][—] · +1 MARQUE" (cricket) or "[T20][5][—] · +65 POINTS" (X01).
+/// Replaces the big DartVisitChip row of the opponent-turn screen
+/// (2026-08-18 no-scroll redesign).
+class VisitTicker extends StatelessWidget {
+  final String label;
+  final List<String> throws;
+
+  /// "+1" / "+65" — the running visit total.
+  final String totalValue;
+
+  /// Tiny caption under the total: "MARQUE(S)" / "POINTS".
+  final String totalLabel;
+
+  const VisitTicker({
+    super.key,
+    required this.label,
+    required this.throws,
+    required this.totalValue,
+    required this.totalLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget slot(int i) {
+      final notation = i < throws.length ? throws[i] : null;
+      final isLast = notation != null && i == throws.length - 1;
+      return Container(
+        width: 38,
+        height: 28,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          color: AppTheme.gamePanel.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isLast
+                ? AppTheme.opponentPink
+                : AppTheme.surfaceLight.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            notation ?? '—',
+            style: TextStyle(
+              color: notation == null
+                  ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                  : isLast
+                  ? AppTheme.opponentPinkBright
+                  : Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              height: 1,
             ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppTheme.gameBackground.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.opponentPinkBright,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            slot(i),
+          ],
+          const SizedBox(width: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                totalValue,
+                style: const TextStyle(
+                  color: AppTheme.opponentPinkBright,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                totalLabel,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 7,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Discreet centered "BO3 · MANCHE 1 · 0 – 0" caption shown under the visit
+/// chips when the score itself lives on the camera (cricket HUD / X01 band).
+class SeriesCaptionLine extends StatelessWidget {
+  final String seriesTitle;
+  final int myLegs;
+  final int opponentLegs;
+
+  const SeriesCaptionLine({
+    super.key,
+    required this.seriesTitle,
+    required this.myLegs,
+    required this.opponentLegs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          '${seriesTitle.toUpperCase()}  ·  ',
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1,
+          ),
+        ),
+        SeriesLegsScore(
+          myLegs: myLegs,
+          opponentLegs: opponentLegs,
+          fontSize: 12,
+        ),
+      ],
     );
   }
 }

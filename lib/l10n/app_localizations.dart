@@ -807,6 +807,8 @@ abstract class AppLocalizations {
   String get mprLabel;
   String get statsFilterAll;
   String cricketMarks(int n);
+  String cricketMarksShort(int n);
+  String get pointsShortUpper;
   String get cricketAllClosedTitle;
   String get cricketAllClosedBody;
   String get botVisitConnectionError;

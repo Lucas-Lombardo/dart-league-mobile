@@ -627,21 +627,19 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
                 opponentName: botName,
                 myName: auth.currentUser?.username ?? 'You',
                 dartsThrown: _dartsThrown,
-                scorePanel: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    CricketBoardStrip(state: _state),
-                    const SizedBox(height: 10),
-                    CricketScoreBar(
-                      myName: auth.currentUser?.username ?? 'You',
-                      opponentName: botName,
-                      state: _state,
-                      seriesTitle: _seriesTitle(placement),
-                      myLegs: placement.myLegs,
-                      opponentLegs: placement.botLegs,
-                    ),
-                  ],
+                cameraOverlay: CricketCameraHud(
+                  state: _state,
+                  myName: auth.currentUser?.username ?? 'You',
+                  opponentName: botName,
                 ),
+                scorePanel: switch (_seriesTitle(placement)) {
+                  null => null,
+                  final title => SeriesCaptionLine(
+                    seriesTitle: title,
+                    myLegs: placement.myLegs,
+                    opponentLegs: placement.botLegs,
+                  ),
+                },
                 visitTotalText: _visitTotalText(l10n, _effects),
                 chipSubtitle: (i, _) => _chipSubtitle(
                   l10n,
@@ -735,7 +733,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        CricketBoardStrip(state: _state, showLegend: false),
+        CricketBoardStrip(state: _state),
         const SizedBox(height: 12),
         _buildBotVisitSection(botName, l10n),
       ],

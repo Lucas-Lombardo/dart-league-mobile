@@ -2190,6 +2190,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String cricketMarks(int n) => n <= 1 ? '$n marque' : '$n marques';
 
   @override
+  String cricketMarksShort(int n) => n <= 1 ? 'MARQUE' : 'MARQUES';
+
+  @override
+  String get pointsShortUpper => 'POINTS';
+
+  @override
   String get cricketAllClosedTitle => 'Tableau fermé !';
 
   @override

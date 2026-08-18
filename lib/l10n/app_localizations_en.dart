@@ -2168,6 +2168,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String cricketMarks(int n) => n <= 1 ? '$n mark' : '$n marks';
 
   @override
+  String cricketMarksShort(int n) => n <= 1 ? 'MARK' : 'MARKS';
+
+  @override
+  String get pointsShortUpper => 'POINTS';
+
+  @override
   String get cricketAllClosedTitle => 'Board closed!';
 
   @override
