@@ -81,17 +81,11 @@ class TournamentGameProvider with ChangeNotifier {
   String? _seriesLoserId;
   TournamentGameState _tournamentState = TournamentGameState.waiting;
 
-  // Agora video calling
+  // P2P video — the match's only transport, non-null only when the server put
+  // an `rtcV2` block in a payload for this leg.
   RtcV2Config? _rtcV2Config;
-  String? _agoraAppId;
-  String? _agoraToken;
-  String? _agoraTokenStrict;
-  String? _agoraChannelName;
-  int? _agoraUid;
-  int? _opponentAgoraUid;
-  int? _remoteUid;
-  bool _localUserJoined = false;
-  bool _needsAgoraReconnect = false;
+  // Server's `rtcReconnect` flag: (re)start the call — see GameProvider.
+  bool _needsRtcReconnect = false;
 
   bool _listenersSetUp = false;
   bool _disposed = false;
@@ -162,20 +156,9 @@ class TournamentGameProvider with ChangeNotifier {
   int get opponentLegsWon => _myUserId == _player1Id ? _player2LegsWon : _player1LegsWon;
   bool get iSeriesWinner => _seriesWinnerId == _myUserId;
 
-  // Getters — Agora
+  // Getters — video
   RtcV2Config? get rtcV2Config => _rtcV2Config;
-  String? get agoraAppId => _agoraAppId;
-  String? get agoraToken => _agoraToken;
-  String? get agoraTokenStrict => _agoraTokenStrict;
-  String? get agoraChannelName => _agoraChannelName;
-  int? get agoraUid => _agoraUid;
-  int? get opponentAgoraUid => _opponentAgoraUid;
-  int? get remoteUid => _remoteUid;
-  bool get localUserJoined => _localUserJoined;
-  bool get needsAgoraReconnect => _needsAgoraReconnect;
-
-  bool get hasStrictAgoraCredentials =>
-      _agoraTokenStrict != null && _agoraTokenStrict!.isNotEmpty && _agoraUid != null && _agoraUid != 0;
+  bool get needsRtcReconnect => _needsRtcReconnect;
 
   int get currentRoundScore {
     int score = 0;
@@ -206,12 +189,6 @@ class TournamentGameProvider with ChangeNotifier {
     required String opponentUserId,
     required int bestOf,
     required String roundName,
-    String? agoraAppId,
-    String? agoraToken,
-    String? agoraTokenStrict,
-    String? agoraChannelName,
-    int? agoraUid,
-    int? opponentAgoraUid,
     RtcV2Config? rtcV2Config,
   }) {
     _tournamentMatchId = tournamentMatchId;
@@ -236,19 +213,6 @@ class TournamentGameProvider with ChangeNotifier {
     // opponent whose client doesn't support it (round 1 vs new client, round
     // 2 vs old client).
     _rtcV2Config = rtcV2Config;
-    if (agoraAppId != null) _agoraAppId = agoraAppId;
-    if (agoraToken != null) _agoraToken = agoraToken;
-    if (agoraTokenStrict != null) _agoraTokenStrict = agoraTokenStrict;
-    if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
-    if (agoraUid != null) _agoraUid = agoraUid;
-    if (opponentAgoraUid != null) {
-      _opponentAgoraUid = opponentAgoraUid;
-      // Pre-seed remote view only when we'll join via the strict path
-      // (same reasoning as GameProvider.initGame).
-      if (agoraTokenStrict != null && agoraTokenStrict.isNotEmpty && agoraUid != null && agoraUid != 0) {
-        _remoteUid = opponentAgoraUid;
-      }
-    }
 
     _resetLegState();
     _armStartWatchdog();
@@ -712,30 +676,8 @@ class TournamentGameProvider with ChangeNotifier {
       }
     }
 
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
-        newAgoraToken != null && newAgoraToken.isNotEmpty &&
-        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
-      _agoraAppId = newAgoraAppId;
-      _agoraToken = newAgoraToken;
-      _agoraChannelName = newAgoraChannelName;
-      _needsAgoraReconnect = true;
-    }
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) {
-      _opponentAgoraUid = newOpponentAgoraUid;
-      if (hasStrictAgoraCredentials) {
-        _remoteUid = newOpponentAgoraUid;
-      }
-    }
+    // Reconnect syncs carry it, the heal/periodic ones don't.
+    if (data['rtcReconnect'] == true) _needsRtcReconnect = true;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
     // Same both-sides verdict, same place: the server only puts the
     // `turnReports` block in when BOTH devices declared they can play
@@ -798,31 +740,9 @@ class TournamentGameProvider with ChangeNotifier {
       _currentGameMatchId = newMatchId;
     }
 
-    // Update Agora tokens for next leg video call
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
-        newAgoraToken != null && newAgoraToken.isNotEmpty &&
-        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
-      _agoraAppId = newAgoraAppId;
-      _agoraToken = newAgoraToken;
-      _agoraChannelName = newAgoraChannelName;
-      _needsAgoraReconnect = true;
-    }
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) {
-      _opponentAgoraUid = newOpponentAgoraUid;
-      if (hasStrictAgoraCredentials) {
-        _remoteUid = newOpponentAgoraUid;
-      }
-    }
+    // Only the per-player copy of this event carries the flag; the room
+    // copy (spectators included) must not make a healthy call flap.
+    if (data['rtcReconnect'] == true) _needsRtcReconnect = true;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
     // Same both-sides verdict, same place: the server only puts the
     // `turnReports` block in when BOTH devices declared they can play
@@ -1255,19 +1175,8 @@ class TournamentGameProvider with ChangeNotifier {
     }
   }
 
-  // Agora helpers
-  void setRemoteUser(int? uid) {
-    _remoteUid = uid;
-    notifyListeners();
-  }
-
-  void setLocalUserJoined(bool joined) {
-    _localUserJoined = joined;
-    notifyListeners();
-  }
-
-  void clearAgoraReconnectFlag() {
-    _needsAgoraReconnect = false;
+  void clearRtcReconnectFlag() {
+    _needsRtcReconnect = false;
   }
 
   // --- Cleanup ---
@@ -1343,15 +1252,7 @@ class TournamentGameProvider with ChangeNotifier {
     _seriesWinnerId = null;
     _seriesLoserId = null;
     _tournamentState = TournamentGameState.waiting;
-    _agoraAppId = null;
-    _agoraToken = null;
-    _agoraTokenStrict = null;
-    _agoraChannelName = null;
-    _agoraUid = null;
-    _opponentAgoraUid = null;
-    _remoteUid = null;
-    _localUserJoined = false;
-    _needsAgoraReconnect = false;
+    _needsRtcReconnect = false;
     notifyListeners();
   }
 

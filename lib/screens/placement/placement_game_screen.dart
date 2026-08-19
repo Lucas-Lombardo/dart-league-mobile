@@ -716,15 +716,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
           return ss is num && '${ss.toInt()}' == modeWire;
         }
 
+        // completeMatch already POSTed this match, so listSessions returns it —
+        // appending matchAverage here would count the last match twice.
         final averages = <double>[];
         for (final s in sessions) {
           final d = s.details;
           if (d == null || !sameMode(d)) continue;
           final a = d['playerAverage'];
           if (a is num && a > 0) averages.add(a.toDouble());
-        }
-        if (matchAverage != null && matchAverage > 0) {
-          averages.add(matchAverage);
         }
         final overall = averages.isEmpty
             ? null

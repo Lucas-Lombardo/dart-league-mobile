@@ -89,7 +89,7 @@ class DartCallerService {
     // playAndRecord (not ambient): ambient is silenced by the iOS ring/silent
     // switch, so with the ringer off — very common — the caller was mute for
     // the entire match. playAndRecord ignores the silent switch and is the
-    // same category Agora's voice call already uses, so we don't take the
+    // same category the match's voice call already uses, so we don't take the
     // session away from it; mixWithOthers keeps both audible.
     final context = AudioContext(
       iOS: AudioContextIOS(

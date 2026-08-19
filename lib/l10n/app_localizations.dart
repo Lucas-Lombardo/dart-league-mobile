@@ -1117,6 +1117,48 @@ abstract class AppLocalizations {
   String statsUnlockCurve(int count);
   String statsCheckoutAttempts(int hits, int attempts);
   String statsVersus(String name);
+
+  // Comparison screen (where the player stands among other players).
+  String get comparisonTitle;
+  String get comparisonTeaserLabel;
+  String get comparisonProfile;
+  String get comparisonWhereYouStand;
+  String get comparisonMedianMarker;
+  String get comparisonStrength;
+  String get comparisonWeakness;
+  String get comparisonNotEnoughLegs;
+  String get comparisonMetricScoring;
+  String get comparisonMetricFinishing;
+  String get comparisonMetricConsistency;
+  String get comparisonMetricPower;
+  String get comparisonMetricComposure;
+  String get comparisonAxisScoring;
+  String get comparisonAxisFinishing;
+  String get comparisonAxisConsistency;
+  String get comparisonAxisPower;
+  String get comparisonAxisComposure;
+  String comparisonTopPercent(int percent);
+  String comparisonCohortRank(String rank, int size);
+  String comparisonCohortAll(int size);
+  String comparisonFootnote(int days, int minLegs);
+  String comparisonBeatsPercent(int percent);
+  String comparisonLegsToGo(int count);
+
+  // Head-to-head screen.
+  String get headToHeadTitle;
+  String get headToHeadEncounters;
+  String get headToHeadInTheirMatches;
+  String get headToHeadRecentMeetings;
+  String get headToHeadNoHistory;
+  String get headToHeadTons;
+  String get headToHeadLastResult;
+  String headToHeadChallenge(String name);
+  String headToHeadLegsBasis(int legs);
+
+  // End-of-match stats card.
+  String get matchStatsTitle;
+  String get matchStatsDoubles;
+  String matchStatsVsWindow(String average, int days);
   String statsDartsUnit(String value);
 
   // ── Per-volley reports (2026-08-13) ─────────────────────────────────────

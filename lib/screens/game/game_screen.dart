@@ -21,24 +21,12 @@ class GameScreen extends StatefulWidget {
   final String matchId;
   final String opponentId;
   final String opponentUsername;
-  final String? agoraAppId;
-  final String? agoraToken;
-  final String? agoraTokenStrict;
-  final String? agoraChannelName;
-  final int? agoraUid;
-  final int? opponentAgoraUid;
 
   const GameScreen({
     super.key,
     required this.matchId,
     required this.opponentId,
     required this.opponentUsername,
-    this.agoraAppId,
-    this.agoraToken,
-    this.agoraTokenStrict,
-    this.agoraChannelName,
-    this.agoraUid,
-    this.opponentAgoraUid,
   });
 
   @override
@@ -61,9 +49,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   @override
   String get leaveWarningText =>
       AppLocalizations.of(context).forfeitMatchWarning;
-
-  // The screen was opened with the match's Agora channel; the provider only
-  // learns it from later payloads.
 
   @override
   Widget buildAppBarTitle() => Row(children: [
@@ -109,12 +94,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       widget.matchId,
       auth.currentUser!.id,
       widget.opponentId,
-      agoraAppId: widget.agoraAppId,
-      agoraToken: widget.agoraToken,
-      agoraTokenStrict: widget.agoraTokenStrict,
-      agoraChannelName: widget.agoraChannelName,
-      agoraUid: widget.agoraUid,
-      opponentAgoraUid: widget.opponentAgoraUid,
     );
     gameStarted = game.gameStarted;
     gameEnded = game.gameEnded;
@@ -384,6 +363,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       // The loser's only chance at the winning visit: they were sent straight
       // here by game_won, with no confirmation step of their own to hang it on.
       preCard: buildWinningVisitBanner(game, didWin: didWin),
+      // The server already replayed these darts; the card asks it for them
+      // rather than re-deriving anything client-side.
+      statsMatchId: game.matchId as String?,
     );
   }
 

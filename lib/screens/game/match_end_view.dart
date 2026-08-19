@@ -3,6 +3,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/replay_clips_store.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/match_stats_card.dart';
 import '../profile/replay_library_screen.dart';
 
 /// Redesigned end-of-match screen shared by ranked, friendly and tournament
@@ -40,6 +41,13 @@ class MatchEndView extends StatefulWidget {
   /// different things, and merging them into the result panel would blur that.
   final Widget? preCard;
 
+  /// The match that just ended. When set, the screen shows its stats — the
+  /// figures the server already holds and that this screen, the one every
+  /// player sees after every match, used to leave out entirely. Null (bots,
+  /// local matches) simply hides the card; so does cricket, which the server
+  /// reports as having no X01 figures.
+  final String? statsMatchId;
+
   const MatchEndView({
     super.key,
     required this.didWin,
@@ -51,6 +59,7 @@ class MatchEndView extends StatefulWidget {
     this.badgeText,
     this.replayClips = const [],
     this.preCard,
+    this.statsMatchId,
   });
 
   @override
@@ -149,6 +158,10 @@ class _MatchEndViewState extends State<MatchEndView>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (widget.statsMatchId != null) ...[
+                            _buildStatsCard(compact: true),
+                            const SizedBox(height: 14),
+                          ],
                           if (widget.replayClips.isNotEmpty) ...[
                             _buildMomentsCard(),
                             const SizedBox(height: 14),
@@ -170,7 +183,11 @@ class _MatchEndViewState extends State<MatchEndView>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _buildHeadline(compact: false),
-                          const SizedBox(height: 28),
+                          const SizedBox(height: 24),
+                          if (widget.statsMatchId != null) ...[
+                            _buildStatsCard(compact: false),
+                            const SizedBox(height: 14),
+                          ],
                           if (widget.replayClips.isNotEmpty) ...[
                             _buildMomentsCard(),
                             const SizedBox(height: 14),
@@ -356,6 +373,16 @@ class _MatchEndViewState extends State<MatchEndView>
           ),
         ),
       ),
+    );
+  }
+
+  /// Fades in with the rest of the details. The card renders nothing until its
+  /// figures arrive, so this animation applies to an empty box first — which is
+  /// exactly what keeps the actions below from jumping.
+  Widget _buildStatsCard({required bool compact}) {
+    return FadeTransition(
+      opacity: _detailsFade,
+      child: MatchStatsCard(matchId: widget.statsMatchId!, compact: compact),
     );
   }
 

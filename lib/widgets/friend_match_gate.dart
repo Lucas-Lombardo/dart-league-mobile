@@ -79,54 +79,28 @@ class _FriendMatchGateState extends State<FriendMatchGate> {
     }
   }
 
+  /// Enters the match straight away: the friendly_match_found payload that got
+  /// us here already carries everything the game screen needs, video block
+  /// included, so there is nothing to wait for.
   void _navigateToGame(MatchInviteProvider p) {
-    int attempts = 0;
-    const maxAttempts = 50; // ~5s at 100ms
-
-    void go() {
-      final navigator = _navigator;
-      if (navigator == null || p.matchId == null || p.opponentId == null) {
-        _navigating = false;
-        return;
-      }
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => GameScreen(
-            matchId: p.matchId!,
-            opponentId: p.opponentId!,
-            opponentUsername: p.opponentUsername ?? 'Opponent',
-            agoraAppId: p.agoraAppId,
-            agoraToken: p.agoraToken,
-            agoraTokenStrict: p.agoraTokenStrict,
-            agoraChannelName: p.agoraChannelName,
-            agoraUid: p.agoraUid,
-            opponentAgoraUid: p.opponentAgoraUid,
-          ),
-        ),
-        (route) => route.isFirst,
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
-      p.consumeFriendlyMatch();
+    final navigator = _navigator;
+    if (navigator == null || p.matchId == null || p.opponentId == null) {
       _navigating = false;
+      return;
     }
-
-    void check() {
-      if (!mounted) {
-        _navigating = false;
-        return;
-      }
-      attempts++;
-      final ready = p.agoraAppId != null &&
-          p.agoraToken != null &&
-          p.agoraChannelName != null;
-      if (ready || attempts >= maxAttempts) {
-        go();
-        return;
-      }
-      Future.delayed(const Duration(milliseconds: 100), check);
-    }
-
-    check();
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => GameScreen(
+          matchId: p.matchId!,
+          opponentId: p.opponentId!,
+          opponentUsername: p.opponentUsername ?? 'Opponent',
+        ),
+      ),
+      (route) => route.isFirst,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
+    p.consumeFriendlyMatch();
+    _navigating = false;
   }
 
   @override

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/user_service.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/haptic_service.dart';
+import 'head_to_head_screen.dart';
 
 class PlayerStatsScreen extends StatefulWidget {
   final String userId;
@@ -97,6 +102,15 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                               style: AppTheme.titleLarge,
                             ),
                             const SizedBox(height: 16),
+                            // Their career, then what they have done to YOU —
+                            // the second question every player asks on this
+                            // screen, and the one it could never answer. Absent
+                            // on your own profile: there is no head-to-head
+                            // against yourself, and the endpoint refuses it.
+                            if (!_isSelf(context)) ...[
+                              _buildHeadToHeadButton(context),
+                              const SizedBox(height: 16),
+                            ],
                             GridView.count(
                               crossAxisCount: 2,
                               shrinkWrap: true,
@@ -117,15 +131,22 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                                   Icons.sports_esports,
                                   AppTheme.primary,
                                 ),
+                                // A player whose only matches were against
+                                // bots has no measured darts here — showing
+                                // "0.0" would read as a real average.
                                 _buildStatCard(
                                   AppLocalizations.of(context).avgScore,
-                                  _stats!.averageScore.toStringAsFixed(1),
+                                  _stats!.legsCounted == 0
+                                      ? '—'
+                                      : _stats!.averageScore.toStringAsFixed(1),
                                   Icons.calculate,
                                   AppTheme.accent,
                                 ),
                                 _buildStatCard(
                                   AppLocalizations.of(context).count180s,
-                                  _stats!.count180s.toString(),
+                                  _stats!.legsCounted == 0
+                                      ? '—'
+                                      : _stats!.count180s.toString(),
                                   Icons.emoji_events,
                                   const Color(0xFFFFD700),
                                 ),
@@ -218,6 +239,55 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                         ),
                       ),
                     ),
+    );
+  }
+
+  /// This screen also opens on your OWN row in the leaderboard.
+  bool _isSelf(BuildContext context) =>
+      context.read<AuthProvider>().currentUser?.id == widget.userId;
+
+  Widget _buildHeadToHeadButton(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          HapticService.lightImpact();
+          AppNavigator.toScreen(
+            context,
+            HeadToHeadScreen(
+              opponentId: widget.userId,
+              opponentUsername: widget.username,
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.compare_arrows_rounded, color: AppTheme.primary, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  l10n.headToHeadTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

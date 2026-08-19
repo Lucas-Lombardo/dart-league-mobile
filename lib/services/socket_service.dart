@@ -87,7 +87,7 @@ class SocketService {
   // credential-carrying match payload. The app never chooses P2P from this
   // flag alone — it acts on the presence of `rtcV2` in the match payload,
   // which is the server's both-sides-support verdict. Reset on disconnect
-  // like the other flags so a backend rollback degrades to Agora.
+  // like the other flags, so a backend rollback is re-detected on reconnect.
   static bool _supportsRtcV2 = false;
 
   // Server capability: per-volley reports (`flag_turn` in, `capture_turn` out,
@@ -303,7 +303,7 @@ class SocketService {
     // screen will actually take the P2P path (RtcFramesService.isSupported):
     // a web build declaring true made the server emit rtcV2 to the MOBILE
     // opponent, who then burned the 10s watchdog against a peer that never
-    // signals before falling back to Agora.
+    // signals.
     // supportsTurnReports rides the same handshake for the same reason, and
     // is gated on the replay ring: without it this device could never produce
     // the clip a flag asks for, and the server must not offer its opponent a

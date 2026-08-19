@@ -48,7 +48,7 @@ dependencies:
   # issues can be correlated with actual hardware.
   device_info_plus: ^13.2.0
   # P2P WebRTC for match video (signaling over the existing socket, TURN via
-  # Cloudflare). Sole video transport since the 2026-08-13 Agora removal.
+  # Cloudflare). The app's one and only video transport.
   # PINNED EXACTLY: RtcFramesService imports src/native internals, the
   # Android companion reads a private field reflectively, and app/build.gradle
   # pins webrtc-sdk:android in lock-step with this version's libwebrtc — an
@@ -100,11 +100,10 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
-  # Kept on CocoaPods for iOS/macOS. The original reason was agora_rtc_engine's
-  # broken SPM packaging; removing that dependency did NOT free us, because
-  # flutter_webrtc and tflite_flutter still ship no Package.swift (the 2026-08-13
-  # build prints them by name). Flipping this would take out match video and AI
-  # scoring at once — revisit only once both plugins adopt SPM.
+  # Kept on CocoaPods for iOS/macOS: flutter_webrtc and tflite_flutter still
+  # ship no Package.swift (the 2026-08-13 build prints them by name). Flipping
+  # this would take out match video and AI scoring at once — revisit only once
+  # both plugins adopt SPM.
   config:
     enable-swift-package-manager: false
 

@@ -9,10 +9,6 @@
 -keep class org.tensorflow.lite.** { *; }
 -dontwarn org.tensorflow.lite.**
 
-# Agora RTC Engine — uses reflection for native bridge
--keep class io.agora.** { *; }
--dontwarn io.agora.**
-
 # Socket.IO client — uses reflection for event handling
 -keep class io.socket.** { *; }
 -dontwarn io.socket.**

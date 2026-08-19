@@ -10,9 +10,8 @@ import 'socket_service.dart';
 
 /// Everything the game screen needs to run match video over P2P, in one
 /// object: the current session, the native capture track, and the recovery
-/// loop. There is NO fallback: when the payload carried an rtcV2 block, both
-/// clients are new and P2P is the transport for the whole series — an outage
-/// is recovered by rebuilding, forever, never by switching to Agora.
+/// loop. There is NO fallback: P2P is the only transport there is, for the
+/// whole series — an outage is recovered by rebuilding, forever.
 ///
 /// ## How recovery works (all of it)
 ///
@@ -40,8 +39,6 @@ import 'socket_service.dart';
 /// that relaunched at generation 0 mid-series is caught by the stale-offer
 /// fast path in [_onSignal].
 ///
-/// Not merged with the Agora path on purpose: Agora only remains for matches
-/// against an old client and is on its way out entirely.
 class P2pMatchVideo {
   P2pMatchVideo({
     required this.matchId,
@@ -203,8 +200,8 @@ class P2pMatchVideo {
       }
       return track;
     });
-    // Remote audio through the loudspeaker, like the Agora video profile
-    // (WebRTC's iOS default is the earpiece).
+    // Remote audio through the loudspeaker (WebRTC's iOS default is the
+    // earpiece, which is useless with the phone propped up facing the board).
     try {
       await Helper.setSpeakerphoneOn(true);
     } catch (_) {}
@@ -425,9 +422,9 @@ class P2pMatchVideo {
         ];
         SocketService.emit('rtc_v2_report', {
           'matchId': matchId,
-          // Agora is gone: there is no transport left to fall back TO, so the
-          // column is now a constant. Kept in the payload (rather than
-          // dropped) so rows stay comparable with the migration-era ones.
+          // There is no transport left to fall back TO, so the column is a
+          // constant. Kept in the payload (rather than dropped) so rows stay
+          // comparable with the migration-era ones.
           'fellBack': false,
           ...payload,
           // After the spread on purpose: this one spans every generation,

@@ -124,7 +124,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       }
 
       final cameraService = CameraFrameService();
-      // Solo mode: no Agora — the service runs the camera + image stream and
+      // Solo mode: no call — the service runs the camera + image stream and
       // caches the latest frame for AI scoring without pushing video anywhere.
       await cameraService.initialize();
       if (!mounted) {
@@ -142,7 +142,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       }
       _cameraService = cameraService;
       // Solo mode: stop the 30fps image stream whenever the AI loop is off
-      // (score edit, AI toggled off, training finished) — no Agora viewer
+      // (score edit, AI toggled off, training finished) — no remote viewer
       // needs the frames.
       _ai?.onCaptureActiveChanged = cameraService.setAiActive;
 

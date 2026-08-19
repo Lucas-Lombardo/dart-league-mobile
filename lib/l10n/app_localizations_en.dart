@@ -2867,6 +2867,89 @@ class AppLocalizationsEn extends AppLocalizations {
   String statsDartsUnit(String value) => '$value darts';
 
   @override
+  String get comparisonTitle => 'Your level';
+  @override
+  String get comparisonTeaserLabel => 'Your level';
+  @override
+  String get comparisonProfile => 'Playing profile';
+  @override
+  String get comparisonWhereYouStand => 'Where you stand';
+  @override
+  String get comparisonMedianMarker => 'median';
+  @override
+  String get comparisonStrength => 'Your strength';
+  @override
+  String get comparisonWeakness => 'To work on';
+  @override
+  String get comparisonNotEnoughLegs =>
+      'A few more legs and you will see where you stand against other players.';
+  @override
+  String get comparisonMetricScoring => '3-dart average';
+  @override
+  String get comparisonMetricFinishing => 'Checkout';
+  @override
+  String get comparisonMetricConsistency => 'Darts per leg won';
+  @override
+  String get comparisonMetricPower => 'Visits of 100+';
+  @override
+  String get comparisonMetricComposure => 'Bust rate';
+  @override
+  String get comparisonAxisScoring => 'SCORING';
+  @override
+  String get comparisonAxisFinishing => 'FINISHING';
+  @override
+  String get comparisonAxisConsistency => 'CONSISTENCY';
+  @override
+  String get comparisonAxisPower => 'POWER';
+  @override
+  String get comparisonAxisComposure => 'COMPOSURE';
+  @override
+  String comparisonTopPercent(int percent) => 'Top $percent%';
+  @override
+  String comparisonCohortRank(String rank, int size) =>
+      'of $rank players · $size players compared';
+  @override
+  String comparisonCohortAll(int size) => 'of all players · $size players compared';
+  @override
+  String comparisonFootnote(int days, int minLegs) =>
+      'Measured over the last $days days, among players with at least $minLegs legs. The grey mark is the median.';
+  @override
+  String comparisonBeatsPercent(int percent) => 'better than $percent%';
+  @override
+  String comparisonLegsToGo(int count) => count <= 1
+      ? 'One more leg to be ranked.'
+      : '$count more legs to be ranked.';
+
+  @override
+  String get headToHeadTitle => 'Head to head';
+  @override
+  String get headToHeadEncounters => 'MEETINGS';
+  @override
+  String get headToHeadInTheirMatches => 'In the matches you played';
+  @override
+  String get headToHeadRecentMeetings => 'Recent meetings';
+  @override
+  String get headToHeadNoHistory =>
+      'You have never played each other yet. Send a challenge to get started.';
+  @override
+  String get headToHeadTons => 'Visits of 100+';
+  @override
+  String get headToHeadLastResult => 'LATEST';
+  @override
+  String headToHeadChallenge(String name) => 'Challenge $name';
+  @override
+  String headToHeadLegsBasis(int legs) =>
+      legs <= 1 ? 'From 1 leg played together' : 'From $legs legs played together';
+
+  @override
+  String get matchStatsTitle => 'Your match';
+  @override
+  String get matchStatsDoubles => 'Doubles';
+  @override
+  String matchStatsVsWindow(String average, int days) =>
+      'vs your $days-day average ($average)';
+
+  @override
   String get flagVisit => 'REPORT THEIR VISIT';
   @override
   String flagVisitWithScore(int score) => 'REPORT THEIR VISIT — $score';

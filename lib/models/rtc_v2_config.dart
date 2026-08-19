@@ -1,9 +1,9 @@
 /// The `rtcV2` block of a credential-carrying match payload — the server's
 /// verdict that BOTH players' sockets support P2P WebRTC for this match.
 ///
-/// Presence of this object is the ONLY signal that selects the P2P path,
-/// and the selection is final: there is no Agora fallback. The Agora fields
-/// emitted next to it only serve OLD clients (which don't see this block).
+/// Presence of this object is the ONLY signal that the match has video at
+/// all: P2P is the sole transport, so no block means no video, and there is
+/// nothing to fall back to.
 class RtcV2Config {
   const RtcV2Config({required this.iceServers, required this.polite});
 
@@ -27,7 +27,7 @@ class RtcV2Config {
   }
 
   /// Defensive parse of `payload['rtcV2']`. Null on anything malformed —
-  /// callers treat null exactly like an old-style payload (Agora path).
+  /// callers treat null exactly like a payload with no block: no video.
   static RtcV2Config? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final servers = raw['iceServers'];

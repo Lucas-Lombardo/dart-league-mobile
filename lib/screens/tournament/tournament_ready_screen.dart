@@ -168,12 +168,6 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
         TurnReportService.applyMatchPayload(data);
         _navigateToGame(
           gameMatchId,
-          agoraAppId: data['agoraAppId'] as String?,
-          agoraToken: data['agoraToken'] as String?,
-          agoraTokenStrict: data['agoraTokenStrict'] as String?,
-          agoraChannelName: data['agoraChannelName'] as String?,
-          agoraUid: (data['agoraUid'] as num?)?.toInt(),
-          opponentAgoraUid: (data['opponentAgoraUid'] as num?)?.toInt(),
           rtcV2Config: RtcV2Config.tryParse(data['rtcV2']),
         );
       }
@@ -245,12 +239,6 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
             TurnReportService.applyMatchPayload(start);
             _navigateToGame(
               gameMatchId,
-              agoraAppId: start['agoraAppId'] as String?,
-              agoraToken: start['agoraToken'] as String?,
-              agoraTokenStrict: start['agoraTokenStrict'] as String?,
-              agoraChannelName: start['agoraChannelName'] as String?,
-              agoraUid: (start['agoraUid'] as num?)?.toInt(),
-              opponentAgoraUid: (start['opponentAgoraUid'] as num?)?.toInt(),
               rtcV2Config: RtcV2Config.tryParse(start['rtcV2']),
             );
           }
@@ -372,7 +360,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     );
   }
 
-  Future<void> _navigateToGame(String gameMatchId, {String? agoraAppId, String? agoraToken, String? agoraTokenStrict, String? agoraChannelName, int? agoraUid, int? opponentAgoraUid, RtcV2Config? rtcV2Config}) async {
+  Future<void> _navigateToGame(String gameMatchId, {RtcV2Config? rtcV2Config}) async {
     if (!mounted || _navigating) return;
     _navigating = true;
 
@@ -405,12 +393,6 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       opponentUserId: widget.opponentId,
       bestOf: widget.bestOf,
       roundName: widget.roundName,
-      agoraAppId: agoraAppId,
-      agoraToken: agoraToken,
-      agoraTokenStrict: agoraTokenStrict,
-      agoraChannelName: agoraChannelName,
-      agoraUid: agoraUid,
-      opponentAgoraUid: opponentAgoraUid,
       rtcV2Config: rtcV2Config,
     );
 

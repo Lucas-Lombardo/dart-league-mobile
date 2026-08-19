@@ -14,7 +14,7 @@ import 'package:flutter_webrtc/src/native/media_stream_track_impl.dart'
 
 /// Bridge to the app-local "RtcFrames" native companion (RtcFramesPlugin on
 /// iOS/Android): a WebRTC video track fed by the app-owned camera instead of
-/// a WebRTC-managed capturer — the P2P twin of AgoraService.pushVideoFrame.
+/// a WebRTC-managed capturer, so the same frames feed the AI and the peer.
 ///
 /// Flow: [createTrack] once per P2P session (native side registers the track
 /// inside flutter_webrtc's localTracks under a fixed id), CameraFrameService
@@ -138,8 +138,7 @@ class RtcFramesService {
   }
 
   /// Push one camera frame into the WebRTC video source. Fire-and-forget by
-  /// design (mirrors the Agora push): drops the frame when the channel is
-  /// busy, never throws.
+  /// design: drops the frame when the channel is busy, never throws.
   ///
   /// Android: [bytes] is tight planar I420 or NV21 ([format] 'i420'/'nv21'),
   /// [rotationDegrees] is the clockwise-to-upright rotation metadata.

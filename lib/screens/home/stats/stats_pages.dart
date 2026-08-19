@@ -5,6 +5,7 @@ import '../../../utils/app_navigator.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/haptic_service.dart';
 import '../../profile/match_history_screen.dart';
+import 'comparison_screen.dart';
 import 'stats_widgets.dart';
 
 /// The four sub-tab pages. Each is a view over the same `StatsSummary`, so
@@ -39,7 +40,9 @@ class StatsFormPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final form = summary.form;
-    final children = <Widget>[];
+    // Standing first: "am I any good" is the question the rest of this page
+    // can't answer on its own, and it only costs one line here.
+    final children = <Widget>[const ComparisonTeaser()];
 
     if (form != null) {
       children.add(

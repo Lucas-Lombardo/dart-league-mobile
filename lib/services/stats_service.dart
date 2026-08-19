@@ -1,3 +1,6 @@
+import '../models/head_to_head.dart';
+import '../models/match_stats.dart';
+import '../models/player_percentiles.dart';
 import '../models/stats_summary.dart';
 import 'api_service.dart';
 
@@ -24,5 +27,34 @@ class StatsService {
       return StatsSummary.fromJson(response);
     }
     throw Exception('Unexpected stats summary response');
+  }
+
+  /// Where the player stands among comparable players. Served from nightly
+  /// snapshots, so it is cheap to call and does not move between two legs.
+  static Future<PlayerPercentiles> getPercentiles() async {
+    final response = await ApiService.get('/stats/percentiles');
+    if (response is Map<String, dynamic>) {
+      return PlayerPercentiles.fromJson(response);
+    }
+    throw Exception('Unexpected percentiles response');
+  }
+
+  /// The stats card shown when a match ends. Covers the whole series when the
+  /// match is a leg of one.
+  static Future<MatchStats> getMatchCard(String matchId) async {
+    final response = await ApiService.get('/stats/match/$matchId');
+    if (response is Map<String, dynamic>) {
+      return MatchStats.fromJson(response);
+    }
+    throw Exception('Unexpected match stats response');
+  }
+
+  /// Everything the player and one opponent have done to each other.
+  static Future<HeadToHead> getHeadToHead(String opponentId) async {
+    final response = await ApiService.get('/stats/head-to-head/$opponentId');
+    if (response is Map<String, dynamic>) {
+      return HeadToHead.fromJson(response);
+    }
+    throw Exception('Unexpected head-to-head response');
   }
 }

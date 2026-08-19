@@ -5,7 +5,7 @@ Flutter mobile app for a dart league platform. Dart/Flutter, state via Providers
 
 ## Architecture
 - `lib/models/` — match.dart, tournament.dart, user.dart
-- `lib/services/` — API, auth, socket, matchmaking, match, tournament, user, friends, payment, placement, push notification, dart detection/scoring/auto-scoring, agora
+- `lib/services/` — API, auth, socket, matchmaking, match, tournament, user, friends, payment, placement, push notification, dart detection/scoring/auto-scoring, P2P match video
 - `lib/screens/` — auth, game, home, matchmaking, placement, profile, settings, tournament
 - `lib/providers/` — state management
 - `lib/widgets/` — reusable UI components
@@ -17,7 +17,7 @@ Flutter mobile app for a dart league platform. Dart/Flutter, state via Providers
 - State management: Provider (not Riverpod, not Bloc)
 - Auth: JWT tokens via `auth_service.dart`
 - Real-time: WebSocket via `socket_service.dart`
-- Video/voice: Agora via `agora_service.dart`
+- Video/voice: P2P WebRTC via `p2p_match_video.dart` (signaling over the socket, TURN via Cloudflare) — the only transport
 - Dart detection: `dart_detection_service.dart` with isolate support (`detection_isolate.dart`), stub files for unsupported platforms
 - API base URL defined in `api_service.dart`
 - Assets: `assets/logo/`, `assets/ranks/`, `assets/sounds/`, `assets/models/`

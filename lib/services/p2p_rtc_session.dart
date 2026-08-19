@@ -205,8 +205,7 @@ class P2pRtcSession {
     };
 
     // Mic: track added up-front but disabled, so the mute toggle is a plain
-    // `enabled` flip with no renegotiation (parity with the Agora flow's
-    // publishMicrophoneTrack=false default).
+    // `enabled` flip with no renegotiation, and players start muted.
     try {
       final audio = await navigator.mediaDevices
           .getUserMedia({'audio': true, 'video': false});

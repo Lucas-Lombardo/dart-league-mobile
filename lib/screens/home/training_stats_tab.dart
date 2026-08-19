@@ -593,16 +593,22 @@ class _BotTrainingModesState extends State<_BotTrainingModes> {
           .toList();
       sessions = buckets.fold(0, (a, b) => a + b.sessions);
       num winSum = 0;
+      var winWeight = 0;
       num avgSum = 0;
       var avgWeight = 0;
       for (final b in buckets) {
-        winSum += (b.winRate ?? 0) * b.sessions;
+        // A bucket without a winRate must not weigh in the denominator, or it
+        // would drag the merged rate down instead of simply being excluded.
+        if (b.winRate != null) {
+          winSum += b.winRate! * b.sessions;
+          winWeight += b.sessions;
+        }
         if (b.averageScore != null) {
           avgSum += b.averageScore! * b.sessions;
           avgWeight += b.sessions;
         }
       }
-      winRate = sessions > 0 ? winSum / sessions : null;
+      winRate = winWeight > 0 ? winSum / winWeight : null;
       avg = avgWeight > 0 ? avgSum / avgWeight : null;
     } else {
       final bucket = (widget.stats.modes ?? const <BotModeStats>[])

@@ -198,8 +198,8 @@ class ZoomPill extends StatelessWidget {
 /// Shared by [AutoScoreGameView] (ranked / friendly / bot training) and
 /// TrainingGameView (solo drills) so the feed looks identical everywhere.
 ///
-/// [videoView] stays a plain widget — the caller builds the Agora view or the
-/// local preview — so this file never has to depend on the RTC engine.
+/// [videoView] stays a plain widget — the caller builds the remote renderer or
+/// the local preview — so this file never has to depend on the RTC engine.
 class GameCameraPanel extends StatelessWidget {
   final Widget? videoView;
   final Color borderColor;

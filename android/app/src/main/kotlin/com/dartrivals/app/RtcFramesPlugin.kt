@@ -27,7 +27,7 @@ import kotlin.math.min
  * fixed id, registers it in the plugin's localTracks (same LocalVideoTrack
  * wrapper getUserMedia uses) so every Dart-side call (addTrack / replaceTrack /
  * trackDispose) resolves it, and exposes a `pushFrame` channel the camera
- * service feeds with the same tight I420/NV21 buffers it pushes to Agora.
+ * service feeds with the same tight I420/NV21 buffers it gives the AI scorer.
  *
  * Registered from MainActivity — same pattern as NativeInferencePlugin.
  * org.webrtc classes come from `compileOnly io.github.webrtc-sdk:android`
@@ -140,7 +140,7 @@ class RtcFramesPlugin(
 
     /**
      * args: bytes (tight planar I420 or NV21, no row padding), width, height,
-     * rotation (clockwise degrees to upright — same semantic as the Agora
+     * rotation (clockwise degrees to upright — same semantic as the camera
      * push), format ('i420' | 'nv21').
      */
     private fun pushFrame(call: MethodCall, result: MethodChannel.Result) {

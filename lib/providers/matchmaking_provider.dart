@@ -29,14 +29,8 @@ class MatchmakingProvider with ChangeNotifier {
   Timer? _searchTimer;
   Timer? _pollTimer;
   
-  // Agora video credentials
+  // P2P video verdict for the match we just found — the only transport.
   RtcV2Config? _rtcV2Config;
-  String? _agoraAppId;
-  String? _agoraToken;
-  String? _agoraTokenStrict;
-  String? _agoraChannelName;
-  int? _agoraUid;
-  int? _opponentAgoraUid;
   GameProvider? _gameProvider;
   String? _errorMessage;
   String? _currentUserId; // Store userId for initGame call
@@ -56,12 +50,6 @@ class MatchmakingProvider with ChangeNotifier {
   int? get opponentElo => _opponentElo;
   int? get playerElo => _playerElo;
   RtcV2Config? get rtcV2Config => _rtcV2Config;
-  String? get agoraAppId => _agoraAppId;
-  String? get agoraToken => _agoraToken;
-  String? get agoraTokenStrict => _agoraTokenStrict;
-  String? get agoraChannelName => _agoraChannelName;
-  int? get agoraUid => _agoraUid;
-  int? get opponentAgoraUid => _opponentAgoraUid;
   String? get errorMessage => _errorMessage;
 
   void setGameProvider(GameProvider provider) {
@@ -83,12 +71,6 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentElo = null;
     _rtcV2Config = null;
     TurnReportService.resetForMatch();
-    _agoraAppId = null;
-    _agoraToken = null;
-    _agoraTokenStrict = null;
-    _agoraChannelName = null;
-    _agoraUid = null;
-    _opponentAgoraUid = null;
     _errorMessage = null;
     _currentUserId = userId;
     _eloRange = 250;
@@ -282,25 +264,8 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentElo = data['opponentElo'] as int?;
     _playerElo = data['playerElo'] as int?;
     
-    // Only update Agora credentials if they're provided in this data
-    // This prevents HTTP responses from overwriting socket credentials with null
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-
-    if (newAgoraAppId != null && newAgoraToken != null && newAgoraChannelName != null) {
-      _agoraAppId = newAgoraAppId;
-      _agoraToken = newAgoraToken;
-      _agoraChannelName = newAgoraChannelName;
-    }
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
+    // Keep-if-absent, so an HTTP poll response can't wipe the verdict the
+    // socket payload already delivered.
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
     // Same payload, same both-sides verdict. This is the ONLY event that
     // carries it at the start of a match — game_started does not — so
@@ -319,12 +284,6 @@ class MatchmakingProvider with ChangeNotifier {
         _matchId!,
         _currentUserId!,
         _opponentId!,
-        agoraAppId: _agoraAppId,
-        agoraToken: _agoraToken,
-        agoraTokenStrict: _agoraTokenStrict,
-        agoraChannelName: _agoraChannelName,
-        agoraUid: _agoraUid,
-        opponentAgoraUid: _opponentAgoraUid,
         rtcV2Config: _rtcV2Config,
       );
     } else {
@@ -376,12 +335,6 @@ class MatchmakingProvider with ChangeNotifier {
       _playerElo = null;
       _rtcV2Config = null;
       TurnReportService.resetForMatch();
-      _agoraAppId = null;
-      _agoraToken = null;
-      _agoraTokenStrict = null;
-      _agoraChannelName = null;
-      _agoraUid = null;
-      _opponentAgoraUid = null;
       _errorMessage = null;
       notifyListeners();
     } catch (_) {

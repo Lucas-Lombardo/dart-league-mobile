@@ -11,7 +11,7 @@ import WebRTC
 /// like getUserMedia registers its camera track, LocalVideoTrack wrapper
 /// included) so every Dart-side call (addTrack / replaceTrack / trackDispose)
 /// resolves it, and exposes a `pushFrame` channel the camera service feeds
-/// with the same BGRA buffers it pushes to Agora.
+/// with the same BGRA buffers it feeds to the AI scorer.
 ///
 /// Registered from AppDelegate on the `com.dartrivals/rtc_frames` channel —
 /// same pattern as NativeInferencePlugin.

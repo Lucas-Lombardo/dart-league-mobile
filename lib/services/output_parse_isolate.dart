@@ -10,7 +10,7 @@ import 'detection_parsing.dart';
 /// Persistent worker isolate for the model-output parse + NMS.
 ///
 /// The ~194k-float tensor scan per inference ran on the Flutter UI isolate,
-/// competing with rendering and the Agora frame push. Here it runs on a
+/// competing with rendering and the outgoing video frame push. Here it runs on a
 /// long-lived worker: the caller sends the raw output bytes (one memcpy) and
 /// gets back the handful of post-NMS [Detection]s.
 ///

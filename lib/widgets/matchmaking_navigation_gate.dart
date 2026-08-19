@@ -58,7 +58,7 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       if (_navigating) return;
       _navigating = true;
       _showMatchFoundDialog(matchmaking);
-      _waitForAgoraCredentialsAndNavigate(matchmaking);
+      _navigateToGame(matchmaking);
     } else {
       // New search started, queue left, or the match was aborted — allow the
       // next match to navigate and tear down any stuck "Match Found!" dialog.
@@ -172,14 +172,15 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
     });
   }
 
-  /// Polls up to ~5s for Agora credentials, then jumps into the match. Navigating
-  /// with `(route) => route.isFirst` removes every screen on top of HomeScreen —
-  /// the MatchmakingScreen and any training/placement screen the player was on —
-  /// so their `dispose()` runs and the camera is released for the match.
-  void _waitForAgoraCredentialsAndNavigate(MatchmakingProvider matchmaking) {
-    int attempts = 0;
-    const maxAttempts = 50; // 5 seconds at 100ms
-
+  /// Jumps into the match after a beat, so the "Match Found!" dialog is on
+  /// screen long enough to be read. Navigating with `(route) => route.isFirst`
+  /// removes every screen on top of HomeScreen — the MatchmakingScreen and any
+  /// training/placement screen the player was on — so their `dispose()` runs
+  /// and the camera is released for the match.
+  ///
+  /// Nothing is waited FOR: the match_found payload that got us here already
+  /// carries everything the game screen needs, video block included.
+  void _navigateToGame(MatchmakingProvider matchmaking) {
     void go() {
       final navigator = _navigator;
       if (navigator == null || matchmaking.matchId == null ||
@@ -197,12 +198,6 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
             matchId: matchmaking.matchId!,
             opponentId: matchmaking.opponentId!,
             opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
-            agoraAppId: matchmaking.agoraAppId,
-            agoraToken: matchmaking.agoraToken,
-            agoraTokenStrict: matchmaking.agoraTokenStrict,
-            agoraChannelName: matchmaking.agoraChannelName,
-            agoraUid: matchmaking.agoraUid,
-            opponentAgoraUid: matchmaking.opponentAgoraUid,
           ),
         ),
         (route) => route.isFirst,
@@ -217,20 +212,9 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
     }
 
-    void check() {
-      if (!mounted) return;
-      attempts++;
-      final ready = matchmaking.agoraAppId != null &&
-          matchmaking.agoraToken != null &&
-          matchmaking.agoraChannelName != null;
-      if (ready || attempts >= maxAttempts) {
-        go();
-        return;
-      }
-      Future.delayed(const Duration(milliseconds: 100), check);
-    }
-
-    Future.delayed(const Duration(milliseconds: 500), check);
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) go();
+    });
   }
 
   @override

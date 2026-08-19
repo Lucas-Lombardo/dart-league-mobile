@@ -11,6 +11,12 @@ class UserStats {
   final int currentStreak;
   final int wins;
   final int losses;
+  /// X01 legs against people behind the dart figures. Zero means they were
+  /// never measured — a player still in placement has only faced bots — which
+  /// is not the same as averaging zero, so the screen shows a dash instead.
+  /// Defaults to -1 for older backends that don't send it, which keeps their
+  /// figures rendering as before.
+  final int legsCounted;
   // Checkout & finishing stats. "LastMonth" = rolling 30 days. Default 0 so older
   // backends (without these fields) keep working.
   final int biggestCheckout;
@@ -29,6 +35,7 @@ class UserStats {
     required this.currentStreak,
     required this.wins,
     required this.losses,
+    this.legsCounted = -1,
     this.biggestCheckout = 0,
     this.biggestCheckoutLastMonth = 0,
     this.averageCheckout = 0.0,
@@ -49,6 +56,7 @@ class UserStats {
       currentStreak: json['currentStreak'] as int? ?? 0,
       wins: json['wins'] as int? ?? 0,
       losses: json['losses'] as int? ?? 0,
+      legsCounted: json['legsCounted'] as int? ?? -1,
       biggestCheckout: json['biggestCheckout'] as int? ?? 0,
       biggestCheckoutLastMonth: json['biggestCheckoutLastMonth'] as int? ?? 0,
       averageCheckout: (json['averageCheckout'] as num?)?.toDouble() ?? 0.0,

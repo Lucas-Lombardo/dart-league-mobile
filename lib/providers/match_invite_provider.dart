@@ -55,12 +55,6 @@ class MatchInviteProvider with ChangeNotifier {
   String? _opponentId;
   String? _opponentUsername;
   RtcV2Config? _rtcV2Config;
-  String? _agoraAppId;
-  String? _agoraToken;
-  String? _agoraTokenStrict;
-  String? _agoraChannelName;
-  int? _agoraUid;
-  int? _opponentAgoraUid;
 
   String? _lastError; // invite_error reason, surfaced once by the gate
 
@@ -79,12 +73,6 @@ class MatchInviteProvider with ChangeNotifier {
   String? get opponentId => _opponentId;
   String? get opponentUsername => _opponentUsername;
   RtcV2Config? get rtcV2Config => _rtcV2Config;
-  String? get agoraAppId => _agoraAppId;
-  String? get agoraToken => _agoraToken;
-  String? get agoraTokenStrict => _agoraTokenStrict;
-  String? get agoraChannelName => _agoraChannelName;
-  int? get agoraUid => _agoraUid;
-  int? get opponentAgoraUid => _opponentAgoraUid;
   String? get lastError => _lastError;
 
   void setGameProvider(GameProvider provider) {
@@ -338,20 +326,6 @@ class MatchInviteProvider with ChangeNotifier {
     _opponentId = data['opponentId'] as String?;
     _opponentUsername = data['opponentUsername'] as String?;
 
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-    if (newAgoraAppId != null) _agoraAppId = newAgoraAppId;
-    if (newAgoraToken != null) _agoraToken = newAgoraToken;
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraChannelName != null) _agoraChannelName = newAgoraChannelName;
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) _opponentAgoraUid = newOpponentAgoraUid;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
     TurnReportService.applyMatchPayload(data);
 
@@ -380,12 +354,6 @@ class MatchInviteProvider with ChangeNotifier {
         _matchId!,
         _currentUserId!,
         _opponentId!,
-        agoraAppId: _agoraAppId,
-        agoraToken: _agoraToken,
-        agoraTokenStrict: _agoraTokenStrict,
-        agoraChannelName: _agoraChannelName,
-        agoraUid: _agoraUid,
-        opponentAgoraUid: _opponentAgoraUid,
         rtcV2Config: _rtcV2Config,
       );
     }

@@ -346,6 +346,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       // Tournament legs land on this same screen rather than a LegEndView, so
       // it carries the winning-visit offer for every leg, not just the last.
       preCard: buildWinningVisitBanner(tGame, didWin: didWin),
+      // Asks the server for the figures it already replayed — and for a leg of
+      // a series it answers for the whole series, which is the match played.
+      statsMatchId: tGame.currentGameMatchId,
     );
   }
 

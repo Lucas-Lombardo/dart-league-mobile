@@ -516,15 +516,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }
 
   // ─── RTC v2 (P2P) ──────────────────────────────────────────────────────────
-  // Non-null while this match runs on the P2P WebRTC path (payload carried an
-  // rtcV2 block — both clients are new, so P2P is the transport for the whole
-  // series, with NO Agora fallback: recovery is the session's own rebuild
-  // loop). Mutually exclusive with agoraEngine, which only serves matches
-  // against an old client. It deliberately survives leg transitions (BO3
-  // ranked AND tournament): the peers never change between legs, so unlike
-  // Agora there is nothing to re-key.
+  // Non-null while this match has video at all: the payload carried an rtcV2
+  // block. P2P is the only transport, so there is nothing to fall back to —
+  // recovery is the session's own rebuild loop. It deliberately survives leg
+  // transitions (BO3 ranked AND tournament): the peers never change between
+  // legs, so there is nothing to re-key either.
   /// The whole P2P path in one object (session + native track + recovery
-  /// loop) — see [P2pMatchVideo]. Null on the Agora path.
+  /// loop) — see [P2pMatchVideo]. Null when the match got no video block.
   P2pMatchVideo? p2pVideo;
 
   // Guards initializeP2p against concurrent entry (initial init racing the
@@ -590,9 +588,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   bool bustDialogShowing = false;
   bool forfeitDialogShowing = false;
   // Why: iOS fires inactive → resumed for sub-second blips (screenshot,
-  // notification, control center). Reconnecting Agora on every blip resets
-  // the mic to muted (since joinChannel defaults to publishMicrophoneTrack:
-  // false). Track whether we actually backgrounded so we only re-sync after a
+  // notification, control center). Re-syncing the call on every blip is pure
+  // churn. Track whether we actually backgrounded so we only re-sync after a
   // real paused state.
   bool _wasPausedSinceLastResume = false;
 
@@ -617,7 +614,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // ─── Auto-scoring loading watchdog ─────────────────────────────────────────
   // autoScoringLoading drives a FULL-SCREEN overlay that replaces the game UI.
   // Every path that sets it true relies on an async completion to clear it
-  // (model load, Agora reconnect, a game_state_sync that may never arrive on
+  // (model load, RTC relaunch, a game_state_sync that may never arrive on
   // the rejoin path). If that completion wedges — e.g. the native inference
   // thread is stuck on a hung GPU call, so the next loadModel never returns —
   // the player is locked out of the whole match. This watchdog only drops the
@@ -781,7 +778,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // Brief interruption (screenshot, notification banner, control center).
       // Pause the camera but DO NOT mark as backgrounded — a resumed event
       // immediately after an inactive-only blip should not trigger a full
-      // Agora reconnect, which would reset the mic to muted.
+      // socket/call re-sync.
       cameraFrameService?.pause();
     } else if (state == AppLifecycleState.resumed && mounted) {
       cameraFrameService?.resume();
@@ -789,7 +786,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // back without FLAG_KEEP_SCREEN_ON. Cheap no-op if already set.
       WakelockPlus.enable();
       if (!_wasPausedSinceLastResume) {
-        // Came back from a brief inactive blip — no socket/Agora work needed.
+        // Came back from a brief inactive blip — no socket/call work needed.
         return;
       }
       _wasPausedSinceLastResume = false;
@@ -841,20 +838,20 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           DartSoundService.playLose();
         }
       }
-      // Why: tear down Agora/camera as soon as the match ends instead of waiting
-      // for the user to navigate away from the end screen. Otherwise the call
-      // keeps burning Agora minutes, battery and bandwidth while the user reads
-      // their ELO result. dispose() in the widget lifecycle remains as a safety
-      // net for the back-arrow / app-kill paths.
+      // Why: tear down the call/camera as soon as the match ends instead of
+      // waiting for the user to navigate away from the end screen. Otherwise
+      // it keeps burning battery and bandwidth while the user reads their ELO
+      // result. dispose() in the widget lifecycle remains as a safety net for
+      // the back-arrow / app-kill paths.
       //
       // EXCEPT between BO3 legs (D7): the series continues against the same
-      // opponent within seconds, and the old teardown + full rebuild (engine,
+      // opponent within seconds, and a teardown + full rebuild (session,
       // camera, model reload) on an already-hot phone was exactly the CoreML
-      // recompile scenario of the July regression. Keep the session alive;
-      // reconnectAgora re-keys the new leg's channel on the live engine.
-      // Tournament providers don't expose these getters (try/catch), so
-      // tournaments keep the historical full teardown per leg. A forfeit ends
-      // the series no matter what the leg counters say.
+      // recompile scenario of the July regression. Keep the session alive — it
+      // spans legs, so the next leg needs nothing re-keyed. Tournament
+      // providers don't expose these getters (try/catch), so tournaments keep
+      // the historical full teardown per leg. A forfeit ends the series no
+      // matter what the leg counters say.
       bool seriesGoesOn = false;
       try {
         seriesGoesOn = (game.isRankedSeries as bool) &&
@@ -865,8 +862,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       if (toreDownNow) {
         // P2P sessions survive tournament legs too (same peers next leg —
         // keeping camera, AI and call alive avoids the multi-second rebuild);
-        // the series verdict below ends the call instead. The Agora path
-        // keeps its historical per-leg teardown.
+        // the series verdict below ends the call instead. A match with no
+        // video block has nothing to keep, and tears down as before.
         if (p2pVideo == null || !_tournamentSeriesGoesOn(game)) {
           endMatchCall();
         }
@@ -919,7 +916,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // turn-finished sound below fires off it); the service closes 1s
       // later (Lucas's spec) and then only trickles at ~1 fps — never
       // silence, the peer's stall watchdog needs frames flowing (see
-      // RtcFramesService). Audio stays live; no-op in Agora/solo modes.
+      // RtcFramesService). Audio stays live; no-op in solo modes.
       RtcFramesService.setSendActive(game.isMyTurn);
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
@@ -944,7 +941,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       }
       // lastKnownCurrentPlayer == null means this is the FIRST run since the
       // listener was attached — and it is attached after the multi-second
-      // Agora/camera init, so game_started and the join notifies were likely
+      // call/camera init, so game_started and the join notifies were likely
       // all missed. That first run is a baseline, never a turn change: without
       // the null guard (same one the sound block above uses), a first run
       // triggered by the score echo of the match's first dart reset the AI
@@ -1104,8 +1101,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           else if (game.pendingType == 'bust' && !bustDialogShowing) { DartSoundService.playBust(); showPendingBustDialog(game); }
         });
       }
-      if (game.needsAgoraReconnect == true) {
-        game.clearAgoraReconnectFlag();
+      if (game.needsRtcReconnect == true) {
+        game.clearRtcReconnectFlag();
         reconnectRtcTransport(game);
       }
       if (game.gameEnded && game.pendingType == 'forfeit') {
@@ -1187,8 +1184,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     });
   }
 
-  /// [armEmptyBoardGate] must be false when re-initializing MID-TURN (Agora
-  /// reconnect): the board still holds this turn's darts, so the gate would
+  /// [armEmptyBoardGate] must be false when re-initializing MID-TURN (an RTC
+  /// relaunch): the board still holds this turn's darts, so the gate would
   /// never clear until takeout and every remaining dart of the turn would go
   /// unscored. At match start / turn start the board is expected empty.
   Future<void> initAutoScoring({bool armEmptyBoardGate = true}) async {
@@ -1359,8 +1356,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       armAutoScoringLoadingWatchdog();
       // A sync may have fired before the listener was attached: process the
       // pending reconnect now instead of waiting for the next notification.
-      if (game.needsAgoraReconnect == true) {
-        game.clearAgoraReconnectFlag();
+      if (game.needsRtcReconnect == true) {
+        game.clearRtcReconnectFlag();
         reconnectRtcTransport(game);
       }
     }
@@ -1406,16 +1403,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
     // Nothing to start yet — most often a sync that landed before the server
     // had both players' sockets and so carried no rtcV2 block. Deliberately a
-    // no-op: this used to fall back to Agora, which captured the match on a
-    // transport the opponent was not using AND blocked every later P2P
-    // relaunch (2026-08-13). The next sync brings the verdict, and the
-    // in-flight init guard makes a duplicate call here harmless.
+    // no-op: there is no second transport to try, and the one that used to be
+    // here captured the match on a transport the opponent was not using AND
+    // blocked every later P2P relaunch (2026-08-13). The next sync brings the
+    // verdict, and the in-flight init guard makes a duplicate call harmless.
     debugPrint('[BaseGameScreen] reconnectRtcTransport: no rtcV2 verdict yet '
         '(match=$relaunchMatchId, opponent=$relaunchOpponentId) — waiting');
   }
 
   /// Defensive reads over the two provider shapes (GameProvider /
-  /// TournamentGameProvider) — same pattern as the agoraLegTransition read.
+  /// TournamentGameProvider), which don't share an interface.
   RtcV2Config? _rtcV2ConfigOf(dynamic game) {
     try {
       return game.rtcV2Config as RtcV2Config?;
@@ -1443,14 +1440,14 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
-  /// Establish the P2P (RTC v2) call and wire the SAME camera/AI pipeline as
-  /// the Agora path — minus the Agora engine: the camera service pushes into
-  /// the WebRTC track (p2pMode) and feeds the same TFLite capture callbacks.
+  /// Establish the P2P (RTC v2) call and wire the camera/AI pipeline to it:
+  /// the camera service pushes into the WebRTC track (p2pMode) and feeds the
+  /// same TFLite capture callbacks.
   ///
-  /// No fallback: connection failures are the recovery loop's job (it
-  /// rebuilds until the network lets it through), and a camera failure
-  /// degrades to a receive-only call (tagged in telemetry) — Agora shares
-  /// the same camera pipeline, so switching would not have helped.
+  /// No fallback, because there is no other transport: connection failures are
+  /// the recovery loop's job (it rebuilds until the network lets it through),
+  /// and a camera failure degrades to a receive-only call (tagged in
+  /// telemetry) rather than ending it.
   Future<void> initializeP2p({
     required String matchId,
     required String opponentId,
@@ -1461,8 +1458,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // sessions would fight over the single rtc_signal handler slot.
     if (p2pVideo != null || _p2pInitInFlight) return;
     _p2pInitInFlight = true;
-    // Same permission gate as initializeAgora: camera for the app-owned
-    // capture, mic for the WebRTC audio track.
+    // Camera for the app-owned capture, mic for the WebRTC audio track.
     if (!kIsWeb) {
       permissionsGranted = await MediaPermissions.requestCameraAndMic();
       if (!permissionsGranted) {
@@ -1505,8 +1501,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           cameraFrameService = null;
           return;
         }
-        // Fire-and-forget so the game screen shows immediately, same as the
-        // Agora path; autoScoringLoading drives the UI loading state.
+        // Fire-and-forget so the game screen shows immediately;
+        // autoScoringLoading drives the UI loading state.
         initAutoScoring();
       }
     } catch (e) {
@@ -1918,7 +1914,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   }) {
     final opponentThrows = game.opponentRoundThrows as List<String>;
     final cricket = cricketStateOf(game);
-    // Same "Waiting..." placeholder for the P2P and Agora branches.
+    // "Waiting..." placeholder until the peer's video arrives.
     final Widget waitingPlaceholder = Container(
       color: AppTheme.gamePanelEmpty,
       child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [

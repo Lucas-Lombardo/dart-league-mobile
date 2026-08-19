@@ -28,7 +28,7 @@ class TournamentCameraSetupScreen extends StatelessWidget {
 
   /// When set, this is a RESUME of a live leg (app killed mid-match): after
   /// camera setup we go straight back into the game — the server re-syncs
-  /// state (and Agora tokens) when the socket rejoins the match room.
+  /// state when the socket rejoins the match room.
   final String? rejoinGameMatchId;
 
   const TournamentCameraSetupScreen({
@@ -74,8 +74,8 @@ class TournamentCameraSetupScreen extends StatelessWidget {
 
   Future<bool> _navigate(BuildContext context) async {
     // Resume path: the leg is already running — skip the ready screen and
-    // re-enter the game. State + Agora tokens arrive via game_state_sync when
-    // the socket rejoins the match room.
+    // re-enter the game. State arrives via game_state_sync when the socket
+    // rejoins the match room.
     final rejoinGameId = rejoinGameMatchId;
     if (rejoinGameId != null) {
       final user = context.read<AuthProvider>().currentUser;

@@ -92,28 +92,14 @@ class GameProvider with ChangeNotifier {
   Map<String, dynamic>? _seriesResultData;
   
   // RTC v2 (P2P) — non-null only when the server put an `rtcV2` block in a
-  // payload for this match, i.e. both players' sockets support it. Selects
-  // the P2P session in the game screen; the Agora fields below remain the
-  // in-payload fallback.
+  // payload for this match, i.e. both players' sockets support it. It is the
+  // match's only video transport: no block, no video.
   RtcV2Config? _rtcV2Config;
 
-  // Agora video calling
-  String? _agoraAppId;
-  String? _agoraToken;
-  String? _agoraTokenStrict;
-  String? _agoraChannelName;
-  int? _agoraUid;
-  int? _opponentAgoraUid;
-  int? _remoteUid;
-  bool _localUserJoined = false;
-  bool _needsAgoraReconnect = false;
-  // True when the pending Agora reconnect is a BO3 leg transition (same
-  // opponent, new server-issued channel). The screen then re-keys the channel
-  // on the LIVE engine/camera/model instead of tearing everything down — a
-  // full rebuild on a hot phone was the exact CoreML-recompile scenario of
-  // the July regression. Recovery reconnects (game_state_sync path) keep the
-  // full rebuild: there the fresh engine IS the fix.
-  bool _agoraLegTransition = false;
+  // Set by the server's `rtcReconnect` flag, which rides the payloads that
+  // hand us back into a live leg (reconnect syncs, leg transitions). The game
+  // screen consumes it to (re)start the P2P call — see reconnectRtcTransport.
+  bool _needsRtcReconnect = false;
 
   bool _disposed = false;
 
@@ -210,23 +196,7 @@ class GameProvider with ChangeNotifier {
   
   RtcV2Config? get rtcV2Config => _rtcV2Config;
 
-  // Agora getters
-  String? get agoraAppId => _agoraAppId;
-  String? get agoraToken => _agoraToken;
-  String? get agoraTokenStrict => _agoraTokenStrict;
-  String? get agoraChannelName => _agoraChannelName;
-  int? get agoraUid => _agoraUid;
-  int? get opponentAgoraUid => _opponentAgoraUid;
-  int? get remoteUid => _remoteUid;
-  bool get localUserJoined => _localUserJoined;
-  bool get needsAgoraReconnect => _needsAgoraReconnect;
-  bool get agoraLegTransition => _agoraLegTransition;
-
-  /// Whether we have everything needed to use the strict (uid-bound) token.
-  /// When false, callers should fall back to the legacy token + uid=0 so we
-  /// stay compatible with backends that don't yet emit agoraTokenStrict.
-  bool get hasStrictAgoraCredentials =>
-      _agoraTokenStrict != null && _agoraTokenStrict!.isNotEmpty && _agoraUid != null && _agoraUid != 0;
+  bool get needsRtcReconnect => _needsRtcReconnect;
 
   /// Darts emitted but not yet confirmed applied by the server. The AI
   /// auto-confirm must not end the turn while this is non-zero.
@@ -268,12 +238,6 @@ class GameProvider with ChangeNotifier {
   }
 
   void initGame(String matchId, String myUserId, String opponentUserId, {
-    String? agoraAppId,
-    String? agoraToken,
-    String? agoraTokenStrict,
-    String? agoraChannelName,
-    int? agoraUid,
-    int? opponentAgoraUid,
     RtcV2Config? rtcV2Config,
   }) {
     debugPrint('GAME DEBUG: initGame called - matchId=$matchId, myUserId=$myUserId, currentMatchId=$_matchId');
@@ -297,26 +261,7 @@ class GameProvider with ChangeNotifier {
       _rtcV2Config = rtcV2Config;
     }
 
-    // Store Agora credentials if provided
-    if (agoraAppId != null) _agoraAppId = agoraAppId;
-    if (agoraToken != null) _agoraToken = agoraToken;
-    if (agoraTokenStrict != null) _agoraTokenStrict = agoraTokenStrict;
-    if (agoraChannelName != null) _agoraChannelName = agoraChannelName;
-    if (agoraUid != null) _agoraUid = agoraUid;
-    if (opponentAgoraUid != null) {
-      _opponentAgoraUid = opponentAgoraUid;
-      // Pre-set remoteUid ONLY when we'll be joining with the strict
-      // (deterministic) UID ourselves. Otherwise we're on the legacy path
-      // (uid=0 → Agora-assigned uid) and the opponent's runtime uid will
-      // also be Agora-assigned, so pre-setting the deterministic value here
-      // would create a black tile until onUserJoined corrects it. We let
-      // onUserJoined drive it in that case.
-      if (agoraTokenStrict != null && agoraTokenStrict.isNotEmpty && agoraUid != null && agoraUid != 0) {
-        _remoteUid = opponentAgoraUid;
-      }
-    }
-    
-    if (isNewMatch || !_gameStarted) {
+        if (isNewMatch || !_gameStarted) {
       debugPrint('GAME DEBUG: initGame - resetting scores (isNewMatch=$isNewMatch, gameStarted=$_gameStarted)');
       _myScore = 501;
       _opponentScore = 501;
@@ -909,34 +854,9 @@ class GameProvider with ChangeNotifier {
       _matchId = newMatchId;
     }
 
-    // Each leg is a new Agora channel (channel name == leg matchId): adopt the
-    // fresh tokens and ask the screen to re-key the call, exactly like the
-    // tournament next-leg flow.
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
-        newAgoraToken != null && newAgoraToken.isNotEmpty &&
-        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
-      _agoraAppId = newAgoraAppId;
-      _agoraToken = newAgoraToken;
-      _agoraChannelName = newAgoraChannelName;
-      _needsAgoraReconnect = true;
-      _agoraLegTransition = true;
-    }
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) {
-      _opponentAgoraUid = newOpponentAgoraUid;
-      if (hasStrictAgoraCredentials) {
-        _remoteUid = newOpponentAgoraUid;
-      }
-    }
+    // Only the per-player copy of this event carries the flag; the room copy
+    // (which spectators also get) must not make a healthy call flap.
+    if (data['rtcReconnect'] == true) _needsRtcReconnect = true;
     _rtcV2Config = RtcV2Config.adopt(data, _rtcV2Config);
     // Same both-sides verdict, same place: the server only puts the
     // `turnReports` block in when BOTH devices declared they can play
@@ -968,7 +888,7 @@ class GameProvider with ChangeNotifier {
   }
 
   /// Reset the per-leg state between BO3 legs, keeping identities, series
-  /// counts and Agora bookkeeping (adapted from TournamentGameProvider —
+  /// counts and RTC bookkeeping (adapted from TournamentGameProvider —
   /// which has neither a rounds UI nor a disconnect banner, hence the extra
   /// fields here). _legWinnerId deliberately survives: the between-legs
   /// screen reads it; game_started clears it when the next leg begins.
@@ -1230,9 +1150,8 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void clearAgoraReconnectFlag() {
-    _needsAgoraReconnect = false;
-    _agoraLegTransition = false;
+  void clearRtcReconnectFlag() {
+    _needsRtcReconnect = false;
   }
 
   void _handleGameStateSync(dynamic data) {
@@ -1362,33 +1281,9 @@ class GameProvider with ChangeNotifier {
       }
     }
 
-    // Update Agora credentials if provided (reconnection scenario)
-    final newAgoraAppId = data['agoraAppId'] as String?;
-    final newAgoraToken = data['agoraToken'] as String?;
-    final newAgoraTokenStrict = data['agoraTokenStrict'] as String?;
-    final newAgoraChannelName = data['agoraChannelName'] as String?;
-    final newAgoraUid = (data['agoraUid'] as num?)?.toInt();
-    final newOpponentAgoraUid = (data['opponentAgoraUid'] as num?)?.toInt();
-    if (newAgoraAppId != null && newAgoraAppId.isNotEmpty &&
-        newAgoraToken != null && newAgoraToken.isNotEmpty &&
-        newAgoraChannelName != null && newAgoraChannelName.isNotEmpty) {
-      _agoraAppId = newAgoraAppId;
-      _agoraToken = newAgoraToken;
-      _agoraChannelName = newAgoraChannelName;
-      _needsAgoraReconnect = true;
-    }
-    if (newAgoraTokenStrict != null && newAgoraTokenStrict.isNotEmpty) {
-      _agoraTokenStrict = newAgoraTokenStrict;
-    }
-    if (newAgoraUid != null) _agoraUid = newAgoraUid;
-    if (newOpponentAgoraUid != null) {
-      _opponentAgoraUid = newOpponentAgoraUid;
-      // Only pre-render the remote view when we're on the strict path
-      // ourselves (same reasoning as initGame).
-      if (hasStrictAgoraCredentials) {
-        _remoteUid = newOpponentAgoraUid;
-      }
-    }
+    // Reconnect syncs carry it, the heal/periodic ones don't — see the
+    // server's rtcReconnectFields().
+    if (data['rtcReconnect'] == true) _needsRtcReconnect = true;
 
     _gameStarted = true;
     notifyListeners();
@@ -1858,16 +1753,6 @@ class GameProvider with ChangeNotifier {
     SocketService.off('ranked_match_won', owner: this);
   }
 
-  void setRemoteUser(int? uid) {
-    _remoteUid = uid;
-    notifyListeners();
-  }
-  
-  void setLocalUserJoined(bool joined) {
-    _localUserJoined = joined;
-    notifyListeners();
-  }
-
   void reset() {
     debugPrint('GAME DEBUG: reset() called - CLEARING all state. Was: gameStarted=$_gameStarted, gameEnded=$_gameEnded, winnerId=$_winnerId, matchId=$_matchId');
     _cleanupSocketListeners();
@@ -1904,16 +1789,7 @@ class GameProvider with ChangeNotifier {
     _selfDisconnectGraceSeconds = 0;
     _selfDisconnectCountdownTimer?.cancel();
     _selfDisconnectCountdownTimer = null;
-    _agoraAppId = null;
-    _agoraToken = null;
-    _agoraTokenStrict = null;
-    _agoraChannelName = null;
-    _agoraUid = null;
-    _opponentAgoraUid = null;
-    _remoteUid = null;
-    _localUserJoined = false;
-    _needsAgoraReconnect = false;
-    _agoraLegTransition = false;
+    _needsRtcReconnect = false;
     _reconnectFailed = false;
     _reconnectFailedReason = null;
     _isFriendly = false;
