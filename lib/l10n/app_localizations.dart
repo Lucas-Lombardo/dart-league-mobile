@@ -809,6 +809,8 @@ abstract class AppLocalizations {
   String cricketMarks(int n);
   String cricketMarksShort(int n);
   String get pointsShortUpper;
+  String get cricketMprCaption;
+  String get visitUpper;
   String get cricketAllClosedTitle;
   String get cricketAllClosedBody;
   String get botVisitConnectionError;

@@ -8,19 +8,16 @@ import 'dartboard_edit_modal.dart';
 import 'game_turn_ui.dart';
 
 /// Full-screen auto-scoring layout for when it's the player's turn (maquette
-/// layout): blue-bordered camera on top — sized by gameCameraHeight() so it
-/// matches the opponent-turn camera exactly — then the visit chips, the
-/// score bar and the AUTO VALIDATION + CONFIRM row.
+/// layout): blue-bordered camera — sized by gameCameraHeight() so it matches
+/// the opponent-turn camera exactly — plus the visit chips. X01 puts the
+/// shared score [header] above the camera and AUTO VALIDATION + CONFIRM at
+/// the bottom; cricket ([confirmBesideChips]) docks CONFIRM onto the chip
+/// row and fills the space below with the score table (2026-08-19 layout).
 class AutoScoreGameView extends StatelessWidget {
   final AutoScoringService scoringService;
   final VoidCallback onConfirm;
   final VoidCallback? onEndRoundEarly;
   final bool pendingConfirmation;
-  final int myScore;
-  final int opponentScore;
-  final String opponentName;
-  final String myName;
-  final int dartsThrown;
   final Widget? localCameraPreview;
   final bool isAudioMuted;
   final VoidCallback? onToggleAudio;
@@ -40,30 +37,27 @@ class AutoScoreGameView extends StatelessWidget {
   final VoidCallback? onEditModalClosed;
   final VoidCallback? onToggleAi;
   final bool aiEnabled;
-  final bool iAmPlayer2;
-  final double? myAverage;
-  final double? opponentAverage;
-  final int startingScore;
   final int? roundNumber;
   final VoidCallback? onBack;
   /// The replay "record this turn" pill (built by the screen, which owns the
   /// capture flow) — rendered bottom-right of the camera panel.
   final Widget? captureButton;
 
-  // BO3 series context for the score bar center ("BO3 · Manche 2" over the
-  // colored legs score). Null for single-leg matches.
-  final String? seriesTitle;
-  final int myLegs;
-  final int opponentLegs;
-
-  /// Extra content below the visit chips (cricket "BO3 · Manche" caption
-  /// line). Purely additive — the score itself always lives on the camera.
+  /// Score display below the visit chips (cricket: the [CricketScoreTable]).
+  /// X01 passes null — its score lives in [header] above the camera.
   final Widget? scorePanel;
 
-  /// Translucent panel docked to the bottom of the camera feed (cricket marks
-  /// HUD). Null on X01 → the view docks its own [CameraScoreBand] there, so
-  /// the score is readable without scrolling (2026-08-18 no-scroll redesign).
-  final Widget? cameraOverlay;
+  /// Score header above the camera (X01: the shared no-badges
+  /// [TurnScoreHeader], the same component as the opponent turn — 2026-08-19
+  /// unified-header decision). Cricket passes null: its scores live in the
+  /// table below.
+  final Widget? header;
+
+  /// Cricket "tableau" layout (2026-08-19): compact chips share their row
+  /// with a vertical CONFIRM button and the AUTO VALIDATION strip disappears,
+  /// freeing the height the score table needs. False keeps the X01 layout
+  /// (full-size chips, CONFIRM in the bottom row).
+  final bool confirmBesideChips;
 
   /// Overrides the visit TOTAL display ("+3 marques"). Null = X01 points sum.
   final String? visitTotalText;
@@ -76,12 +70,7 @@ class AutoScoreGameView extends StatelessWidget {
     required this.scoringService,
     required this.onConfirm,
     this.onEndRoundEarly,
-    required this.myScore,
-    required this.opponentScore,
-    required this.opponentName,
-    required this.myName,
     this.pendingConfirmation = false,
-    this.dartsThrown = 0,
     this.localCameraPreview,
     this.isAudioMuted = true,
     this.onToggleAudio,
@@ -96,17 +85,11 @@ class AutoScoreGameView extends StatelessWidget {
     this.onEditModalClosed,
     this.onToggleAi,
     this.aiEnabled = true,
-    this.iAmPlayer2 = false,
-    this.myAverage,
-    this.opponentAverage,
-    this.startingScore = 501,
     this.roundNumber,
     this.captureButton,
-    this.seriesTitle,
-    this.myLegs = 0,
-    this.opponentLegs = 0,
     this.scorePanel,
-    this.cameraOverlay,
+    this.header,
+    this.confirmBesideChips = false,
     this.visitTotalText,
     this.chipSubtitle,
     this.onBack,
@@ -130,21 +113,6 @@ class AutoScoreGameView extends StatelessWidget {
         final safeBottom = MediaQuery.of(context).padding.bottom;
         final isLandscape =
             MediaQuery.of(context).orientation == Orientation.landscape;
-
-        // 2026-08-18 no-scroll redesign: the score lives ON the camera as a
-        // translucent overlay. Cricket passes its marks HUD; X01 gets the
-        // score band by default.
-        final effectiveCameraOverlay =
-            cameraOverlay ??
-            CameraScoreBand(
-              myName: myName,
-              opponentName: opponentName,
-              myScore: myScore,
-              opponentScore: opponentScore,
-              seriesTitle: seriesTitle,
-              myLegs: myLegs,
-              opponentLegs: opponentLegs,
-            );
 
         // ── Camera feed + overlay controls ──
         final cameraPanel = GameCameraPanel(
@@ -175,7 +143,6 @@ class AutoScoreGameView extends StatelessWidget {
           onZoomIn: onZoomIn,
           onZoomOut: onZoomOut,
           bottomBar: captureButton,
-          bottomOverlay: effectiveCameraOverlay,
         );
 
         // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──
@@ -204,60 +171,85 @@ class AutoScoreGameView extends StatelessWidget {
           ],
         );
 
-        // ── The three visit chips ──
-        final chipsRow = SizedBox(
-          height: 92,
-          child: Row(
-            children: List.generate(3, (i) {
-              final score = slots[i];
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
-                  child: DartVisitChip(
-                    notation: score != null ? shortDartLabel(score) : null,
-                    accent: AppTheme.playerBlue,
-                    subtitle: score != null
-                        ? chipSubtitle?.call(i, shortDartLabel(score))
-                        : null,
-                    showEditLabel: score != null,
-                    capturing: scoringService.isCapturing,
-                    onTap: () => _editDart(context, i, score),
-                    onRemove:
-                        (onRemoveDart != null &&
-                            score != null &&
-                            i == lastFilledIndex)
-                        ? () {
-                            HapticService.heavyImpact();
-                            onRemoveDart!(i);
-                          }
-                        : null,
-                  ),
-                ),
-              );
-            }),
+        // ── CONFIRM button: full-size in the X01 bottom row, narrow
+        // vertical pill sharing the cricket chip row ──
+        const compactConfirmPadding = WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 8),
+        );
+        const compactConfirmText = WidgetStatePropertyAll(
+          TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1,
           ),
         );
-
-        // ── Bottom row: AUTO VALIDATION chip + CONFIRM button ──
-        final showAutoValidation =
-            aiEnabled && (scoringService.isCapturing || pendingConfirmation);
+        final baseConfirmStyle = pendingConfirmation
+            ? gameFilledButtonStyle(AppTheme.playerBlue)
+            : gameOutlineButtonStyle(AppTheme.playerBlue);
+        final confirmStyle = confirmBesideChips
+            ? baseConfirmStyle.copyWith(
+                padding: compactConfirmPadding,
+                textStyle: compactConfirmText,
+              )
+            : baseConfirmStyle;
+        void handleConfirm() {
+          HapticService.heavyImpact();
+          onConfirm();
+        }
         final confirmButton = pendingConfirmation
             ? ElevatedButton(
-                onPressed: () {
-                  HapticService.heavyImpact();
-                  onConfirm();
-                },
-                style: gameFilledButtonStyle(AppTheme.playerBlue),
+                onPressed: handleConfirm,
+                style: confirmStyle,
                 child: Text(l10n.confirmUpper),
               )
             : OutlinedButton(
-                onPressed: () {
-                  HapticService.heavyImpact();
-                  onConfirm();
-                },
-                style: gameOutlineButtonStyle(AppTheme.playerBlue),
+                onPressed: handleConfirm,
+                style: confirmStyle,
                 child: Text(l10n.confirmUpper),
               );
+
+        // ── The three visit chips (cricket: compact, with the CONFIRM
+        // button docked to the row's right — 2026-08-19 "tableau" layout) ──
+        Widget chipAt(int i) {
+          final score = slots[i];
+          return DartVisitChip(
+            notation: score != null ? shortDartLabel(score) : null,
+            accent: AppTheme.playerBlue,
+            compact: confirmBesideChips,
+            subtitle: score != null
+                ? chipSubtitle?.call(i, shortDartLabel(score))
+                : null,
+            showEditLabel: score != null,
+            capturing: scoringService.isCapturing,
+            onTap: () => _editDart(context, i, score),
+            onRemove:
+                (onRemoveDart != null && score != null && i == lastFilledIndex)
+                ? () {
+                    HapticService.heavyImpact();
+                    onRemoveDart!(i);
+                  }
+                : null,
+          );
+        }
+        final chipsRow = SizedBox(
+          height: confirmBesideChips ? 62 : 92,
+          child: Row(
+            children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) SizedBox(width: confirmBesideChips ? 8 : 10),
+                Expanded(child: chipAt(i)),
+              ],
+              if (confirmBesideChips) ...[
+                const SizedBox(width: 8),
+                SizedBox(width: 94, child: confirmButton),
+              ],
+            ],
+          ),
+        );
+
+        // ── X01 bottom row: AUTO VALIDATION chip + CONFIRM button ──
+        final showAutoValidation =
+            aiEnabled && (scoringService.isCapturing || pendingConfirmation);
         final bottomRow = IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -354,16 +346,24 @@ class AutoScoreGameView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (header != null) ...[
+                          header!,
+                          const SizedBox(height: 12),
+                        ],
                         visitLabel,
                         const SizedBox(height: 8),
                         chipsRow,
-                        if (scorePanel != null) ...[
-                          const SizedBox(height: 10),
-                          scorePanel!,
+                        if (confirmBesideChips) ...[
+                          // Cricket: the table hugs the bottom of the column,
+                          // mirroring the portrait stack; CONFIRM already
+                          // lives on the chip row.
+                          const Spacer(),
+                          ?scorePanel,
+                        ] else ...[
+                          const Spacer(),
+                          const SizedBox(height: 8),
+                          bottomRow,
                         ],
-                        const Spacer(),
-                        const SizedBox(height: 8),
-                        bottomRow,
                       ],
                     ),
                   ),
@@ -378,34 +378,61 @@ class AutoScoreGameView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(12, safeTop + 4, 12, 0),
-                child: SizedBox(
-                  height: gameCameraHeight(context),
-                  child: cameraPanel,
+              if (header != null) ...[
+                SizedBox(height: safeTop + 6),
+                header!,
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    height: gameCameraHeight(context),
+                    child: cameraPanel,
+                  ),
                 ),
-              ),
+              ] else
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, safeTop + 4, 12, 0),
+                  child: SizedBox(
+                    height: gameCameraHeight(context),
+                    child: cameraPanel,
+                  ),
+                ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      visitLabel,
-                      const SizedBox(height: 8),
-                      chipsRow,
-                      if (scorePanel != null) ...[
-                        const SizedBox(height: 12),
-                        scorePanel!,
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    confirmBesideChips ? 6 : 12,
+                    12,
+                    0,
+                  ),
+                  // Cricket portrait fills its budget to the last points
+                  // (chips row + full table, no scroll fallback): clamp the
+                  // text scale like the camera stack does, so accessibility
+                  // sizes can't push the table past the home indicator.
+                  child: MediaQuery.withClampedTextScaling(
+                    maxScaleFactor: confirmBesideChips ? 1.1 : 2.0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        visitLabel,
+                        const SizedBox(height: 8),
+                        chipsRow,
+                        if (scorePanel != null) ...[
+                          const SizedBox(height: 6),
+                          scorePanel!,
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
-                child: bottomRow,
-              ),
+              if (confirmBesideChips)
+                SizedBox(height: safeBottom + 6)
+              else
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
+                  child: bottomRow,
+                ),
             ],
           ),
         );

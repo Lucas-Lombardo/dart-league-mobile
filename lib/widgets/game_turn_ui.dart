@@ -227,11 +227,6 @@ class GameCameraPanel extends StatelessWidget {
   /// button). When present, the zoom pill slides up above it.
   final Widget? bottomBar;
 
-  /// Translucent overlay docked just above [bottomBar] (cricket marks HUD,
-  /// X01 score band) — the 2026-08-18 no-scroll redesign. The zoom pill
-  /// slides up above it.
-  final Widget? bottomOverlay;
-
   const GameCameraPanel({
     super.key,
     this.videoView,
@@ -246,7 +241,6 @@ class GameCameraPanel extends StatelessWidget {
     this.onZoomIn,
     this.onZoomOut,
     this.bottomBar,
-    this.bottomOverlay,
   });
 
   Widget _hintTextPill(AppLocalizations l10n) {
@@ -425,12 +419,12 @@ class GameCameraPanel extends StatelessWidget {
               ),
             ),
 
-          // ── Bottom stack: zoom pill over the optional overlay (marks HUD /
-          // score band) over the docked capture bar. One column so each piece
-          // slides up when something appears below it. Text scale is clamped
-          // so accessibility sizes can't silently push the stack past the
-          // panel's top edge (the Positioned column has unbounded height and
-          // ClipRRect would cut it without any overflow warning).
+          // ── Bottom stack: zoom pill over the docked capture bar. One
+          // column so the pill slides up when the bar appears below it. Text
+          // scale is clamped so accessibility sizes can't silently push the
+          // stack past the panel's top edge (the Positioned column has
+          // unbounded height and ClipRRect would cut it without any overflow
+          // warning).
           Positioned(
             bottom: 0,
             left: 0,
@@ -444,8 +438,7 @@ class GameCameraPanel extends StatelessWidget {
                   if (onZoomIn != null && onZoomOut != null)
                     Padding(
                       padding: EdgeInsets.only(
-                        bottom:
-                            bottomOverlay != null || bottomBar != null ? 8 : 12,
+                        bottom: bottomBar != null ? 8 : 12,
                       ),
                       child: Center(
                         child: ZoomPill(
@@ -456,19 +449,6 @@ class GameCameraPanel extends StatelessWidget {
                           onZoomOut: onZoomOut,
                         ),
                       ),
-                    ),
-                  if (bottomOverlay != null)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        10,
-                        0,
-                        10,
-                        bottomBar != null ? 10 : 12,
-                      ),
-                      // The overlay is display-only — never let it eat a
-                      // pinch-zoom aimed at the video (same rule as the
-                      // guidance pills above).
-                      child: IgnorePointer(child: bottomOverlay!),
                     ),
                   ?bottomBar,
                 ],
@@ -1066,6 +1046,11 @@ class DartVisitChip extends StatelessWidget {
   /// cricket passes its own ("1 marque", "+60 pts").
   final String? subtitle;
 
+  /// Reduced type for the ~64pt cricket chip row that shares its line with
+  /// the CONFIRM button (2026-08-19 "tableau" layout) — also drops the EDIT
+  /// footer, which doesn't fit; the chip stays tappable.
+  final bool compact;
+
   const DartVisitChip({
     super.key,
     this.notation,
@@ -1076,6 +1061,7 @@ class DartVisitChip extends StatelessWidget {
     this.onRemove,
     this.capturing = false,
     this.subtitle,
+    this.compact = false,
   });
 
   @override
@@ -1088,7 +1074,7 @@ class DartVisitChip extends StatelessWidget {
       chip = Container(
         decoration: BoxDecoration(
           color: AppTheme.gamePanel,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(compact ? 12 : 14),
           border: Border.all(
             color: highlighted
                 ? AppTheme.opponentPink
@@ -1101,22 +1087,22 @@ class DartVisitChip extends StatelessWidget {
           children: [
             Text(
               notation!,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 24,
+                fontSize: compact ? 18 : 24,
                 fontWeight: FontWeight.w800,
                 height: 1.1,
               ),
             ),
             Text(
               subtitle ?? l10n.ptsLabel(notationPoints(notation!)),
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.textSecondary,
-                fontSize: 11,
+                fontSize: compact ? 9.5 : 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (showEditLabel) ...[
+            if (showEditLabel && !compact) ...[
               const SizedBox(height: 5),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -1144,39 +1130,39 @@ class DartVisitChip extends StatelessWidget {
       chip = CustomPaint(
         painter: _DashedRRectPainter(
           color: AppTheme.surfaceLight.withValues(alpha: 0.8),
-          radius: 14,
+          radius: compact ? 12 : 14,
         ),
         child: Container(
           decoration: BoxDecoration(
             color: AppTheme.gamePanelEmpty,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(compact ? 12 : 14),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               capturing
                   ? SizedBox(
-                      width: 18,
-                      height: 18,
+                      width: compact ? 14 : 18,
+                      height: compact ? 14 : 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AppTheme.textSecondary.withValues(alpha: 0.4),
                       ),
                     )
                   : Container(
-                      width: 22,
+                      width: compact ? 18 : 22,
                       height: 3,
                       decoration: BoxDecoration(
                         color: AppTheme.textSecondary.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-              const SizedBox(height: 8),
+              SizedBox(height: compact ? 5 : 8),
               Text(
                 l10n.upcomingDart,
                 style: TextStyle(
                   color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                  fontSize: 11,
+                  fontSize: compact ? 9.5 : 11,
                 ),
               ),
             ],
@@ -1498,10 +1484,10 @@ class _OpponentWarningBannerState extends State<OpponentWarningBanner>
   }
 }
 
-/// Translucent score band docked to the bottom of MY camera panel (X01):
-/// "VATI99 288 · BO3 · MANCHE 1 0–0 · 355 DODO180" — the remaining score is
-/// readable next to the feed without scrolling (2026-08-18 no-scroll
-/// redesign; it replaced the below-chips score bar).
+/// Translucent score band docked to the bottom of a camera feed:
+/// "VATI99 288 · BO3 · MANCHE 1 0–0 · 355 DODO180". The match screens moved
+/// their scores off the feed (2026-08-19 layout); only the spectator screen
+/// still docks this on its stream.
 class CameraScoreBand extends StatelessWidget {
   final String myName;
   final String opponentName;
@@ -1613,12 +1599,18 @@ class CameraScoreBand extends StatelessWidget {
   }
 }
 
-/// Slim opponent-visit ticker overlaid on the live feed: "VOLÉE DE X ·
-/// [17][—][—] · +1 MARQUE" (cricket) or "[T20][5][—] · +65 POINTS" (X01).
-/// Replaces the big DartVisitChip row of the opponent-turn screen
-/// (2026-08-18 no-scroll redesign).
+/// Opponent-visit ticker overlaid on the live feed (cricket): stacked
+/// "VOLÉE / DODO180" label, one big slot per dart and the running total —
+/// sized so each dart's notation is readable from throwing distance
+/// (2026-08-19 enlargement; X01 went back to the big chip row below the
+/// camera instead).
 class VisitTicker extends StatelessWidget {
-  final String label;
+  /// Top caption ("VOLÉE").
+  final String labelTop;
+
+  /// The thrower's name, under the caption.
+  final String labelBottom;
+
   final List<String> throws;
 
   /// "+1" / "+65" — the running visit total.
@@ -1629,7 +1621,8 @@ class VisitTicker extends StatelessWidget {
 
   const VisitTicker({
     super.key,
-    required this.label,
+    required this.labelTop,
+    required this.labelBottom,
     required this.throws,
     required this.totalValue,
     required this.totalLabel,
@@ -1641,13 +1634,13 @@ class VisitTicker extends StatelessWidget {
       final notation = i < throws.length ? throws[i] : null;
       final isLast = notation != null && i == throws.length - 1;
       return Container(
-        width: 38,
-        height: 28,
+        width: 44,
+        height: 36,
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 3),
         decoration: BoxDecoration(
           color: AppTheme.gamePanel.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isLast
                 ? AppTheme.opponentPink
@@ -1665,7 +1658,7 @@ class VisitTicker extends StatelessWidget {
                   : isLast
                   ? AppTheme.opponentPinkBright
                   : Colors.white,
-              fontSize: 13,
+              fontSize: 16,
               fontWeight: FontWeight.w800,
               height: 1,
             ),
@@ -1675,10 +1668,10 @@ class VisitTicker extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: AppTheme.gameBackground.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.gameBackground.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: AppTheme.surfaceLight.withValues(alpha: 0.5),
         ),
@@ -1686,16 +1679,34 @@ class VisitTicker extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppTheme.opponentPinkBright,
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  labelTop,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  labelBottom,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.opponentPinkBright,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -1712,17 +1723,17 @@ class VisitTicker extends StatelessWidget {
                 totalValue,
                 style: const TextStyle(
                   color: AppTheme.opponentPinkBright,
-                  fontSize: 16,
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
                   height: 1,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 totalLabel,
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
-                  fontSize: 7,
+                  fontSize: 8,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
                 ),
@@ -1731,44 +1742,6 @@ class VisitTicker extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Discreet centered "BO3 · MANCHE 1 · 0 – 0" caption shown under the visit
-/// chips when the score itself lives on the camera (cricket HUD / X01 band).
-class SeriesCaptionLine extends StatelessWidget {
-  final String seriesTitle;
-  final int myLegs;
-  final int opponentLegs;
-
-  const SeriesCaptionLine({
-    super.key,
-    required this.seriesTitle,
-    required this.myLegs,
-    required this.opponentLegs,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          '${seriesTitle.toUpperCase()}  ·  ',
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1,
-          ),
-        ),
-        SeriesLegsScore(
-          myLegs: myLegs,
-          opponentLegs: opponentLegs,
-          fontSize: 12,
-        ),
-      ],
     );
   }
 }

@@ -8,9 +8,9 @@ import 'game_turn_ui.dart';
 /// The cricket marks grid: 7 horizontal columns (20 → 15, Bull), the player's
 /// marks on top (blue), the opponent's below (pink). A column the player has
 /// closed while the opponent is open glows gold (every hit scores); a column
-/// closed on both sides is dimmed and struck through (dead). Full-size
-/// variant, shown below the camera on the opponent's turn; my own turn shows
-/// the dense [CricketCameraHud] on the feed instead.
+/// closed on both sides is dimmed and struck through (dead). Only the bot
+/// screen's bot-turn view still uses it — the match screens moved to the
+/// [CricketScoreTable] (2026-08-19 "tableau" direction).
 class CricketBoardStrip extends StatelessWidget {
   final CricketState state;
 
@@ -41,18 +41,13 @@ class CricketBoardStrip extends StatelessWidget {
   }
 }
 
-/// One target's column (my mark box / number / opponent mark box), shared by
-/// the full-size [CricketBoardStrip] and the dense [CricketCameraHud].
+/// One target's column (my mark box / number / opponent mark box) of the
+/// full-size [CricketBoardStrip].
 class _TargetColumn extends StatelessWidget {
   final CricketState state;
   final int target;
-  final bool dense;
 
-  const _TargetColumn({
-    required this.state,
-    required this.target,
-    this.dense = false,
-  });
+  const _TargetColumn({required this.state, required this.target});
 
   @override
   Widget build(BuildContext context) {
@@ -61,41 +56,33 @@ class _TargetColumn extends StatelessWidget {
     return Opacity(
       opacity: dead ? 0.38 : 1,
       child: Container(
-        padding: EdgeInsets.symmetric(vertical: dense ? 5 : 7),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         decoration: BoxDecoration(
           color: gold ? AppTheme.accent.withValues(alpha: 0.10) : null,
-          borderRadius: BorderRadius.circular(dense ? 9 : 11),
+          borderRadius: BorderRadius.circular(11),
           border: Border.all(
             color: gold
                 ? AppTheme.accent.withValues(alpha: 0.6)
                 : Colors.transparent,
-            width: dense ? 1 : 1.5,
+            width: 1.5,
           ),
         ),
         child: Column(
           children: [
-            _MarkBox(
-              marks: state.myMarks(target),
-              mine: true,
-              size: dense ? 18 : 22,
-            ),
-            SizedBox(height: dense ? 4 : 5),
+            _MarkBox(marks: state.myMarks(target), mine: true),
+            const SizedBox(height: 5),
             Text(
               target == 25 ? 'B' : '$target',
               style: TextStyle(
                 color: gold ? AppTheme.accent : Colors.white,
-                fontSize: dense ? 12.5 : 14,
+                fontSize: 14,
                 fontWeight: FontWeight.w800,
                 decoration: dead ? TextDecoration.lineThrough : null,
                 decorationColor: AppTheme.textSecondary,
               ),
             ),
-            SizedBox(height: dense ? 4 : 5),
-            _MarkBox(
-              marks: state.oppMarks(target),
-              mine: false,
-              size: dense ? 18 : 22,
-            ),
+            const SizedBox(height: 5),
+            _MarkBox(marks: state.oppMarks(target), mine: false),
           ],
         ),
       ),
@@ -148,222 +135,209 @@ class _MarkBox extends StatelessWidget {
   }
 }
 
-/// Dense cricket HUD overlaid on the bottom of MY camera panel: the 7 marks
-/// columns flanked by both scores (mine blue left, opponent pink right), so
-/// the whole board state is readable next to the live feed without scrolling
-/// (2026-08-18 no-scroll redesign). Docked via GameCameraPanel.bottomOverlay.
-class CricketCameraHud extends StatelessWidget {
+/// Full-width cricket score table (2026-08-19 "tableau" direction): score
+/// header (names + big numbers + BO3 center), optional MPR bar, then one row
+/// per target — my mark on the left (blue), the opponent's on the right
+/// (pink). Replaces the camera HUD + board strip + score bar trio of the
+/// 2026-08-18 layout on both match turns.
+class CricketScoreTable extends StatelessWidget {
   final CricketState state;
   final String myName;
   final String opponentName;
+  final String? seriesTitle;
+  final int myLegs;
+  final int opponentLegs;
 
-  const CricketCameraHud({
+  /// Which side carries the "playing" dot in the header.
+  final bool myTurn;
+
+  /// Marks-per-round averages. The bar is hidden when both are null: online
+  /// matches don't ship marks totals over the wire, only the bot mode tracks
+  /// them locally.
+  final double? myMpr;
+  final double? oppMpr;
+
+  /// 22 fits the your-turn portrait column next to the visit chips; the
+  /// roomier opponent turn uses the default.
+  final double rowHeight;
+
+  const CricketScoreTable({
     super.key,
     required this.state,
     required this.myName,
     required this.opponentName,
+    this.seriesTitle,
+    this.myLegs = 0,
+    this.opponentLegs = 0,
+    this.myTurn = false,
+    this.myMpr,
+    this.oppMpr,
+    this.rowHeight = 27,
   });
 
-  Widget _scoreFlank({required bool mine}) {
+  // Maquette-derived shades between gamePanelEmpty and gameBackground.
+  static const Color _rowAlt = Color(0xFF0E1524);
+  static const Color _mprBarBg = Color(0xFF0B1220);
+
+  Widget _headerSide({required bool mine}) {
     final noScore = state.scoreMode == CricketScoreMode.noScore;
     final closed = mine ? state.myClosedCount : state.oppClosedCount;
     final points = mine ? state.myPoints : state.oppPoints;
     final value = noScore ? '$closed/${kCricketTargets.length}' : '$points';
-    return SizedBox(
-      width: 40,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: TextStyle(
-                color: mine
-                    ? AppTheme.playerBlueBright
-                    : AppTheme.opponentPinkBright,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                height: 1,
-              ),
+    final nameRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (myTurn == mine) ...[
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: mine ? AppTheme.playerBlue : AppTheme.opponentPink,
+              shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
+          const SizedBox(width: 5),
+        ],
+        Flexible(
+          child: Text(
             (mine ? myName : opponentName).toUpperCase(),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: mine ? AppTheme.playerBlue : AppTheme.opponentPink,
-              fontSize: 7,
+              fontSize: 11,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+              letterSpacing: 0.8,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: mine
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        nameRow,
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(
+              color: mine
+                  ? AppTheme.playerBlueBright
+                  : AppTheme.opponentPinkBright,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _mprBar(AppLocalizations l10n) {
+    Widget side(double? mpr, {required bool mine}) => Text(
+          mpr == null ? '' : l10n.mprShort(mpr.toStringAsFixed(1)),
+          style: TextStyle(
+            color: mine ? AppTheme.playerBlue : AppTheme.opponentPink,
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+          ),
+        );
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 6),
-      decoration: BoxDecoration(
-        color: AppTheme.gameBackground.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-        ),
-      ),
+      height: 16,
+      color: _mprBarBg,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          _scoreFlank(mine: true),
-          for (final target in kCricketTargets)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: _TargetColumn(state: state, target: target, dense: true),
-              ),
+          side(myMpr, mine: true),
+          const Spacer(),
+          Text(
+            l10n.cricketMprCaption,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
             ),
-          const SizedBox(width: 4),
-          _scoreFlank(mine: false),
+          ),
+          const Spacer(),
+          side(oppMpr, mine: false),
         ],
       ),
     );
   }
-}
 
-/// Cricket score bar (opponent's turn, below the board strip): three-column
-/// layout with the series center, big numbers being points (score mode) or
-/// "closed n/7" with a 7-segment gauge (no-score).
-class CricketScoreBar extends StatelessWidget {
-  final String myName;
-  final String opponentName;
-  final CricketState state;
-  final String? seriesTitle;
-  final int myLegs;
-  final int opponentLegs;
-
-  const CricketScoreBar({
-    super.key,
-    required this.myName,
-    required this.opponentName,
-    required this.state,
-    this.seriesTitle,
-    this.myLegs = 0,
-    this.opponentLegs = 0,
-  });
+  Widget _targetRow(int index, int target) {
+    final gold = state.isScoringForMe(target);
+    final dead = state.isDead(target);
+    final markSize = rowHeight < 24 ? 18.0 : 20.0;
+    return Opacity(
+      opacity: dead ? 0.38 : 1,
+      child: Container(
+        height: rowHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: gold
+              ? AppTheme.accent.withValues(alpha: 0.08)
+              : (index.isOdd ? _rowAlt : AppTheme.gamePanelEmpty),
+        ),
+        // Foreground so the gold inset never shifts the row's content.
+        foregroundDecoration: gold
+            ? BoxDecoration(
+                border: Border.all(
+                  color: AppTheme.accent.withValues(alpha: 0.55),
+                ),
+              )
+            : null,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 30,
+              child: Text(
+                target == 25 ? 'B' : '$target',
+                style: TextStyle(
+                  color: gold ? AppTheme.accent : Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                  decoration: dead ? TextDecoration.lineThrough : null,
+                  decorationColor: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _MarkBox(marks: state.myMarks(target), mine: true, size: markSize),
+            const Spacer(),
+            _MarkBox(
+              marks: state.oppMarks(target),
+              mine: false,
+              size: markSize,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    const scoreStyle = TextStyle(
-      fontSize: 40,
-      fontWeight: FontWeight.w800,
-      height: 1.05,
-      letterSpacing: -1,
-    );
-    final noScore = state.scoreMode == CricketScoreMode.noScore;
-    final total = kCricketTargets.length;
-
-    Widget segments({required int closed, required bool mine}) {
-      final color = mine ? AppTheme.playerBlue : AppTheme.opponentPink;
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int i = 0; i < total; i++)
-            Container(
-              width: 13,
-              height: 5,
-              margin: EdgeInsets.only(left: i == 0 ? 0 : 3),
-              decoration: BoxDecoration(
-                color: i < closed
-                    ? color
-                    : AppTheme.surfaceLight.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-        ],
-      );
-    }
-
-    Widget bigNumber({required bool mine}) {
-      final closed = mine ? state.myClosedCount : state.oppClosedCount;
-      final points = mine ? state.myPoints : state.oppPoints;
-      final color = mine
-          ? AppTheme.playerBlueBright
-          : AppTheme.opponentPinkBright.withValues(alpha: 0.65);
-      if (noScore) {
-        return Column(
-          crossAxisAlignment: mine
-              ? CrossAxisAlignment.start
-              : CrossAxisAlignment.end,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text.rich(
-                TextSpan(
-                  text: '$closed',
-                  style: scoreStyle.copyWith(color: color),
-                  children: [
-                    TextSpan(
-                      text: '/$total',
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            segments(closed: closed, mine: mine),
-          ],
-        );
-      }
-      return FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text('$points', style: scoreStyle.copyWith(color: color)),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppTheme.gamePanelEmpty,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    final header = Container(
+      height: 48,
+      color: AppTheme.gamePanel,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    GameChip(text: l10n.you, color: AppTheme.playerBlue),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        myName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                bigNumber(mine: true),
-              ],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _headerSide(mine: true),
             ),
           ),
           seriesTitle != null
@@ -374,26 +348,16 @@ class CricketScoreBar extends StatelessWidget {
                       seriesTitle!.toUpperCase(),
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
+                        letterSpacing: 1,
                       ),
                     ),
                     const SizedBox(height: 2),
                     SeriesLegsScore(
                       myLegs: myLegs,
                       opponentLegs: opponentLegs,
-                      fontSize: 24,
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      l10n.legsShort.toUpperCase(),
-                      style: TextStyle(
-                        color: AppTheme.textSecondary.withValues(alpha: 0.7),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
+                      fontSize: 12,
                     ),
                   ],
                 )
@@ -401,31 +365,31 @@ class CricketScoreBar extends StatelessWidget {
                   l10n.vsLabel,
                   style: TextStyle(
                     color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.5,
                   ),
                 ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  opponentName.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.opponentPinkBright,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                bigNumber(mine: false),
-              ],
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _headerSide(mine: false),
             ),
           ),
+        ],
+      ),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          if (myMpr != null || oppMpr != null) _mprBar(l10n),
+          for (var i = 0; i < kCricketTargets.length; i++)
+            _targetRow(i, kCricketTargets[i]),
         ],
       ),
     );

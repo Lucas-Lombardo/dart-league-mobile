@@ -814,17 +814,20 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     },
                     onEndRoundEarly: () { HapticService.heavyImpact(); _confirmRound(); },
                     pendingConfirmation: _isBust || _isWin,
-                    myScore: _myScore,
-                    opponentScore: placement.player2Score,
-                    opponentName: botName,
-                    myName: auth.currentUser?.username ?? 'You',
-                    dartsThrown: _dartsThrown,
-                    startingScore: placement.startingScore,
-                    myAverage: _myAverage,
-                    opponentAverage: _botAverage,
-                    seriesTitle: _seriesTitle(placement),
-                    myLegs: placement.myLegs,
-                    opponentLegs: placement.botLegs,
+                    // Same no-badges score header as the online X01 screens
+                    // (2026-08-19 unified header).
+                    header: TurnScoreHeader(
+                      myName: auth.currentUser?.username ?? 'You',
+                      opponentName: botName,
+                      myScore: _myScore,
+                      opponentScore: placement.player2Score,
+                      myAverage: _myAverage,
+                      opponentAverage: _botAverage,
+                      seriesTitle: _seriesTitle(placement),
+                      myLegs: placement.myLegs,
+                      opponentLegs: placement.botLegs,
+                      showBadges: false,
+                    ),
                     localCameraPreview: !switchingCamera && cameraService?.controller != null && cameraService!.isInitialized
                         ? LocalCameraPreview(controller: cameraService!.controller!)
                         : null,

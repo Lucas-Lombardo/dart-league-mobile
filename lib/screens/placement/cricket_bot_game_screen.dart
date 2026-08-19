@@ -622,24 +622,18 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
                   _confirmRound();
                 },
                 pendingConfirmation: _isWin,
-                myScore: _state.myPoints,
-                opponentScore: _state.oppPoints,
-                opponentName: botName,
-                myName: auth.currentUser?.username ?? 'You',
-                dartsThrown: _dartsThrown,
-                cameraOverlay: CricketCameraHud(
+                confirmBesideChips: true,
+                scorePanel: CricketScoreTable(
                   state: _state,
                   myName: auth.currentUser?.username ?? 'You',
                   opponentName: botName,
+                  seriesTitle: _seriesTitle(placement),
+                  myLegs: placement.myLegs,
+                  opponentLegs: placement.botLegs,
+                  myTurn: true,
+                  myMpr: _myMpr,
+                  rowHeight: 22,
                 ),
-                scorePanel: switch (_seriesTitle(placement)) {
-                  null => null,
-                  final title => SeriesCaptionLine(
-                    seriesTitle: title,
-                    myLegs: placement.myLegs,
-                    opponentLegs: placement.botLegs,
-                  ),
-                },
                 visitTotalText: _visitTotalText(l10n, _effects),
                 chipSubtitle: (i, _) => _chipSubtitle(
                   l10n,

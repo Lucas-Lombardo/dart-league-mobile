@@ -19,6 +19,7 @@ import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
 
 /// Local (hot-seat) 1v1 match: two players share one device, alternating turns
@@ -715,15 +716,23 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
         _confirmRound();
       },
       pendingConfirmation: _isBust || _isWin,
-      myScore: _scores[_activePlayer],
-      opponentScore: _scores[_opponent],
-      myName: _config.nameOf(_activePlayer),
-      opponentName: _config.nameOf(_opponent),
-      dartsThrown: _dartsThrown,
-      startingScore: _config.startingScore,
-      iAmPlayer2: _activePlayer == 1,
-      myAverage: _averageOf(_activePlayer),
-      opponentAverage: _averageOf(_opponent),
+      // Same no-badges score header as the online X01 screens (2026-08-19
+      // unified header) — the thrower is the blue side. It also carries the
+      // BO·leg context, replacing the floating leg indicator.
+      header: TurnScoreHeader(
+        myName: _config.nameOf(_activePlayer),
+        opponentName: _config.nameOf(_opponent),
+        myScore: _scores[_activePlayer],
+        opponentScore: _scores[_opponent],
+        myAverage: _averageOf(_activePlayer),
+        opponentAverage: _averageOf(_opponent),
+        seriesTitle: _config.bestOf > 1
+            ? 'BO${_config.bestOf} · ${AppLocalizations.of(context).legNumber(_legNumber)}'
+            : null,
+        myLegs: _legsWon[_activePlayer],
+        opponentLegs: _legsWon[_opponent],
+        showBadges: false,
+      ),
       localCameraPreview: !_switchingCamera &&
               _cameraService?.controller != null &&
               _cameraService!.isInitialized
@@ -775,15 +784,12 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     );
   }
 
-  /// Top-center overlay: turn-change banner if one is active, else a compact
-  /// leg-score indicator (only for multi-leg matches). Sits below the back
-  /// button / end-turn pill so it never overlaps them.
+  /// Top-center overlay: the transient turn-change banner. The persistent
+  /// leg-score indicator moved into the score header's center column
+  /// (2026-08-19 unified header).
   Widget _buildTopStatus(double safeTop) {
     if (_turnBannerName != null) return _buildTurnBanner(safeTop);
-    if (_config.bestOf == 1 || _autoScoringLoading) {
-      return const SizedBox.shrink();
-    }
-    return _buildLegIndicator(safeTop);
+    return const SizedBox.shrink();
   }
 
   Widget _buildTurnBanner(double safeTop) {
@@ -832,36 +838,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLegIndicator(double safeTop) {
-    final l10n = AppLocalizations.of(context);
-    return Positioned(
-      top: safeTop + 52,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-            ),
-            child: Text(
-              '${l10n.legNumber(_legNumber)}  ·  ${_legsWon[0]}–${_legsWon[1]}',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
               ),
             ),
           ),

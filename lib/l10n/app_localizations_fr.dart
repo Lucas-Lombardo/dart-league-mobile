@@ -2196,6 +2196,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get pointsShortUpper => 'POINTS';
 
   @override
+  String get cricketMprCaption => 'MARQUES PAR TOUR';
+
+  @override
+  String get visitUpper => 'VOLÉE';
+
+  @override
   String get cricketAllClosedTitle => 'Tableau fermé !';
 
   @override
