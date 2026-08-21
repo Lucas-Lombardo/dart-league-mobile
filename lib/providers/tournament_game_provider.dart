@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/rtc_v2_config.dart';
+import '../services/dart_scoring_service.dart' show finiteOrNull;
 import '../services/socket_service.dart';
 import '../services/turn_report_service.dart';
 import 'game_provider.dart' show ScoreMultiplier;
@@ -987,9 +988,16 @@ class TournamentGameProvider with ChangeNotifier {
       'source': source,
     };
     if (source == 'ai') {
-      if (radius != null) payload['radius'] = radius;
-      if (angle != null) payload['angle'] = angle;
-      if (confidence != null) payload['confidence'] = confidence;
+      // finiteOrNull, not a plain null check: a near-singular homography makes
+      // the scorer's coordinates infinite or NaN, and jsonEncode throws on
+      // those — the emit would fail and the dart would sit in the retry queue
+      // instead of being scored. The server range-checks what does travel.
+      final r = finiteOrNull(radius);
+      final a = finiteOrNull(angle);
+      final c = finiteOrNull(confidence);
+      if (r != null) payload['radius'] = r;
+      if (a != null) payload['angle'] = a;
+      if (c != null) payload['confidence'] = c;
     }
 
     if (!SocketService.supportsDartAck) {

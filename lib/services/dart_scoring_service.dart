@@ -114,6 +114,17 @@ List<double> _flagDestination(int flag) {
 // DartScore
 // ---------------------------------------------------------------------------
 
+/// A telemetry value, or null when it is not a real number.
+///
+/// [DartScoringService.score] divides by the homography's perspective term, and
+/// a near-singular calibration drives that to zero: the board coordinates it
+/// returns are then infinite or NaN. Those must never reach a socket payload —
+/// `jsonEncode` throws on them, the emit fails, and the dart sits in the retry
+/// queue being re-sent every two seconds while the turn cannot be confirmed.
+/// Dropping the position costs a training sample; keeping it costs the turn.
+double? finiteOrNull(double? value) =>
+    value != null && value.isFinite ? value : null;
+
 class DartScore {
   final int score;
   final int segment;
@@ -134,6 +145,19 @@ class DartScore {
     required this.angle,
     this.confidence,
   });
+
+  /// The tip's position as it travels with a dart, dropping anything that is
+  /// not a real number. See [finiteOrNull].
+  Map<String, double> get telemetry {
+    final out = <String, double>{};
+    final r = finiteOrNull(radius);
+    final a = finiteOrNull(angle);
+    final c = finiteOrNull(confidence);
+    if (r != null) out['radius'] = r;
+    if (a != null) out['angle'] = a;
+    if (c != null) out['confidence'] = c;
+    return out;
+  }
 
   /// The same score, carrying the confidence of the detection it came from.
   /// Returns this when there is nothing to add, so the common path allocates

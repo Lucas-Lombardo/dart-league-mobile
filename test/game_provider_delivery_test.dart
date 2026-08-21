@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/providers/game_provider.dart';
 import 'package:mobile/services/socket_service.dart';
@@ -95,6 +97,60 @@ void main() {
       // the guard was rolled back and the dart vanished with the UI still
       // showing it.
       expect(game.unackedDartCount, 1);
+    });
+  });
+
+  group('the AI reading travels with the dart, and never blocks it', () {
+    test('a finite reading is sent alongside the dart', () async {
+      await game.throwDart(
+        baseScore: 20,
+        multiplier: ScoreMultiplier.triple,
+        source: 'ai',
+        radius: 0.6,
+        angle: -1.55,
+        confidence: 0.96,
+      );
+
+      final sentDart = emitsOf('throw_dart').single;
+      expect(sentDart['radius'], 0.6);
+      expect(sentDart['angle'], -1.55);
+      expect(sentDart['confidence'], 0.96);
+    });
+
+    test('an unusable reading is dropped, and the dart still goes out', () async {
+      // A near-singular homography returns infinite / NaN board coordinates.
+      // jsonEncode throws on those, so leaving them in the payload would make
+      // the emit fail and strand the dart in the retry queue for the rest of
+      // the turn — a lost dart, for a telemetry field.
+      await game.throwDart(
+        baseScore: 20,
+        multiplier: ScoreMultiplier.triple,
+        source: 'ai',
+        radius: double.infinity,
+        angle: double.nan,
+        confidence: 0.96,
+      );
+
+      final sentDart = emitsOf('throw_dart').single;
+      expect(sentDart.containsKey('radius'), isFalse);
+      expect(sentDart.containsKey('angle'), isFalse);
+      expect(sentDart['confidence'], 0.96);
+      expect(sentDart['baseScore'], 20);
+      expect(() => jsonEncode(sentDart), returnsNormally);
+      expect(game.unackedDartCount, 1);
+    });
+
+    test('a manual dart carries no reading at all', () async {
+      await game.throwDart(
+        baseScore: 20,
+        multiplier: ScoreMultiplier.triple,
+        radius: 0.6,
+        angle: -1.55,
+      );
+
+      final sentDart = emitsOf('throw_dart').single;
+      expect(sentDart['source'], 'manual');
+      expect(sentDart.containsKey('radius'), isFalse);
     });
   });
 

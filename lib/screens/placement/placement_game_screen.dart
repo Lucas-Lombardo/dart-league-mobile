@@ -1422,9 +1422,9 @@ class _DartThrow {
     }
     json['source'] = 'ai';
     json['aiNotation'] = _notationOf(ai);
-    json['radius'] = ai.radius;
-    json['angle'] = ai.angle;
-    if (ai.confidence != null) json['confidence'] = ai.confidence;
+    // Only the finite ones — see finiteOrNull. This body is posted with
+    // jsonEncode too, so an infinite radius would fail the whole bot turn.
+    json.addAll(ai.telemetry);
     return json;
   }
 
