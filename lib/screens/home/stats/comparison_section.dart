@@ -4,145 +4,32 @@ import 'package:flutter/material.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/player_percentiles.dart';
 import '../../../services/stats_service.dart';
-import '../../../utils/app_navigator.dart';
 import '../../../utils/app_theme.dart';
-import '../../../utils/haptic_service.dart';
 import '../../../utils/rank_translation.dart';
 import 'stats_widgets.dart';
 
-/// Where the player stands among comparable players.
+/// Where the player stands among comparable players — the top of the Stats
+/// screen.
 ///
-/// Every other stats screen answers "what are my numbers"; this one answers
-/// "is that good", which is the question a number on its own never settles. So
-/// nothing here is shown without the cohort it was measured against — the
-/// footnote and the headline both name it, and the backend widens the cohort
-/// from the player's rank to everyone whenever the rank is too small to draw a
-/// percentile from.
-class ComparisonScreen extends StatefulWidget {
-  const ComparisonScreen({super.key});
-
-  @override
-  State<ComparisonScreen> createState() => _ComparisonScreenState();
-}
-
-class _ComparisonScreenState extends State<ComparisonScreen> {
-  bool _loading = true;
-  String? _error;
-  PlayerPercentiles? _data;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load({bool showSpinner = true}) async {
-    setState(() {
-      if (showSpinner) _loading = true;
-      _error = null;
-    });
-    try {
-      final data = await StatsService.getPercentiles();
-      if (!mounted) return;
-      setState(() {
-        _data = data;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.comparisonTitle),
-        backgroundColor: AppTheme.surface,
-      ),
-      body: _buildBody(l10n),
-    );
-  }
-
-  Widget _buildBody(AppLocalizations l10n) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
-    }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: AppTheme.error, size: 56),
-              const SizedBox(height: 16),
-              Text(
-                _error!,
-                style: const TextStyle(color: AppTheme.error),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(onPressed: _load, child: Text(l10n.retry)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final data = _data;
-    if (data == null) return const SizedBox.shrink();
-
-    return RefreshIndicator(
-      onRefresh: () => _load(showSpinner: false),
-      color: AppTheme.primary,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-        itemCount: _blocks(data).length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
-        itemBuilder: (context, index) => _blocks(data)[index],
-      ),
-    );
-  }
-
-  /// The page's cards, in order. Built as a list rather than a fixed column so
-  /// a card that has nothing to say leaves no gap where it would have been.
-  List<Widget> _blocks(PlayerPercentiles data) {
-    if (!data.eligible) return [_NotEnoughLegsCard(data: data)];
-    return [
-      _HeadlineCard(data: data),
-      // Needs three corners to be a shape at all.
-      if (data.metrics.length >= 3) _ProfileCard(data: data),
-      if (data.metrics.isNotEmpty) _StandingCard(data: data),
-      if (data.strongest != null) _VerdictCard(data: data),
-      _Footnote(cohort: data.cohort),
-    ];
-  }
-}
-
-/// Entry point to the comparison, sitting at the top of the Form page.
+/// Every other block on that screen answers "what are my numbers"; this one
+/// answers "is that good", which a number on its own never settles. So nothing
+/// here is shown without the cohort it was measured against: the headline and
+/// the footnote both name it, and the backend widens the cohort from the
+/// player's rank to everyone whenever that rank holds too few players to draw
+/// a percentile from.
 ///
 /// Loads on its own rather than through the Matches tab's single request: the
-/// standing comes from the nightly snapshots, on a different cadence and a
+/// standing comes from nightly snapshots, on a different cadence and a
 /// different window than the filter bar above it, and folding it into that
-/// request would tie a 90-day figure to a filter that says "30 days · ranked".
-/// It stays visible while the player is still short of the minimum so the
-/// screen is discoverable before it has anything to compare.
-class ComparisonTeaser extends StatefulWidget {
-  const ComparisonTeaser({super.key});
+/// request would tie a 90-day figure to a filter that reads "30 days ranked".
+class ComparisonSection extends StatefulWidget {
+  const ComparisonSection({super.key});
 
   @override
-  State<ComparisonTeaser> createState() => _ComparisonTeaserState();
+  State<ComparisonSection> createState() => _ComparisonSectionState();
 }
 
-class _ComparisonTeaserState extends State<ComparisonTeaser> {
+class _ComparisonSectionState extends State<ComparisonSection> {
   PlayerPercentiles? _data;
   bool _failed = false;
 
@@ -158,8 +45,8 @@ class _ComparisonTeaserState extends State<ComparisonTeaser> {
       if (!mounted) return;
       setState(() => _data = data);
     } catch (_) {
-      // A standing is a bonus on this page, never the reason it exists: if the
-      // request fails the card simply isn't there.
+      // A standing is the best thing on this page, never the reason it exists:
+      // if the request fails the rest of the stats still render.
       if (!mounted) return;
       setState(() => _failed = true);
     }
@@ -167,91 +54,35 @@ class _ComparisonTeaserState extends State<ComparisonTeaser> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final data = _data;
     if (_failed || data == null) return const SizedBox.shrink();
 
-    final top = data.topPercent;
-    final headline = data.eligible && top != null
-        ? l10n.comparisonTopPercent(top)
-        : '—';
-    final caption = data.eligible
-        ? cohortLine(l10n, data.cohort)
-        : l10n.comparisonLegsToGo(data.legsUntilEligible);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          HapticService.lightImpact();
-          AppNavigator.toScreen(context, const ComparisonScreen());
-        },
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.accent.withValues(alpha: 0.1),
-                  border: Border.all(color: AppTheme.accent, width: 2),
-                ),
-                child: const Icon(Icons.workspace_premium, color: AppTheme.accent, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    StatsLabel(l10n.comparisonTeaserLabel),
-                    const SizedBox(height: 4),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              headline,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                height: 1.1,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      caption,
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 11,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-            ],
-          ),
-        ),
-      ),
+    // No trailing spacer: the page this sits in already separates its children,
+    // and one on the last block would double the gap under the section.
+    final blocks = _blocks(data);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < blocks.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          blocks[i],
+        ],
+      ],
     );
+  }
+
+  /// The comparison's cards, in order. Built as a list so a card with nothing
+  /// to say leaves no gap where it would have been.
+  List<Widget> _blocks(PlayerPercentiles data) {
+    if (!data.eligible) return [_NotEnoughLegsCard(data: data)];
+    return [
+      _HeadlineCard(data: data),
+      // A shape needs three corners.
+      if (data.metrics.length >= 3) _ProfileCard(data: data),
+      if (data.metrics.isNotEmpty) _StandingCard(data: data),
+      if (data.strongest != null) _VerdictCard(data: data),
+      _Footnote(cohort: data.cohort),
+    ];
   }
 }
 
@@ -372,7 +203,7 @@ class _ProfileCard extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            _LegendDot(color: AppTheme.primary, label: l10n.comparisonTeaserLabel),
+            _LegendDot(color: AppTheme.primary, label: l10n.comparisonTitle),
             const SizedBox(width: 14),
             _LegendDot(
               color: AppTheme.textSecondary,
@@ -782,6 +613,11 @@ class _NotEnoughLegsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final remaining = data.legsUntilEligible;
+    // Two different reasons land here and they must not be mixed. Short of
+    // legs: a progress bar and how many are left. Enough legs but no crowd to
+    // compare against yet: no bar at all — nothing is progressing, the group
+    // is simply still being built.
+    final waitingOnCohort = remaining <= 0;
     final progress = data.cohort.minLegs > 0
         ? (data.legs / data.cohort.minLegs).clamp(0.0, 1.0)
         : 0.0;
@@ -790,31 +626,35 @@ class _NotEnoughLegsCard extends StatelessWidget {
       label: l10n.comparisonTitle,
       children: [
         Text(
-          l10n.comparisonNotEnoughLegs,
+          waitingOnCohort
+              ? l10n.comparisonLegsToGo(0)
+              : l10n.comparisonNotEnoughLegs,
           style: const TextStyle(
             color: AppTheme.textSecondary,
             fontSize: 13,
             height: 1.45,
           ),
         ),
-        const SizedBox(height: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(5),
-          child: Stack(
-            children: [
-              Container(height: 8, color: AppTheme.surfaceLight.withValues(alpha: 0.45)),
-              FractionallySizedBox(
-                widthFactor: progress,
-                child: Container(height: 8, color: AppTheme.primary),
-              ),
-            ],
+        if (!waitingOnCohort) ...[
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: Stack(
+              children: [
+                Container(height: 8, color: AppTheme.surfaceLight.withValues(alpha: 0.45)),
+                FractionallySizedBox(
+                  widthFactor: progress,
+                  child: Container(height: 8, color: AppTheme.primary),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          l10n.comparisonLegsToGo(remaining),
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.comparisonLegsToGo(remaining),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+          ),
+        ],
       ],
     );
   }

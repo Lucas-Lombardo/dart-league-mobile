@@ -22,6 +22,7 @@ class SubscriptionProvider with ChangeNotifier {
   int? _matchesRemainingToday;
   int? _dailyLimit;
   bool _freePlayActive = false;
+  bool _hasPaidSubscription = false;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -38,6 +39,11 @@ class SubscriptionProvider with ChangeNotifier {
   /// when ranked is unlimited and friend matches are free for everyone —
   /// regardless of premium status.
   bool get freePlayActive => _freePlayActive;
+
+  /// True only for a PAYING subscriber. A referee on referral bonus days is
+  /// [isPremiumActive] but not this — the paywall must keep offering the plans
+  /// to them, otherwise the trial can never convert.
+  bool get hasPaidSubscription => _hasPaidSubscription;
 
   /// True when the user may play a friend match without premium: either they
   /// are premium, or Free Play is currently live.
@@ -69,6 +75,7 @@ class SubscriptionProvider with ChangeNotifier {
       _matchesRemainingToday = status.matchesRemainingToday;
       _dailyLimit = status.dailyLimit;
       _freePlayActive = status.freePlayActive;
+      _hasPaidSubscription = status.hasPaidSubscription;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       debugPrint('SubscriptionProvider.refresh failed: $_errorMessage');
@@ -219,6 +226,7 @@ class SubscriptionProvider with ChangeNotifier {
     _matchesRemainingToday = null;
     _dailyLimit = null;
     _freePlayActive = false;
+    _hasPaidSubscription = false;
     _errorMessage = null;
     _isLoading = false;
     notifyListeners();

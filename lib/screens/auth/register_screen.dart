@@ -5,6 +5,7 @@ import '../../providers/locale_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import 'referral_onboarding_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -63,7 +64,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
-          AppNavigator.toAuth(context, '/home');
+          // Main route into the referral program: right after signup, while
+          // "install it and put my code" is still fresh. It sends the user on
+          // to /home itself, whichever branch they take.
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => const ReferralOnboardingScreen(),
+            ),
+          );
         }
       }
     }

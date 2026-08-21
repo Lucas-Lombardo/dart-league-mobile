@@ -13,6 +13,8 @@ import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../widgets/queue_activity_chart.dart';
 import '../../l10n/app_localizations.dart';
+import '../../providers/referral_provider.dart';
+import '../settings/redeem_referral_screen.dart';
 
 class MatchmakingScreen extends StatefulWidget {
   const MatchmakingScreen({super.key});
@@ -196,6 +198,50 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
               ),
             ),
           ),
+          // The moment premium is actually missed: offer the referral code to
+          // anyone still eligible. Hidden entirely otherwise — no dead row.
+          if (context.watch<ReferralProvider>().canRedeem) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  HapticService.lightImpact();
+                  final user = context.read<AuthProvider>().currentUser;
+                  if (user?.id != null) {
+                    await context.read<MatchmakingProvider>().leaveQueue(
+                      user!.id,
+                    );
+                  }
+                  if (!context.mounted) return;
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const RedeemReferralScreen(),
+                    ),
+                  );
+                  if (!context.mounted) return;
+                  await context.read<SubscriptionProvider>().refresh();
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.card_giftcard, size: 18),
+                label: Text(
+                  l10n.referralHaveCodeTitle,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

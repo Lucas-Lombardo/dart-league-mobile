@@ -23,10 +23,22 @@ class PlacementService {
     String matchId, {
     int? playerRoundScore,
     List<String>? playerRoundThrows,
+    // A busted visit is posted with playerRoundScore = 0 and darts that scored,
+    // which the server used to record as an ordinary zero-point round — making
+    // every placement bust invisible to the bust and checkout stats. Saying so
+    // outright removes the guesswork. Optional: a server that predates it
+    // ignores the field and infers the same thing from the score and the darts.
+    bool? playerBusted,
+    // The same visit dart by dart, carrying what the AI read and where it read
+    // it. Sent alongside playerRoundThrows, never instead of it: a server that
+    // only knows the notations scores the visit exactly as before.
+    List<Map<String, dynamic>>? playerRoundDarts,
   }) async {
     final body = <String, dynamic>{'matchId': matchId};
     if (playerRoundScore != null) body['playerRoundScore'] = playerRoundScore;
     if (playerRoundThrows != null) body['playerRoundThrows'] = playerRoundThrows;
+    if (playerBusted != null) body['playerBusted'] = playerBusted;
+    if (playerRoundDarts != null) body['playerRoundDarts'] = playerRoundDarts;
     final response = await ApiService.post('/placement/bot-turn', body);
     if (response is Map<String, dynamic>) return response;
     return <String, dynamic>{};

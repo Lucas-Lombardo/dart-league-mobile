@@ -10,6 +10,7 @@ import '../utils/app_navigator.dart';
 import '../utils/haptic_service.dart';
 import '../utils/app_theme.dart';
 import '../providers/chat_provider.dart';
+import '../providers/referral_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/tournament_provider.dart';
 import '../main.dart' show routeObserver;
@@ -21,6 +22,7 @@ import 'home/leaderboard_screen.dart';
 import 'home/friends_screen.dart';
 import 'home/tournament_screen.dart';
 import 'settings/settings_screen.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,6 +54,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       final tp = context.read<TournamentProvider>();
       _tournamentProvider = tp;
       tp.startRealtime(myUserId: context.read<AuthProvider>().currentUser?.id);
+
+      // Referral: the "I have a code" entry points on the Premium screen and
+      // the daily-limit card need eligibility resolved before they can decide
+      // whether to render at all.
+      context.read<ReferralProvider>().refreshEligibility();
 
       // Chat: unread badge + realtime routing, and "new message" push taps
       // deep-link straight into the thread.

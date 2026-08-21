@@ -874,7 +874,6 @@ abstract class AppLocalizations {
   String get statLast30Days;
   String get statAllTime;
   String get bestCheckout;
-  String get avgCheckout;
   String get finishingDoubles;
   String get avgThreeDart;
 
@@ -1085,20 +1084,9 @@ abstract class AppLocalizations {
   String get statsModeFriendly;
   String get statsModeTournament;
   String get statsModeBot;
-  String get statsSubtabForm;
-  String get statsSubtabScoring;
-  String get statsSubtabFinishing;
-  String get statsSubtabConsistency;
-  String get statsAtAGlance;
-  String get statsFirstNine;
-  String get statsTrebleTwentyRate;
   String get statsBestVisit;
   String get statsCheckout;
-  String get statsByRemaining;
   String get statsDoubleLadder;
-  String get statsDartsToWinLeg;
-  String get statsBestLeg;
-  String get statsBustRate;
   String get statsRecords;
   String get statsRecordBestCheckout;
   String get statsRecordBestLeg;
@@ -1106,7 +1094,6 @@ abstract class AppLocalizations {
   String get statsRecordLongestStreak;
   String get statsHowCalculated;
   String get statsAverageExplainer;
-  String get statsCheckoutExplainer;
   String get statsNoDataForFilter;
   String get statsNoDataHint;
   String get statsNoRecordsYet;
@@ -1115,12 +1102,10 @@ abstract class AppLocalizations {
   String statsPreviousBlock(String value);
   String statsVisitBreakdown(int count);
   String statsUnlockCurve(int count);
-  String statsCheckoutAttempts(int hits, int attempts);
   String statsVersus(String name);
 
   // Comparison screen (where the player stands among other players).
   String get comparisonTitle;
-  String get comparisonTeaserLabel;
   String get comparisonProfile;
   String get comparisonWhereYouStand;
   String get comparisonMedianMarker;
@@ -1204,6 +1189,60 @@ abstract class AppLocalizations {
   String get spectateMatchOver;
   String get spectateConnecting;
   String get spectateWaitingNextLeg;
+
+  // --- Referral program ---
+  String get referralTitle;
+  String get referralSectionTitle;
+  String get referralCreateCodeTitle;
+  String get referralCreateCodeSubtitle;
+  String get referralMyCodeTitle;
+  String get referralHaveCodeTitle;
+  String referralHaveCodeSubtitle(int days);
+  String get referralYourCode;
+  String get referralCodeCopied;
+  String get referralShareCode;
+  String referralShareMessage(String code, int days);
+  String referralCodeExplainer(int days);
+  String get referralEmailGateBody;
+  String get referralEmailGateAction;
+  String get referralEmailGateSent;
+  String get referralRewardsTitle;
+  String get referralMonthlyLabel;
+  String get referralMonthlySubtitle;
+  String get referralYearlyLabel;
+  String get referralYearlySubtitle;
+  String get referralRefereesTitle;
+  String referralEarnedTotal(String amount);
+  String referralPendingTotal(String amount);
+  String get referralNoRefereesYet;
+  String get referralStatusTrial;
+  String referralStatusSubscribed(String amount);
+  String referralStatusRewardDue(String amount);
+  String referralStatusRewardPaid(String amount);
+  String get referralStatusCancelled;
+  String get referralAdminContactNote;
+  String get referralRedeemTitle;
+  String get referralRedeemHeadline;
+  String referralRedeemBody(int days);
+  String get referralRedeemHint;
+  String referralRedeemAction(int days);
+  String get referralRedeemFootnote;
+  String referralRedeemSuccessTitle(int days);
+  String referralRedeemSuccessBody(String username);
+  String get referralRedeemSuccessAction;
+  String referralReferredBy(String username);
+  String get referralErrorInvalidCode;
+  String get referralErrorSelfCode;
+  String get referralErrorAlreadyReferred;
+  String get referralErrorAlreadySubscribed;
+  String get referralErrorAccountTooOld;
+  String get referralErrorEmailNotVerified;
+  String get referralErrorUnknown;
+  String get referralOnboardingTitle;
+  String referralOnboardingBody(int days);
+  String get referralOnboardingAction;
+  String get referralOnboardingSkip;
+  String referralPaywallRow(int days);
 }
 
 class _AppLocalizationsDelegate

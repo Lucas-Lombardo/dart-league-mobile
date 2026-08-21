@@ -1953,11 +1953,14 @@ class AutoScoringService extends ChangeNotifier {
       }
       if (_hasUnresolvedNearbyCompetitor(sg)) continue;
 
-      final score = _lookupScore(sg);
-      if (score == null) continue;
+      final base = _lookupScore(sg);
+      if (base == null) continue;
 
-      // Store dartScore on the shoot
+      // Store dartScore on the shoot, carrying the detector's confidence for
+      // this tip so the backend can record how sure the model was — the figure
+      // that tells us where to put the "ask the player to confirm" threshold.
       final latest = sg.shoots.reversed.whereType<Shoot>().firstOrNull;
+      final score = base.withConfidence(latest?.cnf);
       if (latest != null) latest.dartScore = score;
 
       for (int s = 0; s < 3; s++) {

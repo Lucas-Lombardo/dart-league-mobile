@@ -121,13 +121,34 @@ class DartScore {
   final double radius;
   final double angle;
 
+  /// The detector's confidence for the tip this score was read from, 0..1.
+  /// Null when the score was not produced by a detection (a manual override,
+  /// or a lookup that fell back to a cached position).
+  final double? confidence;
+
   DartScore({
     required this.score,
     required this.segment,
     required this.ring,
     required this.radius,
     required this.angle,
+    this.confidence,
   });
+
+  /// The same score, carrying the confidence of the detection it came from.
+  /// Returns this when there is nothing to add, so the common path allocates
+  /// nothing.
+  DartScore withConfidence(double? value) {
+    if (value == null || value == confidence) return this;
+    return DartScore(
+      score: score,
+      segment: segment,
+      ring: ring,
+      radius: radius,
+      angle: angle,
+      confidence: value,
+    );
+  }
 
   String get formatted {
     if (ring == 'double_bull') return 'DBull (50)';

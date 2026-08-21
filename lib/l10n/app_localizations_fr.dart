@@ -2368,8 +2368,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get bestCheckout => 'Meilleur checkout';
 
-  @override
-  String get avgCheckout => 'Checkout moyen';
 
   @override
   String get finishingDoubles => '% double gagnant';
@@ -2822,33 +2820,11 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get statsModeBot => 'Bot';
   @override
-  String get statsSubtabForm => 'Forme';
-  @override
-  String get statsSubtabScoring => 'Scoring';
-  @override
-  String get statsSubtabFinishing => 'Finition';
-  @override
-  String get statsSubtabConsistency => 'Régularité';
-  @override
-  String get statsAtAGlance => "En un coup d'oeil";
-  @override
-  String get statsFirstNine => '9 premières fléchettes';
-  @override
-  String get statsTrebleTwentyRate => 'Visites avec un T20';
-  @override
   String get statsBestVisit => 'Meilleure visite';
   @override
   String get statsCheckout => 'Checkout';
   @override
-  String get statsByRemaining => 'Par reliquat restant';
-  @override
   String get statsDoubleLadder => 'Échelle des doubles';
-  @override
-  String get statsDartsToWinLeg => 'Fléchettes pour gagner un leg';
-  @override
-  String get statsBestLeg => 'Meilleur leg';
-  @override
-  String get statsBustRate => 'Taux de bust';
   @override
   String get statsRecords => 'Records';
   @override
@@ -2864,9 +2840,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get statsAverageExplainer =>
       'Total des points marqués divisé par le nombre de fléchettes lancées, multiplié par 3. Les visites bustées comptent comme des fléchettes sans points.';
-  @override
-  String get statsCheckoutExplainer =>
-      'Une fléchette compte dès que le reliquat se finit en un seul double. Le pourcentage est le nombre de doubles réussis sur ce total.';
   @override
   String get statsNoDataForFilter => 'Aucun leg sur cette période.';
   @override
@@ -2889,17 +2862,12 @@ class AppLocalizationsFr extends AppLocalizations {
       ? 'Encore un leg et ta courbe de progression apparaît ici.'
       : 'Encore $count legs et ta courbe de progression apparaît ici.';
   @override
-  String statsCheckoutAttempts(int hits, int attempts) =>
-      '$hits doubles réussis sur $attempts fléchettes lancées à un double';
-  @override
   String statsVersus(String name) => 'vs $name';
   @override
   String statsDartsUnit(String value) => '$value fl.';
 
   @override
   String get comparisonTitle => 'Ton niveau';
-  @override
-  String get comparisonTeaserLabel => 'Ton niveau';
   @override
   String get comparisonProfile => 'Profil de jeu';
   @override
@@ -2947,9 +2915,13 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String comparisonBeatsPercent(int percent) => 'mieux que $percent %';
   @override
-  String comparisonLegsToGo(int count) => count <= 1
-      ? 'Encore un leg pour être classé.'
-      : 'Encore $count legs pour être classé.';
+  String comparisonLegsToGo(int count) => switch (count) {
+    // Zero left but still unranked: the legs are there, the comparison group
+    // isn't yet (it is rebuilt nightly).
+    0 => 'Classement disponible très bientôt.',
+    1 => 'Encore un leg pour être classé.',
+    _ => 'Encore $count legs pour être classé.',
+  };
 
   @override
   String get headToHeadTitle => 'Face à face';
@@ -3065,4 +3037,110 @@ class AppLocalizationsFr extends AppLocalizations {
   String get spectateConnecting => 'Connexion au match…';
   @override
   String get spectateWaitingNextLeg => 'En attente de la manche suivante…';
+
+  // --- Referral program ---
+  @override
+  String get referralTitle => 'Parrainage';
+  @override
+  String get referralSectionTitle => 'PARRAINAGE';
+  @override
+  String get referralCreateCodeTitle => 'Créer mon code de parrainage';
+  @override
+  String get referralCreateCodeSubtitle => 'Gagne jusqu\'à 10 € par filleul';
+  @override
+  String get referralMyCodeTitle => 'Mon code de parrainage';
+  @override
+  String get referralHaveCodeTitle => 'J\'ai un code de parrainage';
+  @override
+  String referralHaveCodeSubtitle(int days) => '$days jours de premium offerts';
+  @override
+  String get referralYourCode => 'TON CODE';
+  @override
+  String get referralCodeCopied => 'Code copié';
+  @override
+  String get referralShareCode => 'Partager mon code';
+  @override
+  String referralShareMessage(String code, int days) => 'Rejoins-moi sur Dart Rivals ! Entre mon code $code dans les paramètres et profite de $code jours de premium offerts.';
+  @override
+  String referralCodeExplainer(int days) => 'Ton ami l\'entre dans ses paramètres et reçoit $days jours de premium.';
+  @override
+  String get referralEmailGateBody => 'Confirme ton e-mail pour créer ton code — c\'est par là qu\'un admin te contactera pour tes primes.';
+  @override
+  String get referralEmailGateAction => 'Renvoyer l\'e-mail de confirmation';
+  @override
+  String get referralEmailGateSent => 'E-mail de confirmation envoyé';
+  @override
+  String get referralRewardsTitle => 'TES PRIMES';
+  @override
+  String get referralMonthlyLabel => 'Il prend le mensuel';
+  @override
+  String get referralMonthlySubtitle => 'Prime due à son 2e mois';
+  @override
+  String get referralYearlyLabel => 'Il prend l\'annuel';
+  @override
+  String get referralYearlySubtitle => 'Prime due immédiatement';
+  @override
+  String get referralRefereesTitle => 'TES FILLEULS';
+  @override
+  String referralEarnedTotal(String amount) => '$amount gagnés';
+  @override
+  String referralPendingTotal(String amount) => '$amount en attente';
+  @override
+  String get referralNoRefereesYet => 'Aucun filleul pour l\'instant — partage ton code !';
+  @override
+  String get referralStatusTrial => 'En essai gratuit';
+  @override
+  String referralStatusSubscribed(String amount) => 'Abonné · $amount à venir';
+  @override
+  String referralStatusRewardDue(String amount) => '$amount à verser';
+  @override
+  String referralStatusRewardPaid(String amount) => '$amount versés';
+  @override
+  String get referralStatusCancelled => 'Annulé';
+  @override
+  String get referralAdminContactNote => 'Quand une prime est due, un admin te contactera dans l\'application ou par e-mail.';
+  @override
+  String get referralRedeemTitle => 'Code de parrainage';
+  @override
+  String get referralRedeemHeadline => 'Un ami t\'a donné un code ?';
+  @override
+  String referralRedeemBody(int days) => 'Entre-le ici et joue $days jours en premium, gratuitement.';
+  @override
+  String get referralRedeemHint => 'TON-CODE';
+  @override
+  String referralRedeemAction(int days) => 'Activer mes $days jours';
+  @override
+  String get referralRedeemFootnote => 'Un compte ne peut être parrainé qu\'une seule fois. Le code de ton propre compte ne fonctionne pas ici.';
+  @override
+  String referralRedeemSuccessTitle(int days) => '$days JOURS DE PREMIUM ACTIVÉS';
+  @override
+  String referralRedeemSuccessBody(String username) => 'Parrainé par $username. Matchs classés illimités pendant une semaine — à toi de jouer.';
+  @override
+  String get referralRedeemSuccessAction => 'Jouer maintenant';
+  @override
+  String referralReferredBy(String username) => 'Parrainé par $username';
+  @override
+  String get referralErrorInvalidCode => 'Ce code n\'existe pas.';
+  @override
+  String get referralErrorSelfCode => 'Tu ne peux pas utiliser ton propre code.';
+  @override
+  String get referralErrorAlreadyReferred => 'Ton compte a déjà été parrainé.';
+  @override
+  String get referralErrorAlreadySubscribed => 'Les codes de parrainage sont réservés aux nouveaux joueurs.';
+  @override
+  String get referralErrorAccountTooOld => 'Ton compte est trop ancien pour utiliser un code de parrainage.';
+  @override
+  String get referralErrorEmailNotVerified => 'Confirme d\'abord ton e-mail.';
+  @override
+  String get referralErrorUnknown => 'Une erreur est survenue. Réessaie.';
+  @override
+  String get referralOnboardingTitle => 'Bienvenue dans l\'arène';
+  @override
+  String referralOnboardingBody(int days) => 'Un ami t\'a donné un code de parrainage ? C\'est le moment — $days jours de premium offerts.';
+  @override
+  String get referralOnboardingAction => 'Entrer mon code';
+  @override
+  String get referralOnboardingSkip => 'Je n\'ai pas de code';
+  @override
+  String referralPaywallRow(int days) => 'Un ami t\'a donné un code ? $days jours offerts';
 }

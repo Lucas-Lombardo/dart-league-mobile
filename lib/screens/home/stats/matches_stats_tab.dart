@@ -9,14 +9,13 @@ import '../../profile/match_history_screen.dart';
 import 'stats_filter_sheet.dart';
 import 'stats_pages.dart';
 
-enum _SubTab { form, scoring, finishing, consistency }
-
-/// The Matches tab: one filter bar, four sub-tabs, one network request.
+/// The Matches tab: one page, one network request.
 ///
-/// Replaces the old single-scroll layout where four equally weighted cards
-/// competed for attention. Each sub-tab now owns one subject, and the Form tab
-/// repeats the other three headline numbers so the most common visit — "where
-/// am I at" — still costs no navigation at all.
+/// It was four sub-tabs (form, scoring, finishing, consistency) until the
+/// figures they held could be read against other players: once every headline
+/// number carries a percentile, splitting them across screens only hid them.
+/// The filter bar is passed down into the page rather than pinned here — it
+/// governs the figures below it and not the standing above it.
 class MatchesStatsTab extends StatefulWidget {
   const MatchesStatsTab({super.key});
 
@@ -31,7 +30,6 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
     period: StatsPeriod.last30Days,
     modes: {MatchMode.ranked},
   );
-  _SubTab _tab = _SubTab.form;
   bool _loading = true;
   String? _error;
   StatsSummary? _summary;
@@ -79,24 +77,7 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: _FilterBar(filter: _filter, onTap: _openFilters),
-        ),
-        const SizedBox(height: 12),
-        _SubTabBar(
-          current: _tab,
-          onSelect: (tab) {
-            if (tab == _tab) return;
-            HapticService.lightImpact();
-            setState(() => _tab = tab);
-          },
-        ),
-        Expanded(child: _buildBody(l10n)),
-      ],
-    );
+    return _buildBody(l10n);
   }
 
   Widget _buildBody(AppLocalizations l10n) {
@@ -131,12 +112,10 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
     return RefreshIndicator(
       onRefresh: () => _load(showSpinner: false),
       color: AppTheme.primary,
-      child: switch (_tab) {
-        _SubTab.form => StatsFormPage(summary: summary),
-        _SubTab.scoring => StatsScoringPage(summary: summary),
-        _SubTab.finishing => StatsFinishingPage(summary: summary),
-        _SubTab.consistency => StatsConsistencyPage(summary: summary),
-      },
+      child: StatsOverviewPage(
+        summary: summary,
+        filterBar: _FilterBar(filter: _filter, onTap: _openFilters),
+      ),
     );
   }
 
@@ -248,66 +227,6 @@ class _FilterBar extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SubTabBar extends StatelessWidget {
-  final _SubTab current;
-  final ValueChanged<_SubTab> onSelect;
-
-  const _SubTabBar({required this.current, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final labels = {
-      _SubTab.form: l10n.statsSubtabForm,
-      _SubTab.scoring: l10n.statsSubtabScoring,
-      _SubTab.finishing: l10n.statsSubtabFinishing,
-      _SubTab.consistency: l10n.statsSubtabConsistency,
-    };
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.surfaceLight)),
-      ),
-      child: Row(
-        children: [
-          for (final tab in _SubTab.values)
-            Expanded(
-              child: InkWell(
-                onTap: () => onSelect(tab),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 9, top: 2),
-                  child: Column(
-                    children: [
-                      // The four labels must all stay visible — the whole point
-                      // of this layout — so they shrink rather than scroll.
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          labels[tab]!,
-                          style: TextStyle(
-                            color: current == tab ? AppTheme.primary : AppTheme.textSecondary,
-                            fontSize: 14,
-                            fontWeight: current == tab ? FontWeight.w800 : FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Container(
-                        height: 2,
-                        color: current == tab ? AppTheme.primary : Colors.transparent,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

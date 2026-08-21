@@ -340,6 +340,8 @@ class PlacementProvider extends ChangeNotifier {
     int? playerRoundScore,
     List<String>? playerRoundThrows,
     int? playerScoreAfterRound,
+    bool? playerBusted,
+    List<Map<String, dynamic>>? playerRoundDarts,
   }) async {
     if (_currentMatchId == null) return false;
 
@@ -379,6 +381,8 @@ class PlacementProvider extends ChangeNotifier {
         _currentMatchId!,
         playerRoundScore: playerRoundScore,
         playerRoundThrows: playerRoundThrows,
+        playerRoundDarts: playerRoundDarts,
+        playerBusted: playerBusted,
       );
 
       _lastBotThrows = (response['botThrows'] as List<dynamic>?)

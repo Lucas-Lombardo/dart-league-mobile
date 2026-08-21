@@ -225,11 +225,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     // Score update for an already-tracked dart (model refined its prediction)
     if (slotIndex < _currentRoundThrows.length) {
       setState(() {
-        _currentRoundThrows[slotIndex] = _DartThrow(base, mul);
+        _currentRoundThrows[slotIndex] = _DartThrow(base, mul, aiReading: dartScore);
       });
       _recalculateScore();
     } else {
-      _throwDart(base, mul);
+      _throwDart(base, mul, aiReading: dartScore);
     }
 
     if (_isWin) {
@@ -243,13 +243,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
 
   // ───────────────────────────────────────────────────────────────────────────
 
-  void _throwDart(int baseScore, ScoreMultiplier multiplier) {
+  void _throwDart(int baseScore, ScoreMultiplier multiplier, {DartScore? aiReading}) {
     if (_dartsThrown >= 3 || _botTurnInProgress || _gameEnded || _isBust || _isWin) return;
 
-    // If editing an existing dart, replace it
+    // If editing an existing dart, replace it — keeping whatever the AI had
+    // read for that slot, which is precisely what makes the correction a
+    // labelled sample rather than just a fix.
     if (_editingDartIndex != null && _editingDartIndex! < _currentRoundThrows.length) {
       setState(() {
-        _currentRoundThrows[_editingDartIndex!] = _DartThrow(baseScore, multiplier);
+        _currentRoundThrows[_editingDartIndex!] = _DartThrow(
+          baseScore,
+          multiplier,
+          aiReading: aiReading ?? _currentRoundThrows[_editingDartIndex!].aiReading,
+        );
         _editingDartIndex = null;
       });
       _recalculateScore();
@@ -322,8 +328,16 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   void _confirmRound() {
     stopAiCapture();
 
+    // Captured before the setState below clears it: the server needs to know
+    // this visit busted, and _isBust is about to be reset.
+    final bool busted = _isBust;
     final int roundScore;
     final List<String> roundThrows = _currentRoundThrows.map((t) => t.notation).toList();
+    // The same visit, dart by dart, with what the AI read for each. Sent
+    // alongside roundThrows rather than instead of it, so a server that only
+    // knows the notations keeps working.
+    final List<Map<String, dynamic>> roundDarts =
+        _currentRoundThrows.map((t) => t.toJson()).toList();
     final int dartsThisRound = _currentRoundThrows.length;
 
     if (_isBust) {
@@ -369,14 +383,18 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _executeBotTurn(
       playerRoundScore: roundScore,
       playerRoundThrows: roundThrows,
+      playerRoundDarts: roundDarts,
       dartsThisRound: dartsThisRound,
+      playerBusted: busted,
     );
   }
 
   Future<void> _executeBotTurn({
     int? playerRoundScore,
     List<String>? playerRoundThrows,
+    List<Map<String, dynamic>>? playerRoundDarts,
     int dartsThisRound = 0,
+    bool playerBusted = false,
   }) async {
     if (_botTurnInProgress || _gameEnded) return;
 
@@ -389,7 +407,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final success = await placement.triggerBotTurn(
       playerRoundScore: playerRoundScore,
       playerRoundThrows: playerRoundThrows,
+      playerRoundDarts: playerRoundDarts,
       playerScoreAfterRound: _myScore,
+      playerBusted: playerBusted,
     );
 
     // Logged whatever the server answered: a visit the backend refused (a
@@ -1383,7 +1403,46 @@ class _DartThrow {
   final int baseScore;
   final ScoreMultiplier multiplier;
 
-  _DartThrow(this.baseScore, this.multiplier);
+  /// What the model read for this dart, kept even if the player then corrects
+  /// it: the pair (reading, correction) is a ground-truth training sample.
+  /// Null for a dart typed in by hand.
+  final DartScore? aiReading;
+
+  _DartThrow(this.baseScore, this.multiplier, {this.aiReading});
+
+  /// The per-dart record the backend stores on the visit. Only the fields the
+  /// server knows how to read; a server that predates them ignores the lot and
+  /// records the notation alone, exactly as before.
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{'notation': notation};
+    final ai = aiReading;
+    if (ai == null) {
+      json['source'] = 'manual';
+      return json;
+    }
+    json['source'] = 'ai';
+    json['aiNotation'] = _notationOf(ai);
+    json['radius'] = ai.radius;
+    json['angle'] = ai.angle;
+    if (ai.confidence != null) json['confidence'] = ai.confidence;
+    return json;
+  }
+
+  /// The model's own reading, before any correction by the player.
+  static String _notationOf(DartScore score) {
+    switch (score.ring) {
+      case 'triple':
+        return 'T${score.segment}';
+      case 'double':
+        return 'D${score.segment}';
+      case 'double_bull':
+        return 'D25';
+      case 'single_bull':
+        return 'S25';
+      default:
+        return 'S${score.segment}';
+    }
+  }
 
   String get notation {
     switch (multiplier) {

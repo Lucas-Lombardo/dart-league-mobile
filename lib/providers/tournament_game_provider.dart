@@ -771,7 +771,13 @@ class TournamentGameProvider with ChangeNotifier {
 
   // --- Actions ---
 
-  void confirmRound() {
+  /// [endReason] explains why a visit is being committed with fewer than three
+  /// darts: 'bounce_out' when the AI closed the turn because the board came up
+  /// empty (the missing dart never stuck), 'ended_early' when the player closed
+  /// it themselves. The server fills the gap with S0 either way, but marks
+  /// those fillers so its stats stop counting a dart that never reached the
+  /// board as a dart thrown at a double. Ignored by backends that predate it.
+  void confirmRound({String? endReason}) {
     if (_gameEnded || _currentGameMatchId == null) return;
 
     final tracked = SocketService.supportsDartAck;
@@ -796,9 +802,11 @@ class TournamentGameProvider with ChangeNotifier {
       payload['dartCount'] =
           _currentRoundThrows.where((t) => t.isNotEmpty).length.clamp(0, 3);
     }
+    final endingEarly = _currentRoundThrows.length < 3;
+    if (endingEarly && endReason != null) payload['reason'] = endReason;
     try {
       SocketService.emit(
-        _currentRoundThrows.length < 3 ? 'end_round_early' : 'confirm_round',
+        endingEarly ? 'end_round_early' : 'confirm_round',
         payload,
       );
     } catch (e) {
@@ -957,6 +965,14 @@ class TournamentGameProvider with ChangeNotifier {
     // 'ai' when proposed by on-device auto-scoring, 'manual' when typed. Feeds
     // the backend trust factor. Optional field; old backends just ignore it.
     String source = 'manual',
+    // Where the model read the dart, in the scorer's own board frame: radius
+    // normalized on the 170 mm double edge (0 = bull, 1 = edge) and angle in
+    // radians. Sent only for AI darts, and only when the scorer produced them
+    // — a backend that doesn't know these fields ignores them, and this app
+    // scores identically whether they travel or not.
+    double? radius,
+    double? angle,
+    double? confidence,
   }) async {
     if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) return;
 
@@ -970,6 +986,11 @@ class TournamentGameProvider with ChangeNotifier {
       'isTriple': isTriple,
       'source': source,
     };
+    if (source == 'ai') {
+      if (radius != null) payload['radius'] = radius;
+      if (angle != null) payload['angle'] = angle;
+      if (confidence != null) payload['confidence'] = confidence;
+    }
 
     if (!SocketService.supportsDartAck) {
       // Legacy backend: never track or retry — it would score the dart twice.

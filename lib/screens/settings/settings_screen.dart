@@ -20,6 +20,9 @@ import '../../utils/rank_translation.dart';
 import '../../utils/rank_utils.dart';
 import 'edit_profile_screen.dart';
 import 'subscription_screen.dart';
+import '../../providers/referral_provider.dart';
+import 'referral_screen.dart';
+import 'redeem_referral_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -44,6 +47,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<ReferralProvider>().loadOverview();
+    });
     ApiService.get('/replays/mine?limit=1').then((data) {
       if (!mounted) return;
       setState(() => _replayCount = (data['total'] as num?)?.toInt());
@@ -93,6 +99,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           _buildSection(l10n.premium.toUpperCase()),
           _buildSubscriptionTile(l10n),
+
+          const SizedBox(height: 24),
+          _buildSection(l10n.referralSectionTitle),
+          _buildReferralGroup(l10n),
 
           const SizedBox(height: 24),
           _buildSection(l10n.preferences.toUpperCase()),
@@ -617,6 +627,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Both sides of the referral program. The "I have a code" row only exists
+  /// while the account is still eligible — a dead row would need explaining.
+  Widget _buildReferralGroup(AppLocalizations l10n) {
+    final referral = context.watch<ReferralProvider>();
+    final overview = referral.overview;
+    final hasCode = overview?.code != null;
+
+    final rows = <Widget>[
+      _buildNavRow(
+        icon: Icons.card_giftcard,
+        iconColor: AppTheme.primary,
+        title: hasCode ? l10n.referralMyCodeTitle : l10n.referralCreateCodeTitle,
+        subtitle: overview?.code ?? l10n.referralCreateCodeSubtitle,
+        onTap: () {
+          HapticService.lightImpact();
+          AppNavigator.toScreen(context, const ReferralScreen()).then((_) {
+            if (mounted) context.read<ReferralProvider>().loadOverview();
+          });
+        },
+      ),
+    ];
+
+    if (referral.canRedeem) {
+      rows.add(
+        _buildNavRow(
+          icon: Icons.redeem,
+          iconColor: AppTheme.success,
+          title: l10n.referralHaveCodeTitle,
+          subtitle: l10n.referralHaveCodeSubtitle(
+            overview?.refereeTrialDays ?? 7,
+          ),
+          onTap: () {
+            HapticService.lightImpact();
+            AppNavigator.toScreen(context, const RedeemReferralScreen()).then((
+              _,
+            ) {
+              if (!mounted) return;
+              context.read<ReferralProvider>().loadOverview();
+              context.read<SubscriptionProvider>().refresh();
+            });
+          },
+        ),
+      );
+    } else if (overview?.referredByUsername != null) {
+      rows.add(
+        _buildInfoRow(
+          l10n.referralRedeemTitle,
+          l10n.referralReferredBy(overview!.referredByUsername!),
+          Icons.redeem,
+        ),
+      );
+    }
+
+    return _buildGroupCard(rows);
+  }
+
+  Widget _buildNavRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubscriptionTile(AppLocalizations l10n) {
     final subscription = context.watch<SubscriptionProvider>();
     final isPremium = subscription.isPremiumActive;
@@ -749,12 +866,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               final authProvider = context.read<AuthProvider>();
+              // Referral state is per-account: drop it so the next sign-in
+              // does not inherit this user's code and eligibility.
+              final referralProvider = context.read<ReferralProvider>();
               // Pop with the dialog's context, but navigate with the screen's:
               // after the pop the dialog context is unmounted by the time the
               // (network) logout resolves, so guarding navigation on it meant
               // the first logout never left the settings screen.
               Navigator.pop(dialogContext);
               await authProvider.logout();
+              referralProvider.reset();
               if (context.mounted) {
                 AppNavigator.toLoginClearing(context);
               }

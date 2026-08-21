@@ -11,6 +11,8 @@ import '../../services/iap_service.dart';
 import '../../services/subscription_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../providers/referral_provider.dart';
+import 'redeem_referral_screen.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
@@ -150,6 +152,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
   Widget build(BuildContext context) {
     final subscription = context.watch<SubscriptionProvider>();
     final isPremium = subscription.isPremiumActive;
+    // The hero celebrates the entitlement, but the plans stay visible for
+    // anyone who isn't paying yet — a referee on referral bonus days is
+    // premium and still needs to be able to subscribe.
+    final showPaywall = !subscription.hasPaidSubscription;
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
@@ -169,10 +175,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                 children: [
                   _buildHero(l10n, isPremium, subscription.premiumExpiresAt),
                   const SizedBox(height: 24),
-                  if (isPremium)
-                    _buildManageSection(l10n, subscription.premiumExpiresAt)
+                  if (showPaywall)
+                    _buildPaywallSection(l10n)
                   else
-                    _buildPaywallSection(l10n),
+                    _buildManageSection(l10n, subscription.premiumExpiresAt),
                   const SizedBox(height: 16),
                   _buildLegalFooter(l10n),
                 ],
@@ -257,6 +263,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
           highlight: false,
           highlightLabel: l10n.bestValue,
         ),
+        const SizedBox(height: 16),
+        _buildReferralRow(l10n),
         const SizedBox(height: 24),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -267,6 +275,52 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
           ),
         ),
       ],
+    );
+  }
+
+  /// Someone opening the paywall already wants premium — if they were given a
+  /// code, this is when they remember it. Renders nothing when ineligible.
+  Widget _buildReferralRow(AppLocalizations l10n) {
+    final referral = context.watch<ReferralProvider>();
+    if (!referral.canRedeem) return const SizedBox.shrink();
+    final days = referral.overview?.refereeTrialDays ?? 7;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        HapticService.lightImpact();
+        final redeemed = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(builder: (_) => const RedeemReferralScreen()),
+        );
+        if (!mounted) return;
+        await context.read<SubscriptionProvider>().refresh();
+        if (mounted && redeemed == true) Navigator.of(context).pop();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primary, width: 2),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.card_giftcard, color: AppTheme.primary, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                l10n.referralPaywallRow(days),
+                style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.primary, size: 20),
+          ],
+        ),
+      ),
     );
   }
 

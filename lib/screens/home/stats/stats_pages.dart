@@ -5,19 +5,25 @@ import '../../../utils/app_navigator.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/haptic_service.dart';
 import '../../profile/match_history_screen.dart';
-import 'comparison_screen.dart';
+import 'comparison_section.dart';
 import 'stats_widgets.dart';
 
-/// The four sub-tab pages. Each is a view over the same `StatsSummary`, so
-/// switching tabs never touches the network, and each one puts a single number
-/// at the top with the rest of the page explaining it.
+/// The stats page: one scroll, no sub-tabs.
+///
+/// It reads top-down as one argument. The standing comes first — where the
+/// player sits among comparable players — because "is that good" is the
+/// question none of their own figures can answer. Then their form, their
+/// record, and the two breakdowns that tell them what to actually practise.
+///
+/// The four sub-tabs this replaces split the same figures across screens
+/// nobody visited, and repeated the three headline numbers on the landing one
+/// for want of anything better to put there.
 
 String _num(double value) =>
     value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 
-/// Highlights the strongest and weakest rows of a breakdown. Applied to both the
-/// checkout bands and the double ladder so the same colour always means the same
-/// thing across the Finishing page.
+/// Highlights the strongest and weakest rows of a breakdown, so the same colour
+/// always means the same thing.
 Color _rateColor(StatsRate rate, List<StatsRate> all) {
   if (all.length < 3) return AppTheme.primary;
   final pcts = all.map((r) => r.pct);
@@ -31,19 +37,30 @@ Color _rateColor(StatsRate rate, List<StatsRate> all) {
   return AppTheme.primary;
 }
 
-class StatsFormPage extends StatelessWidget {
+class StatsOverviewPage extends StatelessWidget {
   final StatsSummary summary;
 
-  const StatsFormPage({super.key, required this.summary});
+  /// Sits between the standing and the filtered figures — the filter above it
+  /// governs everything below and nothing above.
+  final Widget filterBar;
+
+  const StatsOverviewPage({
+    super.key,
+    required this.summary,
+    required this.filterBar,
+  });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final form = summary.form;
-    // Standing first: "am I any good" is the question the rest of this page
-    // can't answer on its own, and it only costs one line here.
-    final children = <Widget>[const ComparisonTeaser()];
+    final children = <Widget>[
+      // Unfiltered: the standing is drawn from its own 90-day window, which is
+      // why it sits ABOVE the filter rather than under it.
+      const ComparisonSection(),
+      filterBar,
+    ];
 
+    final form = summary.form;
     if (form != null) {
       children.add(
         StatsCard(
@@ -91,211 +108,67 @@ class StatsFormPage extends StatelessWidget {
       );
     }
 
-    // The three headline numbers of the other sub-tabs, repeated here. The most
-    // frequent visit is "where am I at", and it should cost no navigation.
-    final glance = <Widget>[
-      if (summary.scoring != null)
-        StatsRow(label: l10n.avgThreeDart, value: _num(summary.scoring!.average)),
-      if (summary.finishing != null)
-        StatsRow(label: l10n.statsCheckout, value: '${_num(summary.finishing!.checkoutPct)} %'),
-      if (summary.consistency?.dartsToWinLeg != null)
-        StatsRow(
-          label: l10n.statsDartsToWinLeg,
-          value: _num(summary.consistency!.dartsToWinLeg!),
+    // The two breakdowns worth keeping. Everything else the old sub-tabs held
+    // — first nine, treble-20 rate, darts to win a leg, bust rate — is already
+    // on the standing above, WITH what it is worth against other players.
+    final scoring = summary.scoring;
+    if (scoring != null && scoring.buckets.isNotEmpty) {
+      final maxCount = scoring.buckets.fold<int>(0, (m, b) => b.count > m ? b.count : m);
+      children.add(
+        StatsCard(
+          label: l10n.statsVisitBreakdown(scoring.totalVisits),
+          children: [
+            for (final bucket in scoring.buckets)
+              StatsBar(
+                label: bucket.label,
+                fraction: maxCount == 0 ? 0 : bucket.count / maxCount,
+                value: '${bucket.count}',
+                color: switch (bucket.label) {
+                  '180' => AppTheme.gold,
+                  '<60' => AppTheme.error,
+                  _ => AppTheme.primary,
+                },
+              ),
+          ],
         ),
-    ];
-    if (glance.isNotEmpty) {
-      children.add(StatsCard(label: l10n.statsAtAGlance, children: glance));
+      );
     }
 
-    children.add(_RecordsCard(records: summary.records));
-    // The old stats screen ended on this button; the Matches tab keeps it so
-    // match history stays one tap from where a player reads their numbers.
+    // The single most actionable card in the app: the double you miss most is
+    // the one to go and practise tonight.
+    final finishing = summary.finishing;
+    if (finishing != null && finishing.doubles.isNotEmpty) {
+      final best = finishing.doubles.map((r) => r.pct).reduce((a, b) => a > b ? a : b);
+      children.add(
+        StatsCard(
+          label: l10n.statsDoubleLadder,
+          children: [
+            for (final rate in finishing.doubles)
+              StatsBar(
+                label: rate.label,
+                fraction: best <= 0 ? 0 : rate.pct / best,
+                value: '${_num(rate.pct)} %',
+                color: _rateColor(rate, finishing.doubles),
+              ),
+          ],
+        ),
+      );
+    }
+
+    children.add(
+      _RecordsCard(
+        records: summary.records,
+        bestVisit: scoring != null && scoring.bestVisit > 0 ? scoring.bestVisit : null,
+      ),
+    );
     children.add(const _MatchHistoryButton());
+    children.add(
+      StatsExplainer(title: l10n.statsHowCalculated, body: l10n.statsAverageExplainer),
+    );
     return _PageBody(children: children);
   }
 
   Widget _divider() => Container(width: 1, height: 38, color: AppTheme.surfaceLight);
-}
-
-class StatsScoringPage extends StatelessWidget {
-  final StatsSummary summary;
-
-  const StatsScoringPage({super.key, required this.summary});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final scoring = summary.scoring;
-    if (scoring == null) return _PageBody(children: [StatsBlockEmpty(l10n.statsNoDataForFilter)]);
-
-    final maxCount = scoring.buckets.fold<int>(0, (m, b) => b.count > m ? b.count : m);
-
-    return _PageBody(
-      children: [
-        StatsCard(
-          children: [
-            StatsHero(value: _num(scoring.average), caption: l10n.avgThreeDart),
-            const SizedBox(height: 10),
-            if (scoring.first9 != null)
-              StatsRow(label: l10n.statsFirstNine, value: _num(scoring.first9!)),
-            if (scoring.trebleTwentyRate != null)
-              StatsRow(
-                label: l10n.statsTrebleTwentyRate,
-                value: '${_num(scoring.trebleTwentyRate!)} %',
-              ),
-            if (scoring.bestVisit > 0)
-              StatsRow(
-                label: l10n.statsBestVisit,
-                value: '${scoring.bestVisit}',
-                valueColor: AppTheme.gold,
-              ),
-          ],
-        ),
-        if (scoring.buckets.isNotEmpty)
-          StatsCard(
-            label: l10n.statsVisitBreakdown(scoring.totalVisits),
-            children: [
-              for (final bucket in scoring.buckets)
-                StatsBar(
-                  label: bucket.label,
-                  fraction: maxCount == 0 ? 0 : bucket.count / maxCount,
-                  value: '${bucket.count}',
-                  color: switch (bucket.label) {
-                    '180' => AppTheme.gold,
-                    '<60' => AppTheme.error,
-                    _ => AppTheme.primary,
-                  },
-                ),
-            ],
-          ),
-        StatsExplainer(title: l10n.statsHowCalculated, body: l10n.statsAverageExplainer),
-      ],
-    );
-  }
-}
-
-class StatsFinishingPage extends StatelessWidget {
-  final StatsSummary summary;
-
-  const StatsFinishingPage({super.key, required this.summary});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final finishing = summary.finishing;
-    if (finishing == null) return _PageBody(children: [StatsBlockEmpty(l10n.statsNoDataForFilter)]);
-
-    // Both breakdowns are scaled to their own best row rather than to 100 %:
-    // at these rates a fixed ceiling would leave every bar nearly empty.
-    double scale(List<StatsRate> rates, StatsRate rate) {
-      final best = rates.map((r) => r.pct).reduce((a, b) => a > b ? a : b);
-      return best <= 0 ? 0 : rate.pct / best;
-    }
-
-    return _PageBody(
-      children: [
-        StatsCard(
-          children: [
-            StatsHero(
-              value: _num(finishing.checkoutPct),
-              unit: '%',
-              caption: l10n.statsCheckoutAttempts(finishing.hits, finishing.attempts),
-            ),
-            const SizedBox(height: 10),
-            if (finishing.best != null)
-              StatsRow(
-                label: l10n.bestCheckout,
-                value: '${finishing.best}',
-                valueColor: AppTheme.gold,
-              ),
-            if (finishing.average != null)
-              StatsRow(label: l10n.avgCheckout, value: _num(finishing.average!)),
-          ],
-        ),
-        if (finishing.bands.isNotEmpty)
-          StatsCard(
-            label: l10n.statsByRemaining,
-            children: [
-              for (final band in finishing.bands)
-                StatsBar(
-                  label: band.label.replaceAll('-', '–'),
-                  fraction: scale(finishing.bands, band),
-                  value: '${_num(band.pct)} %',
-                  color: _rateColor(band, finishing.bands),
-                ),
-            ],
-          ),
-        if (finishing.doubles.isNotEmpty)
-          StatsCard(
-            label: l10n.statsDoubleLadder,
-            children: [
-              for (final rate in finishing.doubles)
-                StatsBar(
-                  label: rate.label,
-                  fraction: scale(finishing.doubles, rate),
-                  value: '${_num(rate.pct)} %',
-                  color: _rateColor(rate, finishing.doubles),
-                ),
-            ],
-          ),
-        StatsExplainer(title: l10n.statsHowCalculated, body: l10n.statsCheckoutExplainer),
-      ],
-    );
-  }
-}
-
-class StatsConsistencyPage extends StatelessWidget {
-  final StatsSummary summary;
-
-  const StatsConsistencyPage({super.key, required this.summary});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final consistency = summary.consistency;
-    if (consistency == null) {
-      return _PageBody(children: [StatsBlockEmpty(l10n.statsNoDataForFilter)]);
-    }
-
-    return _PageBody(
-      children: [
-        StatsCard(
-          children: [
-            if (consistency.dartsToWinLeg != null)
-              StatsHero(
-                value: _num(consistency.dartsToWinLeg!),
-                caption: l10n.statsDartsToWinLeg,
-              )
-            else
-              // Plain text, not a StatsBlockEmpty: that widget is itself a card
-              // and would nest one inside another.
-              Text(
-                l10n.statsNoRecordsYet,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                  height: 1.45,
-                ),
-              ),
-            const SizedBox(height: 10),
-            if (consistency.bestLeg != null)
-              StatsRow(
-                label: l10n.statsBestLeg,
-                value: l10n.statsDartsUnit('${consistency.bestLeg}'),
-                valueColor: AppTheme.gold,
-              ),
-            if (consistency.bustRate != null)
-              StatsRow(
-                label: l10n.statsBustRate,
-                value: '${_num(consistency.bustRate!)} %',
-                valueColor: AppTheme.error,
-              ),
-          ],
-        ),
-      ],
-    );
-  }
 }
 
 class _MatchHistoryButton extends StatelessWidget {
@@ -409,12 +282,17 @@ class _Tally extends StatelessWidget {
 class _RecordsCard extends StatelessWidget {
   final List<StatsRecord> records;
 
-  const _RecordsCard({required this.records});
+  /// Highest single visit of the window. It carries no opponent or date — the
+  /// backend reports it as an aggregate, not as a dated record — so it rides
+  /// here as a plain row rather than pretending to be one.
+  final int? bestVisit;
+
+  const _RecordsCard({required this.records, this.bestVisit});
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    if (records.isEmpty) {
+    if (records.isEmpty && bestVisit == null) {
       return StatsCard(
         label: l10n.statsRecords,
         children: [
@@ -432,6 +310,14 @@ class _RecordsCard extends StatelessWidget {
         for (var i = 0; i < records.length; i++) ...[
           if (i > 0) const Divider(height: 18, color: AppTheme.surfaceLight),
           _RecordLine(record: records[i]),
+        ],
+        if (bestVisit != null) ...[
+          if (records.isNotEmpty) const Divider(height: 18, color: AppTheme.surfaceLight),
+          StatsRow(
+            label: l10n.statsBestVisit,
+            value: '$bestVisit',
+            valueColor: AppTheme.gold,
+          ),
         ],
       ],
     );

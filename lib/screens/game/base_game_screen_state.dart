@@ -1213,7 +1213,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       DartSoundService.playDartHit(base, mul);
       // Tag as AI-proposed so the backend can score the trust factor (accepted
       // vs corrected). Manual entry/edits flow through the default 'manual'.
-      g.throwDart(baseScore: base, multiplier: mul, source: 'ai');
+      // The tip's position travels with it: radius/angle are already in the
+      // scorer's normalized board frame, so nothing is converted here. Together
+      // with a later correction by the player, they are a ground-truth training
+      // sample — the reason any of this is worth sending.
+      g.throwDart(
+        baseScore: base,
+        multiplier: mul,
+        source: 'ai',
+        radius: dartScore.radius,
+        angle: dartScore.angle,
+        confidence: dartScore.confidence,
+      );
     };
     await autoScoringService!.loadModel();
     if (mounted) {
@@ -1285,7 +1296,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   void submitAutoScoredDarts(dynamic game) {
     aiPausedForEdit = false;
     autoScoringService?.stopCapture();
-    game.confirmRound();
+    // The AI only closes a turn once it has seen the board empty, so a visit
+    // that lands here with fewer than three darts is one where a dart was
+    // thrown and did not stay in the board. Saying so keeps the server from
+    // booking its S0 filler as a dart thrown at a double.
+    game.confirmRound(endReason: 'bounce_out');
   }
 
   /// Restart AI capture after the dart-edit modal closes (including cancel).
