@@ -92,13 +92,13 @@ void main() {
     await settle(tester);
 
     expect(promptTitle(), findsOneWidget);
-    expect(find.text('contre Louis DRF'), findsOneWidget);
-    expect(find.textContaining('Tournoi #4'), findsOneWidget);
-    expect(find.text('REJOINDRE LE MATCH'), findsOneWidget);
+    expect(find.text('vs Louis DRF'), findsOneWidget);
+    expect(find.text('Tournoi #4'), findsOneWidget);
+    expect(find.text('Accepter et rejoindre'), findsOneWidget);
     // The screen underneath is still there — the prompt is an overlay.
     expect(find.text('SPECTATE SCREEN'), findsOneWidget);
     // Countdown runs from inviteSentAt (7-minute window).
-    expect(find.textContaining('06:5'), findsOneWidget);
+    expect(find.textContaining('Temps restant: 06:5'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
   });
@@ -156,6 +156,62 @@ void main() {
     await pumpApp(tester);
     tournaments.markInviteHandled('m1');
     tournaments.debugSeedPendingMatches([invite('m1')], myUserId: me);
+    await settle(tester);
+    expect(promptTitle(), findsNothing);
+  });
+
+  testWidgets('half-window reminder re-raises a dismissed prompt',
+      (tester) async {
+    await pumpApp(tester);
+    tournaments.debugSeedPendingMatches([invite('m1')], myUserId: me);
+    await settle(tester);
+    await tester.tap(find.text('Plus tard'));
+    await settle(tester);
+    expect(promptTitle(), findsNothing);
+
+    // Backend nudge at 3:30, followed by the pending refresh it triggers.
+    tournaments.debugEmitInviteReminder({'matchId': 'm1'});
+    await tester.pump();
+    tournaments.debugSeedPendingMatches([invite('m1')]);
+    await settle(tester);
+    expect(promptTitle(), findsOneWidget);
+  });
+
+  testWidgets('reminder while the prompt is on screen does not stack or repeat',
+      (tester) async {
+    await pumpApp(tester);
+    tournaments.debugSeedPendingMatches([invite('m1')], myUserId: me);
+    await settle(tester);
+    expect(promptTitle(), findsOneWidget);
+
+    tournaments.debugEmitInviteReminder({'matchId': 'm1'});
+    await tester.pump();
+    tournaments.debugSeedPendingMatches([invite('m1')]);
+    await settle(tester);
+    expect(promptTitle(), findsOneWidget);
+
+    // Dismissing afterwards must not bring it straight back.
+    await tester.tap(find.text('Plus tard'));
+    await settle(tester);
+    expect(promptTitle(), findsNothing);
+  });
+
+  testWidgets('reminder is ignored while the player is in that match lobby',
+      (tester) async {
+    await pumpApp(tester);
+    tournaments.markInviteHandled('m1');
+    tournaments.setMatchScreenOpen('m1');
+    tournaments.debugSeedPendingMatches([invite('m1')], myUserId: me);
+    await settle(tester);
+
+    tournaments.debugEmitInviteReminder({'matchId': 'm1'});
+    await tester.pump();
+    tournaments.debugSeedPendingMatches([invite('m1')]);
+    await settle(tester);
+    expect(promptTitle(), findsNothing);
+
+    // Leaving the lobby must not re-raise it either: the mark is intact.
+    tournaments.setMatchScreenClosed('m1');
     await settle(tester);
     expect(promptTitle(), findsNothing);
   });

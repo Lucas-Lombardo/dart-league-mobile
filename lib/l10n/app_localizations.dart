@@ -949,8 +949,6 @@ abstract class AppLocalizations {
   String get youAdvanceOpponentNoShow;
   // Unmissable "your match is ready" prompt (TournamentInviteGate)
   String get tournamentInvitePromptTitle;
-  String tournamentInvitePromptVersus(String opponent);
-  String tournamentInvitePromptCountdown(String time);
   String get tournamentInvitePromptForfeitWarning;
   String get tournamentInvitePromptLater;
   String get tournamentInvitePromptNextMatchHint;

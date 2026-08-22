@@ -2519,10 +2519,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get tournamentInvitePromptTitle => 'Ton match est prêt !';
   @override
-  String tournamentInvitePromptVersus(String opponent) => 'contre $opponent';
-  @override
-  String tournamentInvitePromptCountdown(String time) => 'Rejoins-le avant $time';
-  @override
   String get tournamentInvitePromptForfeitWarning =>
       'Si tu ne rejoins pas avant la fin du chrono, tu perds le match par forfait.';
   @override

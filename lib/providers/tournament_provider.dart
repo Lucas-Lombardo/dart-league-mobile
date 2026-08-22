@@ -41,6 +41,12 @@ class TournamentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Test seam: stands in for the tournamentMatchReminder socket event.
+  @visibleForTesting
+  void debugEmitInviteReminder(Map<String, dynamic> data) {
+    _inviteReminders.add(data);
+  }
+
   // The provider is the SINGLE owner of the tournament socket events (the
   // SocketService handler slots are one-per-event; screens registering their
   // own handlers used to clobber these on reconnect and vice versa). Screens
@@ -51,10 +57,15 @@ class TournamentProvider extends ChangeNotifier {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _matchResults =
       StreamController<Map<String, dynamic>>.broadcast();
+  // Half-window nudge from the backend (tournamentMatchReminder): the invite
+  // gate re-raises its prompt for that match. Consumed by the gate only.
+  final StreamController<Map<String, dynamic>> _inviteReminders =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get readyUpdates => _readyUpdates.stream;
   Stream<Map<String, dynamic>> get matchStarts => _matchStarts.stream;
   Stream<Map<String, dynamic>> get matchResults => _matchResults.stream;
+  Stream<Map<String, dynamic>> get inviteReminders => _inviteReminders.stream;
 
   List<Tournament> get allTournaments => _allTournaments;
   List<Tournament> get upcomingTournaments => _upcomingTournaments;
@@ -112,6 +123,12 @@ class TournamentProvider extends ChangeNotifier {
 
   void markInviteHandled(String matchId) {
     _handledInviteIds.add(matchId);
+  }
+
+  /// Lets the gate prompt again for an invite it already showed — used by
+  /// the half-window reminder.
+  void unmarkInviteHandled(String matchId) {
+    _handledInviteIds.remove(matchId);
   }
 
   /// The pending invite the player has NOT been prompted for yet, if any.
@@ -529,6 +546,17 @@ class TournamentProvider extends ChangeNotifier {
         refreshWatchedTournament();
       });
 
+      // Backend nudge at the middle of the join window for a player who
+      // hasn't readied. Rebroadcast to the gate BEFORE the refresh so it can
+      // clear its "already prompted" mark ahead of the notify.
+      SocketService.on('tournamentMatchReminder', (data) {
+        debugPrint('Tournament match reminder: $data');
+        if (data is Map) {
+          _inviteReminders.add(Map<String, dynamic>.from(data));
+        }
+        loadPendingMatches();
+      });
+
       SocketService.on('tournamentMatchStart', (data) {
         debugPrint('Tournament match start: $data');
         if (data is Map) {
@@ -589,6 +617,7 @@ class TournamentProvider extends ChangeNotifier {
     try {
       SocketService.off('tournamentRegistrationOpen');
       SocketService.off('tournamentMatchInvite');
+      SocketService.off('tournamentMatchReminder');
       SocketService.off('tournamentMatchStart');
       SocketService.off('tournamentMatchResult');
       SocketService.off('tournamentNextMatch');
