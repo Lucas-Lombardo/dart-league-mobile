@@ -7,6 +7,7 @@ import '../../providers/subscription_provider.dart';
 import '../../providers/match_invite_provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
+import '../../providers/season_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../widgets/activity_pill.dart';
 import '../../widgets/live_matches_pill.dart';
@@ -23,6 +24,10 @@ import '../../utils/round_labels.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
+import '../../utils/rank_translation.dart';
+import '../../utils/season_format.dart';
+import '../../widgets/season_picker_sheet.dart';
+import 'seasons_screen.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../matchmaking/friend_select_screen.dart';
 import '../local_match/local_match_setup_screen.dart';
@@ -729,38 +734,182 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  String _getNextRank(String currentRank) {
-    switch (currentRank.toLowerCase()) {
-      case 'bronze':
-        return 'Silver';
-      case 'silver':
-        return 'Gold';
-      case 'gold':
-        return 'Platinum';
-      case 'platinum':
-        return 'Diamond';
-      case 'diamond':
-        return 'Master';
-      case 'master':
-        return 'Master';
-      default:
-        return 'Bronze';
+  /// The ring for a ranked player. With a season selected in the past, the
+  /// ring becomes that season's frozen line for this player: final badge,
+  /// full ring, final ELO, "Final standings ›".
+  Widget _buildRankedHero({
+    required AppLocalizations l10n,
+    required SeasonProvider seasonProvider,
+    required String rank,
+    required int elo,
+    required String nextRankLabel,
+    required int eloNeeded,
+    required double progress,
+  }) {
+    final hasSeason = seasonProvider.hasSeason;
+    final selected = seasonProvider.selectedSeason;
+    final pill = hasSeason && selected != null
+        ? _SeasonPill(
+            label: l10n.seasonN(selected.number).toUpperCase(),
+            onTap: _openSeasonPicker,
+          )
+        : null;
+
+    if (hasSeason && selected != null && !seasonProvider.isActiveSelected) {
+      final standing = seasonProvider.selectedStanding;
+      final loading = seasonProvider.loadingSelected;
+      final total = selected.playersCount ?? 0;
+      return _RankRingHero(
+        pill: pill,
+        rank: standing?.rank ?? rank,
+        elo: standing?.elo,
+        eloSuffix: l10n.seasonEloFinal,
+        progress: 1.0,
+        lines: [
+          if (loading)
+            const SizedBox(
+              height: 14,
+              width: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+            )
+          else if (standing != null)
+            Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                children: [
+                  TextSpan(text: '${l10n.seasonEndedLabel} · ${l10n.seasonFinalRank.toLowerCase()} '),
+                  TextSpan(
+                    text: RankTranslation.translate(l10n, standing.rank),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  const TextSpan(text: ' · '),
+                  TextSpan(
+                    text: '#${standing.position}',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(text: ' ${l10n.seasonOf(total)}'),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              '${l10n.seasonEndedLabel} · ${l10n.seasonNotRanked}',
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          InkWell(
+            onTap: () {
+              HapticService.lightImpact();
+              seasonProvider.requestStandings(selected.number);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    l10n.seasonFinalStandings,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, size: 13, color: AppTheme.primary),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
     }
+
+    final me = seasonProvider.current?.me;
+    final isMaxRank = rank.toLowerCase() == 'master';
+    final percent = (progress * 100).round();
+    return _RankRingHero(
+      pill: pill,
+      rank: rank,
+      elo: elo,
+      eloSuffix: 'ELO',
+      progress: isMaxRank ? 1.0 : progress,
+      lines: [
+        if (isMaxRank)
+          Text(
+            l10n.maxRankReached,
+            style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+          )
+        else
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+              children: [
+                TextSpan(text: '$nextRankLabel ${l10n.nextRankConnector} '),
+                TextSpan(
+                  text: '+${math.max(eloNeeded, 0)} pts',
+                  style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700),
+                ),
+                TextSpan(text: ' · $percent %'),
+              ],
+            ),
+          ),
+        if (hasSeason && me != null)
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+              children: [
+                TextSpan(
+                  text: '#${me.position}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                const TextSpan(text: ' · '),
+                if (seasonProvider.activeSeason?.endAt != null)
+                  ..._endsInSpans(l10n, seasonProvider.timeLeft)
+                else
+                  TextSpan(text: l10n.seasonEndToBeAnnounced),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+      ],
+    );
   }
 
-  Map<String, int> get _rankThresholds => {
-    'bronze': 0,
-    'silver': 1000,
-    'gold': 1500,
-    'platinum': 2000,
-    'diamond': 2500,
-    'master': 3000,
-  };
+  /// "ends in **9 d 14 h**" — the duration in white, the rest muted.
+  List<InlineSpan> _endsInSpans(AppLocalizations l10n, Duration? left) {
+    final duration = formatSeasonCountdown(l10n, left);
+    final sentence = l10n.seasonEndsIn(duration);
+    final i = sentence.indexOf(duration);
+    if (i < 0) return [TextSpan(text: sentence)];
+    return [
+      TextSpan(text: sentence.substring(0, i)),
+      TextSpan(
+        text: duration,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+      ),
+      TextSpan(text: sentence.substring(i + duration.length)),
+    ];
+  }
 
-  int _getEloNeededForNextRank(String currentRank, int currentElo) {
-    final nextRank = _getNextRank(currentRank).toLowerCase();
-    final threshold = _rankThresholds[nextRank] ?? 1400;
-    return threshold - currentElo;
+  Future<void> _openSeasonPicker() async {
+    HapticService.lightImpact();
+    final provider = context.read<SeasonProvider>();
+    final result = await SeasonPickerSheet.show(context);
+    if (!mounted || result == null) return;
+    if (result == SeasonPickerSheet.allSeasonsResult) {
+      final picked = await Navigator.of(context).push<int>(
+        MaterialPageRoute(
+          builder: (_) => SeasonsScreen(initialNumber: provider.selectedNumber),
+        ),
+      );
+      if (!mounted || picked == null) return;
+      // "Standings ›" on a poster: hand over to the Rankings tab.
+      provider.requestStandings(picked);
+      return;
+    }
+    await provider.select(result);
   }
 
   /// Last five results as win/loss chips (oldest → newest) plus the current
@@ -836,20 +985,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     );
   }
 
-  double _getRankProgress(String currentRank, int currentElo) {
-    final currentThreshold = _rankThresholds[currentRank.toLowerCase()] ?? 1200;
-    final nextRank = _getNextRank(currentRank).toLowerCase();
-    final nextThreshold = _rankThresholds[nextRank] ?? 1400;
-    
-    if (currentRank.toLowerCase() == 'master' && currentElo >= nextThreshold) {
-      return 1.0;
-    }
-    
-    final rangeSize = nextThreshold - currentThreshold;
-    final progress = (currentElo - currentThreshold) / rangeSize;
-    return progress.clamp(0.0, 1.0);
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
@@ -863,12 +998,15 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
       );
     }
 
-    final eloNeeded = _getEloNeededForNextRank(user.rank, user.elo);
+    // Thresholds live in rank_utils (mirrors the backend's 800/1200/1600/
+    // 2000/2400) — the old local copy still carried the pre-2026-08 ladder.
+    final eloNeeded = eloNeededForNextRank(user.rank, user.elo);
     final currentRank = user.rank;
-    final nextRank = _getNextRank(user.rank);
-    final progress = _getRankProgress(user.rank, user.elo);
+    final nextRankKey = nextRank(user.rank);
+    final progress = rankProgress(user.rank, user.elo);
 
     final isUnranked = user.rank.toLowerCase() == 'unranked';
+    final seasonProvider = context.watch<SeasonProvider>();
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -896,11 +1034,14 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
                   context.watch<PlacementProvider>().status?.matchesPlayed ?? 0,
             )
           else
-            // Ranked: the rank badge inside an ELO progress ring (B2 redesign)
-            _RankRingHero(
+            // Ranked: the rank badge inside an ELO progress ring (B2 redesign),
+            // topped by the season pill and followed by the season line.
+            _buildRankedHero(
+              l10n: l10n,
+              seasonProvider: seasonProvider,
               rank: currentRank,
               elo: user.elo,
-              nextRank: nextRank,
+              nextRankLabel: RankTranslation.translate(l10n, nextRankKey),
               eloNeeded: eloNeeded,
               progress: progress,
             ),
@@ -1250,28 +1391,33 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
 /// Rank badge inside a circular ELO progress ring, with the points needed for
 /// the next rank underneath (home B2 redesign).
 class _RankRingHero extends StatelessWidget {
+  /// The season selector, rendered 10 px above the ring (never overlapping).
+  final Widget? pill;
   final String rank;
-  final int elo;
-  final String nextRank;
-  final int eloNeeded;
+  /// Null renders "—" (a past season the player was not ranked in).
+  final int? elo;
+  final String eloSuffix;
   final double progress;
+  /// Text lines under the ELO, 3 px apart.
+  final List<Widget> lines;
 
   const _RankRingHero({
+    this.pill,
     required this.rank,
     required this.elo,
-    required this.nextRank,
-    required this.eloNeeded,
+    required this.eloSuffix,
     required this.progress,
+    required this.lines,
   });
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final isMaxRank = rank.toLowerCase() == 'master';
-    final percent = (progress * 100).round();
-
     return Column(
       children: [
+        if (pill != null) ...[
+          pill!,
+          const SizedBox(height: 10),
+        ],
         SizedBox(
           width: 176,
           height: 176,
@@ -1294,7 +1440,7 @@ class _RankRingHero extends StatelessWidget {
               ),
               CustomPaint(
                 size: const Size(152, 152),
-                painter: _EloRingPainter(isMaxRank ? 1.0 : progress),
+                painter: _EloRingPainter(progress),
               ),
               RankUtils.getRankBadge(rank, size: 92),
             ],
@@ -1307,7 +1453,7 @@ class _RankRingHero extends StatelessWidget {
           textBaseline: TextBaseline.alphabetic,
           children: [
             Text(
-              '$elo',
+              elo == null ? '—' : '$elo',
               style: const TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
@@ -1315,9 +1461,9 @@ class _RankRingHero extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 5),
-            const Text(
-              'ELO',
-              style: TextStyle(
+            Text(
+              eloSuffix,
+              style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textSecondary,
@@ -1325,36 +1471,69 @@ class _RankRingHero extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 3),
-        if (isMaxRank)
-          Text(
-            l10n.maxRankReached,
-            style: const TextStyle(
-              fontSize: 12.5,
-              color: AppTheme.textSecondary,
-            ),
-          )
-        else
-          Text.rich(
-            TextSpan(
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: AppTheme.textSecondary,
-              ),
-              children: [
-                TextSpan(text: '$nextRank ${l10n.nextRankConnector} '),
-                TextSpan(
-                  text: '+${math.max(eloNeeded, 0)} pts',
-                  style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                TextSpan(text: ' · $percent %'),
-              ],
-            ),
-          ),
+        for (final line in lines) ...[
+          const SizedBox(height: 3),
+          line,
+        ],
       ],
+    );
+  }
+}
+
+/// "SEASON 1 ⌄" — the season selector above the ring. Opens the picker
+/// sheet; absent while the player is in placement.
+class _SeasonPill extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _SeasonPill({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: AppTheme.primary.withValues(alpha: 0.7),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.68,
+                  color: Color(0xFF38BDF8),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.keyboard_arrow_down,
+                size: 14,
+                color: Color(0xFF38BDF8),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

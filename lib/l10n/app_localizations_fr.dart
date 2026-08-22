@@ -3143,4 +3143,132 @@ class AppLocalizationsFr extends AppLocalizations {
   String get referralOnboardingSkip => 'Je n\'ai pas de code';
   @override
   String referralPaywallRow(int days) => 'Un ami t\'a donné un code ? $days jours offerts';
+
+  // Seasons
+  @override
+  String seasonN(int n) => 'Saison $n';
+  @override
+  String seasonShort(int n) => 'S$n';
+  @override
+  String get seasonsTitle => 'Saisons';
+  @override
+  String get seasonAllSeasons => 'Toutes les saisons';
+  @override
+  String get seasonInProgress => 'En cours';
+  @override
+  String get seasonInProgressCaps => 'EN COURS';
+  @override
+  String get seasonEnded => 'Terminée';
+  @override
+  String get seasonUpcoming => 'À venir';
+  @override
+  String seasonEndsIn(String duration) => 'se termine dans $duration';
+  @override
+  String get seasonEndToBeAnnounced => 'fin à annoncer';
+  @override
+  String seasonDurationDaysHours(int d, int h) => '$d j $h h';
+  @override
+  String seasonDurationHoursMinutes(int h, int m) => '$h h ${m.toString().padLeft(2, '0')} min';
+  @override
+  String seasonDurationMinutes(int m) => '$m min';
+  @override
+  String get seasonPrize => '50 € + trophée';
+  @override
+  String get seasonPrizeFor1st => 'pour le n°1 à la fin de la saison';
+  @override
+  String seasonPrizeFor1stOn(String date) => 'pour le n°1 · $date';
+  @override
+  String get seasonPrizeFor1stShort => 'pour le n°1';
+  @override
+  String get seasonPrizeUpForGrabs => '50 € + trophée à remettre en jeu';
+  @override
+  String get seasonNoReward => 'Pas de récompense';
+  @override
+  String get seasonBegin => 'Début';
+  @override
+  String get seasonEnd => 'Fin';
+  @override
+  String seasonToday(String date) => 'aujourd\'hui · $date';
+  @override
+  String get seasonChampion => 'CHAMPION';
+  @override
+  String get seasonLeader => 'EN TÊTE';
+  @override
+  String get seasonYou => 'VOUS';
+  @override
+  String get seasonStandings => 'Classement';
+  @override
+  String get seasonFinalStandings => 'Classement final';
+  @override
+  String seasonYouAre(int position) => 'Vous êtes #$position';
+  @override
+  String get seasonNotRanked => 'Vous n\'étiez pas classé';
+  @override
+  String get seasonFinalRank => 'Rang final';
+  @override
+  String seasonFinalRankLine(String rank, int position, int total) => 'Rang final $rank · #$position sur $total';
+  @override
+  String get seasonEndedLabel => 'Saison terminée';
+  @override
+  String get seasonEloFinal => 'ELO final';
+  @override
+  String seasonOf(int total) => 'sur $total';
+  @override
+  String seasonFromLaunchTo(String date) => 'Du lancement au $date';
+  @override
+  String seasonPeriod(String start, String end) => 'Du $start au $end';
+  @override
+  String seasonAfterSeason(int n) => 'Après la saison $n';
+  @override
+  String seasonWinsLosses(int wins, int losses) => '$wins V · $losses D';
+  @override
+  String get seasonRecapTitle => 'Votre bilan';
+  @override
+  String seasonRecapEnded(int n) => 'SAISON $n TERMINÉE';
+  @override
+  String seasonRecapFinalRankOf(String username) => 'Rang final · $username';
+  @override
+  String get seasonRecapWinsLosses => 'V – D';
+  @override
+  String get seasonRecapRecord => 'record';
+  @override
+  String seasonRecapChampionOf(int n) => 'CHAMPION DE LA SAISON $n';
+  @override
+  String seasonRecapChampionWins(int elo) => '$elo ELO · remporte 50 € + le trophée';
+  @override
+  String seasonRecapChampionElo(int elo) => '$elo ELO';
+  @override
+  String seasonRecapNextStarts(int n, String date) => 'La saison $n commence le $date';
+  @override
+  String seasonRecapNextStarted(int n) => 'La saison $n a commencé';
+  @override
+  String get seasonRecapSeeNewElo => 'Voir mon nouvel ELO';
+  @override
+  String get seasonRecapShare => 'Partager mon bilan';
+  @override
+  String get seasonRecapShareFailed => 'Impossible de partager le bilan';
+  @override
+  String get seasonResetTitle => 'La course repart';
+  @override
+  String get seasonResetBody => 'Les ELO sont resserrés : l\'ordre du classement est conservé, les écarts en haut sont réduits. Pas de match de placement.';
+  @override
+  String seasonResetEndOf(int n) => 'Fin saison $n';
+  @override
+  String seasonResetStartOf(int n) => 'Départ saison $n';
+  @override
+  String get seasonResetBefore => 'avant';
+  @override
+  String get seasonResetStart => 'départ';
+  @override
+  String seasonResetYouStay(String rank) => 'Vous restez $rank';
+  @override
+  String seasonResetYouBecome(String rank) => 'Vous passez $rank';
+  @override
+  String get seasonResetNoMaster => 'Personne ne reste Maître : les Maîtres repartent Diamant';
+  @override
+  String seasonResetPrizeOn(String date) => '50 € + trophée pour le n°1 le $date';
+  @override
+  String get seasonResetPrize => '50 € + trophée pour le n°1';
+  @override
+  String seasonResetPlay(int n) => 'Jouer la saison $n';
 }

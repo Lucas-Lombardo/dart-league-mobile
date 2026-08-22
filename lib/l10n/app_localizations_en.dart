@@ -3111,4 +3111,132 @@ class AppLocalizationsEn extends AppLocalizations {
   String get referralOnboardingSkip => 'I don\'t have a code';
   @override
   String referralPaywallRow(int days) => 'A friend gave you a code? $days days free';
+
+  // Seasons
+  @override
+  String seasonN(int n) => 'Season $n';
+  @override
+  String seasonShort(int n) => 'S$n';
+  @override
+  String get seasonsTitle => 'Seasons';
+  @override
+  String get seasonAllSeasons => 'All seasons';
+  @override
+  String get seasonInProgress => 'In progress';
+  @override
+  String get seasonInProgressCaps => 'IN PROGRESS';
+  @override
+  String get seasonEnded => 'Ended';
+  @override
+  String get seasonUpcoming => 'Upcoming';
+  @override
+  String seasonEndsIn(String duration) => 'ends in $duration';
+  @override
+  String get seasonEndToBeAnnounced => 'end to be announced';
+  @override
+  String seasonDurationDaysHours(int d, int h) => '$d d $h h';
+  @override
+  String seasonDurationHoursMinutes(int h, int m) => '$h h ${m.toString().padLeft(2, '0')} min';
+  @override
+  String seasonDurationMinutes(int m) => '$m min';
+  @override
+  String get seasonPrize => '€50 + trophy';
+  @override
+  String get seasonPrizeFor1st => 'for the #1 at the end of the season';
+  @override
+  String seasonPrizeFor1stOn(String date) => 'for the #1 · $date';
+  @override
+  String get seasonPrizeFor1stShort => 'for the #1';
+  @override
+  String get seasonPrizeUpForGrabs => '€50 + trophy up for grabs again';
+  @override
+  String get seasonNoReward => 'No reward';
+  @override
+  String get seasonBegin => 'Start';
+  @override
+  String get seasonEnd => 'End';
+  @override
+  String seasonToday(String date) => 'today · $date';
+  @override
+  String get seasonChampion => 'CHAMPION';
+  @override
+  String get seasonLeader => 'LEADING';
+  @override
+  String get seasonYou => 'YOU';
+  @override
+  String get seasonStandings => 'Standings';
+  @override
+  String get seasonFinalStandings => 'Final standings';
+  @override
+  String seasonYouAre(int position) => 'You are #$position';
+  @override
+  String get seasonNotRanked => 'You were not ranked';
+  @override
+  String get seasonFinalRank => 'Final rank';
+  @override
+  String seasonFinalRankLine(String rank, int position, int total) => 'Final rank $rank · #$position of $total';
+  @override
+  String get seasonEndedLabel => 'Season over';
+  @override
+  String get seasonEloFinal => 'final ELO';
+  @override
+  String seasonOf(int total) => 'of $total';
+  @override
+  String seasonFromLaunchTo(String date) => 'From launch to $date';
+  @override
+  String seasonPeriod(String start, String end) => '$start to $end';
+  @override
+  String seasonAfterSeason(int n) => 'After season $n';
+  @override
+  String seasonWinsLosses(int wins, int losses) => '$wins W · $losses L';
+  @override
+  String get seasonRecapTitle => 'Your recap';
+  @override
+  String seasonRecapEnded(int n) => 'SEASON $n OVER';
+  @override
+  String seasonRecapFinalRankOf(String username) => 'Final rank · $username';
+  @override
+  String get seasonRecapWinsLosses => 'W – L';
+  @override
+  String get seasonRecapRecord => 'best';
+  @override
+  String seasonRecapChampionOf(int n) => 'SEASON $n CHAMPION';
+  @override
+  String seasonRecapChampionWins(int elo) => '$elo ELO · wins €50 + the trophy';
+  @override
+  String seasonRecapChampionElo(int elo) => '$elo ELO';
+  @override
+  String seasonRecapNextStarts(int n, String date) => 'Season $n starts on $date';
+  @override
+  String seasonRecapNextStarted(int n) => 'Season $n has started';
+  @override
+  String get seasonRecapSeeNewElo => 'See my new ELO';
+  @override
+  String get seasonRecapShare => 'Share my recap';
+  @override
+  String get seasonRecapShareFailed => 'Could not share the recap';
+  @override
+  String get seasonResetTitle => 'The race restarts';
+  @override
+  String get seasonResetBody => 'Ratings are compressed: the ladder order is kept, the gaps at the top are reduced. No placement matches.';
+  @override
+  String seasonResetEndOf(int n) => 'End of season $n';
+  @override
+  String seasonResetStartOf(int n) => 'Start of season $n';
+  @override
+  String get seasonResetBefore => 'before';
+  @override
+  String get seasonResetStart => 'start';
+  @override
+  String seasonResetYouStay(String rank) => 'You stay $rank';
+  @override
+  String seasonResetYouBecome(String rank) => 'You are now $rank';
+  @override
+  String get seasonResetNoMaster => 'Nobody stays Master: Masters restart as Diamond';
+  @override
+  String seasonResetPrizeOn(String date) => '€50 + trophy for the #1 on $date';
+  @override
+  String get seasonResetPrize => '€50 + trophy for the #1';
+  @override
+  String seasonResetPlay(int n) => 'Play season $n';
 }

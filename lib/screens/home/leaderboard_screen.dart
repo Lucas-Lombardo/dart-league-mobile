@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/season_provider.dart';
+import '../../models/season.dart';
 import '../../services/user_service.dart';
 import '../../services/friends_service.dart';
+import '../../services/seasons_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/rank_badge.dart';
 import '../../widgets/premium_badge.dart';
+import '../../widgets/season_card.dart';
+import '../../widgets/season_chips.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/rank_translation.dart';
 import '../profile/player_stats_screen.dart';
+import 'seasons_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -25,12 +32,39 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool _showFriendsOnly = false;
 
   /// Global ladder rank of the signed-in user (null while unranked/unknown).
+  /// Only used on the legacy (no-season) path.
   int? _myGlobalPosition;
+
+  /// Season whose ladder is shown; null = the active one. Set by the chips,
+  /// by the seasons screen ("Standings ›") and by the home ring's
+  /// "Final standings ›" through SeasonProvider.standingsRequest.
+  int? _selectedSeason;
+
+  /// My line in the displayed season (live for the active one, frozen for an
+  /// archived one); null while unranked or not ranked in that season.
+  SeasonStanding? _myStanding;
 
   @override
   void initState() {
     super.initState();
+    final requested = context.read<SeasonProvider>().consumeStandingsRequest();
+    if (requested != null) _selectedSeason = requested;
     _loadLeaderboard();
+  }
+
+  SeasonProvider get _seasonProvider => context.read<SeasonProvider>();
+
+  /// The season the list is bound to, or null when the backend has no
+  /// seasons yet (older deploy) — the screen then behaves as before.
+  Season? _displayedSeason(SeasonProvider provider) {
+    final active = provider.activeSeason;
+    if (active == null) return null;
+    final n = _selectedSeason;
+    if (n == null || n == active.number) return active;
+    for (final s in provider.seasons) {
+      if (s.number == n) return s;
+    }
+    return active;
   }
 
   Future<void> _loadLeaderboard() async {
@@ -58,14 +92,41 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           _isLoading = false;
         });
       } else {
-        final entries = await UserService.getLeaderboard();
-        final myPosition = await UserService.getMyLeaderboardPosition();
+        final provider = _seasonProvider;
+        // First load, or a requested season the provider has not listed yet
+        // (the home ring can ask for a closed season before any refresh).
+        final requested = _selectedSeason;
+        if (provider.activeSeason == null ||
+            (requested != null &&
+                !provider.seasons.any((s) => s.number == requested))) {
+          await provider.refresh();
+        }
         if (!mounted) return;
-        setState(() {
-          _entries = entries;
-          _myGlobalPosition = myPosition;
-          _isLoading = false;
-        });
+        final season = _displayedSeason(provider);
+        if (season != null) {
+          // Season-aware ladder: W/L are the season's, positions come from
+          // the backend (elo, season wins, username).
+          final results = await Future.wait([
+            SeasonsService.getStandings(season.number),
+            SeasonsService.getMyStanding(season.number),
+          ]);
+          if (!mounted) return;
+          setState(() {
+            _entries = results[0] as List<LeaderboardEntry>;
+            _myStanding = results[1] as SeasonStanding?;
+            _isLoading = false;
+          });
+        } else {
+          final entries = await UserService.getLeaderboard();
+          final myPosition = await UserService.getMyLeaderboardPosition();
+          if (!mounted) return;
+          setState(() {
+            _entries = entries;
+            _myGlobalPosition = myPosition;
+            _myStanding = null;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -86,20 +147,42 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  /// Pinned-row position: global rank from the backend, or the index in the
-  /// friends list when browsing the friends ladder.
+  /// Pinned-row position: the season standing, the global rank from the
+  /// backend (legacy path), or the index in the friends list.
   int? _myPosition(String? currentUserId) {
     if (_showFriendsOnly) {
       final index = _entries.indexWhere((e) => e.user.id == currentUserId);
       return index >= 0 ? index + 1 : null;
     }
-    return _myGlobalPosition;
+    return _myStanding?.position ?? _myGlobalPosition;
+  }
+
+  void _selectSeason(int number) {
+    final active = _seasonProvider.activeSeason;
+    setState(() {
+      _showFriendsOnly = false;
+      _selectedSeason = active != null && number == active.number ? null : number;
+    });
+    _loadLeaderboard();
+  }
+
+  Future<void> _openSeasons(Season displayed) async {
+    HapticService.lightImpact();
+    final picked = await AppNavigator.toScreen<int>(
+      context,
+      SeasonsScreen(initialNumber: displayed.number),
+    );
+    if (!mounted || picked == null) return;
+    _selectSeason(picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final currentUser = context.watch<AuthProvider>().currentUser;
     final l10n = AppLocalizations.of(context);
+    final seasonProvider = context.watch<SeasonProvider>();
+    final season = _displayedSeason(seasonProvider);
+    final isArchived = season != null && season.isClosed && !_showFriendsOnly;
 
     if (_isLoading) {
       return const Center(
@@ -137,62 +220,212 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final rest = _entries.length > 3 ? _entries.sublist(3) : <LeaderboardEntry>[];
     final myPosition = _myPosition(currentUser?.id);
 
+    final myStanding = _showFriendsOnly ? null : _myStanding;
+    final list = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 12),
+      children: [
+        if (myStanding != null && currentUser != null)
+          _MyCard(
+            username: currentUser.username,
+            standing: myStanding,
+          ),
+        if (isArchived) _FinalStandingsBanner(label: l10n.seasonFinalStandings),
+        if (podium.length >= 3)
+          _Podium(entries: podium, onTap: _openPlayer)
+        else
+          ...podium.asMap().entries.map(
+                (e) => _LeaderboardRow(
+                  entry: e.value,
+                  isCurrentUser: e.value.user.id == currentUser?.id,
+                  onTap: () => _openPlayer(e.value),
+                ),
+              ),
+        ...rest.map(
+          (entry) => _LeaderboardRow(
+            entry: entry,
+            isCurrentUser: entry.user.id == currentUser?.id,
+            onTap: () => _openPlayer(entry),
+          ),
+        ),
+      ],
+    );
+
     return Column(
       children: [
-        _ScopeToggle(
-          showFriendsOnly: _showFriendsOnly,
-          onChanged: (friendsOnly) {
-            HapticService.lightImpact();
-            setState(() => _showFriendsOnly = friendsOnly);
-            _loadLeaderboard();
-          },
-        ),
+        if (season != null) ...[
+          // The season card replaces the title: what is being played and
+          // when it ends. Tap → the posters.
+          if (seasonProvider.activeSeason != null)
+            SeasonCard(
+              season: seasonProvider.activeSeason!,
+              timeLeft: seasonProvider.timeLeft,
+              onTap: () => _openSeasons(season),
+            ),
+          SeasonChips(
+            seasons: seasonProvider.seasons.isNotEmpty
+                ? seasonProvider.seasons
+                : [seasonProvider.activeSeason!],
+            selectedNumber: season.number,
+            friendsOnly: _showFriendsOnly,
+            onSeasonSelected: (number) {
+              HapticService.lightImpact();
+              _selectSeason(number);
+            },
+            onFriendsSelected: () {
+              HapticService.lightImpact();
+              setState(() => _showFriendsOnly = true);
+              _loadLeaderboard();
+            },
+          ),
+        ] else
+          _ScopeToggle(
+            showFriendsOnly: _showFriendsOnly,
+            onChanged: (friendsOnly) {
+              HapticService.lightImpact();
+              setState(() => _showFriendsOnly = friendsOnly);
+              _loadLeaderboard();
+            },
+          ),
         Expanded(
           child: _entries.isEmpty
               ? _EmptyState(showFriendsOnly: _showFriendsOnly, l10n: l10n)
               : Column(
                   children: [
                     Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: _loadLeaderboard,
-                        color: AppTheme.primary,
-                        child: ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.only(bottom: 12),
-                          children: [
-                            if (podium.length >= 3)
-                              _Podium(entries: podium, onTap: _openPlayer)
-                            else
-                              ...podium.asMap().entries.map(
-                                    (e) => _LeaderboardRow(
-                                      entry: e.value,
-                                      isCurrentUser:
-                                          e.value.user.id == currentUser?.id,
-                                      onTap: () => _openPlayer(e.value),
-                                    ),
-                                  ),
-                            ...rest.map(
-                              (entry) => _LeaderboardRow(
-                                entry: entry,
-                                isCurrentUser: entry.user.id == currentUser?.id,
-                                onTap: () => _openPlayer(entry),
-                              ),
+                      // A frozen ladder never changes: no pull-to-refresh.
+                      child: isArchived
+                          ? list
+                          : RefreshIndicator(
+                              onRefresh: _loadLeaderboard,
+                              color: AppTheme.primary,
+                              child: list,
                             ),
-                          ],
-                        ),
-                      ),
                     ),
                     if (myPosition != null && currentUser != null)
                       _PinnedPositionRow(
                         position: myPosition,
                         username: currentUser.username,
-                        rank: currentUser.rank,
-                        elo: currentUser.elo,
+                        rank: myStanding?.rank ?? currentUser.rank,
+                        elo: myStanding?.elo ?? currentUser.elo,
                       ),
                   ],
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// "Your card" under the chips: rank badge, name · rank, season W/L, your
+/// position and ELO in the displayed season.
+class _MyCard extends StatelessWidget {
+  final String username;
+  final SeasonStanding standing;
+
+  const _MyCard({required this.username, required this.standing});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          RankBadge(rank: standing.rank, size: 40, showLabel: false),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    text: username,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: ' · ${RankTranslation.translate(l10n, standing.rank)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  l10n.seasonWinsLosses(standing.wins, standing.losses),
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '#${standing.position}',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.primary,
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 34,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            color: AppTheme.surfaceLight.withValues(alpha: 0.8),
+          ),
+          Text(
+            '${standing.elo}',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Thin banner above an archived ladder.
+class _FinalStandingsBanner extends StatelessWidget {
+  final String label;
+
+  const _FinalStandingsBanner({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline, size: 13, color: AppTheme.textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

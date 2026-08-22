@@ -13,6 +13,9 @@ import '../providers/chat_provider.dart';
 import '../providers/referral_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/tournament_provider.dart';
+import '../providers/season_provider.dart';
+import '../services/push_notification_service.dart';
+import 'season/season_recap_screen.dart';
 import '../main.dart' show routeObserver;
 import 'chat/received_messages_screen.dart';
 import 'chat/chat_thread_screen.dart';
@@ -35,6 +38,9 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   int _currentIndex = 2; // Start at Play (now index 2)
   final _refreshNotifier = ValueNotifier<int>(0);
   TournamentProvider? _tournamentProvider;
+  SeasonProvider? _seasonProvider;
+  /// The once-only recap is on screen (or being fetched) — never stack two.
+  bool _recapBusy = false;
 
   final List<Widget> _fixedScreens = const [
     StatsScreen(),
@@ -59,6 +65,18 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       // the daily-limit card need eligibility resolved before they can decide
       // whether to render at all.
       context.read<ReferralProvider>().refreshEligibility();
+
+      // Seasons: the home ring pill + line and the Rankings tab read the
+      // provider; no socket event, so it refreshes here and on didPopNext.
+      // It also carries the "open the Rankings tab on season N" intent.
+      final seasons = context.read<SeasonProvider>();
+      _seasonProvider = seasons;
+      seasons.addListener(_onSeasonStandingsRequest);
+      seasons.refresh();
+      // Once-only end-of-season screens: on launch, and when the
+      // "season_ended" push is opened.
+      _maybeShowSeasonRecap();
+      PushNotificationService.addOpenedListener(_onSeasonPushOpened);
 
       // Chat: unread badge + realtime routing, and "new message" push taps
       // deep-link straight into the thread.
@@ -88,8 +106,40 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     routeObserver.unsubscribe(this);
     // Tear down on logout (HomeScreen is removed from the tree).
     _tournamentProvider?.stopRealtime();
+    _seasonProvider?.removeListener(_onSeasonStandingsRequest);
+    PushNotificationService.removeOpenedListener(_onSeasonPushOpened);
     _refreshNotifier.dispose();
     super.dispose();
+  }
+
+  void _onSeasonPushOpened(Map<String, dynamic> data) {
+    if (data['type'] != 'season_ended') return;
+    _seasonProvider?.refresh();
+    _maybeShowSeasonRecap();
+  }
+
+  /// GET /seasons/recap → push the recap (fade) when there is one the user
+  /// has not acknowledged. The new-ELO screen marks it seen and pops back
+  /// here; didPopNext then refreshes the profile and the season.
+  Future<void> _maybeShowSeasonRecap() async {
+    if (_recapBusy) return;
+    final seasons = _seasonProvider;
+    if (seasons == null) return;
+    _recapBusy = true;
+    try {
+      final recap = await seasons.fetchRecap();
+      if (!mounted || recap == null) return;
+      await Navigator.of(context).push(SeasonRecapScreen.route(recap));
+    } finally {
+      _recapBusy = false;
+    }
+  }
+
+  /// "Final standings ›" on the home ring / a poster's "Standings ›": switch
+  /// to the Rankings tab, which consumes the requested season on mount.
+  void _onSeasonStandingsRequest() {
+    if (!mounted || _seasonProvider?.standingsRequest == null) return;
+    if (_currentIndex != 4) setState(() => _currentIndex = 4);
   }
 
   @override
@@ -99,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       if (!mounted) return;
       _refreshNotifier.value++;
       context.read<AuthProvider>().checkAuthStatus();
+      context.read<SeasonProvider>().refresh();
     });
   }
 
@@ -237,6 +288,34 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                         ),
                       ],
                     ),
+                  ),
+                  // "#14 |" before the ELO — only while the active season is
+                  // the one displayed on the ring (a past season keeps the
+                  // live ELO here without a position).
+                  Consumer<SeasonProvider>(
+                    builder: (context, seasons, _) {
+                      final me = seasons.current?.me;
+                      if (me == null || !seasons.isActiveSelected) {
+                        return const SizedBox.shrink();
+                      }
+                      return Row(
+                        children: [
+                          Text(
+                            '#${me.position}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 14,
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            color: AppTheme.surfaceLight.withValues(alpha: 0.9),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
