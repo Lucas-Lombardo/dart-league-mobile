@@ -15,6 +15,7 @@ import '../../providers/tournament_game_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
+import 'tournament_camera_setup_screen.dart';
 import 'tournament_game_screen.dart';
 
 class TournamentReadyScreen extends StatefulWidget {
@@ -83,6 +84,9 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   // and navigate from it when the emit was missed.
   Timer? _statePoll;
 
+  // Held for dispose(): context.read() is not allowed there.
+  TournamentProvider? _tournamentProvider;
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +95,13 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+
+    // Tell the global invite gate a lobby is open: while it is, the gate
+    // holds its prompt and this screen owns what happens next (see
+    // _showOutcomeDialogAndLeave, which chains into the following match).
+    _tournamentProvider = context.read<TournamentProvider>()
+      ..markInviteHandled(widget.matchId)
+      ..setMatchScreenOpen(widget.matchId);
 
     _startWindowCountdown();
     _setupListeners();
@@ -307,6 +318,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     _navigating = true;
     final l10n = AppLocalizations.of(context);
     HapticService.heavyImpact();
+    // Refresh now so the next round's invite — if it exists — is known by
+    // the time the player taps OK (see _chainIntoNextMatch). Matters on the
+    // poll-driven path, where nothing else refreshes for up to 30 s.
+    if (advance) _tournamentProvider?.loadPendingMatches();
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -324,13 +339,61 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              if (mounted) Navigator.of(context).pop();
+              if (!mounted) return;
+              if (advance && _chainIntoNextMatch()) return;
+              Navigator.of(context).pop();
             },
             child: Text(l10n.ok),
           ),
         ],
       ),
     );
+  }
+
+  /// After "you advance": when the next round's invite is already waiting
+  /// (a walkover decides both the result AND the next pairing in the same
+  /// tick — Tournoi #4: jordinateur's R2 invite landed the same second as
+  /// his R1 walkover, and he never saw it), go straight to its camera setup
+  /// instead of dropping the player back on the tournament screen.
+  /// Returns false when there is nothing to chain into (normal pop).
+  bool _chainIntoNextMatch() {
+    final tournaments = _tournamentProvider;
+    final myId = context.read<AuthProvider>().currentUser?.id;
+    if (tournaments == null || myId == null) return false;
+    final next = tournaments.nextUnhandledInvite(excludeMatchId: widget.matchId);
+    if (next == null) return false;
+    tournaments.markInviteHandled(next.id);
+
+    final isPlayer1 = next.player1Id == myId;
+    final opponentId = (isPlayer1 ? next.player2Id : next.player1Id) ?? '';
+    final opponentUsername =
+        (isPlayer1 ? next.player2Username : next.player1Username) ?? '';
+
+    HapticService.mediumImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context)
+            .tournamentInvitePromptNextMatchHint),
+        backgroundColor: const Color(0xFF7C3AED),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    AppNavigator.replaceWith(
+      context,
+      TournamentCameraSetupScreen(
+        matchId: next.id,
+        tournamentId: next.tournamentId,
+        tournamentName: next.tournamentName ?? widget.tournamentName,
+        roundName: next.roundName,
+        opponentUsername: opponentUsername,
+        opponentId: opponentId,
+        player1Id: next.player1Id ?? '',
+        player2Id: next.player2Id ?? '',
+        bestOf: next.bestOf,
+        inviteSentAt: next.inviteSentAt,
+      ),
+    );
+    return true;
   }
 
   void _showPostponedDialogAndLeave() {
@@ -440,6 +503,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     _startSub?.cancel();
     _resultSub?.cancel();
     _pulseController.dispose();
+    _tournamentProvider?.setMatchScreenClosed(widget.matchId);
     OrientationUtils.portraitOnly();
     super.dispose();
   }

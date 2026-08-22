@@ -29,6 +29,17 @@ class TournamentProvider extends ChangeNotifier {
   // Known after startRealtime — used to compute opponent info when deep-linking
   // from a push tap into the match flow.
   String? _myUserId;
+  String? get myUserId => _myUserId;
+
+  /// Test seam for the invite gate: stands in for startRealtime +
+  /// loadPendingMatches, which both need a live backend.
+  @visibleForTesting
+  void debugSeedPendingMatches(List<TournamentMatch> matches,
+      {String? myUserId}) {
+    if (myUserId != null) _myUserId = myUserId;
+    _pendingMatches = matches;
+    notifyListeners();
+  }
 
   // The provider is the SINGLE owner of the tournament socket events (the
   // SocketService handler slots are one-per-event; screens registering their
@@ -58,6 +69,68 @@ class TournamentProvider extends ChangeNotifier {
   String? get error => _error;
 
   bool get hasPendingInvite => _pendingMatches.isNotEmpty;
+
+  /// The join window a player has after `inviteSentAt` (mirrors the backend's
+  /// TournamentService.MATCH_INVITE_TIMEOUT_MS).
+  static const Duration joinWindow = Duration(minutes: 7);
+
+  // ---- Unmissable invite prompt (TournamentInviteGate) -------------------
+  //
+  // Tournoi #4 (2026-08-22): 7 of the 11 forfeits were players who were IN
+  // the app, socket connected, invite delivered — spectating a match or
+  // chatting while they waited for the previous round to finish. The only
+  // in-app signals were the Play button recolouring and a dot on the
+  // Tournament tab, both invisible from those screens (and Android shows no
+  // push at all while the app is foregrounded). So the provider now flags
+  // every invite it sees for the first time; the gate turns that into a
+  // full-screen prompt whatever screen the player is on.
+
+  // Invite ids the player has already been prompted for (or that the app
+  // opened directly, e.g. from a push tap / the "you advance" chain), so the
+  // same invite never prompts twice — including after an unready, which puts
+  // the match back in `pendingMatches`.
+  final Set<String> _handledInviteIds = {};
+
+  // Tournament match id whose lobby / camera-setup screen is currently open.
+  // The gate holds its prompt while this is set: the lobby owns the
+  // "you advance" dialog and chains into the next match itself.
+  String? _openMatchScreenId;
+  String? get openMatchScreenId => _openMatchScreenId;
+
+  void setMatchScreenOpen(String matchId) {
+    _openMatchScreenId = matchId;
+  }
+
+  void setMatchScreenClosed(String matchId) {
+    if (_openMatchScreenId != matchId) return;
+    _openMatchScreenId = null;
+    // The gate re-evaluates once the lobby is gone: an invite that arrived
+    // while it was open (and wasn't chained into) gets its prompt now. The
+    // notify is deferred — this is called from dispose().
+    scheduleMicrotask(notifyListeners);
+  }
+
+  void markInviteHandled(String matchId) {
+    _handledInviteIds.add(matchId);
+  }
+
+  /// The pending invite the player has NOT been prompted for yet, if any.
+  /// `excludeMatchId` lets the lobby of match A look for "the next match"
+  /// without matching A itself.
+  ///
+  /// No client-side expiry check on purpose: the server list is the truth
+  /// (its sweep forfeits expired invites within 10 s and the next refresh
+  /// drops them), and a phone clock that is off would otherwise silence the
+  /// prompt for an invite that is perfectly joinable.
+  TournamentMatch? nextUnhandledInvite({String? excludeMatchId}) {
+    for (final m in _pendingMatches) {
+      if (m.id == excludeMatchId) continue;
+      if (_handledInviteIds.contains(m.id)) continue;
+      if (m.player1Id == null || m.player2Id == null) continue;
+      return m;
+    }
+    return null;
+  }
 
   /// Tournaments currently open for registration — drives the count bubble on
   /// the Tournament tab of the bottom bar.
@@ -137,6 +210,68 @@ class TournamentProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading bracket: $e');
+    }
+  }
+
+  // ---- Live bracket on the tournament detail screen ----------------------
+  //
+  // `currentTournament` / `currentBracket` were a snapshot taken when the
+  // detail screen opened. Nothing refreshed them afterwards (socket events
+  // only touched pendingMatches; the 30 s poll never looked at the bracket),
+  // so a player waiting on their bracket saw their match stuck on "À venir":
+  // the hero card's Join button needs BOTH the invite in pendingMatches and
+  // the match's status flipped to waiting_for_players in the bracket, and the
+  // second half never arrived. Tournoi #4 (2026-08-22): the spectate entry
+  // point lives on that very screen, so the players who went to watch a match
+  // came back to a frozen bracket. The detail screen now registers itself and
+  // every tournament socket event + poll tick refreshes what it shows.
+  String? _watchedTournamentId;
+
+  void watchTournament(String tournamentId) {
+    _watchedTournamentId = tournamentId;
+  }
+
+  void unwatchTournament(String tournamentId) {
+    if (_watchedTournamentId == tournamentId) _watchedTournamentId = null;
+  }
+
+  // Coalesces bursts (a walkover fires result + nextMatch + invite in the
+  // same tick) into one in-flight refresh, with at most one follow-up.
+  Future<void>? _watchedRefresh;
+  bool _watchedRefreshAgain = false;
+
+  Future<void> refreshWatchedTournament() {
+    final id = _watchedTournamentId;
+    if (id == null) return Future.value();
+    final inFlight = _watchedRefresh;
+    if (inFlight != null) {
+      _watchedRefreshAgain = true;
+      return inFlight;
+    }
+    final run = _refreshTournamentQuietly(id).whenComplete(() {
+      _watchedRefresh = null;
+      if (_watchedRefreshAgain) {
+        _watchedRefreshAgain = false;
+        refreshWatchedTournament();
+      }
+    });
+    _watchedRefresh = run;
+    return run;
+  }
+
+  // Same data as loadTournament() but without touching _isLoading / _error:
+  // the detail screen must not flash its spinner on every tick.
+  Future<void> _refreshTournamentQuietly(String tournamentId) async {
+    try {
+      final tournament = await TournamentService.getTournament(tournamentId);
+      final bracket = await TournamentService.getBracket(tournamentId);
+      // The user may have navigated to another tournament meanwhile.
+      if (_watchedTournamentId != tournamentId) return;
+      _currentTournament = tournament;
+      _currentBracket = bracket;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error refreshing watched tournament: $e');
     }
   }
 
@@ -312,6 +447,10 @@ class TournamentProvider extends ChangeNotifier {
   }
 
   Future<void> _openPendingMatchFromPush(String? matchId) async {
+    // Claim the invite BEFORE the refresh lands: the refresh notifies the
+    // gate, which would otherwise raise its prompt under the camera-setup
+    // screen pushed below.
+    if (matchId != null) markInviteHandled(matchId);
     try {
       await loadPendingMatches();
       if (_pendingMatches.isEmpty) return;
@@ -320,6 +459,7 @@ class TournamentProvider extends ChangeNotifier {
         (m) => m.id == matchId,
         orElse: () => _pendingMatches.first,
       );
+      markInviteHandled(match.id);
 
       final myId = _myUserId;
       if (myId == null) return;
@@ -361,6 +501,7 @@ class TournamentProvider extends ChangeNotifier {
     await loadPendingMatches();
     await loadActiveMatch();
     await _refreshUpcomingQuietly();
+    await refreshWatchedTournament();
   }
 
   // Same data as loadUpcomingTournaments() but without touching _isLoading —
@@ -385,6 +526,7 @@ class TournamentProvider extends ChangeNotifier {
       SocketService.on('tournamentMatchInvite', (data) {
         debugPrint('Tournament match invite: $data');
         loadPendingMatches();
+        refreshWatchedTournament();
       });
 
       SocketService.on('tournamentMatchStart', (data) {
@@ -394,6 +536,7 @@ class TournamentProvider extends ChangeNotifier {
         }
         loadActiveMatch();
         loadPendingMatches();
+        refreshWatchedTournament();
       });
 
       SocketService.on('tournamentMatchResult', (data) {
@@ -404,22 +547,29 @@ class TournamentProvider extends ChangeNotifier {
         loadMyTournaments();
         loadActiveMatch();
         loadPendingMatches();
+        refreshWatchedTournament();
       });
 
       SocketService.on('tournamentNextMatch', (data) {
         debugPrint('Tournament next match: $data');
         loadPendingMatches();
+        refreshWatchedTournament();
       });
 
       SocketService.on('tournamentEliminated', (data) {
         debugPrint('Tournament eliminated: $data');
         loadMyTournaments();
+        // A no-show forfeit removes the invite: refresh so the invite prompt
+        // / Join button disappear now rather than at the next 30 s poll.
+        loadPendingMatches();
+        refreshWatchedTournament();
       });
 
       SocketService.on('tournamentComplete', (data) {
         debugPrint('Tournament complete: $data');
         loadMyTournaments();
         loadAllTournaments();
+        refreshWatchedTournament();
       });
 
       SocketService.on('matchReadyUpdate', (data) {
@@ -428,6 +578,7 @@ class TournamentProvider extends ChangeNotifier {
           _readyUpdates.add(Map<String, dynamic>.from(data));
         }
         loadPendingMatches();
+        refreshWatchedTournament();
       });
     } catch (e) {
       debugPrint('Error setting up tournament socket listeners: $e');

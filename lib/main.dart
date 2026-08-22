@@ -41,6 +41,7 @@ import 'utils/dart_sound_service.dart';
 import 'utils/haptic_service.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
 import 'widgets/friend_match_gate.dart';
+import 'widgets/tournament_invite_gate.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
@@ -191,7 +192,10 @@ class DartLegendsApp extends StatelessWidget {
               navigatorKey: navigatorKey,
               child: FriendMatchGate(
                 navigatorKey: navigatorKey,
-                child: child ?? const SizedBox.shrink(),
+                child: TournamentInviteGate(
+                  navigatorKey: navigatorKey,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
             initialRoute: '/',

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart';
+import '../../providers/tournament_provider.dart';
 import '../../services/socket_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
@@ -136,6 +137,11 @@ class TournamentCameraSetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Whatever path led here (home button, tournament card, push tap,
+    // "you advance" chain), the player is now acting on this invite: the
+    // global TournamentInviteGate must not raise its prompt for it on top of
+    // this screen. Idempotent set insert — safe to repeat on rebuilds.
+    context.read<TournamentProvider>().markInviteHandled(matchId);
     final l10n = AppLocalizations.of(context);
     return CameraSetupScreen(
       matchInfo: CameraSetupMatchInfo(

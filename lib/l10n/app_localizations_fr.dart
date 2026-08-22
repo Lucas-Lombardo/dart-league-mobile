@@ -2517,6 +2517,20 @@ class AppLocalizationsFr extends AppLocalizations {
   String get youAdvanceOpponentNoShow =>
       "Ton adversaire ne s'est pas présenté à temps. Tu passes au tour suivant !";
   @override
+  String get tournamentInvitePromptTitle => 'Ton match est prêt !';
+  @override
+  String tournamentInvitePromptVersus(String opponent) => 'contre $opponent';
+  @override
+  String tournamentInvitePromptCountdown(String time) => 'Rejoins-le avant $time';
+  @override
+  String get tournamentInvitePromptForfeitWarning =>
+      'Si tu ne rejoins pas avant la fin du chrono, tu perds le match par forfait.';
+  @override
+  String get tournamentInvitePromptLater => 'Plus tard';
+  @override
+  String get tournamentInvitePromptNextMatchHint =>
+      'Ton prochain match est déjà prêt — on y va tout de suite.';
+  @override
   String get eliminatedTitle => 'Éliminé';
   @override
   String get eliminatedNoShowBody =>

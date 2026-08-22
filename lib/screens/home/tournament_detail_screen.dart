@@ -41,15 +41,25 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> with Si
   /// Round the user tapped in the chips row; null = follow the live round.
   int? _selectedRound;
 
+  // Held for dispose(): context.read() is not allowed there.
+  TournamentProvider? _provider;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // Keep the bracket live while this screen is open: the provider refreshes
+    // currentTournament/currentBracket on every tournament socket event and
+    // poll tick. Without it the hero card's Join button never appeared for a
+    // player whose match was still "pending" when they opened the screen.
+    _provider = context.read<TournamentProvider>()
+      ..watchTournament(widget.tournamentId);
     _loadData();
   }
 
   @override
   void dispose() {
+    _provider?.unwatchTournament(widget.tournamentId);
     _tabController.dispose();
     super.dispose();
   }

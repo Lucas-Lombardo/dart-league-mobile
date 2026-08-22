@@ -2489,6 +2489,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youAdvanceOpponentNoShow =>
       "Your opponent didn't join in time. You move on to the next round!";
   @override
+  String get tournamentInvitePromptTitle => 'Your match is ready!';
+  @override
+  String tournamentInvitePromptVersus(String opponent) => 'vs $opponent';
+  @override
+  String tournamentInvitePromptCountdown(String time) => 'Join within $time';
+  @override
+  String get tournamentInvitePromptForfeitWarning =>
+      "If you don't join before the timer runs out, you forfeit the match.";
+  @override
+  String get tournamentInvitePromptLater => 'Later';
+  @override
+  String get tournamentInvitePromptNextMatchHint =>
+      'Your next match is already waiting — heading there now.';
+  @override
   String get eliminatedTitle => 'Eliminated';
   @override
   String get eliminatedNoShowBody =>
