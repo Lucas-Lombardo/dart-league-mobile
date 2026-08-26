@@ -20,6 +20,9 @@ class TrainingEndScreen extends StatelessWidget {
   final VoidCallback onPlayAgain;
   final VoidCallback? onRetrySubmit;
 
+  /// False for quiz trainings (no dart is thrown) — hides the darts row.
+  final bool showDartsThrown;
+
   const TrainingEndScreen({
     super.key,
     required this.type,
@@ -32,6 +35,7 @@ class TrainingEndScreen extends StatelessWidget {
     this.isSubmitting = false,
     this.submitError,
     this.onRetrySubmit,
+    this.showDartsThrown = true,
   });
 
   @override
@@ -99,14 +103,16 @@ class TrainingEndScreen extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${l10n.trainingDartsThrown}: $dartsThrown',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
+                      if (showDartsThrown) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${l10n.trainingDartsThrown}: $dartsThrown',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
+                      ],
                       if (subtitle != null) ...[
                         const SizedBox(height: 8),
                         Text(

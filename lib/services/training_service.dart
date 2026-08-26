@@ -24,7 +24,7 @@ class TrainingService {
 
   static Future<List<TrainingTypeStats>> getStats() async {
     final response = await ApiService.get(
-      '/trainings/stats?includeBotTraining=1&includeJdcChallenge=1&includeImportantDoubles=1',
+      '/trainings/stats?includeBotTraining=1&includeJdcChallenge=1&includeImportantDoubles=1&includeQuickCount=1&includeCheckoutVision=1',
     );
     if (response is Map<String, dynamic> && response['stats'] is List) {
       return (response['stats'] as List)
@@ -41,7 +41,7 @@ class TrainingService {
   }) async {
     final typeParam = type != null ? '&type=${type.apiValue}' : '';
     final response = await ApiService.get(
-      '/trainings?limit=$limit&includeBotTraining=1&includeJdcChallenge=1&includeImportantDoubles=1$typeParam',
+      '/trainings?limit=$limit&includeBotTraining=1&includeJdcChallenge=1&includeImportantDoubles=1&includeQuickCount=1&includeCheckoutVision=1$typeParam',
     );
     if (response is Map<String, dynamic> && response['sessions'] is List) {
       return (response['sessions'] as List)

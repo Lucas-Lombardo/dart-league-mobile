@@ -14,6 +14,8 @@ import 'logic/high_score_strategy.dart';
 import 'logic/important_doubles_strategy.dart';
 import 'logic/jdc_challenge_strategy.dart';
 import 'logic/training_strategy.dart';
+import 'checkout_vision_screen.dart';
+import 'quick_count_screen.dart';
 import 'training_ai_screen.dart';
 
 /// Accent of the Important Doubles drill — the green the key doubles are
@@ -25,9 +27,9 @@ const Color kImportantDoublesColor = Color(0xFF199E70);
 /// already charted in.
 const Color kCheckoutsColor = Color(0xFF7C3AED);
 
-/// The four training families the hub groups the drills into, below the
+/// The training families the hub groups the drills into, below the
 /// always-visible bot hero card.
-enum TrainingCategory { doubles, checkouts, scoring, games }
+enum TrainingCategory { doubles, checkouts, scoring, games, calcul }
 
 class TrainingSelectScreen extends StatelessWidget {
   const TrainingSelectScreen({super.key});
@@ -146,6 +148,27 @@ class TrainingSelectScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _CategoryTile(
+                    title: l10n.trainingCategoryCalcul,
+                    gameCount: 2,
+                    icon: Icons.psychology,
+                    color: AppTheme.primary,
+                    gameIcons: const [Icons.calculate, Icons.track_changes],
+                    onTap: () =>
+                        _openCategory(context, TrainingCategory.calcul),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -181,6 +204,8 @@ class TrainingCategoryScreen extends StatelessWidget {
         return l10n.trainingCategoryScoring;
       case TrainingCategory.games:
         return l10n.trainingCategoryGames;
+      case TrainingCategory.calcul:
+        return l10n.trainingCategoryCalcul;
     }
   }
 
@@ -315,6 +340,39 @@ class TrainingCategoryScreen extends StatelessWidget {
             ),
           ),
         ];
+      case TrainingCategory.calcul:
+        return [
+          _TrainingTile(
+            title: l10n.trainingQuickCount,
+            description: l10n.trainingQuickCountDescription,
+            icon: Icons.calculate,
+            color: AppTheme.primary,
+            onTap: () => _startQuizScreen(context, const QuickCountScreen()),
+            onInfo: () => showTrainingRulesSheet(
+              context,
+              title: l10n.trainingQuickCount,
+              body: l10n.trainingRulesQuickCount,
+              color: AppTheme.primary,
+              icon: Icons.calculate,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _TrainingTile(
+            title: l10n.trainingCheckoutVision,
+            description: l10n.trainingCheckoutVisionDescription,
+            icon: Icons.track_changes,
+            color: AppTheme.primary,
+            onTap: () =>
+                _startQuizScreen(context, const CheckoutVisionScreen()),
+            onInfo: () => showTrainingRulesSheet(
+              context,
+              title: l10n.trainingCheckoutVision,
+              body: l10n.trainingRulesCheckoutVision,
+              color: AppTheme.primary,
+              icon: Icons.track_changes,
+            ),
+          ),
+        ];
     }
   }
 }
@@ -397,6 +455,13 @@ void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
   Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => TrainingAiScreen(strategy: strategy)),
   );
+}
+
+/// Launches a camera-free quiz drill (Calcul family) — same gesture as
+/// [_startWithStrategy] without the AI screen.
+void _startQuizScreen(BuildContext context, Widget screen) {
+  HapticService.mediumImpact();
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 }
 
 /// Opens the bot match configurator (mode, format, rank on one screen) — it
@@ -730,6 +795,10 @@ String trainingDisplayName(AppLocalizations l10n, TrainingType type) {
       return l10n.trainingJdcChallenge;
     case TrainingType.importantDoubles:
       return l10n.trainingImportantDoubles;
+    case TrainingType.quickCount:
+      return l10n.trainingQuickCount;
+    case TrainingType.checkoutVision:
+      return l10n.trainingCheckoutVision;
   }
 }
 

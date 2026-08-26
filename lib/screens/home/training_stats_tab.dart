@@ -13,7 +13,9 @@ import '../training/logic/checkout_finish_strategy.dart';
 import '../training/logic/high_score_strategy.dart';
 import '../training/logic/jdc_challenge_strategy.dart';
 import '../training/logic/training_strategy.dart';
+import '../training/checkout_vision_screen.dart';
 import '../training/important_doubles_progress_screen.dart';
+import '../training/quick_count_screen.dart';
 import '../training/training_ai_screen.dart';
 import '../training/training_select_screen.dart';
 
@@ -183,6 +185,19 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
         // Needs its targets picked first, like bot training needs a rank.
         openImportantDoublesPicker(context).then((_) => _load());
         return;
+      case TrainingType.quickCount:
+        // Camera-free quiz — no strategy, its screen is self-contained.
+        AppNavigator.toScreen(
+          context,
+          const QuickCountScreen(),
+        ).then((_) => _load());
+        return;
+      case TrainingType.checkoutVision:
+        AppNavigator.toScreen(
+          context,
+          const CheckoutVisionScreen(),
+        ).then((_) => _load());
+        return;
     }
     AppNavigator.toScreen(
       context,
@@ -286,6 +301,9 @@ class _TrainingStatCard extends StatelessWidget {
                 _BotTrainingModes(stats: stats)
               else if (stats.type == TrainingType.importantDoubles)
                 _percentRow(l10n)
+              else if (stats.type == TrainingType.quickCount ||
+                  stats.type == TrainingType.checkoutVision)
+                _quizRow(l10n)
               else
                 _defaultRow(l10n),
               if (onProgress != null) ...[
@@ -337,6 +355,51 @@ class _TrainingStatCard extends StatelessWidget {
           child: _metric(
             label: l10n.trainingLast,
             value: pct(stats.lastScore),
+            color: AppTheme.accent,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAttempts,
+            value: '${stats.sessions}',
+            color: AppTheme.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Quiz drills (Calcul family): accuracy percentages plus the average
+  /// answer time the backend aggregates from the session details.
+  Widget _quizRow(AppLocalizations l10n) {
+    String pct(num? v) => v == null ? '—' : '${_formatNum(v)} %';
+    final avgMs = stats.averageAnswerMs;
+    final time = avgMs == null
+        ? '—'
+        : '${(avgMs / 1000).toStringAsFixed(1)} s';
+    return Row(
+      children: [
+        Expanded(
+          child: _metric(
+            label: l10n.trainingBest,
+            value: pct(stats.bestScore),
+            color: AppTheme.success,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingAverage,
+            value: pct(stats.averageScore),
+            color: AppTheme.primary,
+          ),
+        ),
+        _divider(),
+        Expanded(
+          child: _metric(
+            label: l10n.trainingQuizTimeAvgLabel,
+            value: time,
             color: AppTheme.accent,
           ),
         ),
@@ -452,6 +515,10 @@ class _TrainingStatCard extends StatelessWidget {
         return Icons.emoji_events;
       case TrainingType.importantDoubles:
         return Icons.my_location;
+      case TrainingType.quickCount:
+        return Icons.calculate;
+      case TrainingType.checkoutVision:
+        return Icons.track_changes;
     }
   }
 
@@ -479,6 +546,9 @@ class _TrainingStatCard extends StatelessWidget {
         return const Color(0xFFEAB308);
       case TrainingType.importantDoubles:
         return kImportantDoublesColor;
+      case TrainingType.quickCount:
+      case TrainingType.checkoutVision:
+        return AppTheme.primary;
     }
   }
 }

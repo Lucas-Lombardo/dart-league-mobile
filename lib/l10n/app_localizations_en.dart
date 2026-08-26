@@ -1697,6 +1697,96 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingViewProgress => 'View progress';
 
   @override
+  String get trainingCategoryCalcul => 'Mental math';
+
+  @override
+  String get trainingQuickCount => 'Quick Count';
+
+  @override
+  String get trainingQuickCountDescription =>
+      'A visit lands before your eyes: call the remaining score before the clock runs out.';
+
+  @override
+  String get trainingRulesQuickCount =>
+      'You start on a score and a 3-dart visit lands on the board.\n\nAs soon as the third dart lands, the clock starts: enter the remaining score on the keypad within 30 seconds.\n\n10 questions per session. Stats track your accuracy, your average answer time and your best streak.';
+
+  @override
+  String get trainingCheckoutVision => 'Checkout Vision';
+
+  @override
+  String get trainingCheckoutVisionDescription =>
+      '71 left, 2 darts: build a valid checkout route.';
+
+  @override
+  String get trainingRulesCheckoutVision =>
+      'You are given a remaining score and a number of darts.\n\nBuild your finish with the segment keypad: any route that lands exactly on zero and ends on a double counts — not just the book one. The book route is shown after every answer.\n\n10 checkouts per session. Stats track your accuracy and your average answer time.';
+
+  @override
+  String get trainingQuizYouAreOn => 'You\'re on';
+
+  @override
+  String get trainingQuickCountWatch =>
+      'Darts land one by one — the clock starts on the third.';
+
+  @override
+  String get trainingQuizScorePrompt => 'Score?';
+
+  @override
+  String trainingQuizQuestionProgress(int current, int total) =>
+      'Question $current / $total';
+
+  @override
+  String get trainingQuizTimeUp => 'Time\'s up!';
+
+  @override
+  String trainingQuizItWas(int answer) => 'It was $answer';
+
+  @override
+  String get trainingQuizAccuracyLabel => 'Accuracy (%)';
+
+  @override
+  String get trainingQuizTimeAvgLabel => 'Avg time';
+
+  @override
+  String get trainingQuizStreakLabel => 'Streak';
+
+  @override
+  String get trainingQuizNext => 'Next';
+
+  @override
+  String trainingQuizDartsAllowed(int darts) =>
+      darts == 1 ? '1 dart' : '$darts darts';
+
+  @override
+  String trainingCheckoutVisionPrompt(int darts) =>
+      'What do you do with $darts darts?';
+
+  @override
+  String get trainingCheckoutVisionFinishDouble => 'Finish on a double';
+
+  @override
+  String get trainingCheckoutVisionOut => 'Checked out!';
+
+  @override
+  String get trainingCheckoutVisionMissedTitle => 'Missed!';
+
+  @override
+  String get trainingCheckoutVisionShort =>
+      'There were points left on the board.';
+
+  @override
+  String get trainingCheckoutVisionBookRoute => 'Book route';
+
+  @override
+  String get trainingCheckoutVisionOtherRoutes => 'Other recommended routes';
+
+  @override
+  String get trainingCheckoutVisionRecommendedRoutes => 'Recommended routes';
+
+  @override
+  String trainingCheckoutVisionBookCount(int count) => 'Book routes: $count';
+
+  @override
   String get trainingBustedOut => 'Busted out — score hit zero.';
 
   @override

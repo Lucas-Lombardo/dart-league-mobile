@@ -630,6 +630,35 @@ abstract class AppLocalizations {
   String trainingProgressSessionsDarts(int sessions, int darts);
   String get trainingViewProgress;
 
+  // Calcul (quiz) drills: Quick Count + Checkout Vision.
+  String get trainingCategoryCalcul;
+  String get trainingQuickCount;
+  String get trainingQuickCountDescription;
+  String get trainingRulesQuickCount;
+  String get trainingCheckoutVision;
+  String get trainingCheckoutVisionDescription;
+  String get trainingRulesCheckoutVision;
+  String get trainingQuizYouAreOn;
+  String get trainingQuickCountWatch;
+  String get trainingQuizScorePrompt;
+  String trainingQuizQuestionProgress(int current, int total);
+  String get trainingQuizTimeUp;
+  String trainingQuizItWas(int answer);
+  String get trainingQuizAccuracyLabel;
+  String get trainingQuizTimeAvgLabel;
+  String get trainingQuizStreakLabel;
+  String get trainingQuizNext;
+  String trainingQuizDartsAllowed(int darts);
+  String trainingCheckoutVisionPrompt(int darts);
+  String get trainingCheckoutVisionFinishDouble;
+  String get trainingCheckoutVisionOut;
+  String get trainingCheckoutVisionMissedTitle;
+  String get trainingCheckoutVisionShort;
+  String get trainingCheckoutVisionBookRoute;
+  String get trainingCheckoutVisionOtherRoutes;
+  String get trainingCheckoutVisionRecommendedRoutes;
+  String trainingCheckoutVisionBookCount(int count);
+
   String get trainingBustedOut;
   String get trainingResultSaved;
   String get trainingPlayAgain;

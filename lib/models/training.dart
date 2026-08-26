@@ -10,6 +10,8 @@ enum TrainingType {
   botTraining,
   jdcChallenge,
   importantDoubles,
+  quickCount,
+  checkoutVision,
 }
 
 extension TrainingTypeX on TrainingType {
@@ -37,6 +39,10 @@ extension TrainingTypeX on TrainingType {
         return 'jdc_challenge';
       case TrainingType.importantDoubles:
         return 'important_doubles';
+      case TrainingType.quickCount:
+        return 'quick_count';
+      case TrainingType.checkoutVision:
+        return 'checkout_vision';
     }
   }
 
@@ -64,6 +70,10 @@ extension TrainingTypeX on TrainingType {
         return TrainingType.jdcChallenge;
       case 'important_doubles':
         return TrainingType.importantDoubles;
+      case 'quick_count':
+        return TrainingType.quickCount;
+      case 'checkout_vision':
+        return TrainingType.checkoutVision;
     }
     throw ArgumentError('Unknown training type: $value');
   }
@@ -85,6 +95,9 @@ extension TrainingTypeX on TrainingType {
       // Hit rate in percent — higher is better whether one or two doubles
       // were trained.
       case TrainingType.importantDoubles:
+      // Quiz types: score is the session accuracy in percent.
+      case TrainingType.quickCount:
+      case TrainingType.checkoutVision:
         return true;
     }
   }
@@ -180,6 +193,14 @@ class TrainingTypeStats {
   /// backend predates it).
   final List<BotModeStats>? modes;
 
+  /// Quiz types (quickCount / checkoutVision) only: mean per-answer time in
+  /// milliseconds across sessions (null otherwise or when the backend
+  /// predates it).
+  final num? averageAnswerMs;
+
+  /// Quiz types only: best correct-answer streak across sessions.
+  final num? bestStreak;
+
   TrainingTypeStats({
     required this.type,
     required this.sessions,
@@ -191,6 +212,8 @@ class TrainingTypeStats {
     required this.higherIsBetter,
     this.winRate,
     this.modes,
+    this.averageAnswerMs,
+    this.bestStreak,
   });
 
   factory TrainingTypeStats.fromJson(Map<String, dynamic> json) {
@@ -212,6 +235,8 @@ class TrainingTypeStats {
                 .whereType<BotModeStats>()
                 .toList()
           : null,
+      averageAnswerMs: json['averageAnswerMs'] as num?,
+      bestStreak: json['bestStreak'] as num?,
     );
   }
 

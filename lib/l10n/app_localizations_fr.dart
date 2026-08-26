@@ -1716,6 +1716,97 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainingViewProgress => 'Voir la progression';
 
   @override
+  String get trainingCategoryCalcul => 'Calcul';
+
+  @override
+  String get trainingQuickCount => 'Compte rapide';
+
+  @override
+  String get trainingQuickCountDescription =>
+      'Une volée se plante sous tes yeux : annonce le score restant avant la fin du chrono.';
+
+  @override
+  String get trainingRulesQuickCount =>
+      'Tu pars d\'un score, une volée de 3 fléchettes se plante sur la cible.\n\nDès la troisième fléchette, le chrono démarre : annonce le score restant au pavé numérique avant la fin des 30 secondes.\n\n10 questions par session. Les stats suivent ton % de bonnes réponses, ton temps moyen par réponse et ta meilleure série.';
+
+  @override
+  String get trainingCheckoutVision => 'Vision checkout';
+
+  @override
+  String get trainingCheckoutVisionDescription =>
+      '71 au tableau, 2 fléchettes : compose une route de sortie valide.';
+
+  @override
+  String get trainingRulesCheckoutVision =>
+      'On t\'annonce un reste et un nombre de fléchettes.\n\nCompose ta sortie avec le clavier segments : toute route qui tombe exactement à zéro en finissant sur un double est acceptée — pas seulement celle du livre. La route du livre est montrée après chaque réponse.\n\n10 checkouts par session. Les stats suivent ton % de réussite et ton temps moyen par réponse.';
+
+  @override
+  String get trainingQuizYouAreOn => 'Tu es à';
+
+  @override
+  String get trainingQuickCountWatch =>
+      'Les fléchettes se plantent — le chrono démarre à la 3e.';
+
+  @override
+  String get trainingQuizScorePrompt => 'Score ?';
+
+  @override
+  String trainingQuizQuestionProgress(int current, int total) =>
+      'Question $current / $total';
+
+  @override
+  String get trainingQuizTimeUp => 'Temps écoulé !';
+
+  @override
+  String trainingQuizItWas(int answer) => 'C\'était $answer';
+
+  @override
+  String get trainingQuizAccuracyLabel => 'Réussite (%)';
+
+  @override
+  String get trainingQuizTimeAvgLabel => 'Temps moy.';
+
+  @override
+  String get trainingQuizStreakLabel => 'Série';
+
+  @override
+  String get trainingQuizNext => 'Suivant';
+
+  @override
+  String trainingQuizDartsAllowed(int darts) =>
+      darts == 1 ? '1 fléchette' : '$darts fléchettes';
+
+  @override
+  String trainingCheckoutVisionPrompt(int darts) =>
+      'Tu fais quoi en $darts fléchettes ?';
+
+  @override
+  String get trainingCheckoutVisionFinishDouble => 'Finis sur un double';
+
+  @override
+  String get trainingCheckoutVisionOut => 'Sorti !';
+
+  @override
+  String get trainingCheckoutVisionMissedTitle => 'Raté !';
+
+  @override
+  String get trainingCheckoutVisionShort =>
+      'Il restait des points au tableau.';
+
+  @override
+  String get trainingCheckoutVisionBookRoute => 'Route du livre';
+
+  @override
+  String get trainingCheckoutVisionOtherRoutes => 'Autres routes recommandées';
+
+  @override
+  String get trainingCheckoutVisionRecommendedRoutes => 'Routes recommandées';
+
+  @override
+  String trainingCheckoutVisionBookCount(int count) =>
+      'Routes du livre : $count';
+
+  @override
   String get trainingBustedOut => 'Éliminé — le score est tombé à zéro.';
 
   @override
