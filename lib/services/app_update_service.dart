@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../models/app_update_info.dart';
 import 'api_service.dart';
 import 'dataset_capture_service.dart';
+import 'model_selector.dart';
 import 'placement_debug_capture_service.dart';
 
 /// Asks the backend whether a newer app version is available for this install.
@@ -28,6 +29,15 @@ class AppUpdateService {
         // the flag's only transport, and it already runs once per launch.
         DatasetCaptureService.remoteEnabled = info.datasetCaptureEnabled;
         PlacementDebugCapture.remoteEnabled = info.placementDebugEnabled;
+        // Same reasoning for the AI-model rollout: this call is its only
+        // transport. It is persisted here and re-read by ModelSelector.init()
+        // at the next launch, so a phone that is offline on launch still runs
+        // the model it was last told to.
+        await ModelSelector.applyRemoteConfig(
+          model: info.aiModel,
+          rolloutPercent: info.aiModelRolloutPercent,
+          capableOnly: info.aiModelCapableOnly,
+        );
         return info;
       }
       return null;

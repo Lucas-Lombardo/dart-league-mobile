@@ -468,11 +468,17 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // Flutter bundles assets under "flutter_assets/" prefix — the raw
             // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
             // work with Android's AssetManager directly.
-            // NB: Dart normally loads via loadModelFile (temp file) with the
-            // per-device model ModelSelector picked. This no-arg fallback
-            // can't know that choice, so it loads the light model — safe on
-            // any device, and both bundled models share one output layout so
-            // a mismatch costs speed, never a misread.
+            //
+            // NB: on Android, Dart ALWAYS loads through loadModelFile with the
+            // model ModelSelector selected, so this no-arg path is unreachable
+            // — and it must stay that way. It used to be defended as "loads
+            // light, safe on any device, both models share one output layout";
+            // that stopped being true with dart-rivals-v13, whose head puts the
+            // dart on class 0 with boxes in canvas pixels. Serving light to a
+            // parser configured for v13 raises no error anywhere: darts read as
+            // calibration points and every score on the board is wrong. If a
+            // future caller ever lands here, it should be fixed to pass the
+            // model, not silently handed a different one.
             val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
             android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
             val modelBuffer = loadModelFile(assetKey)

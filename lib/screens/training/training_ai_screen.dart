@@ -73,6 +73,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     WakelockPlus.enable();
     OrientationUtils.allowAll();
     _ai = AutoScoringService();
+    _ai!.telemetrySessionOf = () => ('training', null);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initCameraAndAi());
   }
 

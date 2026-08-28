@@ -14,6 +14,107 @@ import '../services/model_selector.dart';
 /// On-device TFLite delegate bench (iOS + Android) — dev tool, never part
 /// of the app.
 ///
+/// 2026-08-28, all three bundled models, Redmi 13C (23108RN04Y, Helio G85 /
+/// mt6768, Mali-G52 MC2, 7.6 GB, Android 15), thermal=0 throughout:
+///            gpu-auto        cpu-forced
+///   light    306ms [2925ms]   1658ms [256ms]
+///   heavy    826ms [4827ms]   5246ms [482ms]
+///   v13      290ms [3164ms]   1557ms [217ms]
+/// The GPU delegate takes EVERY graph whole here — 608/608 nodes for v13,
+/// 1078/1078 for light and heavy, one partition each, self-test 9/9 on all
+/// three. Nothing like the v10 int8dyn case (12/433); fp16 is what the
+/// delegate wants.
+///
+/// Two readings, and together they settle what the model actually costs:
+///   - v13 is ~0.95x light and ~0.30x heavy, and that ratio holds on BOTH the
+///     GPU (290/306/826) and the CPU (1557/1658/5246). A transfer-bound GPU
+///     floor would have flattened the GPU column only; it didn't, so these are
+///     real compute costs. Same ratios as iPhone CPU (112/140/360) and an
+///     offline Mac CPU bench (59/68/203).
+///   - the CPU column IS the silent-fallback cost, and for heavy on this phone
+///     that is 5.2 SECONDS per frame — an unusable scorer, on the model this
+///     device ships today (7.6 GB of RAM puts it over the 5500 MB bar, so the
+///     probe calls it heavy-capable while its GPU is entry-level).
+///
+/// Unlike iOS, the gap here crosses a UX threshold rather than sitting under
+/// the 250ms capture floor: heavy runs 1.2 analyses/s against v13's 3.4, and
+/// the scoring gates are counted in FRAMES (_autoConfirmThreshold = 3,
+/// _removalConfirmThreshold = 3, _phantomConfirmFrames = 5). A 3-frame
+/// confirmation takes 2.5s on heavy and 0.9s on v13.
+/// Delegates agree on all three: identical scores 8/8 frames (the 9th,
+/// check_inference.jpg, still dies on the landscape RGBA overrun), tip
+/// distance 0.1-0.2px, worst ceiling delta 0.0056.
+///
+/// GOTCHA, and it invalidated a whole run: ModelSelector.init()'s secure
+/// storage reads took 4.6s on this cold phone, finishing LONG after the
+/// bench's 2s delay had forced its model — and init() was already past its
+/// `_initialized` guard, so it reassigned the model on the way out. The run
+/// measured v13 on the GPU and heavy on the CPU, and labelled both v13. The
+/// tell was in logcat all along ("FORCED to v13" followed by "using heavy"),
+/// which is why that line is now worth grepping on every run. Fixed by
+/// ModelSelector._forced; watch for it coming back if that flag is ever
+/// refactored away.
+/// A second tell, if the force is ever lost mid-run: the accuracy pass goes
+/// to ZERO detections on every frame while the speed numbers stay plausible —
+/// canvas-pixel boxes parsed as normalized land ~1000x outside the frame.
+///
+/// Xiaomi/HyperOS blocks `adb install` of a NEW package with
+/// INSTALL_FAILED_USER_RESTRICTED (its "Install via USB" toggle needs a Mi
+/// account and a SIM). Sideload the APK once from the phone's file manager;
+/// after that `adb install -r` works, because the restriction only covers
+/// first installs.
+///
+/// 2026-08-28, all three bundled models, iPhone 16,1 (15 Pro), one launch
+/// each via BENCH_MODEL — median inference, load in brackets:
+///           xnnpack        coreml         best      thermal
+///   light   140ms [24ms]    56ms [2486ms]  coreml    2→2
+///   heavy   360ms [65ms]   102ms [2940ms]  coreml    0→0
+///   v13     112ms [27ms]   312ms [2611ms]  xnnpack   1→1
+/// So v13's iosDelegate is pinned to 'xnnpack' (2.8x) while light and heavy
+/// keep 'auto'/CoreML — the reason AiModel.iosDelegate is per-model at all.
+/// Pinning the whole platform to xnnpack would be a 2.5x regression on light
+/// and a 3.5x one on heavy.
+///
+/// Read the table as TWO comparisons, because they say opposite things:
+///   - on the SAME delegate, v13 is far the cheapest graph: 112ms on CPU
+///     against light's 140 and heavy's 360 (an offline CPU bench agrees:
+///     59 / 68 / 203ms);
+///   - on each model's BEST delegate, v13 stops winning, purely because
+///     CoreML accelerates the DartsMind anchor models and REJECTS the o2o
+///     head — 312ms, slower than the CPU, the signature of a delegate handing
+///     most of the graph back. Not the int8 weight format this time (v13 is
+///     fp16 like the others); an op in the o2o head is the remaining suspect.
+///
+/// What that means for shipping v13 on iOS, per device tier:
+///   - capable iPhones (A14+, the ones running heavy): 112 vs 102ms — a wash
+///     on latency, and the thermal states even favour heavy here (measured at
+///     0 against v13's 1);
+///   - weak iPhones (running light): 112 vs 56ms, i.e. 2x.
+/// All three sit under the 250ms capture floor, so NONE of them changes the
+/// scoring rate a player sees. The cost is heat: xnnpack is 4 CPU threads at
+/// ~45% duty where CoreML is the Neural Engine (thermal audit 2026-08-10).
+/// A CoreML-friendly re-export is therefore the highest-leverage iOS
+/// follow-up by a distance — v13's CPU cost is already 3.2x under heavy's, so
+/// a graph the ANE accepts should land well under 102ms.
+///
+/// Delegates agree on every model: identical scores 9/9 frames, tip distance
+/// 0.0px, worst class-confidence delta 0.0071 (v13) / 0.0051 (heavy) /
+/// 0.0009 (light) against a 0.01 target.
+/// The LAYOUT PROBE re-confirmed v13's contract on device: dart=first +
+/// canvasPixels gives p1..p8 ×1 with tip=3 on a 3-dart frame, dart=last gives
+/// p1=2 with tip=1 — and both 'normalized' variants give nothing at all.
+///
+/// GOTCHA that cost a run: `flutter run` launches under LLDB and waits for the
+/// Dart VM Service, which does not attach on this device — the app then sits
+/// suspended and the bench never starts. The --dart-defines are compiled into
+/// the binary, so the fix is to let flutter install the build, kill it, and
+/// launch standalone:
+///   xcrun devicectl device process launch --device UDID \
+///     --terminate-existing com.llombardo.dartrivals
+/// then pull Documents/delegate_bench_report.txt as below. Check the report's
+/// first line names the model you meant — a stale report from the previous
+/// run reads as a plausible result.
+///
 /// 2026-08-13, dartboard-v10_o2o_float16 — the float16 re-export, and the
 /// answer to everything below. Pixel 8 gpu-auto 66ms (from 511ms) with
 /// "Replacing 604 out of 604 node(s)" and a 1-partition GPU graph, self-test
@@ -58,10 +159,16 @@ import '../services/model_selector.dart';
 /// today: surfacing the effective delegate in telemetry is the follow-up.
 ///
 /// Launched with:
-///   flutter run --profile --dart-define=DELEGATE_BENCH=true
+///   flutter run --profile --dart-define=DELEGATE_BENCH=true \
+///     --dart-define=BENCH_MODEL=v13
 /// after UNCOMMENTING the assets/dev_bench entries in pubspec.yaml (they
 /// stay commented so the ~2.3 MB never ships in a real build; the bench
 /// aborts loudly when they're missing).
+///
+/// BENCH_MODEL ('light' | 'heavy' | 'v13') forces the model for that launch;
+/// omit it to bench whatever the device's own probe picks. One model per
+/// launch, from a COOL phone each time — thermal state moves the numbers
+/// more than the models do.
 ///
 /// Why it exists: NativeInference.iosDelegate pinned 'xnnpack' on the
 /// strength of a 2026-08-09 bench made on the (since removed) v7/YOLO26
@@ -140,12 +247,38 @@ class DelegateBench {
     'assets/models/check_inference.jpg', // Android self-test reference shot
   ];
 
+  /// Which model to bench, from `--dart-define=BENCH_MODEL=<key>`
+  /// ('light' | 'heavy' | 'v13'). Empty = whatever the device's own probe
+  /// selected, which is the historical behaviour.
+  ///
+  /// It exists because the interesting model is usually the one the device
+  /// would NOT choose: a new model has to be measured on the low-end phone
+  /// that will never be handed it by the probe, and a rollout must never be
+  /// the way a bench selects its subject.
+  ///
+  /// ONE model per launch, on purpose. Chaining all three would bench the
+  /// last one on a hot phone — the thermal state moves more than the models
+  /// do (light: 56ms cool vs 71ms at thermal=2).
+  static const String _benchModel = String.fromEnvironment('BENCH_MODEL');
+
   static Future<void> run() async {
     // Let the engine/plugins finish booting; the app keeps starting normally.
     await Future.delayed(const Duration(seconds: 2));
     _report.clear();
+    if (_benchModel.isNotEmpty && !ModelSelector.debugForceModel(_benchModel)) {
+      // Loud, and it stops: silently benching a different model than the one
+      // named is how a wrong number ends up quoted as fact for months.
+      _log('ABORT: BENCH_MODEL="$_benchModel" is not a bundled model '
+          '(${ModelSelector.all.map((m) => m.key).join(', ')}).');
+      await _writeReport();
+      return;
+    }
     _log('===== START ===== '
-        'model=${ModelSelector.currentModelName} delegates=$_delegates');
+        'model=${ModelSelector.currentModelName} '
+        '(${_benchModel.isEmpty ? "device probe" : "forced"}) '
+        'layout=${ModelSelector.currentLayout.id} '
+        'shippedIosDelegate=${ModelSelector.currentIosDelegate} '
+        'delegates=$_delegates');
 
     final speedSummaries = <String>[];
     final results = <String, List<ScoringResult?>>{};

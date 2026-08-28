@@ -105,6 +105,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
     _state = CricketState(scoreMode: _scoreMode);
     _visitStart = _state.clone();
     autoScoringService = AutoScoringService();
+    autoScoringService!.telemetrySessionOf = () => ('bot', null);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await initCameraAndAI();
     });

@@ -103,6 +103,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       );
     }
     autoScoringService = AutoScoringService();
+    autoScoringService!.telemetrySessionOf =
+        () => ('placement', context.read<PlacementProvider>().currentMatchId);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await initCameraAndAI();
     });

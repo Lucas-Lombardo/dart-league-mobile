@@ -68,12 +68,20 @@ void main() {
       }
     });
 
-    test('the bundled assets share the DartsMind anchor layout', () {
-      // Both device tiers (light/heavy) parse under the same contract, so
-      // whichever one init() picks, the const layout stays correct.
-      expect(ModelSelector.currentLayout, DetectionLayout.anchorDartLast);
-      expect(ModelSelector.currentAsset,
-          anyOf(ModelSelector.lightAsset, ModelSelector.heavyAsset));
+    test('the selected model always parses under its OWN layout', () {
+      // The bundled models no longer agree on a contract: light and heavy put
+      // the dart last with normalized boxes, v13 puts it first in canvas
+      // pixels. So the invariant is no longer "one const layout fits all" —
+      // it is that the layout the parser gets is the one belonging to the
+      // model actually selected. Break that pairing and nothing errors: darts
+      // read as calibration points and every score on the board is wrong.
+      for (final model in ModelSelector.all) {
+        expect(DetectionLayout.byId(model.layout.id), same(model.layout));
+      }
+      expect(ModelSelector.currentLayout, ModelSelector.current.layout);
+      expect(ModelSelector.currentAsset, ModelSelector.current.asset);
+      expect(ModelSelector.all.map((m) => m.asset).toSet(),
+          hasLength(ModelSelector.all.length));
     });
   });
 

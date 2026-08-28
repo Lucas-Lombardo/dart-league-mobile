@@ -40,6 +40,10 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
   dynamic readGame() => context.read<GameProvider>();
 
   @override
+  String get aiTelemetryContext =>
+      readGame().isFriendly == true ? 'friendly' : 'ranked';
+
+  @override
   String get opponentUsername => widget.opponentUsername;
 
   @override

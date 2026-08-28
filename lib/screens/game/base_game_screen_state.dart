@@ -45,6 +45,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
 
   // ─── Abstract ────────────────────────────────────────────────────────────────
   dynamic readGame();
+
+  /// Mode this screen's AI frames are attributed to in the model telemetry:
+  /// 'ranked', 'friendly' or 'tournament'. Paired with the CURRENT leg id, so
+  /// every telemetry row can be joined to the server's own record of the same
+  /// darts (matches.aiTrustSnapshot).
+  String get aiTelemetryContext;
   String get opponentUsername;
   Widget buildAppBarTitle();
   Widget buildEndScreen(dynamic game, AuthProvider auth);
@@ -710,6 +716,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // to answer a capture request, silently.
     TurnReportService.listen();
     autoScoringService = AutoScoringService();
+    autoScoringService!.telemetrySessionOf =
+        () => (aiTelemetryContext, matchIdForLeave);
     scoreAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;

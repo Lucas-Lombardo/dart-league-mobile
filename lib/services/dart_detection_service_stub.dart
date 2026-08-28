@@ -12,8 +12,8 @@ class DartDetectionService {
 
   DartDetectionService({
     bool useNativeDecode = true,
-    this.layout = ModelSelector.currentLayout,
-  });
+    DetectionLayout? layout,
+  }) : layout = layout ?? ModelSelector.currentLayout;
 
   bool get isLoaded => false;
 

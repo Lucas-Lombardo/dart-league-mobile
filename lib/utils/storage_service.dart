@@ -132,4 +132,51 @@ class StorageService {
   static Future<String?> getBotMatchConfig() async {
     return await _storage.read(key: _botMatchConfigKey);
   }
+
+  // The AI-model rollout as the backend last described it, replayed at the
+  // next launch: ModelSelector needs it before main() has done any network
+  // call, and the version-config request only fires once the home screen asks.
+  // Storing the RAW rollout rather than the resolved model keeps the draw
+  // honest — the decision is re-made at startup, so a percentage change takes
+  // effect without the install having to be told twice.
+  static const String _aiModelChoiceKey = 'ai_model_choice';
+  static const String _aiModelPercentKey = 'ai_model_rollout_percent';
+  static const String _aiModelCapableOnlyKey = 'ai_model_capable_only';
+
+  static Future<void> saveAiModelRollout({
+    required String? model,
+    required int percent,
+    required bool capableOnly,
+  }) async {
+    await _storage.write(key: _aiModelChoiceKey, value: model ?? 'auto');
+    await _storage.write(key: _aiModelPercentKey, value: percent.toString());
+    await _storage.write(
+        key: _aiModelCapableOnlyKey, value: capableOnly.toString());
+  }
+
+  static Future<String?> getAiModelChoice() async {
+    return await _storage.read(key: _aiModelChoiceKey);
+  }
+
+  static Future<int> getAiModelRolloutPercent() async {
+    final value = await _storage.read(key: _aiModelPercentKey);
+    return int.tryParse(value ?? '') ?? 100;
+  }
+
+  static Future<bool> getAiModelCapableOnly() async {
+    return (await _storage.read(key: _aiModelCapableOnlyKey)) == 'true';
+  }
+
+  // This install's stable draw for percentage rollouts (0-99). Written once,
+  // then never again: a re-draw would move the install between models and mix
+  // both into every per-model statistic.
+  static const String _aiRolloutBucketKey = 'ai_rollout_bucket';
+
+  static Future<void> saveAiRolloutBucket(int bucket) async {
+    await _storage.write(key: _aiRolloutBucketKey, value: bucket.toString());
+  }
+
+  static Future<int?> getAiRolloutBucket() async {
+    return int.tryParse(await _storage.read(key: _aiRolloutBucketKey) ?? '');
+  }
 }

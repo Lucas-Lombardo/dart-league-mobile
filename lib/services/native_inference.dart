@@ -28,13 +28,13 @@ class NativeInference {
   /// get benchmarked against each other on-device — see
   /// lib/dev/delegate_bench.dart).
   ///
-  /// 'auto' lands on CoreML, the measured winner for the DartsMind anchor
-  /// models: dart-rival-ia-light 56ms coreml vs 133ms xnnpack (2026-08-10,
-  /// iPhone de Lucas). The ranking is a property of the GRAPH and has flipped
-  /// between models before (v7/YOLO26 favored xnnpack, 2026-08-09) — and
-  /// dart-rival-ia-heavy has NOT been benched. Re-bench any new model, never
-  /// predict.
-  static const String iosDelegate = 'auto';
+  /// Now read PER MODEL from [AiModel.iosDelegate] rather than being one
+  /// constant, because the ranking is a property of the GRAPH and the bundled
+  /// graphs disagree: the DartsMind anchor models want CoreML (light: 56ms vs
+  /// 133ms xnnpack, 2026-08-10) while the o2o export family wants xnnpack
+  /// (v10 float16: 106ms vs 297ms coreml, 2026-08-13). Re-bench any new
+  /// model, never predict.
+  static String get iosDelegate => ModelSelector.currentIosDelegate;
 
   // Both native plugins run everything on ONE serial thread (dvExecutor on
   // Android, inferenceQueue on iOS). A single wedged GPU/CoreML inference —
@@ -231,6 +231,12 @@ class NativeInference {
       // Per-device model, resolved once by ModelSelector.init(). Native
       // reuses the interpreter when the model file is unchanged, so reloads
       // after a recovery are cheap.
+      //
+      // Freeze the choice for the rest of the app run: from here on a rollout
+      // change landing mid-session is persisted for the next launch but not
+      // adopted. The parse layout is a property of the LOADED weights, and
+      // swapping one without the other reads darts as calibration points.
+      ModelSelector.markModelLoaded();
       final asset = ModelSelector.currentAsset;
       if (Platform.isAndroid) {
         // Android: extract model to temp file via rootBundle (always works),

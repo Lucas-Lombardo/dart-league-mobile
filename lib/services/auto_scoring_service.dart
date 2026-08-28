@@ -9,6 +9,7 @@ import 'camera_frame_service.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
+import 'ai_model_telemetry.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
 
@@ -206,6 +207,19 @@ class AutoScoringService extends ChangeNotifier {
   /// (GCD on iOS, ExecutorService on Android) so the Flutter UI thread stays
   /// responsive even while AI is processing a frame.
   NativeInference? _nativeInference;
+
+  /// Per-model telemetry for this scorer session: what the model cost, what it
+  /// saw, and what the player had to fix. Flushed on [dispose] and every few
+  /// hundred frames. The screen that owns this service sets
+  /// `telemetry.context` / `telemetry.matchId` so the rows can be grouped —
+  /// and joined to the server's own record of the same darts.
+  final AiModelTelemetry telemetry = AiModelTelemetry();
+
+  /// Where this scorer is running, as (mode, leg id) — asked again at every
+  /// capture start. A BO3 series keeps one scorer alive across several legs
+  /// while the leg id changes under it, and a telemetry row that straddles two
+  /// legs joins to neither, so the binding is refreshed rather than set once.
+  (String, String?) Function()? telemetrySessionOf;
 
   /// Fired when the capture loop starts/stops, so the frame source can gate
   /// the camera image stream (CameraFrameService.setAiActive) — in solo modes
@@ -497,6 +511,18 @@ class AutoScoringService extends ChangeNotifier {
     OnAutoConfirmCallback? onAutoConfirm,
   }) {
     if (!_modelLoaded || _capturing) return;
+    // Rebind before the first frame of this turn: the leg may have changed
+    // since the last one (see [telemetrySessionOf]). Guarded because the
+    // callback reads provider state through the screen's BuildContext — a
+    // label for a stats table must never be able to stop the AI from starting.
+    try {
+      final session = telemetrySessionOf?.call();
+      if (session != null) {
+        telemetry.bind(context: session.$1, matchId: session.$2);
+      }
+    } catch (e) {
+      debugPrint('[AutoScoring] telemetry bind skipped: $e');
+    }
     _capturing = true;
     // Each loop owns a generation. A stop→start inside a single loop tick used
     // to leave the OLD loop running (it re-read _capturing == true after the
@@ -569,6 +595,11 @@ class AutoScoringService extends ChangeNotifier {
 
   void overrideDart(int index, DartScore score) {
     if (index < 0 || index > 2) return;
+    // The model's two failure shapes are indistinguishable from the outside:
+    // an edit ON a proposed dart means it read the dart wrong, an edit into an
+    // empty slot means it never saw the dart at all. `_emittedSlots` is what
+    // separates them, and it is only true while the proposal still stands.
+    telemetry.recordEdit(wasAiProposed: _emittedSlots[index]);
     _dartSlots[index] = score;
     _manualOverrideSlots[index] = true;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
@@ -588,6 +619,8 @@ class AutoScoringService extends ChangeNotifier {
 
   void removeDart(int index) {
     if (index < 0 || index > 2) return;
+    // Deleting a proposed dart is the model seeing a dart that was not there.
+    telemetry.recordRemoval(wasAiProposed: _emittedSlots[index]);
     _dartSlots[index] = null;
     _emittedSlots[index] = false;
     _manualOverrideSlots[index] = false;
@@ -755,6 +788,8 @@ class AutoScoringService extends ChangeNotifier {
       // detected', 'Need 4 control points') do NOT come through here — they
       // are normal frames and continue into the pipeline below.
       if (_nativeInference != null && _nativeInference!.lastAnalyzeFailed) {
+        telemetry.recordFrame(
+            inferMs: null, calibrationPoints: 0, engineFailed: true);
         if (!_nativeInference!.isRecovering) {
           _consecutiveErrorFrames++;
           if (!_errorStreakStopwatch.isRunning) _errorStreakStopwatch.start();
@@ -784,6 +819,16 @@ class AutoScoringService extends ChangeNotifier {
         return;
       }
       _resetErrorStreak();
+
+      // Prefer the NATIVE invoke time: it is the model's own cost, which is
+      // what two models are compared on. `_lastInferenceMs` is the whole
+      // round trip (preprocess + channel + parse) and only stands in on the
+      // Dart-fallback path, which has no native timing to report.
+      telemetry.recordFrame(
+        inferMs: _nativeInference?.lastNativeInferMs ?? _lastInferenceMs,
+        calibrationPoints: result.calibrationPoints.length,
+        engineFailed: false,
+      );
 
       _updateZoomHint(result);
 
@@ -841,6 +886,7 @@ class AutoScoringService extends ChangeNotifier {
           _consecutiveEmptyBoardCount = 0;
           _prevDartCount = 0;
           _trace('GATE auto-confirm (board empty $_autoConfirmThreshold frames) — submitting turn');
+          telemetry.recordAutoConfirm();
           await _maybeCleanup(imagePath, cleanupFile);
           onAutoConfirm?.call();
           return;
@@ -1974,6 +2020,7 @@ class AutoScoringService extends ChangeNotifier {
               'SG ${_sid(sg.id)} ${score.formatted}');
           if (firstEmit) {
             _emittedSlots[s] = true;
+            telemetry.recordAutoScored();
             onDartDetected?.call(s, score);
           }
           break;
@@ -2049,6 +2096,10 @@ class AutoScoringService extends ChangeNotifier {
   @override
   void dispose() {
     _capturing = false;
+    // Fire-and-forget: this service's lifetime IS the AI session, so its end
+    // is the natural moment to report. Not awaited — dispose() must stay
+    // synchronous, and a dropped row costs nothing.
+    unawaited(telemetry.flush());
     _detector.dispose();
     _nativeInference?.dispose();
     _nativeInference = null;

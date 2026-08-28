@@ -32,14 +32,19 @@ class DartDetectionService {
   final bool useNativeDecode;
 
   /// Output contract of the model this instance parses for — class order and
-  /// per-kind confidence floors. Defaults to the bundled model; an A/B replay
-  /// harness runs two instances with the two layouts side by side.
+  /// per-kind confidence floors. Defaults to the model this app run selected
+  /// (it is a property OF that model, not of the app); an A/B replay harness
+  /// runs two instances with two layouts side by side.
+  ///
+  /// Not a const default any more: the selected model — and therefore its
+  /// layout — is only known once ModelSelector.init() has probed the device
+  /// and replayed the rollout.
   final DetectionLayout layout;
 
   DartDetectionService({
     this.useNativeDecode = true,
-    this.layout = ModelSelector.currentLayout,
-  });
+    DetectionLayout? layout,
+  }) : layout = layout ?? ModelSelector.currentLayout;
 
   Float32List? _inputBuffer;
   Uint8List? _outputBytes;
@@ -52,6 +57,9 @@ class DartDetectionService {
 
   Future<void> loadModel({bool cpuOnly = false}) async {
     if (_isLoaded) return;
+    // See NativeInference.loadModel: the model is frozen for this app run
+    // once any interpreter holds it.
+    ModelSelector.markModelLoaded();
 
     if (kIsWeb) {
       final cpuOptions = InterpreterOptions()..threads = 4;

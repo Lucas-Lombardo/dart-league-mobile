@@ -51,6 +51,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   dynamic readGame() => context.read<TournamentGameProvider>();
 
   @override
+  String get aiTelemetryContext => 'tournament';
+
+  @override
   String get opponentUsername => widget.opponentUsername;
 
   @override

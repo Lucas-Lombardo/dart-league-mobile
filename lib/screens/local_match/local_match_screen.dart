@@ -84,6 +84,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     _scores = [widget.config.startingScore, widget.config.startingScore];
     _scoreBeforeRound = widget.config.startingScore;
     _autoScoringService = AutoScoringService();
+    _autoScoringService!.telemetrySessionOf = () => ('local', null);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initCameraAndAI();
     });

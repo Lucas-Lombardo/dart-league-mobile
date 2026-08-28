@@ -17,6 +17,14 @@ class AppUpdateInfo {
   /// old backends → false).
   final bool placementDebugEnabled;
 
+  /// The AI scorer rollout: which model key the backend wants installs to run
+  /// ('auto' = keep the per-device probe), the share of installs it applies
+  /// to, and whether it is restricted to heavy-capable phones. Missing on old
+  /// backends → 'auto', which is exactly the no-op.
+  final String aiModel;
+  final int aiModelRolloutPercent;
+  final bool aiModelCapableOnly;
+
   const AppUpdateInfo({
     required this.updateAvailable,
     this.latestVersion,
@@ -25,6 +33,9 @@ class AppUpdateInfo {
     this.tournamentUpdateRequired = false,
     this.datasetCaptureEnabled = false,
     this.placementDebugEnabled = false,
+    this.aiModel = 'auto',
+    this.aiModelRolloutPercent = 100,
+    this.aiModelCapableOnly = false,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) => AppUpdateInfo(
@@ -35,5 +46,10 @@ class AppUpdateInfo {
         tournamentUpdateRequired: json['tournamentUpdateRequired'] == true,
         datasetCaptureEnabled: json['datasetCaptureEnabled'] == true,
         placementDebugEnabled: json['placementDebugEnabled'] == true,
+        aiModel: json['aiModel'] as String? ?? 'auto',
+        aiModelRolloutPercent: json['aiModelRolloutPercent'] is int
+            ? json['aiModelRolloutPercent'] as int
+            : 100,
+        aiModelCapableOnly: json['aiModelCapableOnly'] == true,
       );
 }
