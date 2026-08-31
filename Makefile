@@ -1,4 +1,4 @@
-.PHONY: help run-dev run-prod release-android release-ios release-ios-archive clean help
+.PHONY: help run-dev run-prod release-android release-ios release-ios-archive check-facebook clean help
 
 # Default target
 help:
@@ -25,6 +25,7 @@ release-android:
 		echo "❌ env/prod.json still contains REPLACE_ME — set the live STRIPE_PUBLISHABLE_KEY first"; \
 		exit 1; \
 	fi
+	@$(MAKE) --no-print-directory check-facebook
 	flutter clean
 	flutter pub get
 	flutter build appbundle --release --dart-define-from-file=env/prod.json
@@ -38,6 +39,7 @@ release-ios:
 		echo "❌ env/prod.json still contains REPLACE_ME — set the live STRIPE_PUBLISHABLE_KEY first"; \
 		exit 1; \
 	fi
+	@$(MAKE) --no-print-directory check-facebook
 	flutter clean
 	flutter pub get
 	flutter build ipa --release --dart-define-from-file=env/prod.json
@@ -51,11 +53,22 @@ release-ios-archive:
 		echo "❌ env/prod.json still contains REPLACE_ME — set the live STRIPE_PUBLISHABLE_KEY first"; \
 		exit 1; \
 	fi
+	@$(MAKE) --no-print-directory check-facebook
 	flutter clean
 	flutter pub get
 	flutter build ios --release --dart-define-from-file=env/prod.json
 	@echo "✅ iOS release build complete"
 	@echo "   Now open ios/Runner.xcworkspace in Xcode → Product → Archive"
+
+# Meta (Facebook) SDK credentials must be real before any store build:
+# shipping the placeholders means the paid campaigns report zero conversions.
+check-facebook:
+	@if grep -q "FACEBOOK_APP_ID_REPLACE_ME\|FACEBOOK_CLIENT_TOKEN_REPLACE_ME" android/app/src/main/res/values/facebook.xml ios/Runner/Info.plist; then \
+		echo "❌ Facebook App ID / client token still say REPLACE_ME"; \
+		echo "   Fill android/app/src/main/res/values/facebook.xml and ios/Runner/Info.plist"; \
+		echo "   from developers.facebook.com → l'app → Paramètres → Général / Avancé"; \
+		exit 1; \
+	fi
 
 # Clean build artefacts
 clean:

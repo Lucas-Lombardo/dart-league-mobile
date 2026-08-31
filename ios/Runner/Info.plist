@@ -24,6 +24,17 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Meta (Facebook) SDK. Both values are public (they ship in every build)
+	     and come from developers.facebook.com > l'app > Paramètres > Général
+	     (App ID) and > Avancé (Jeton client). Must match
+	     android/app/src/main/res/values/facebook.xml — `make check-facebook`
+	     runs before every release build. -->
+	<key>FacebookAppID</key>
+	<string>1595576982237919</string>
+	<key>FacebookClientToken</key>
+	<string>597bd41552a320432726175af0e273ba</string>
+	<key>FacebookDisplayName</key>
+	<string>Dart Rivals</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
@@ -32,6 +43,21 @@
 	<string>Microphone access is required for voice communication during matches</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Dart Rivals saves your match replay clips to your photo library so you can post or share them</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Allow tracking so we can see which ads bring real players to Dart Rivals, and stop showing you the ones you don't care about.</string>
+	<!-- Meta's two ad-network ids: they let Apple report conversions to Meta
+	     even for the users who decline the ATT prompt above. -->
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>v9wttpbfk9.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>n38lu8286q.skadnetwork</string>
+		</dict>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Meta (Facebook) SDK credentials, read by the meta-data entries in
+  AndroidManifest.xml. Both values are public by design — they ship inside
+  every APK — so they are committed, like the Stripe publishable key.
+
+  Where they come from: developers.facebook.com -> your app
+    - App ID          : Paramètres > Général > Identifiant de l'app
+    - Client token    : Paramètres > Avancé > Jeton client
+  Keep them in sync with ios/Runner/Info.plist — `make check-facebook`, which
+  every release target runs, fails if either file is still on a placeholder.
+-->
+<resources>
+    <string name="facebook_app_id" translatable="false">1595576982237919</string>
+    <string name="facebook_client_token" translatable="false">597bd41552a320432726175af0e273ba</string>
+</resources>

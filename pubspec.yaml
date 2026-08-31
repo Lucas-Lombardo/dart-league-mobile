@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.44+82
+version: 1.2.45+83
 
 environment:
   sdk: ^3.10.7
@@ -73,6 +73,14 @@ dependencies:
   share_plus: ^13.3.0
   video_player: ^2.13.0
   gal: ^2.3.3
+  # Meta (Facebook) App Events — attribution + conversion tracking for the paid
+  # Meta ad campaigns. Wraps the native Facebook SDK; App ID and client token
+  # live in android/app/src/main/res/values/facebook.xml and ios Info.plist.
+  facebook_app_events: ^0.30.5
+  # iOS App Tracking Transparency. Without the ATT consent, Meta only gets
+  # aggregated SKAdNetwork data and ad optimisation is badly degraded, so the
+  # prompt is shown once, after onboarding (see AttConsentGate).
+  app_tracking_transparency: ^2.0.7
 
 # Vendored camera_android 0.10.11 with one patch: MediaSettings.fps caps the
 # WHOLE Camera2 session (preview + image stream), not just video recording —

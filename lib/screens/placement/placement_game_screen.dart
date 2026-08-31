@@ -103,8 +103,15 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       );
     }
     autoScoringService = AutoScoringService();
-    autoScoringService!.telemetrySessionOf =
-        () => ('placement', context.read<PlacementProvider>().currentMatchId);
+    // This screen serves BOTH real placement matches and bot trainings, and
+    // they differ on both axes. A bot training has no backend match record —
+    // its `currentMatchId` is a locally minted 'training-<millis>' string —
+    // so sending it would label the row with an id that joins to nothing.
+    autoScoringService!.telemetrySessionOf = () {
+      final placement = context.read<PlacementProvider>();
+      final isBot = placement.mode == PlacementMode.botTraining;
+      return (isBot ? 'bot' : 'placement', isBot ? null : placement.currentMatchId);
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await initCameraAndAI();
     });
@@ -274,7 +281,8 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (newScore < 0 || newScore == 1 || (newScore == 0 && multiplier != ScoreMultiplier.double)) {
       setState(() {
         _isBust = true;
-        _currentRoundThrows.add(_DartThrow(baseScore, multiplier));
+        _currentRoundThrows.add(
+            _DartThrow(baseScore, multiplier, aiReading: aiReading));
         _dartsThrown++;
       });
       DartSoundService.playBust();
@@ -283,7 +291,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
 
     setState(() {
       _myScore = newScore;
-      _currentRoundThrows.add(_DartThrow(baseScore, multiplier));
+      // aiReading must ride the ADD too, not just the edit branch above: a
+      // dart the model detects arrives here the first time (its slot does not
+      // exist yet), so dropping it here recorded EVERY placement dart as a
+      // manual entry — 0 of 153 matches carried an AI reading between the
+      // feature shipping on 2026-08-21 and this fix.
+      _currentRoundThrows.add(
+          _DartThrow(baseScore, multiplier, aiReading: aiReading));
       _dartsThrown++;
     });
 

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/iap_service.dart';
+import '../services/meta_events_service.dart';
 import '../services/subscription_service.dart';
 
 class SubscriptionProvider with ChangeNotifier {
@@ -27,6 +28,15 @@ class SubscriptionProvider with ChangeNotifier {
   String? _errorMessage;
 
   StreamSubscription<IapEvent>? _iapEventsSub;
+
+  /// The plan whose Stripe Checkout we just opened in the browser, kept until
+  /// [refresh] sees the subscription land. Stripe checkout happens outside the
+  /// app, so this is the only way to tell "just bought" from "was already a
+  /// subscriber when the app started" — without it, every existing subscriber
+  /// would be reported to Meta as a fresh conversion on first refresh.
+  /// iOS never sets it: purchases there are reported by [IapService], which
+  /// gets the real Apple transaction.
+  SubscriptionPlan? _pendingStripeCheckout;
 
   bool get isPremium => _isPremium;
   DateTime? get premiumExpiresAt => _premiumExpiresAt;
@@ -76,6 +86,7 @@ class SubscriptionProvider with ChangeNotifier {
       _dailyLimit = status.dailyLimit;
       _freePlayActive = status.freePlayActive;
       _hasPaidSubscription = status.hasPaidSubscription;
+      _reportStripeConversionIfLanded();
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       debugPrint('SubscriptionProvider.refresh failed: $_errorMessage');
@@ -83,6 +94,22 @@ class SubscriptionProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Reports a Stripe subscription to Meta once — and only once — after the
+  /// user came back from a checkout we opened ourselves.
+  void _reportStripeConversionIfLanded() {
+    final plan = _pendingStripeCheckout;
+    if (plan == null || !_hasPaidSubscription) return;
+    _pendingStripeCheckout = null;
+    unawaited(MetaEventsService.logSubscription(
+      plan: plan,
+      // Stripe's own subscription id never reaches the client, so the order id
+      // is synthesised. It only has to be unique per sale — Meta uses it to
+      // deduplicate, and the guard above already makes double-reporting
+      // impossible within a session.
+      orderId: 'stripe_${DateTime.now().millisecondsSinceEpoch}',
+    ));
   }
 
   /// Starts checkout for the given plan. On iOS, triggers the native Apple
@@ -95,7 +122,11 @@ class SubscriptionProvider with ChangeNotifier {
 
     if (Platform.isIOS) {
       try {
-        return await IapService.instance.buy(plan);
+        final started = await IapService.instance.buy(plan);
+        // Funnel event: only once Apple's sheet is actually up, so a failed
+        // buy() doesn't show up in Meta as an abandoned checkout.
+        if (started) unawaited(MetaEventsService.logCheckoutStarted(plan));
+        return started;
       } catch (e) {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         notifyListeners();
@@ -115,6 +146,8 @@ class SubscriptionProvider with ChangeNotifier {
         notifyListeners();
         return false;
       }
+      _pendingStripeCheckout = plan;
+      unawaited(MetaEventsService.logCheckoutStarted(plan));
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');

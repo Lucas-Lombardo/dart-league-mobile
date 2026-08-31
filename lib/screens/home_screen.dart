@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -14,6 +15,7 @@ import '../providers/referral_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/tournament_provider.dart';
 import '../providers/season_provider.dart';
+import '../services/meta_events_service.dart';
 import '../services/push_notification_service.dart';
 import 'season/season_recap_screen.dart';
 import '../main.dart' show routeObserver;
@@ -92,6 +94,13 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           ),
         );
       };
+
+      // iOS tracking prompt, once per install. Asked here rather than at
+      // launch: on a cold first frame the system alert lands before the user
+      // knows what the app is and gets dismissed by reflex, and a refusal is
+      // final — Apple never asks twice. Refusing it costs Meta ad attribution
+      // on iOS, so it's worth the good moment.
+      unawaited(MetaEventsService.requestTrackingConsent());
     });
   }
 

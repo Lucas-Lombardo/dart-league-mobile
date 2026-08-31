@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'api_service.dart';
+import 'meta_events_service.dart';
 import 'subscription_service.dart';
 
 class IapProductIds {
@@ -123,13 +124,22 @@ class IapService {
           break;
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
+          var verified = false;
           try {
             await _verifyWithBackend(purchase);
+            verified = true;
             sawSuccess = true;
           } catch (e) {
             sawError = true;
             lastError = e.toString().replaceAll('Exception: ', '');
             debugPrint('IapService: backend verify failed: $e');
+          }
+          // Meta ad attribution — new purchases only. A `restored` one is the
+          // same subscription arriving on a new device; reporting it would
+          // tell Meta the ad set produced a second buyer. Fire and forget:
+          // the user is waiting on the paywall, not on analytics.
+          if (verified && purchase.status == PurchaseStatus.purchased) {
+            unawaited(_logPurchaseToMeta(purchase));
           }
           if (purchase.pendingCompletePurchase) {
             await _iap.completePurchase(purchase);
@@ -157,6 +167,22 @@ class IapService {
     } else if (sawError) {
       _events.add(IapEvent.error(lastError ?? 'Purchase failed'));
     }
+  }
+
+  /// Reports the sale to Meta with the price Apple actually charged (the
+  /// user's own currency), falling back to the Stripe list price when the
+  /// product details never loaded.
+  Future<void> _logPurchaseToMeta(PurchaseDetails purchase) async {
+    final plan = purchase.productID == IapProductIds.yearly
+        ? SubscriptionPlan.yearly
+        : SubscriptionPlan.monthly;
+    final product = _products[purchase.productID];
+    await MetaEventsService.logSubscription(
+      plan: plan,
+      orderId: purchase.purchaseID ?? purchase.productID,
+      amount: product?.rawPrice,
+      currency: product?.currencyCode,
+    );
   }
 
   Future<void> _verifyWithBackend(PurchaseDetails purchase) async {

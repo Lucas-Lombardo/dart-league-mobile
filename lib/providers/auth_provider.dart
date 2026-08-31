@@ -1,6 +1,8 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/meta_events_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/socket_service.dart';
 import '../utils/error_messages.dart';
@@ -100,6 +102,10 @@ class AuthProvider extends ChangeNotifier {
       await PushNotificationService.initialize();
       await PushNotificationService.registerToken();
       _presenceProvider?.start();
+      // Meta ad attribution: this is the event that ties a paid install to an
+      // actual account. Only on register — logging it again on every login
+      // would inflate the conversion count Meta bids on.
+      unawaited(MetaEventsService.logSignUp());
       // Load subscription state for the new user (fire and forget)
       _subscriptionProvider?.refresh();
       _isLoading = false;

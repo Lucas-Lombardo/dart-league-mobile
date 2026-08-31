@@ -33,6 +33,7 @@ import 'screens/home_screen.dart';
 import 'dev/delegate_bench.dart';
 import 'services/api_service.dart';
 import 'services/dataset_capture_service.dart';
+import 'services/meta_events_service.dart';
 import 'services/model_selector.dart';
 import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
@@ -67,6 +68,11 @@ void main() async {
     }
   }
   
+  // Meta (Facebook) App Events — install/session attribution for the paid ad
+  // campaigns. Guarded like Firebase above: analytics must never block boot.
+  // The iOS ATT prompt is NOT asked here (see HomeScreen).
+  await MetaEventsService.init();
+
   // Initialize Stripe (skip on web - not supported)
   if (!kIsWeb) {
     const stripeKey = String.fromEnvironment(
