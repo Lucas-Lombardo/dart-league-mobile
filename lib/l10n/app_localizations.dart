@@ -1042,6 +1042,8 @@ abstract class AppLocalizations {
   String get opponentTurnWait;
   String get autoValidation;
   String get autoValidationHint;
+  String get manualConfirmExplainer;
+  String get manualConfirmButton;
   String get confirmUpper;
 
   // Tournament detail screen (round-focused bracket)

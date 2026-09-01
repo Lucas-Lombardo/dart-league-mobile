@@ -2749,6 +2749,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoValidationHint =>
       'Remove your darts from the board to validate';
   @override
+  String get manualConfirmExplainer =>
+      'Board empty with only 1 dart scored — confirm your visit yourself';
+  @override
+  String get manualConfirmButton => 'CONFIRM MY VISIT';
+  @override
   String get confirmUpper => 'CONFIRM';
 
   // Tournament detail screen (round-focused bracket)

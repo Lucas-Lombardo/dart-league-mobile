@@ -89,13 +89,18 @@ class DetectionLayout {
     controlPointThreshold: kConfidenceThreshold,
   );
 
-  /// dartboard-v10 end-to-end head: dart FIRST, 0.50 on darts / 0.80 on
-  /// calibration points.
+  /// dartboard-v10 end-to-end head: dart FIRST, 0.87 on darts / 0.80 on
+  /// calibration points. Le floor darts était 0.50 au lancement de v13 ;
+  /// remonté à 0.87 le 2026-09-01 (décision Lucas) : sur 81k fléchettes prod,
+  /// les détections sous 0.87 étaient corrigées par le joueur ~15-18 % du
+  /// temps (contre 0,9 % au-dessus de 0.95) et alimentaient les doublons.
+  /// Une fléchette sous le floor n'est simplement pas comptée — le joueur
+  /// l'ajoute à la main, comme avant v13.
   static const e2eDartFirst = DetectionLayout(
     id: 'e2e-dart-first',
     dartClassIndex: DartClassIndex.first,
     boxUnits: BoxUnits.canvasPixels,
-    tipThreshold: 0.50,
+    tipThreshold: 0.87,
     controlPointThreshold: kConfidenceThreshold,
   );
 
@@ -108,7 +113,7 @@ class DetectionLayout {
     id: 'anchor-px-dart-first',
     dartClassIndex: DartClassIndex.first,
     boxUnits: BoxUnits.canvasPixels,
-    tipThreshold: 0.50,
+    tipThreshold: 0.87,
     controlPointThreshold: kConfidenceThreshold,
   );
 

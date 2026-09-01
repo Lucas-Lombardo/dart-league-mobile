@@ -2779,6 +2779,11 @@ class AppLocalizationsFr extends AppLocalizations {
   String get autoValidationHint =>
       'Retirez vos fléchettes de la cible pour valider';
   @override
+  String get manualConfirmExplainer =>
+      'Cible vide avec 1 seule fléchette comptée — confirmez vous-même votre volée';
+  @override
+  String get manualConfirmButton => 'CONFIRMER MA VOLÉE';
+  @override
   String get confirmUpper => 'CONFIRMER';
 
   // Tournament detail screen (round-focused bracket)

@@ -296,6 +296,10 @@ class AutoScoringService extends ChangeNotifier {
   List<bool> _emittedSlots = [false, false, false];
   List<bool> _manualOverrideSlots = [false, false, false];
   List<bool> _removedSlots = [false, false, false];
+  // Règle 1 anti-doublon : position normalisée (boardR == 1) de chaque
+  // fléchette au moment de son émission. C'est l'ancre de présomption qui
+  // survit à la mort du groupe de tracking — voir _assignSlots.
+  List<List<double>?> _emittedSlotPoints = [null, null, null];
 
   // Dataset capture (see DatasetCaptureService): armed once per startCapture
   // so a visit contributes at most ONE 3-dart frame, disarmed on capture.
@@ -326,6 +330,15 @@ class AutoScoringService extends ChangeNotifier {
   // some of their darts. Three frames gives the model a real chance to
   // re-detect the remaining tips.
   static const int _autoConfirmThreshold = 3;
+  // Passage automatique à l'adversaire (cible vide) : exige au moins ce
+  // nombre de fléchettes scorées. Une volée d'UNE seule fléchette suivie
+  // d'une cible « vide » est le plus souvent un raté de lecture (occlusion,
+  // fléchettes non vues) ou une fléchette fantôme — pas une volée
+  // volontairement écourtée. Dans ce cas on ne passe JAMAIS la main tout
+  // seul : [manualConfirmNeeded] s'allume et c'est le bouton CONFIRMER qui
+  // termine la volée (décision 2026-09-01).
+  static const int _autoConfirmMinDarts = 2;
+  bool _manualConfirmNeeded = false;
   int _prevDartCount = 0;
   // Require N consecutive empty frames after seeing darts before flagging
   // the board as cleared. A single empty frame is unreliable — the model
@@ -392,6 +405,7 @@ class AutoScoringService extends ChangeNotifier {
     b.write('|');
     b.write(_waitingForEmptyBoard ? '1' : '0');
     b.write(_emptyBoardGateSawDarts ? '1' : '0');
+    b.write(_manualConfirmNeeded ? '1' : '0');
     return b.toString();
   }
 
@@ -417,6 +431,11 @@ class AutoScoringService extends ChangeNotifier {
   bool get dartsRemoved => _dartsRemoved;
   bool get waitingForEmptyBoard => _waitingForEmptyBoard;
 
+  /// Cible vide avec UNE seule fléchette scorée : le passage automatique est
+  /// bloqué (voir [_autoConfirmMinDarts]) et l'UI doit inviter le joueur à
+  /// appuyer sur CONFIRMER pour terminer sa volée.
+  bool get manualConfirmNeeded => _manualConfirmNeeded;
+
   /// True only when the match-start gate is armed AND the camera has actually
   /// seen darts on the board — drives the "remove your darts" hint. A board
   /// that is already empty never shows the hint.
@@ -435,6 +454,7 @@ class AutoScoringService extends ChangeNotifier {
     _waitingForEmptyBoard = true;
     _emptyBoardCheckCount = 0;
     _emptyBoardGateSawDarts = false;
+    _manualConfirmNeeded = false;
     _notifyIfChanged();
   }
 
@@ -530,6 +550,7 @@ class AutoScoringService extends ChangeNotifier {
     // exits on its next check.
     final generation = ++_captureGeneration;
     _dartsRemoved = false;
+    _manualConfirmNeeded = false;
     _datasetCaptureArmed = true;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
@@ -562,8 +583,10 @@ class AutoScoringService extends ChangeNotifier {
     _emittedSlots = [false, false, false];
     _manualOverrideSlots = [false, false, false];
     _removedSlots = [false, false, false];
+    _emittedSlotPoints = [null, null, null];
     _prevDartCount = 0;
     _dartsRemoved = false;
+    _manualConfirmNeeded = false;
     _consecutiveEmptyBoardCount = 0;
     _consecutiveRemovalCount = 0;
     _zoomHint = null;
@@ -588,6 +611,7 @@ class AutoScoringService extends ChangeNotifier {
       _emittedSlots[i] = false;
       _manualOverrideSlots[i] = false;
       _removedSlots[i] = false;
+      _emittedSlotPoints[i] = null;
     }
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -613,6 +637,8 @@ class AutoScoringService extends ChangeNotifier {
     _emittedSlots[index] = false;
     _manualOverrideSlots[index] = false;
     _removedSlots[index] = false;
+    _emittedSlotPoints[index] = null;
+    _manualConfirmNeeded = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
@@ -625,6 +651,10 @@ class AutoScoringService extends ChangeNotifier {
     _emittedSlots[index] = false;
     _manualOverrideSlots[index] = false;
     _removedSlots[index] = true;
+    // L'ancre anti-doublon tombe avec la fléchette : le joueur affirme qu'il
+    // n'y a rien à cet endroit, une future détection y est donc légitime.
+    _emittedSlotPoints[index] = null;
+    _manualConfirmNeeded = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
   }
@@ -876,23 +906,42 @@ class AutoScoringService extends ChangeNotifier {
         return;
       }
 
-      // Auto-confirm
-      final anyDartEmitted = _emittedSlots.any((e) => e);
-      if (anyDartEmitted &&
+      // Auto-confirm — le passage automatique à l'adversaire exige au moins
+      // [_autoConfirmMinDarts] fléchettes scorées. Avec une seule, on allume
+      // [manualConfirmNeeded] à la place : le bandeau demande au joueur
+      // d'appuyer sur CONFIRMER, et la main ne passe jamais toute seule.
+      final emittedCount = _emittedSlots.where((e) => e).length;
+      if (emittedCount > 0 &&
           dartCount == 0 &&
           result.calibrationPoints.length >= 4) {
         _consecutiveEmptyBoardCount++;
         if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
-          _consecutiveEmptyBoardCount = 0;
-          _prevDartCount = 0;
-          _trace('GATE auto-confirm (board empty $_autoConfirmThreshold frames) — submitting turn');
-          telemetry.recordAutoConfirm();
-          await _maybeCleanup(imagePath, cleanupFile);
-          onAutoConfirm?.call();
-          return;
+          if (emittedCount >= _autoConfirmMinDarts) {
+            _consecutiveEmptyBoardCount = 0;
+            _prevDartCount = 0;
+            _trace('GATE auto-confirm (board empty $_autoConfirmThreshold '
+                'frames, $emittedCount darts) — submitting turn');
+            telemetry.recordAutoConfirm();
+            await _maybeCleanup(imagePath, cleanupFile);
+            onAutoConfirm?.call();
+            return;
+          }
+          if (!_manualConfirmNeeded) {
+            _manualConfirmNeeded = true;
+            _trace('GATE auto-confirm HELD (only $emittedCount dart emitted) '
+                '— manual CONFIRM required');
+          }
+          // Clamp: le compteur a fait son office, inutile de le laisser
+          // croître pendant toute l'attente du joueur.
+          _consecutiveEmptyBoardCount = _autoConfirmThreshold;
         }
       } else {
         _consecutiveEmptyBoardCount = 0;
+        // Une pointe est revisible (fléchette re-détectée ou nouveau lancer) :
+        // la demande de confirmation manuelle n'a plus lieu d'être.
+        if (_manualConfirmNeeded && dartCount > 0) {
+          _manualConfirmNeeded = false;
+        }
       }
 
       // Dart removal detection — require N consecutive empty frames after
@@ -1097,10 +1146,16 @@ class AutoScoringService extends ChangeNotifier {
   void _pruneStaleGroups() {
     if (_tipGroups.isEmpty && _shootGroups.isEmpty) return;
     final now = _nowSeconds();
+    // Règle 1 : les groupes liés à un slot sont intouchables — l'ancre d'une
+    // fléchette émise doit survivre à toute la volée.
+    final slotBound = <String>{
+      for (final id in _slotShootGroupIds) ?id,
+    };
 
     // Drop tip groups that have gone invisible and haven't been seen for a while
     // and were never confirmed (firstPassTime == null). These are detector noise.
     _tipGroups.removeWhere((tg) =>
+        !slotBound.contains(tg.id) &&
         tg.visibility == TipVisibility.invisible &&
         tg.firstPassTime == null &&
         (now - tg.latestVisibleTime) > _staleTipGroupSeconds);
@@ -1109,12 +1164,26 @@ class AutoScoringService extends ChangeNotifier {
     // long-confirmed (already mirrored in _shootGroups) or stale noise.
     if (_tipGroups.length > _maxTipGroups) {
       _tipGroups.sort((a, b) => b.createdTime.compareTo(a.createdTime));
-      _tipGroups = _tipGroups.take(_maxTipGroups).toList();
+      final kept = _tipGroups.take(_maxTipGroups).toList();
+      final keptIds = kept.map((t) => t.id).toSet();
+      for (final tg in _tipGroups) {
+        if (slotBound.contains(tg.id) && !keptIds.contains(tg.id)) {
+          kept.add(tg);
+        }
+      }
+      _tipGroups = kept;
     }
 
     if (_shootGroups.length > _maxShootGroups) {
       _shootGroups.sort((a, b) => b.createdTime.compareTo(a.createdTime));
-      _shootGroups = _shootGroups.take(_maxShootGroups).toList();
+      final kept = _shootGroups.take(_maxShootGroups).toList();
+      final keptIds = kept.map((s) => s.id).toSet();
+      for (final sg in _shootGroups) {
+        if (slotBound.contains(sg.id) && !keptIds.contains(sg.id)) {
+          kept.add(sg);
+        }
+      }
+      _shootGroups = kept;
     }
   }
 
@@ -1705,6 +1774,30 @@ class AutoScoringService extends ChangeNotifier {
   // from ever changing.
   static const int _contentionResolveFrames = 3;
 
+  // ---- Règles anti-doublon 1+2 (2026-09-01) -------------------------------
+  // Règle 1 — une fléchette scorée ne s'oublie jamais. La position de chaque
+  // slot émis est mémorisée pour toute la volée (_emittedSlotPoints) et sert
+  // d'ancre : toute nouvelle détection à moins de [_emittedDupRadiusNorm] de
+  // cette ancre est PRÉSUMÉE être la même fléchette (ré-apparue après une
+  // occlusion, un saut de calibration ou une perte de tracking), jamais un
+  // nouveau lancer. Elle est ré-adoptée par le slot au lieu d'être ré-émise.
+  // 2 mm sur la cible réelle, en espace normalisé (boardR 170 mm == 1).
+  static const double _emittedDupRadiusNorm = 2.0 / 170.0;
+  // Règle 2 — co-visibilité. Le seul nouveau lancer légitime à moins de 2 mm
+  // d'une fléchette scorée est une vraie fléchette collée, et deux vraies
+  // fléchettes se voient DANS LES MÊMES frames. Un doublon de ré-émission
+  // n'est jamais co-visible avec son original (il naît précisément parce que
+  // l'original a disparu de la lecture). On exige donc ce nombre de frames où
+  // les deux pointes sont détectées simultanément avant d'émettre le candidat.
+  static const int _coVisibleMinFrames = 3;
+  // L'original du slot est « vivant » s'il a été détecté dans ses N dernières
+  // frames d'historique ; sinon il est mort/orphelin et le candidat proche est
+  // ré-adopté (règle 1). Trade-off assumé : une vraie 2ᵉ fléchette plantée à
+  // <2 mm pile pendant que la 1ʳᵉ est occultée serait absorbée par le slot —
+  // à 2 mm c'est un cas extrême, et l'inverse (émettre) est le bug de
+  // duplication qu'on tue.
+  static const int _originalAliveWindow = 3;
+
   // ========================================================================
   // DartsMind: analyseShootGroups (faithful port of the duplicate-suppression
   // pass — DVMind.java analyseShootGroups, verified against dartsmindv2 bytecode)
@@ -1805,8 +1898,15 @@ class AutoScoringService extends ChangeNotifier {
     }
 
     // Remove shoot groups that have been all-null for too long (noise cleanup).
+    // EXCEPTION (règle 1) : le groupe d'un slot ÉMIS n'est jamais supprimé —
+    // il reste l'ancre vivante contre la ré-émission de sa fléchette et le
+    // témoin de co-visibilité pour une vraie fléchette collée. Sans lui, la
+    // fléchette ré-apparue après occlusion renaissait sous un nouvel id et
+    // était scorée une 2ᵉ fois (le bug de duplication).
     _shootGroups.removeWhere((sg) {
       if (sg.priority != 0) return false;
+      final slot = _slotShootGroupIds.indexOf(sg.id);
+      if (slot >= 0 && _emittedSlots[slot]) return false;
       final recentNonNull =
           sg.shoots.reversed.take(5).whereType<Shoot>().length;
       return sg.shoots.length >= 5 && recentNonNull == 0;
@@ -1965,6 +2065,42 @@ class AutoScoringService extends ChangeNotifier {
     return best;
   }
 
+  /// Règle 1 : index du slot ÉMIS dont l'ancre de position est à moins de
+  /// [_emittedDupRadiusNorm] (2 mm) du groupe [sg] — le plus proche si
+  /// plusieurs — ou -1 si aucun.
+  int _nearestEmittedSlot(ShootGroup sg) {
+    final p = _shootGroupAvgPoint(sg);
+    if (p == null) return -1;
+    int best = -1;
+    double bestDist = _emittedDupRadiusNorm;
+    for (int s = 0; s < 3; s++) {
+      final anchor = _emittedSlotPoints[s];
+      if (anchor == null || !_emittedSlots[s]) continue;
+      final d = _distanceOf2Points(p[0], p[1], anchor[0], anchor[1]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  /// Règle 2 : nombre de frames où [a] et [b] ont été détectés SIMULTANÉMENT.
+  /// Les historiques des ShootGroups reçoivent une entrée (shoot ou null) par
+  /// frame analysée et sont taillés par l'avant, donc leurs FINS sont alignées
+  /// dans le temps — on compare position à position depuis la fin.
+  int _coVisibleFrames(ShootGroup a, ShootGroup b) {
+    final n = min(a.shoots.length, b.shoots.length);
+    int count = 0;
+    for (int i = 1; i <= n; i++) {
+      if (a.shoots[a.shoots.length - i] != null &&
+          b.shoots[b.shoots.length - i] != null) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   void _assignSlots(OnDartDetectedCallback? onDartDetected) {
     // Intentionally do NOT re-score already-emitted slots. Once the AI has
     // committed to a score for a slot, we stick with it for the rest of the
@@ -1977,6 +2113,53 @@ class AutoScoringService extends ChangeNotifier {
     for (final sg in _shootGroups) {
       if (sg.priority != 0) continue;
       if (_slotShootGroupIds.contains(sg.id)) continue;
+
+      // ---- Règles anti-doublon 1+2 (voir les constantes _emittedDup*) ----
+      // Un candidat né à moins de 2 mm d'une fléchette DÉJÀ ÉMISE est présumé
+      // être cette fléchette, ré-apparue sous une nouvelle identité de
+      // tracking (occlusion, saut de calibration).
+      final dupSlot = _nearestEmittedSlot(sg);
+      if (dupSlot >= 0) {
+        final originalId = _slotShootGroupIds[dupSlot];
+        final original = originalId == null
+            ? null
+            : _shootGroups.where((o) => o.id == originalId).firstOrNull;
+        final originalAlive = original != null &&
+            original.shoots.reversed
+                .take(_originalAliveWindow)
+                .whereType<Shoot>()
+                .isNotEmpty;
+        if (!originalAlive) {
+          // Règle 1 : l'original a disparu de la lecture → le candidat EST la
+          // fléchette du slot. Ré-adoption silencieuse : le slot suit le
+          // nouveau groupe, le score affiché ne change pas, rien n'est émis.
+          if (original != null) {
+            original.priority = 2;
+            final otg =
+                _tipGroups.where((t) => t.id == original.id).firstOrNull;
+            if (otg != null) otg.priority = 2;
+          }
+          _slotShootGroupIds[dupSlot] = sg.id;
+          final p = _shootGroupAvgPoint(sg);
+          if (p != null) _emittedSlotPoints[dupSlot] = [p[0], p[1]];
+          _trace('EVENT re-adopt slot$dupSlot <- SG ${_sid(sg.id)} '
+              '(within 2mm of emitted dart, original '
+              '${original == null ? "gone" : "invisible"}) — duplicate '
+              'suppressed');
+          continue;
+        }
+        // Règle 2 : l'original est toujours suivi → le candidat n'est un vrai
+        // 2ᵉ lancer (fléchettes collées) que si les deux pointes sont vues
+        // SIMULTANÉMENT. Un doublon n'est jamais co-visible avec son original.
+        final co = _coVisibleFrames(sg, original);
+        if (co < _coVisibleMinFrames) {
+          _trace('EVENT hold SG ${_sid(sg.id)} (within 2mm of emitted '
+              'slot$dupSlot, co-visible $co/$_coVisibleMinFrames frames)');
+          continue;
+        }
+        _trace('EVENT co-visible ${co}f — SG ${_sid(sg.id)} accepted as a '
+            'real second dart beside slot$dupSlot');
+      }
 
       // Universal settle gate. We never un-emit (constraint: a shown dart's
       // score must never change or vanish), so a dart is committed only once it
@@ -2015,6 +2198,12 @@ class AutoScoringService extends ChangeNotifier {
             !_removedSlots[s]) {
           _slotShootGroupIds[s] = sg.id;
           _dartSlots[s] = score;
+          // Ancre règle 1 : la position d'émission survit à la mort du groupe
+          // et bloque toute ré-émission de la même fléchette (voir plus haut).
+          final anchor = _shootGroupAvgPoint(sg);
+          if (anchor != null) {
+            _emittedSlotPoints[s] = [anchor[0], anchor[1]];
+          }
           final firstEmit = !_emittedSlots[s];
           _trace('EVENT ${firstEmit ? "EMIT" : "assign"} slot$s <- '
               'SG ${_sid(sg.id)} ${score.formatted}');

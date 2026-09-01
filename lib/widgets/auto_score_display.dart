@@ -107,6 +107,9 @@ class AutoScoreGameView extends StatelessWidget {
         // Only true when the AI has actually seen leftover darts on the
         // board — an already-clean board never shows the "remove darts" pill.
         final showRemoveDartsHint = scoringService.showRemoveDartsHint;
+        // Cible vide avec UNE seule fléchette comptée : le passage
+        // automatique est bloqué, on invite le joueur à CONFIRMER lui-même.
+        final manualConfirmNeeded = scoringService.manualConfirmNeeded;
         final lastFilledIndex = slots.lastIndexWhere((s) => s != null);
 
         final safeTop = MediaQuery.of(context).padding.top;
@@ -183,7 +186,27 @@ class AutoScoreGameView extends StatelessWidget {
             letterSpacing: 1,
           ),
         );
-        final baseConfirmStyle = pendingConfirmation
+        final confirmHighlighted = pendingConfirmation || manualConfirmNeeded;
+        // Option C (2026-09-01) : quand la confirmation manuelle est requise,
+        // le bouton CONFIRMER devient l'alerte — doré, texte sombre. L'or est
+        // réservé à cet état pour qu'il tranche avec le bleu du jeu.
+        final goldConfirmStyle = ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.accent,
+          foregroundColor: AppTheme.gameBackground,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.5,
+          ),
+        );
+        final baseConfirmStyle = manualConfirmNeeded
+            ? goldConfirmStyle
+            : confirmHighlighted
             ? gameFilledButtonStyle(AppTheme.playerBlue)
             : gameOutlineButtonStyle(AppTheme.playerBlue);
         final confirmStyle = confirmBesideChips
@@ -196,7 +219,7 @@ class AutoScoreGameView extends StatelessWidget {
           HapticService.heavyImpact();
           onConfirm();
         }
-        final confirmButton = pendingConfirmation
+        final confirmButton = confirmHighlighted
             ? ElevatedButton(
                 onPressed: handleConfirm,
                 style: confirmStyle,
@@ -207,6 +230,38 @@ class AutoScoreGameView extends StatelessWidget {
                 style: confirmStyle,
                 child: Text(l10n.confirmUpper),
               );
+
+        // ── Option C « confirme toi-même » : cible vide + 1 seule fléchette
+        // comptée. Une ligne d'explication dorée + le bouton CONFIRMER MA
+        // VOLÉE doré pleine largeur, qui remplace toute la rangée du bas
+        // (X01). Cricket garde son bouton docké (passé en doré) et affiche la
+        // ligne d'explication au-dessus des chips.
+        final manualConfirmExplainerText = Text(
+          l10n.manualConfirmExplainer,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppTheme.accent,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            height: 1.25,
+          ),
+        );
+        final manualConfirmColumn = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            manualConfirmExplainerText,
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: handleConfirm,
+              style: goldConfirmStyle,
+              icon: const Icon(Icons.touch_app, size: 17),
+              label: Text(l10n.manualConfirmButton),
+            ),
+          ],
+        );
 
         // ── The three visit chips (cricket: compact, with the CONFIRM
         // button docked to the row's right — 2026-08-19 "tableau" layout) ──
@@ -350,6 +405,10 @@ class AutoScoreGameView extends StatelessWidget {
                           header!,
                           const SizedBox(height: 12),
                         ],
+                        if (manualConfirmNeeded && confirmBesideChips) ...[
+                          manualConfirmExplainerText,
+                          const SizedBox(height: 8),
+                        ],
                         visitLabel,
                         const SizedBox(height: 8),
                         chipsRow,
@@ -362,7 +421,10 @@ class AutoScoreGameView extends StatelessWidget {
                         ] else ...[
                           const Spacer(),
                           const SizedBox(height: 8),
-                          bottomRow,
+                          if (manualConfirmNeeded)
+                            manualConfirmColumn
+                          else
+                            bottomRow,
                         ],
                       ],
                     ),
@@ -414,6 +476,10 @@ class AutoScoreGameView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (manualConfirmNeeded && confirmBesideChips) ...[
+                          manualConfirmExplainerText,
+                          const SizedBox(height: 6),
+                        ],
                         visitLabel,
                         const SizedBox(height: 8),
                         chipsRow,
@@ -431,7 +497,7 @@ class AutoScoreGameView extends StatelessWidget {
               else
                 Padding(
                   padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
-                  child: bottomRow,
+                  child: manualConfirmNeeded ? manualConfirmColumn : bottomRow,
                 ),
             ],
           ),
