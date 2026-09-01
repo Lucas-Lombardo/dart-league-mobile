@@ -42,6 +42,18 @@ class StorageService {
     await _storage.delete(key: _languageKey);
   }
 
+  // Match proof: retention key → matchIds/seriesId registry (JSON), so a
+  // result dispute filed after an app relaunch still finds its footage.
+  static const String _matchProofRegistryKey = 'match_proof_registry';
+
+  static Future<void> saveMatchProofRegistry(String json) async {
+    await _storage.write(key: _matchProofRegistryKey, value: json);
+  }
+
+  static Future<String?> getMatchProofRegistry() async {
+    return await _storage.read(key: _matchProofRegistryKey);
+  }
+
   static const String _cameraZoomKey = 'camera_zoom';
 
   static Future<void> saveCameraZoom(double zoom) async {

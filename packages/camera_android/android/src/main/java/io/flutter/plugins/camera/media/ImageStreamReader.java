@@ -28,6 +28,21 @@ public class ImageStreamReader {
   private static final String TAG = "ImageStreamReader";
 
   /**
+   * Dart Rivals patch (thermal): minimum interval between frames DELIVERED to
+   * Dart, in ms. 0 = deliver everything (stock behaviour). Set from the app
+   * (MainActivity's "com.dartrivals/camera_throttle" channel) during the
+   * opponent's turn in online matches: the stream stays alive (no plugin
+   * teardown, the peer's stall watchdog keeps being fed by the ~1 fps P2P
+   * trickle) but the expensive per-frame work — plane copy to a Java array,
+   * main-looper post, EventChannel serialization into Dart — is skipped at the
+   * source for the frames nobody consumes. Volatile: written from the platform
+   * thread, read on the camera background handler.
+   */
+  public static volatile long throttleMinIntervalMs = 0;
+
+  private long lastDeliveredElapsedMs = 0;
+
+  /**
    * The image format we are going to send back to dart. Usually it's the same as streamImageFormat
    * but in the case of NV21 we will actually request YUV frames but convert it to NV21 before
    * sending to dart.
@@ -249,6 +264,18 @@ public class ImageStreamReader {
         reader -> {
           Image image = reader.acquireNextImage();
           if (image == null) return;
+
+          // Dart Rivals patch: drop (close) frames early while throttled —
+          // the acquire+close pair still drains the reader's queue.
+          final long minIntervalMs = throttleMinIntervalMs;
+          if (minIntervalMs > 0) {
+            final long nowMs = android.os.SystemClock.elapsedRealtime();
+            if (nowMs - lastDeliveredElapsedMs < minIntervalMs) {
+              image.close();
+              return;
+            }
+            lastDeliveredElapsedMs = nowMs;
+          }
 
           onImageAvailable(image, captureProps, imageStreamSink);
         },

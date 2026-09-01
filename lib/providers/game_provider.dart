@@ -1482,6 +1482,12 @@ class GameProvider with ChangeNotifier {
       'isDouble': isDouble,
       'isTriple': isTriple,
       'source': source,
+      // Wall-clock of the registration on THIS phone — the same clock the
+      // replay ring stamps its segments with, which is what lets the admin's
+      // match-proof viewer jump the video to this exact dart. Baked into the
+      // payload once, so retries keep the original instant. Optional
+      // server-side; old backends ignore it.
+      't': DateTime.now().millisecondsSinceEpoch,
     };
     if (source == 'ai') {
       // finiteOrNull, not a plain null check: a near-singular homography makes

@@ -15,6 +15,7 @@ import '../providers/referral_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/tournament_provider.dart';
 import '../providers/season_provider.dart';
+import '../services/match_proof_service.dart';
 import '../services/meta_events_service.dart';
 import '../services/push_notification_service.dart';
 import 'season/season_recap_screen.dart';
@@ -67,6 +68,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       // the daily-limit card need eligibility resolved before they can decide
       // whether to render at all.
       context.read<ReferralProvider>().refreshEligibility();
+
+      // Match proof: attach the capture_match listener for the app's
+      // lifetime, and sweep for result disputes that were filed while this
+      // device was offline (their footage is still retained locally).
+      unawaited(MatchProofService.checkPending());
 
       // Seasons: the home ring pill + line and the Rankings tab read the
       // provider; no socket event, so it refreshes here and on didPopNext.

@@ -41,6 +41,14 @@ import UserNotifications
     let replayPlugin = ReplayBufferPlugin()
     replayChannel.setMethodCallHandler(replayPlugin.handle)
 
+    // Thermal: live camera frame-rate throttle for the opponent's turn.
+    let cameraThrottleChannel = FlutterMethodChannel(
+      name: "com.dartrivals/camera_throttle",
+      binaryMessenger: controller.binaryMessenger
+    )
+    let cameraThrottlePlugin = CameraThrottlePlugin()
+    cameraThrottleChannel.setMethodCallHandler(cameraThrottlePlugin.handle)
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

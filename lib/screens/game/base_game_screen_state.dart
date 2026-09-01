@@ -16,6 +16,7 @@ import '../../services/replay_buffer_service.dart';
 import '../../services/replay_clips_store.dart';
 import '../../services/replay_overlay_timeline.dart';
 import '../../services/replay_upload_service.dart';
+import '../../services/match_proof_service.dart';
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/turn_report_service.dart';
@@ -397,18 +398,15 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     return true;
   }
 
-  /// Cuts the visit I just finished out of the ring and hands it to
-  /// [TurnReportService], which keeps exactly one. Nothing leaves the device
-  /// here: the clip is only uploaded if the opponent flags that visit, and it
-  /// is deleted as soon as the next one replaces it.
-  ///
-  /// The cut is a passthrough concat (no re-encode), so paying it on every
-  /// visit is cheap — and it is what makes a flag answerable instantly instead
-  /// of racing the ring, which by then has moved on.
+  /// Notes the metadata of the visit I just finished for [TurnReportService].
+  /// No cut, no file I/O anymore (thermal round 5): the ring now RETAINS the
+  /// whole match, so the clip is cut on demand only when a `capture_turn`
+  /// actually arrives — instead of writing 3-7.5 MB to disk at every visit
+  /// end of every match "just in case".
   ///
   /// Runs on the turn-change notify, right after [ReplayBufferService.setMyTurn]
-  /// closed the open segment, so the last seconds of the visit are in the ring.
-  Future<void> cacheVisitForReports(dynamic game) async {
+  /// closed the open segment, so the visit's window is fully on disk.
+  void cacheVisitForReports(dynamic game) {
     if (!TurnReportService.enabled) return;
     if (!ReplayBufferService.armed) return;
     final matchId = matchIdForLeave;
@@ -424,35 +422,23 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     try {
       turnIndex = (game.myRounds as List).length;
     } catch (_) {}
-    try {
-      final captured = await ReplayBufferService.captureRange(
-        start,
-        DateTime.now(),
-        rotationDegrees: CameraFrameService.calibratedUprightRotation,
-      );
-      if (captured == null) return;
-      await TurnReportService.cacheVisit(
-        path: captured.path,
-        matchId: matchId,
-        turnIndex: turnIndex,
-        dartTimes: dartTimes,
-        durationMs: captured.durationMs,
-      );
-    } catch (e) {
-      // A missing cache just means a flag on this visit comes back empty —
-      // never a reason to disturb the match.
-      debugPrint('[TurnReport] visit cache failed: $e');
-    }
+    TurnReportService.noteVisit(
+      matchId: matchId,
+      turnIndex: turnIndex,
+      dartTimes: dartTimes,
+      windowStart: start,
+      windowEnd: DateTime.now(),
+    );
   }
 
-  /// Same cut as [cacheVisitForReports], but for the visit that ENDED the leg
-  /// and under a key that survives the rest of the series: the loser flags it
-  /// from the end-of-leg or end-of-match screen, well after the rolling cache
-  /// would have moved on.
-  Future<void> cacheWinningVisitForReports(dynamic game) async {
+  /// Same note as [cacheVisitForReports], but for the visit that ENDED the
+  /// leg and under a key that survives the rest of the series: the loser
+  /// flags it from the end-of-leg or end-of-match screen, well after the
+  /// rolling note moved on.
+  void cacheWinningVisitForReports(dynamic game) {
     final matchId = matchIdForLeave;
     if (matchId == null) return;
-    await cacheVisitForReports(game);
+    cacheVisitForReports(game);
     TurnReportService.keepAsWinningVisit(matchId);
   }
 
@@ -757,6 +743,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     OrientationUtils.portraitOnly();
     autoScoringService?.dispose();
     autoScoringService = null;
+    RtcFramesService.onSendActiveChanged = null;
     cameraFrameService?.dispose();
     cameraFrameService = null;
     // P2P: fire-and-forget, mirroring the un-awaited leaveChannel below (a
@@ -917,6 +904,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // films MY board — the opponent's turn is dead footage and half the
       // encoder heat). Idempotent, safe on every notify.
       ReplayBufferService.setMyTurn(game.isMyTurn);
+      // Match proof: keep the retention registry aware of every id this
+      // series answers to (per-leg matchIds, seriesId) so a dispute on any
+      // of them finds the footage. Cheap and idempotent.
+      MatchProofService.noteId(_gameMatchIdOf(game) ?? matchIdForLeave);
+      try {
+        MatchProofService.noteId(game.seriesId as String?);
+      } catch (_) {}
       // Same turn gate for the outgoing P2P video (thermal audit 2026-08-10):
       // the opponent's screen only renders OUR stream during OUR turn, so
       // full-rate pushing + encoding during theirs heated both phones for a
@@ -1506,12 +1500,33 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       },
     );
     p2pVideo = video;
+    // A mid-match relaunch builds a FRESH P2pMatchVideo whose mic starts
+    // muted, while the screen's toggle still shows whatever the player chose
+    // — an unmuted player went silently mute at every relaunch (device test
+    // 2026-08-31). Re-assert the UI state; the video object re-applies it on
+    // every session (re)connect.
+    if (!isAudioMuted) video.setMicEnabled(true);
     try {
       await video.start();
       if (!mounted) return;
       if (!kIsWeb) {
         cameraFrameService = CameraFrameService();
         await cameraFrameService!.initialize(p2pMode: true, replayRing: true);
+        // Capture throttle rides the same turn gate as the P2P push cadence
+        // (my turn = 15 fps, opponent's turn +1s = ~2 fps at the native
+        // source). Wired here — not in the service — because the gate flag is
+        // static while the camera service is per-screen.
+        RtcFramesService.onSendActiveChanged =
+            (active) => cameraFrameService?.setCaptureGated(!active);
+        cameraFrameService?.setCaptureGated(!RtcFramesService.sendActive);
+        // Match proof: retain the whole match's my-turn segments (same
+        // encoder — zero extra heat) so a result dispute can pull the full
+        // footage. Keyed by the leg-1 matchId; later legs/seriesId register
+        // on every state notify.
+        if (ReplayBufferService.armed) {
+          MatchProofService.startMatch(key: matchId);
+          TurnReportService.activeRetentionKey = matchId;
+        }
         await initCameraZoom();
         if (!mounted) {
           // The screen died during the camera init: this instance was
@@ -1564,6 +1579,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Future<void> endMatchCall() async {
     try {
       autoScoringService?.stopCapture();
+      RtcFramesService.onSendActiveChanged = null;
       await cameraFrameService?.dispose();
       cameraFrameService = null;
       if (p2pVideo != null) {

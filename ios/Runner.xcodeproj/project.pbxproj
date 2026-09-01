@@ -19,6 +19,7 @@
 		A1B2C3D4E5F60001AABB0001 /* NativeInferencePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001AABB0002 /* NativeInferencePlugin.swift */; };
 		A1B2C3D4E5F60001AABB0003 /* RtcFramesPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001AABB0004 /* RtcFramesPlugin.swift */; };
 		A1B2C3D4E5F60001AABB0005 /* ReplayBufferPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001AABB0006 /* ReplayBufferPlugin.swift */; };
+		A1B2C3D4E5F60001AABB0007 /* CameraThrottlePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001AABB0008 /* CameraThrottlePlugin.swift */; };
 		B626D23E2F422CFE00D571DC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = B626D23D2F422CFE00D571DC /* GoogleService-Info.plist */; };
 		D3B6DC6745F3BE77882D12BE /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5E5EC8ECE5E3981DDC80E78 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
@@ -69,6 +70,7 @@
 		A1B2C3D4E5F60001AABB0002 /* NativeInferencePlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NativeInferencePlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001AABB0004 /* RtcFramesPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RtcFramesPlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001AABB0006 /* ReplayBufferPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReplayBufferPlugin.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001AABB0008 /* CameraThrottlePlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CameraThrottlePlugin.swift; sourceTree = "<group>"; };
 		B626D23D2F422CFE00D571DC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		B6FACB042F42219E00319C1D /* RunnerDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunnerDebug.entitlements; sourceTree = "<group>"; };
 		B6FACB052F42219E00319C1E /* RunnerRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunnerRelease.entitlements; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 				A1B2C3D4E5F60001AABB0002 /* NativeInferencePlugin.swift */,
 				A1B2C3D4E5F60001AABB0004 /* RtcFramesPlugin.swift */,
 				A1B2C3D4E5F60001AABB0006 /* ReplayBufferPlugin.swift */,
+				A1B2C3D4E5F60001AABB0008 /* CameraThrottlePlugin.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -425,6 +428,7 @@
 				A1B2C3D4E5F60001AABB0001 /* NativeInferencePlugin.swift in Sources */,
 				A1B2C3D4E5F60001AABB0003 /* RtcFramesPlugin.swift in Sources */,
 				A1B2C3D4E5F60001AABB0005 /* ReplayBufferPlugin.swift in Sources */,
+				A1B2C3D4E5F60001AABB0007 /* CameraThrottlePlugin.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

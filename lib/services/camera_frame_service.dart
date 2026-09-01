@@ -4,7 +4,7 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show DeviceOrientation;
+import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
@@ -40,6 +40,25 @@ class CameraFrameService {
   // (ReplayBufferPlugin.FRAME_RATE, the iOS writer/export settings,
   // ReplayOverlayRenderer) — keep them in step.
   static const int cameraFps = 15;
+
+  // ── Opponent-turn capture throttle (thermal round 5) ─────────────────────
+  // The turn gate in _onCameraImage only spaces the P2P PUSHES: the camera
+  // still produced and marshaled 15 fps into Dart during the opponent's whole
+  // turn to feed a ~1 fps trickle (97% of the per-frame pipeline wasted).
+  // This throttles the DELIVERY at the native source instead, without ever
+  // stopping the stream (a stopped stream wedges silently — see
+  // _applyStreamingState — and starves the peer's stall watchdog):
+  //  - Android: the vendored camera_android patch drops frames before the
+  //    plane copy (ImageStreamReader.throttleMinIntervalMs).
+  //  - iOS: the capture device's frame duration is changed live, so sensor,
+  //    ISP and the 3.7 MB/frame channel copy all slow down together.
+  // Driven by RtcFramesService.onSendActiveChanged (my turn = full rate,
+  // opponent's turn +1s = trickle) — one source of truth for both gates.
+  static const int _gatedCaptureFps = 2;
+  static const MethodChannel _throttleChannel =
+      MethodChannel('com.dartrivals/camera_throttle');
+  bool _captureGated = false;
+  String? _cameraName;
 
   // Push cadence into the call: time-based (~16 fps max), robust to whatever
   // rate the camera actually delivers. The old skip-every-2nd-frame counter
@@ -317,6 +336,9 @@ class CameraFrameService {
     );
     _lensDirection = selected.lensDirection;
     _sensorOrientation = selected.sensorOrientation;
+    // iOS: CameraDescription.name IS the AVCaptureDevice uniqueID — what the
+    // native throttle needs to find the live device.
+    _cameraName = selected.name;
     debugPrint(
         '[CameraFrameService] platform=${Platform.isIOS ? "iOS" : "Android"} '
         'camera=${selected.name} lens=$_lensDirection '
@@ -413,6 +435,10 @@ class CameraFrameService {
       if (!await _openCamera(target)) return;
       if (_disposed) return;
       await _awaitStream(_startImageStream());
+      // The fresh lens starts un-throttled (new device on iOS, and the
+      // Android static survives but the intent must be re-asserted) — re-apply
+      // whatever the turn gate currently says.
+      if (_p2pMode) _applyCaptureThrottle();
 
       // Persist the lens actually opened (the target may have fallen back to
       // back when the device has no camera for that direction).
@@ -994,6 +1020,37 @@ class CameraFrameService {
     await _controller!.setZoomLevel(zoom);
   }
 
+  /// Throttle (or restore) the capture rate for the opponent's turn — see the
+  /// field-block comment above. Match modes only; a no-op everywhere else.
+  /// Idempotent and safe to re-apply (camera switch re-runs it on the fresh
+  /// device).
+  void setCaptureGated(bool gated) {
+    _captureGated = gated;
+    if (_disposed || !_p2pMode) return;
+    _applyCaptureThrottle();
+  }
+
+  void _applyCaptureThrottle() {
+    try {
+      if (Platform.isAndroid) {
+        // ~2 fps: one full 15 fps frame every 450ms minimum.
+        _throttleChannel.invokeMethod('set', {
+          'intervalMs': _captureGated ? 450 : 0,
+        });
+      } else if (Platform.isIOS) {
+        final deviceId = _cameraName;
+        if (deviceId == null) return;
+        _throttleChannel.invokeMethod('set', {
+          'deviceId': deviceId,
+          'fps': _captureGated ? _gatedCaptureFps : cameraFps,
+        });
+      }
+    } catch (e) {
+      // Purely thermal — a failed throttle call must never touch the match.
+      debugPrint('[CameraFrameService] capture throttle failed: $e');
+    }
+  }
+
   /// Pause the camera (e.g. when app goes to background).
   void pause() {
     _stopImageStream();
@@ -1038,6 +1095,13 @@ class CameraFrameService {
   /// Release all resources.
   Future<void> dispose() async {
     _disposed = true;
+    // Reset the delivery throttle: the Android gate is a STATIC on the
+    // vendored plugin and would otherwise starve the next camera session
+    // (setup screens, trainings) at 2 fps.
+    if (_captureGated) {
+      _captureGated = false;
+      _applyCaptureThrottle();
+    }
     await _awaitStream(_stopImageStream());
     _latestFrame = null;
 

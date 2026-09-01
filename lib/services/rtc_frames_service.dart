@@ -58,12 +58,29 @@ class RtcFramesService {
 
   static bool get sendActive => _sendActive;
 
+  /// Fired whenever [sendActive] actually flips (open: immediately on the
+  /// my-turn notify; close: 1s after the opponent-turn notify). The camera
+  /// service rides this to throttle the CAPTURE itself during the opponent's
+  /// turn (thermal round 5): the turn gate above only spaces the P2P pushes,
+  /// while the camera keeps producing and marshaling 15 fps nobody consumes.
+  static void Function(bool active)? onSendActiveChanged;
+
+  static void _setSendActiveNow(bool active) {
+    if (_sendActive == active) return;
+    _sendActive = active;
+    try {
+      onSendActiveChanged?.call(active);
+    } catch (e) {
+      debugPrint('[RtcFramesService] onSendActiveChanged failed: $e');
+    }
+  }
+
   /// Idempotent; wired to the game-state listener (my turn = true).
   static void setSendActive(bool active) {
     if (active) {
       _gateOffTimer?.cancel();
       _gateOffTimer = null;
-      _sendActive = true;
+      _setSendActiveNow(true);
       return;
     }
     // Already off, or the close is already scheduled — the listener repeats
@@ -71,7 +88,7 @@ class RtcFramesService {
     if (!_sendActive || _gateOffTimer != null) return;
     _gateOffTimer = Timer(_gateOffDelay, () {
       _gateOffTimer = null;
-      _sendActive = false;
+      _setSendActiveNow(false);
     });
   }
 
@@ -125,7 +142,7 @@ class RtcFramesService {
       // game-state listener re-applies the real turn on its next notify.
       _gateOffTimer?.cancel();
       _gateOffTimer = null;
-      _sendActive = true;
+      _setSendActiveNow(true);
       _pushErrorLogged = false;
       lastCreateError = null;
       return _track;

@@ -162,7 +162,8 @@ class ReplayBufferService {
     }
   }
 
-  /// Stops encoding and deletes the ring segments (clips are kept).
+  /// Stops encoding and deletes the ring segments (clips are kept — and so
+  /// are the retained match-proof segments, see [beginRetention]).
   static Future<void> stop() async {
     _armed = false;
     if (!isSupported) return;
@@ -170,6 +171,94 @@ class ReplayBufferService {
       await _channel.invokeMethod('stop');
     } catch (e) {
       debugPrint('[ReplayBufferService] stop failed: $e');
+    }
+  }
+
+  // ── Match-proof retention ─────────────────────────────────────────────────
+  // Same encoder, same segments — the native side just stops evicting them
+  // and files them under match_proof/<key>/ with a crash-safe index. Zero
+  // extra encode work: recording the whole match costs disk, not heat.
+
+  /// Start retaining every segment of this session under [key] (matchId or
+  /// seriesId). Also purges retained matches past the 48h dispute window /
+  /// total size cap. Idempotent per session.
+  static Future<void> beginRetention(String key) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod('beginRetention', {'key': key});
+    } catch (e) {
+      debugPrint('[ReplayBufferService] beginRetention failed: $e');
+    }
+  }
+
+  /// Cut the retained match [key] into one passthrough clip PER TURN (the
+  /// ring is turn-gated, so segment gaps are turn boundaries). Works during
+  /// the match, after [stop], and after an app relaunch. Empty list when
+  /// nothing was retained.
+  static Future<List<ReplayCapture>> cutRuns(
+    String key, {
+    int? rotationDegrees,
+  }) async {
+    if (!isSupported) return const [];
+    try {
+      final res = await _channel.invokeMethod<Map>('cutRuns', {
+        'key': key,
+        'rotation': ?rotationDegrees,
+      });
+      final clips = res?['clips'];
+      if (clips is! List) return const [];
+      return [
+        for (final clip in clips)
+          if (clip is Map && clip['path'] is String)
+            ReplayCapture(
+              clip['path'] as String,
+              (clip['startWallMs'] as num?)?.toInt() ?? 0,
+              (clip['durationMs'] as num?)?.toInt(),
+            ),
+      ];
+    } catch (e) {
+      debugPrint('[ReplayBufferService] cutRuns failed: $e');
+      return const [];
+    }
+  }
+
+  /// [captureRange] over a RETAINED match instead of the live ring — for a
+  /// turn-report flag arriving after the ring was stopped (end screens) or
+  /// after an app relaunch.
+  static Future<ReplayCapture?> captureRetainedRange(
+    String key,
+    DateTime from,
+    DateTime to, {
+    int? rotationDegrees,
+  }) async {
+    if (!isSupported) return null;
+    try {
+      final res = await _channel.invokeMethod<Map>('captureRetained', {
+        'key': key,
+        'fromMs': from.millisecondsSinceEpoch,
+        'toMs': to.millisecondsSinceEpoch,
+        'rotation': ?rotationDegrees,
+      });
+      final path = res?['path'] as String?;
+      if (path == null) return null;
+      return ReplayCapture(
+        path,
+        (res?['startWallMs'] as num?)?.toInt() ?? 0,
+        (res?['durationMs'] as num?)?.toInt(),
+      );
+    } catch (e) {
+      debugPrint('[ReplayBufferService] captureRetained failed: $e');
+      return null;
+    }
+  }
+
+  /// Forget a retained match (after its proof was uploaded, or on purge).
+  static Future<void> deleteRetention(String key) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod('deleteRetention', {'key': key});
+    } catch (e) {
+      debugPrint('[ReplayBufferService] deleteRetention failed: $e');
     }
   }
 }

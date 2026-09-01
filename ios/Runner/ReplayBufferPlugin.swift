@@ -21,6 +21,13 @@ class ReplayBufferPlugin: NSObject {
   private static let ringSegments = 16
   private static let bitRate = 4_000_000
 
+  // Match-proof retention — mirrors the Kotlin side: consecutive my-turn
+  // segments are wall-clock contiguous, a wider gap is a turn boundary;
+  // retained matches expire after the dispute window, capped in total size.
+  private static let runGapMs: Int64 = 4_000
+  private static let retentionTtlMs: Int64 = 48 * 60 * 60 * 1000
+  private static let retentionCapBytes: Int64 = 2 * 1024 * 1024 * 1024
+
   private let queue = DispatchQueue(label: "com.dartrivals.replay", qos: .utility)
 
   private struct Segment {
@@ -41,9 +48,29 @@ class ReplayBufferPlugin: NSObject {
   private var lastFramePts: Int64 = -1
   private var segmentIndex = 0
 
+  // Match-proof retention: while non-nil, new segments land under
+  // match_proof/<key>/, are never evicted, and each closed one appends a JSON
+  // line to the dir's index.jsonl (crash-safe timeline for cutRuns).
+  private var retainKey: String? = nil
+
   private var ringDir: URL {
     let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("replay_ring", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }
+
+  private var retentionRoot: URL {
+    let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("match_proof", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }
+
+  private func retentionDir(_ key: String) -> URL {
+    let safe = key.replacingOccurrences(
+      of: "[^A-Za-z0-9_-]", with: "_", options: .regularExpression)
+    let dir = retentionRoot.appendingPathComponent(safe, isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
   }
@@ -76,6 +103,29 @@ class ReplayBufferPlugin: NSObject {
     case "stop":
       queue.async { [weak self] in
         self?.teardown(deleteRing: true)
+        DispatchQueue.main.async { result(nil) }
+      }
+    case "beginRetention":
+      let key = (call.arguments as? [String: Any])?["key"] as? String
+      queue.async { [weak self] in
+        if let self = self, let key = key {
+          self.purgeRetention(keepKey: key)
+          self.finishCurrentSegment()
+          self.retainKey = key
+        }
+        DispatchQueue.main.async { result(nil) }
+      }
+    case "cutRuns":
+      cutRuns(call, result: result)
+    case "captureRetained":
+      captureRetained(call, result: result)
+    case "deleteRetention":
+      let key = (call.arguments as? [String: Any])?["key"] as? String
+      queue.async { [weak self] in
+        if let self = self, let key = key {
+          if self.retainKey == key { self.retainKey = nil }
+          try? FileManager.default.removeItem(at: self.retentionDir(key))
+        }
         DispatchQueue.main.async { result(nil) }
       }
     default:
@@ -122,7 +172,8 @@ class ReplayBufferPlugin: NSObject {
   }
 
   private func startSegment(width: Int, height: Int, now: Int64) throws {
-    let url = ringDir.appendingPathComponent("seg_\(segmentIndex).mp4")
+    let dir = retainKey.map { retentionDir($0) } ?? ringDir
+    let url = dir.appendingPathComponent("seg_\(segmentIndex).mp4")
     segmentIndex += 1
     try? FileManager.default.removeItem(at: url)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -173,6 +224,12 @@ class ReplayBufferPlugin: NSObject {
     let rowBytes = min(width * 4, min(bytesPerRow, dstStride))
     bytes.withUnsafeBytes { (src: UnsafeRawBufferPointer) in
       guard let srcBase = src.baseAddress else { return }
+      // Matching strides (the common 720p case): one plane-sized memcpy
+      // instead of `height` row copies.
+      if bytesPerRow == dstStride && rowBytes == bytesPerRow {
+        memcpy(dstBase, srcBase, min(bytes.count, height * dstStride))
+        return
+      }
       for row in 0..<height {
         let srcOffset = row * bytesPerRow
         guard srcOffset + rowBytes <= bytes.count else { break }
@@ -202,9 +259,24 @@ class ReplayBufferPlugin: NSObject {
       return
     }
     segments.append(Segment(url: url, startWallMs: start, endWallMs: end, ready: false))
-    while segments.count > Self.ringSegments {
-      let removed = segments.removeFirst()
-      try? FileManager.default.removeItem(at: removed.url)
+    if let key = retainKey, url.deletingLastPathComponent() == retentionDir(key) {
+      // Crash-safe index line, one per closed segment (see Kotlin mirror).
+      let line = "{\"f\":\"\(url.lastPathComponent)\",\"s\":\(start),\"e\":\(end),\"r\":0}\n"
+      let index = retentionDir(key).appendingPathComponent("index.jsonl")
+      if let data = line.data(using: .utf8) {
+        if let handle = try? FileHandle(forWritingTo: index) {
+          handle.seekToEndOfFile()
+          handle.write(data)
+          try? handle.close()
+        } else {
+          try? data.write(to: index)
+        }
+      }
+    } else {
+      while segments.count > Self.ringSegments {
+        let removed = segments.removeFirst()
+        try? FileManager.default.removeItem(at: removed.url)
+      }
     }
     input.markAsFinished()
     writer.finishWriting { [weak self] in
@@ -265,19 +337,40 @@ class ReplayBufferPlugin: NSObject {
     }
   }
 
-  /// Passthrough concat — no decode, no re-encode.
+  /// Passthrough concat — no decode, no re-encode. [outURL] overrides the
+  /// default clips-dir destination (match-proof run clips live next to their
+  /// retained segments); [completion], when given, replaces the FlutterResult
+  /// delivery so cutRuns can chain sequential composes.
   private func compose(
-    _ urls: [URL], startWallMs: Int64, result: @escaping FlutterResult
+    _ urls: [URL], startWallMs: Int64,
+    outURL: URL? = nil,
+    completion: ((_ path: String?, _ durationMs: Int64) -> Void)? = nil,
+    result: FlutterResult? = nil
   ) {
+    let finish: (String?, Int64) -> Void = { path, durationMs in
+      if let completion = completion {
+        completion(path, durationMs)
+      } else if let result = result {
+        DispatchQueue.main.async {
+          result(
+            path == nil
+              ? nil
+              : [
+                "path": path!, "startWallMs": startWallMs,
+                "durationMs": durationMs,
+              ])
+        }
+      }
+    }
     guard !urls.isEmpty else {
-      DispatchQueue.main.async { result(nil) }
+      finish(nil, 0)
       return
     }
     let composition = AVMutableComposition()
     guard let track = composition.addMutableTrack(
       withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
     else {
-      DispatchQueue.main.async { result(nil) }
+      finish(nil, 0)
       return
     }
     var cursor = CMTime.zero
@@ -297,34 +390,195 @@ class ReplayBufferPlugin: NSObject {
           let export = AVAssetExportSession(
             asset: composition, presetName: AVAssetExportPresetPassthrough)
     else {
-      DispatchQueue.main.async { result(nil) }
+      finish(nil, 0)
       return
     }
     // The composition cursor IS the clip's length — the concat is passthrough.
     let durationMs = Int64((CMTimeGetSeconds(cursor) * 1000).rounded())
-    let out = clipsDir.appendingPathComponent("clip_\(nowMs()).mp4")
+    let out = outURL ?? clipsDir.appendingPathComponent("clip_\(nowMs()).mp4")
     try? FileManager.default.removeItem(at: out)
     export.outputURL = out
     export.outputFileType = .mp4
     export.exportAsynchronously {
-      DispatchQueue.main.async {
-        result(
-          export.status == .completed
-            ? [
-              "path": out.path, "startWallMs": startWallMs,
-              "durationMs": durationMs,
-            ] : nil)
-      }
+      finish(export.status == .completed ? out.path : nil, durationMs)
     }
   }
 
   private func teardown(deleteRing: Bool) {
     finishCurrentSegment()
     if deleteRing {
-      for segment in segments {
+      // Retained segments survive the stop — they are the match proof,
+      // purged by TTL/cap or an explicit deleteRetention.
+      let keep = retainKey.map { retentionDir($0) }
+      for segment in segments
+      where segment.url.deletingLastPathComponent() != keep {
         try? FileManager.default.removeItem(at: segment.url)
       }
       segments.removeAll()
+      retainKey = nil
+    }
+  }
+
+  /// Match-proof: one passthrough clip per my-turn run — see the Kotlin
+  /// mirror for the contract. Reads index.jsonl so it survives a relaunch.
+  private func cutRuns(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let key = (call.arguments as? [String: Any])?["key"] as? String else {
+      result(nil)
+      return
+    }
+    queue.async { [weak self] in
+      guard let self = self else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      if self.retainKey == key { self.finishCurrentSegment() }
+      let dir = self.retentionDir(key)
+      var retained: [(url: URL, start: Int64, end: Int64)] = []
+      if let text = try? String(
+        contentsOf: dir.appendingPathComponent("index.jsonl"), encoding: .utf8)
+      {
+        for line in text.split(separator: "\n") {
+          guard let data = line.data(using: .utf8),
+                let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                let name = obj["f"] as? String,
+                let start = (obj["s"] as? NSNumber)?.int64Value,
+                let end = (obj["e"] as? NSNumber)?.int64Value
+          else { continue }
+          let url = dir.appendingPathComponent(name)
+          if FileManager.default.fileExists(atPath: url.path) {
+            retained.append((url, start, end))
+          }
+        }
+      }
+      retained.sort { $0.start < $1.start }
+      var runs: [[(url: URL, start: Int64, end: Int64)]] = []
+      for segment in retained {
+        if var last = runs.last, let tail = last.last,
+           segment.start - tail.end <= Self.runGapMs
+        {
+          last.append(segment)
+          runs[runs.count - 1] = last
+        } else {
+          runs.append([segment])
+        }
+      }
+      let runsDir = dir.appendingPathComponent("clips", isDirectory: true)
+      try? FileManager.default.createDirectory(
+        at: runsDir, withIntermediateDirectories: true)
+      var clips: [[String: Any]] = []
+      // finishWriting on the last segment is asynchronous; composes chain
+      // sequentially (one export at a time) and skip files with no track.
+      func composeNext(_ index: Int) {
+        if index >= runs.count {
+          DispatchQueue.main.async { result(["clips": clips]) }
+          return
+        }
+        let run = runs[index]
+        let out = runsDir.appendingPathComponent("run_\(index).mp4")
+        self.compose(
+          run.map { $0.url }, startWallMs: run[0].start, outURL: out,
+          completion: { path, durationMs in
+            self.queue.async {
+              if let path = path {
+                clips.append([
+                  "path": path,
+                  "startWallMs": run[0].start,
+                  "durationMs": durationMs,
+                ])
+              }
+              composeNext(index + 1)
+            }
+          })
+      }
+      // Give the last writer's finishWriting a moment to land on disk.
+      self.queue.asyncAfter(deadline: .now() + 0.3) { composeNext(0) }
+    }
+  }
+
+  /// Like capture(), but over a RETAINED match instead of the live ring —
+  /// for a turn-report flag arriving after the ring was stopped or after a
+  /// relaunch. args: key, fromMs, toMs → {path, startWallMs, durationMs}?.
+  private func captureRetained(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let key = args["key"] as? String,
+          let fromMs = (args["fromMs"] as? NSNumber)?.int64Value,
+          let toMs = (args["toMs"] as? NSNumber)?.int64Value
+    else {
+      result(nil)
+      return
+    }
+    queue.async { [weak self] in
+      guard let self = self else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      if self.retainKey == key { self.finishCurrentSegment() }
+      let dir = self.retentionDir(key)
+      var picked: [(url: URL, start: Int64, end: Int64)] = []
+      if let text = try? String(
+        contentsOf: dir.appendingPathComponent("index.jsonl"), encoding: .utf8)
+      {
+        for line in text.split(separator: "\n") {
+          guard let data = line.data(using: .utf8),
+                let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                let name = obj["f"] as? String,
+                let start = (obj["s"] as? NSNumber)?.int64Value,
+                let end = (obj["e"] as? NSNumber)?.int64Value
+          else { continue }
+          let url = dir.appendingPathComponent(name)
+          if end >= fromMs && start <= toMs && FileManager.default.fileExists(atPath: url.path) {
+            picked.append((url, start, end))
+          }
+        }
+      }
+      picked.sort { $0.start < $1.start }
+      guard !picked.isEmpty else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      // Small grace for the last writer's asynchronous finishWriting.
+      self.queue.asyncAfter(deadline: .now() + 0.3) {
+        self.compose(picked.map { $0.url }, startWallMs: picked[0].start, result: result)
+      }
+    }
+  }
+
+  /// Drop retained matches past the dispute window, then oldest-first past
+  /// the total size cap. [keepKey] (the match being started) is never purged.
+  private func purgeRetention(keepKey: String?) {
+    let fm = FileManager.default
+    guard let dirs = try? fm.contentsOfDirectory(
+      at: retentionRoot, includingPropertiesForKeys: [.contentModificationDateKey],
+      options: .skipsHiddenFiles)
+    else { return }
+    let keep = keepKey.map { retentionDir($0) }
+    var entries: [(url: URL, modified: Date, size: Int64)] = []
+    var totalBytes: Int64 = 0
+    for dir in dirs {
+      guard (try? dir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+      else { continue }
+      let modified =
+        (try? dir.resourceValues(forKeys: [.contentModificationDateKey]))?
+          .contentModificationDate ?? .distantPast
+      var size: Int64 = 0
+      if let files = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+        for case let file as URL in files {
+          size += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+      }
+      entries.append((dir, modified, size))
+      totalBytes += size
+    }
+    let now = Date()
+    for entry in entries.sorted(by: { $0.modified < $1.modified }) {
+      if entry.url == keep { continue }
+      let expired =
+        now.timeIntervalSince(entry.modified) * 1000 > Double(Self.retentionTtlMs)
+      let overCap = totalBytes > Self.retentionCapBytes
+      if expired || overCap {
+        totalBytes -= entry.size
+        try? fm.removeItem(at: entry.url)
+      }
     }
   }
 }

@@ -62,7 +62,11 @@ class P2pRtcSession {
   static const int _maxVideoFps = CameraFrameService.cameraFps;
 
   /// How often the decoded-frame counter is sampled once connected.
-  static const Duration mediaCheckInterval = Duration(seconds: 3);
+  /// 5s (was 3s, thermal round 5): getStats walks the full native stats
+  /// tree on every tick for the whole match. The stall timeout below is
+  /// wall-clock-based, so the only cost is a stall being declared on a
+  /// slightly later tick (worst case ~11s after the freeze instead of ~9s).
+  static const Duration mediaCheckInterval = Duration(seconds: 5);
 
   /// No new decoded frame for this long = the remote video is frozen even
   /// though ICE still reports Connected (the decoder waits for a keyframe
@@ -249,6 +253,7 @@ class P2pRtcSession {
       final sender = await pc.addTrack(track, stream);
       _hadLocalVideo = true;
       await _capVideoSender(sender);
+      await _preferH264(sender);
     }
 
     // Local media is final — process whatever the opponent sent meanwhile,
@@ -293,6 +298,40 @@ class P2pRtcSession {
     } catch (e) {
       // An uncapped sender still calls fine — worse thermally, never fatally.
       debugPrint('P2P: video sender caps failed: $e');
+    }
+  }
+
+  /// Put H264 first in the video transceiver's codec list (thermal round 5).
+  /// Without an explicit preference the negotiation falls back to libwebrtc's
+  /// default order, which lists VP8 first — SOFTWARE encode on Android
+  /// offers and ALWAYS software decode on iOS (75% of the fleet), paid for
+  /// the whole match on both phones. H264 rides the dedicated video block on
+  /// both platforms. Reorder only, never filter: every codec stays offered,
+  /// so a peer without H264 hardware still negotiates whatever it has.
+  ///
+  /// Runs before any offer/answer is created (local setup precedes the
+  /// signal drain), so it shapes the offer as offerer AND the answer as
+  /// answerer — a mixed pair with one updated side still lands on H264.
+  Future<void> _preferH264(RTCRtpSender sender) async {
+    try {
+      final caps = await getRtpSenderCapabilities('video');
+      final codecs = caps.codecs ?? const [];
+      final h264 = codecs
+          .where((c) => c.mimeType.toLowerCase() == 'video/h264')
+          .toList();
+      if (h264.isEmpty) return;
+      final rest = codecs
+          .where((c) => c.mimeType.toLowerCase() != 'video/h264')
+          .toList();
+      final transceivers = await _pc?.getTransceivers() ?? const [];
+      for (final transceiver in transceivers) {
+        if (transceiver.sender.senderId != sender.senderId) continue;
+        await transceiver.setCodecPreferences([...h264, ...rest]);
+        return;
+      }
+    } catch (e) {
+      // Preference only — the default negotiation still connects fine.
+      debugPrint('P2P: H264 preference failed: $e');
     }
   }
 

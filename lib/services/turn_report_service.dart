@@ -5,20 +5,24 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
+import 'camera_frame_service.dart';
+import 'replay_buffer_service.dart';
 import 'socket_service.dart';
 
-/// One visit kept on disk in case someone flags it. Never uploaded on its own:
-/// the file exists, waits, and is replaced or deleted.
+/// One visit's METADATA, kept in case someone flags it. No file: since the
+/// ring retains the whole match (match-proof, 2026-08-31), the clip is cut
+/// on demand when a `capture_turn` actually arrives — which removed the
+/// 3-7.5 MB passthrough cut+write the app used to pay at EVERY visit end
+/// (thermal round 5, finding n°3).
 class _CachedVisit {
   _CachedVisit({
-    required this.path,
     required this.matchId,
     required this.turnIndex,
     required this.dartTimes,
-    required this.durationMs,
+    required this.windowStart,
+    required this.windowEnd,
   });
 
-  final String path;
   final String matchId;
   final int turnIndex;
 
@@ -26,7 +30,10 @@ class _CachedVisit {
   /// this one, and it is what turns the admin's player into a "jump to the
   /// contested dart" bar.
   final List<int> dartTimes;
-  final int? durationMs;
+
+  /// The wall-clock window the clip is cut from at capture time.
+  final DateTime windowStart;
+  final DateTime windowEnd;
 }
 
 /// A flag this device posted, waiting for its reason at the end of the match.
@@ -57,11 +64,11 @@ class PendingTurnReport {
 /// The device side of per-volley reports, both roles at once — in any match
 /// you are the one who may flag and the one who may be flagged.
 ///
-/// As the REPORTED player: every one of your own visits is cut from the replay
-/// ring the moment it ends and kept locally, ONE at a time (plus the visit that
-/// won each leg, which the end-of-match screens can still flag). Nothing is
-/// ever sent unless a `capture_turn` asks for it, and nothing is ever shown —
-/// the reported player is not told (product decision 2026-08-13).
+/// As the REPORTED player: the metadata of your last visit (and of the visit
+/// that won each leg) is noted; the clip itself is cut from the ring/retained
+/// segments ONLY when a `capture_turn` actually asks for it. Nothing is ever
+/// sent otherwise, and nothing is ever shown — the reported player is not
+/// told (product decision 2026-08-13).
 ///
 /// As the REPORTER: the flags posted during the match are held here until the
 /// end-of-match screen gives them a reason.
@@ -70,6 +77,10 @@ class TurnReportService {
 
   /// The visit that just ended, whatever it was. Overwritten every turn.
   static _CachedVisit? _lastVisit;
+
+  /// Retention key of the match currently on screen (set next to
+  /// beginRetention) — the fallback cut source once the live ring stopped.
+  static String? activeRetentionKey;
 
   /// The visit that won a leg, kept per match id: it can still be flagged from
   /// the leg-end / match-end screen, minutes after the rolling one is gone.
@@ -112,49 +123,37 @@ class TurnReportService {
 
   // ── Reported side ───────────────────────────────────────────────────────
 
-  /// Called by the game screen when one of MY visits ends and its clip has
-  /// been cut. Replaces the previous one — only the last visit is kept.
-  static Future<void> cacheVisit({
-    required String path,
+  /// Called by the game screen when one of MY visits ends. Pure bookkeeping —
+  /// no cut, no file I/O; the window is remembered and cut only on demand.
+  static void noteVisit({
     required String matchId,
     required int turnIndex,
     required List<DateTime> dartTimes,
-    int? durationMs,
-  }) async {
-    // The native cut always lands in the replay CLIPS directory, next to the
-    // ones the player saved on purpose. Move it out: these are evidence, not
-    // replays, and nothing that walks that directory later (the library's
-    // planned rebuild-across-launches) must ever mistake one for the other.
-    final owned = await _moveToReportCache(path);
-    final previous = _lastVisit;
+    required DateTime windowStart,
+    required DateTime windowEnd,
+  }) {
     _lastVisit = _CachedVisit(
-      path: owned,
       matchId: matchId,
       turnIndex: turnIndex,
       dartTimes: dartTimes.map((t) => t.millisecondsSinceEpoch).toList(),
-      durationMs: durationMs,
+      windowStart: windowStart,
+      windowEnd: windowEnd,
     );
-    // The one it replaces is unreachable from here on: delete it rather than
-    // leave a visit's video in the cache for the rest of the session.
-    if (previous != null && !_isWinningVisit(previous)) {
-      _deleteFile(previous.path);
-    }
   }
 
-  /// Promotes the cached visit to "this is the one that won the leg", so it
+  /// Promotes the noted visit to "this is the one that won the leg", so it
   /// survives until the series is over — the loser can still flag it from the
-  /// end screen long after the rolling cache moved on.
+  /// end screen long after the rolling note moved on.
   static void keepAsWinningVisit(String matchId) {
     final visit = _lastVisit;
     if (visit == null) return;
     _winningVisits[matchId] = visit;
   }
 
-  static bool _isWinningVisit(_CachedVisit visit) =>
-      _winningVisits.values.any((v) => v.path == visit.path);
-
   /// The server asks this device for one of its own visits. Silent: no UI, no
-  /// notification, nothing the player can see or refuse.
+  /// notification, nothing the player can see or refuse. The clip is cut NOW:
+  /// from the live ring while the match runs, from the retained match-proof
+  /// segments once the ring stopped (end screens, relaunch).
   static Future<void> handleCaptureRequest(dynamic data) async {
     if (data is! Map) return;
     final reportId = data['reportId'] as String?;
@@ -169,12 +168,44 @@ class TurnReportService {
       await _reportFailure(reportId, 'no_cached_visit');
       return;
     }
-    await _upload(reportId, visit);
+    ReplayCapture? captured;
+    try {
+      final rotation = CameraFrameService.calibratedUprightRotation;
+      if (ReplayBufferService.armed) {
+        captured = await ReplayBufferService.captureRange(
+          visit.windowStart,
+          visit.windowEnd,
+          rotationDegrees: rotation,
+        );
+      }
+      final retentionKey = activeRetentionKey;
+      if (captured == null && retentionKey != null) {
+        captured = await ReplayBufferService.captureRetainedRange(
+          retentionKey,
+          visit.windowStart,
+          visit.windowEnd,
+          rotationDegrees: rotation,
+        );
+      }
+    } catch (e) {
+      debugPrint('[TurnReport] on-demand cut failed: $e');
+    }
+    if (captured == null) {
+      await _reportFailure(reportId, 'cut_failed');
+      return;
+    }
+    await _upload(reportId, visit, captured);
+    // The cut is a temp file made for this upload alone.
+    _deleteFile(captured.path);
   }
 
-  static Future<void> _upload(String reportId, _CachedVisit visit) async {
+  static Future<void> _upload(
+    String reportId,
+    _CachedVisit visit,
+    ReplayCapture captured,
+  ) async {
     try {
-      final file = File(visit.path);
+      final file = File(captured.path);
       if (!await file.exists()) {
         await _reportFailure(reportId, 'clip_missing');
         return;
@@ -202,7 +233,7 @@ class TurnReportService {
       await ApiService.post('/turn-reports/evidence/confirm', {
         'reportId': reportId,
         'key': key,
-        'durationMs': ?visit.durationMs,
+        'durationMs': ?captured.durationMs,
         'sizeBytes': size,
         'dartTimestamps': visit.dartTimes,
       });
@@ -349,52 +380,23 @@ class TurnReportService {
     _retryTimer = null;
     _unacked.clear();
     enabled = false;
-    // Every leg of a series leaves a winning visit behind, and disposeMatch
-    // only knows the last one — without this sweep the earlier legs' files sat
-    // in the cache until the app died.
-    for (final visit in _winningVisits.values) {
-      _deleteFile(visit.path);
-    }
+    // Metadata only since the on-demand-cut rework — nothing on disk to sweep
+    // (the retained segments have their own TTL purge).
     _winningVisits.clear();
-    final last = _lastVisit;
     _lastVisit = null;
-    if (last != null) _deleteFile(last.path);
+    activeRetentionKey = null;
     SocketService.off('capture_turn', owner: _owner);
     SocketService.off('flag_ack', owner: _owner);
   }
 
   static final Object _owner = Object();
 
-  /// End of a match/series: forget the visits kept for it. Called after the
+  /// End of a match/series: forget the visits noted for it. Called after the
   /// end-of-match screen is done, so the winning visit is still flaggable
   /// while that screen is up.
   static void disposeMatch(String matchId) {
-    final winning = _winningVisits.remove(matchId);
-    if (winning != null) _deleteFile(winning.path);
-    final last = _lastVisit;
-    if (last != null && last.matchId == matchId) {
-      _lastVisit = null;
-      _deleteFile(last.path);
-    }
-  }
-
-  /// Moves a freshly cut clip into this feature's own cache directory. Falls
-  /// back to the original path if the move fails — worse tidiness, still a
-  /// usable clip.
-  static Future<String> _moveToReportCache(String path) async {
-    try {
-      final source = File(path);
-      if (!await source.exists()) return path;
-      final dir = Directory('${source.parent.parent.path}/turn_reports');
-      if (!await dir.exists()) await dir.create(recursive: true);
-      final target =
-          '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
-      final moved = await source.rename(target);
-      return moved.path;
-    } catch (e) {
-      debugPrint('[TurnReport] could not move clip out of the replay dir: $e');
-      return path;
-    }
+    _winningVisits.remove(matchId);
+    if (_lastVisit?.matchId == matchId) _lastVisit = null;
   }
 
   static void _deleteFile(String path) {

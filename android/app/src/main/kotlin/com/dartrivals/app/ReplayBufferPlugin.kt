@@ -43,6 +43,16 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // (CameraFrameService.cameraFps) — rate-control hint and
         // concat frame gap both assume the real capture cadence.
         private const val FRAME_RATE = 15
+
+        // ── Match-proof retention ──
+        // The ring is turn-gated, so consecutive segments of one of my turns
+        // are wall-clock contiguous; a gap wider than this is the opponent's
+        // turn between two of mine — the run boundary cutRuns splits on.
+        private const val RUN_GAP_MS = 4_000L
+        // Retained matches live on disk until the dispute window closes...
+        private const val RETENTION_TTL_MS = 48L * 60 * 60 * 1000
+        // ...bounded in total so a heavy day of matches can't eat the phone.
+        private const val RETENTION_CAP_BYTES = 2L * 1024 * 1024 * 1024
     }
 
     private lateinit var channel: MethodChannel
@@ -85,11 +95,33 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private val segments = ArrayDeque<Segment>()
     private val bufferInfo = MediaCodec.BufferInfo()
 
+    // Reusable chroma staging for feedFrame: interleaving through a local
+    // ByteArray then ONE bulk put replaces ~345k per-byte ByteBuffer.put()
+    // calls per frame (each paying position+bounds bookkeeping), 15×/s for
+    // every my-turn frame of the match.
+    private var chromaStaging = ByteArray(0)
+
+    // Match-proof retention: while non-null, new segments are written under
+    // match_proof/<key>/ and NEVER evicted — the whole match's my-turn footage
+    // stays on disk (same encoder, same bitrate: zero extra heat, we just stop
+    // throwing the files away). Each closed segment appends one JSON line to
+    // the dir's index.jsonl, so cutRuns() can rebuild the timeline after the
+    // app restarted.
+    private var retainKey: String? = null
+
     private fun ringDir(): File =
         File(appContext!!.cacheDir, "replay_ring").apply { mkdirs() }
 
     private fun clipsDir(): File =
         File(appContext!!.cacheDir, "replay_clips").apply { mkdirs() }
+
+    private fun retentionRoot(): File =
+        File(appContext!!.cacheDir, "match_proof").apply { mkdirs() }
+
+    /** [key] is an opaque id from Dart (matchId/seriesId); sanitize for FS. */
+    private fun retentionDir(key: String): File =
+        File(retentionRoot(), key.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+            .apply { mkdirs() }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -129,6 +161,32 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "stop" -> {
                 handler.post {
                     teardown(deleteRing = true)
+                    mainHandler.post { result.success(null) }
+                }
+            }
+            "beginRetention" -> {
+                val key = call.argument<String>("key")
+                handler.post {
+                    if (key != null) {
+                        // New match: make room first, then start retaining.
+                        purgeRetention(keepKey = key)
+                        // Close whatever the ring already holds (pre-match
+                        // setup footage) so the retained dir starts clean.
+                        if (muxer != null) closeSegment()
+                        retainKey = key
+                    }
+                    mainHandler.post { result.success(null) }
+                }
+            }
+            "cutRuns" -> cutRuns(call, result)
+            "captureRetained" -> captureRetained(call, result)
+            "deleteRetention" -> {
+                val key = call.argument<String>("key")
+                handler.post {
+                    if (key != null) {
+                        if (retainKey == key) retainKey = null
+                        retentionDir(key).deleteRecursively()
+                    }
                     mainHandler.post { result.success(null) }
                 }
             }
@@ -204,25 +262,32 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
         input.clear()
         // Encoder wants NV12 (semi-planar UVUV); camera gives NV21 (VUVU)
-        // or planar I420 — both are a cheap reorder of the chroma bytes.
+        // or planar I420 — both are a cheap reorder of the chroma bytes,
+        // staged in a plain array and written with one bulk put.
         input.put(bytes, 0, ySize)
+        val chromaSize = ySize / 2
+        if (chromaStaging.size < chromaSize) chromaStaging = ByteArray(chromaSize)
+        val staging = chromaStaging
         if (format == "i420") {
             val uvSize = ySize / 4
             val uOff = ySize
             val vOff = ySize + uvSize
             for (i in 0 until uvSize) {
-                input.put(bytes[uOff + i])
-                input.put(bytes[vOff + i])
+                val d = i shl 1
+                staging[d] = bytes[uOff + i]
+                staging[d + 1] = bytes[vOff + i]
             }
         } else {
-            var i = ySize
-            val end = ySize + ySize / 2 - 1
-            while (i < end) {
-                input.put(bytes[i + 1])
-                input.put(bytes[i])
-                i += 2
+            var s = ySize
+            var d = 0
+            while (d < chromaSize - 1) {
+                staging[d] = bytes[s + 1]
+                staging[d + 1] = bytes[s]
+                s += 2
+                d += 2
             }
         }
+        input.put(staging, 0, chromaSize)
         // Wall-clock-derived pts so a wall-clock capture window maps straight
         // onto sample times; strictly increasing for the codec's sake.
         val wallMs = System.currentTimeMillis()
@@ -279,7 +344,8 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun openSegment(startWallMs: Long) {
-        val file = File(ringDir(), "seg_${segmentIndex++}.mp4")
+        val dir = retainKey?.let { retentionDir(it) } ?: ringDir()
+        val file = File(dir, "seg_${segmentIndex++}.mp4")
         file.delete()
         muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).apply {
             muxerTrack = addTrack(codecFormat!!)
@@ -301,12 +367,29 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             muxer.stop()
             muxer.release()
             segments.addLast(Segment(file, segmentStartWallMs, lastSampleWallMs, segmentRotation))
+            // Retention: one crash-safe index line per closed segment, so the
+            // timeline survives the app (cutRuns may run a relaunch later).
+            val key = retainKey
+            if (key != null && file.parentFile == retentionDir(key)) {
+                try {
+                    File(retentionDir(key), "index.jsonl").appendText(
+                        "{\"f\":\"${file.name}\",\"s\":$segmentStartWallMs," +
+                            "\"e\":$lastSampleWallMs,\"r\":$segmentRotation}\n",
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("ReplayBuffer", "index append failed: $e")
+                }
+            }
         } catch (e: Exception) {
             // A segment with zero samples can't stop() — just discard it.
             try { muxer.release() } catch (_: Exception) {}
             file.delete()
         }
-        while (segments.size > RING_SEGMENTS) segments.removeFirst().file.delete()
+        // Under retention the whole match is kept — the eviction that made
+        // this a 48s ring is exactly what the match-proof feature removes.
+        if (retainKey == null) {
+            while (segments.size > RING_SEGMENTS) segments.removeFirst().file.delete()
+        }
     }
 
     /**
@@ -353,6 +436,162 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     /**
+     * Match-proof: turn a retained match's segments into one passthrough clip
+     * PER TURN (the ring is turn-gated, so a wall-clock gap between segments
+     * IS a turn boundary). Reads index.jsonl, so it works during the match,
+     * after stop(), and after an app relaunch.
+     *
+     * args: key, rotation (optional calibration override) →
+     * {clips: [{path, startWallMs, durationMs}]}.
+     */
+    private fun cutRuns(call: MethodCall, result: MethodChannel.Result) {
+        val key = call.argument<String>("key")
+        val rotationOverride = (call.argument<Number>("rotation"))?.toInt()
+        if (key == null) {
+            result.success(null)
+            return
+        }
+        handler.post {
+            var payload: Map<String, Any>? = null
+            try {
+                // Flush the segment in flight so the last visit is included.
+                if (retainKey == key && muxer != null) {
+                    closeSegment()
+                    awaitingIdr = true
+                }
+                val dir = retentionDir(key)
+                val index = File(dir, "index.jsonl")
+                val retained = mutableListOf<Segment>()
+                if (index.exists()) {
+                    index.forEachLine { line ->
+                        try {
+                            val obj = org.json.JSONObject(line)
+                            val file = File(dir, obj.getString("f"))
+                            if (file.exists()) {
+                                retained.add(Segment(
+                                    file,
+                                    obj.getLong("s"),
+                                    obj.getLong("e"),
+                                    obj.optInt("r", 0),
+                                ))
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                retained.sortBy { it.startWallMs }
+                val runsDir = File(dir, "clips").apply { mkdirs() }
+                val clips = mutableListOf<Map<String, Any>>()
+                var run = mutableListOf<Segment>()
+                fun flushRun() {
+                    if (run.isEmpty()) return
+                    val outFile = File(runsDir, "run_${clips.size}.mp4")
+                    val (path, durationMs) = concat(run, rotationOverride, outFile)
+                    clips.add(mapOf(
+                        "path" to path,
+                        "startWallMs" to run.first().startWallMs,
+                        "durationMs" to durationMs,
+                    ))
+                    run = mutableListOf()
+                }
+                for (segment in retained) {
+                    if (run.isNotEmpty() &&
+                        segment.startWallMs - run.last().endWallMs > RUN_GAP_MS
+                    ) {
+                        flushRun()
+                    }
+                    run.add(segment)
+                }
+                flushRun()
+                payload = mapOf("clips" to clips)
+            } catch (e: Exception) {
+                android.util.Log.w("ReplayBuffer", "cutRuns failed: $e")
+            }
+            mainHandler.post { result.success(payload) }
+        }
+    }
+
+    /**
+     * Like capture(), but over a RETAINED match instead of the live ring —
+     * for a turn-report flag arriving after the ring was stopped (end
+     * screens) or after a relaunch. args: key, fromMs, toMs, rotation →
+     * {path, startWallMs, durationMs} or null.
+     */
+    private fun captureRetained(call: MethodCall, result: MethodChannel.Result) {
+        val key = call.argument<String>("key")
+        val fromMs = (call.argument<Number>("fromMs"))?.toLong()
+        val toMs = (call.argument<Number>("toMs"))?.toLong()
+        val rotationOverride = (call.argument<Number>("rotation"))?.toInt()
+        if (key == null || fromMs == null || toMs == null) {
+            result.success(null)
+            return
+        }
+        handler.post {
+            var payload: Map<String, Any>? = null
+            try {
+                if (retainKey == key && muxer != null) closeSegment()
+                val dir = retentionDir(key)
+                val index = File(dir, "index.jsonl")
+                val picked = mutableListOf<Segment>()
+                if (index.exists()) {
+                    index.forEachLine { line ->
+                        try {
+                            val obj = org.json.JSONObject(line)
+                            val file = File(dir, obj.getString("f"))
+                            val s = obj.getLong("s")
+                            val e = obj.getLong("e")
+                            if (file.exists() && e >= fromMs && s <= toMs) {
+                                picked.add(Segment(file, s, e, obj.optInt("r", 0)))
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                picked.sortBy { it.startWallMs }
+                if (picked.isNotEmpty()) {
+                    val (path, durationMs) = concat(picked, rotationOverride)
+                    payload = mapOf(
+                        "path" to path,
+                        "startWallMs" to picked.first().startWallMs,
+                        "durationMs" to durationMs,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ReplayBuffer", "captureRetained failed: $e")
+            }
+            mainHandler.post { result.success(payload) }
+        }
+    }
+
+    /**
+     * Drop retained matches past the dispute window, then oldest-first past
+     * the total size cap. [keepKey] (the match being started) is never purged.
+     */
+    private fun purgeRetention(keepKey: String?) {
+        try {
+            val dirs = retentionRoot().listFiles { f -> f.isDirectory }
+                ?.sortedBy { it.lastModified() } ?: return
+            val now = System.currentTimeMillis()
+            var totalBytes = 0L
+            val sizes = HashMap<File, Long>()
+            for (dir in dirs) {
+                val size = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                sizes[dir] = size
+                totalBytes += size
+            }
+            for (dir in dirs) {
+                val keep = keepKey != null && dir == retentionDir(keepKey)
+                val expired = now - dir.lastModified() > RETENTION_TTL_MS
+                val overCap = totalBytes > RETENTION_CAP_BYTES
+                if (!keep && (expired || overCap)) {
+                    totalBytes -= sizes[dir] ?: 0L
+                    dir.deleteRecursively()
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ReplayBuffer", "purgeRetention failed: $e")
+        }
+    }
+
+    /**
      * args: inPath, timeline (json) → path of the clip with the broadcast
      * overlay burned in. Runs on its OWN thread: a multi-second re-encode
      * must not stall the ring encoder's handler.
@@ -389,8 +628,13 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
      * the caller learns the true board orientation from the AI calibration,
      * which can settle AFTER the oldest segments of the window were recorded.
      */
-    private fun concat(picked: List<Segment>, rotationOverride: Int? = null): Pair<String, Long> {
-        val out = File(clipsDir(), "clip_${System.currentTimeMillis()}.mp4")
+    private fun concat(
+        picked: List<Segment>,
+        rotationOverride: Int? = null,
+        outFile: File? = null,
+    ): Pair<String, Long> {
+        val out = outFile ?: File(clipsDir(), "clip_${System.currentTimeMillis()}.mp4")
+        out.delete()
         val outMuxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         var outTrack = -1
         var started = false
@@ -470,9 +714,13 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         codec = null
         codecFormat = null
         if (deleteRing) {
-            segments.forEach { it.file.delete() }
+            // Retained segments (match_proof/<key>/) survive the stop: they
+            // ARE the proof, purged by TTL/cap or an explicit deleteRetention.
+            val keep = retainKey?.let { retentionDir(it) }
+            segments.forEach { if (it.file.parentFile != keep) it.file.delete() }
             segments.clear()
             appContext?.let { File(it.cacheDir, "replay_ring").listFiles()?.forEach(File::delete) }
+            retainKey = null
         }
     }
 }
