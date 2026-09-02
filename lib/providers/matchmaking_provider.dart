@@ -79,8 +79,10 @@ class MatchmakingProvider with ChangeNotifier {
     // match-found jingle is usually the session's FIRST sound, and paying its
     // load at match_found means paying it in the app's busiest moment: the
     // dialog, the navigation, the game screen build, the camera and the RTC
-    // session all queue platform work in the same instant. That is where the
-    // jingle went missing — not muffled, never started.
+    // session all queue platform work in the same instant. The other half of
+    // the vanished jingle — the call's audio setup pausing (Android focus) or
+    // muffling (iOS voiceChat) it a second in — is handled in DartSoundService
+    // and P2pMatchVideo.start.
     unawaited(DartSoundService.init());
 
     // Reset game provider if it still has stale state from the previous match

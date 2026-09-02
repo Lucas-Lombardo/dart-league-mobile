@@ -1,7 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
+import 'package:flutter_webrtc/flutter_webrtc.dart'
+    show
+        AppleAudioCategory,
+        AppleAudioCategoryOption,
+        AppleAudioConfiguration,
+        AppleAudioMode,
+        Helper;
 
 import '../models/rtc_v2_config.dart';
 import 'p2p_rtc_session.dart';
@@ -125,6 +132,32 @@ class P2pMatchVideo {
     SocketService.on('rtc_signal', _onSignal, owner: this);
     SocketService.addReconnectListener(_onSocketReconnected);
     _loop = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    // iOS: WebRTC's stock session profile is voiceChat — the phone-call
+    // profile, whose loudspeaker output is capped near earpiece level. With
+    // the phone propped up facing the board that turned the opponent AND every
+    // app sound into a whisper, the match-found jingle first: it is still
+    // playing when the call opens ~1s after match_found. videoChat is Apple's
+    // speakerphone profile — same voice-processing echo cancellation, full
+    // speaker level — and what flutter_webrtc itself picks for
+    // preferSpeakerOutput. Must land before the first PeerConnection: the
+    // audio unit reads this configuration when it starts. Options mirror the
+    // set setSpeakerphoneOn(true) re-applies below, so nothing flip-flops.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await Helper.setAppleAudioConfiguration(AppleAudioConfiguration(
+          appleAudioCategory: AppleAudioCategory.playAndRecord,
+          appleAudioCategoryOptions: {
+            AppleAudioCategoryOption.allowBluetooth,
+            AppleAudioCategoryOption.allowBluetoothA2DP,
+            AppleAudioCategoryOption.allowAirPlay,
+            AppleAudioCategoryOption.defaultToSpeaker,
+          },
+          appleAudioMode: AppleAudioMode.videoChat,
+        ));
+      } catch (e) {
+        debugPrint('P2P: apple audio configuration failed: $e');
+      }
+    }
     // Initial roles come from the server so both sides agree with no
     // round-trip: the impolite peer offers, the polite peer answers.
     final offerer = !configProvider().polite;

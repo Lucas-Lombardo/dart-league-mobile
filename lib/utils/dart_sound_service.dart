@@ -81,7 +81,14 @@ class DartSoundService {
             AVAudioSessionOptions.allowBluetooth,
           },
         ),
-        android: const AudioContextAndroid(),
+        // No audio focus on Android. The match call (flutter_webrtc's
+        // AudioSwitchManager) requests AUDIOFOCUS_GAIN the moment it opens,
+        // about a second after match_found — and a player that HOLDS focus
+        // then gets AUDIOFOCUS_LOSS, on which audioplayers pauses it. That is
+        // how the match-found jingle died during its own first second. Short
+        // SFX need no focus (and shouldn't interrupt the player's music for
+        // 300ms either); playback itself never required it.
+        android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       );
 
   /// Preloads every sound. Idempotent, and safe to call repeatedly: assets
