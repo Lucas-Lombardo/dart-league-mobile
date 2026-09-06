@@ -2643,6 +2643,8 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get liveBadge => 'EN DIRECT';
   @override
+  String get manualDartTag => 'MANUEL';
+  @override
   String get playingBadge => 'JOUE';
   @override
   String roundChip(int number) => 'TOUR $number';

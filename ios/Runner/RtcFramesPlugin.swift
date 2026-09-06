@@ -77,8 +77,31 @@ class RtcFramesPlugin: NSObject {
     result(RtcFramesPlugin.trackId)
   }
 
+  /// The board square to cut out of the frame before encoding, and the fixed
+  /// size to scale it to (see OpponentVideoFraming on the Dart side). Parsed
+  /// only when all six arguments are present and the square fits the frame;
+  /// anything else means "stream the whole frame", never a partial crop.
+  private struct Crop {
+    let x: Int, y: Int, width: Int, height: Int, outWidth: Int, outHeight: Int
+  }
+
+  private func cropArgs(_ args: [String: Any], width: Int, height: Int) -> Crop? {
+    guard let x = args["cropX"] as? Int,
+          let y = args["cropY"] as? Int,
+          let w = args["cropW"] as? Int,
+          let h = args["cropH"] as? Int,
+          let outW = args["outW"] as? Int,
+          let outH = args["outH"] as? Int
+    else { return nil }
+    guard x >= 0, y >= 0, w > 0, h > 0, outW > 0, outH > 0,
+          x + w <= width, y + h <= height
+    else { return nil }
+    return Crop(x: x, y: y, width: w, height: h, outWidth: outW, outHeight: outH)
+  }
+
   /// args: bytes (BGRA), width, height, rotation (degrees), bytesPerRow
-  /// (source row stride — camera buffers can be row-padded).
+  /// (source row stride — camera buffers can be row-padded), and optionally
+  /// cropX/cropY/cropW/cropH + outW/outH (board crop, see `cropArgs`).
   private func pushFrame(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard let source = videoSource,
           let capturer = capturer,
@@ -93,6 +116,7 @@ class RtcFramesPlugin: NSObject {
     }
     let rotation = (args["rotation"] as? Int) ?? 0
     let srcBytesPerRow = (args["bytesPerRow"] as? Int) ?? (width * 4)
+    let crop = cropArgs(args, width: width, height: height)
     // `bytes.data` (immutable NSData) and source/capturer are captured by the
     // block, so a concurrent disposeTrack can't pull them out from under us.
     let data = bytes.data
@@ -131,7 +155,22 @@ class RtcFramesPlugin: NSObject {
       // toI420 (libyuv) detaches the frame from our reused pixel buffer
       // before it crosses into the encoder, and hands the encoder its
       // preferred format regardless of hardware/software H264 path.
-      let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pixelBuffer)
+      // With a board crop, the same call also does the cut and the scale to
+      // the fixed output size: RTCCVPixelBuffer's crop/adapt geometry is
+      // applied by toI420 for BGRA sources (cropAndScaleTo, libyuv ARGBScale)
+      // — so the encoder only ever sees outW×outH frames.
+      let rtcBuffer: RTCCVPixelBuffer
+      if let c = crop {
+        rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pixelBuffer,
+                                     adaptedWidth: Int32(c.outWidth),
+                                     adaptedHeight: Int32(c.outHeight),
+                                     cropWidth: Int32(c.width),
+                                     cropHeight: Int32(c.height),
+                                     cropX: Int32(c.x),
+                                     cropY: Int32(c.y))
+      } else {
+        rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pixelBuffer)
+      }
       let rtcRotation = RTCVideoRotation(rawValue: rotation) ?? ._0
       let timeNs = Int64(CACurrentMediaTime() * 1_000_000_000)
       let frame = RTCVideoFrame(buffer: rtcBuffer.toI420(),

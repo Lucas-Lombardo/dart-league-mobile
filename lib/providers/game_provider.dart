@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/cricket.dart';
+import '../models/opponent_dart_zoom.dart';
 import '../models/rtc_v2_config.dart';
+import '../services/board_crop.dart' show OpponentVideoFraming, VideoPoint;
 import '../services/dart_scoring_service.dart' show finiteOrNull;
 import '../services/socket_service.dart';
 import '../services/turn_report_service.dart';
@@ -25,6 +27,11 @@ class GameProvider with ChangeNotifier {
   String? _lastThrow;
   List<String> _currentRoundThrows = [];
   List<String> _opponentRoundThrows = [];
+  // The opponent's latest dart with the point their phone said to look at
+  // on their video (see OpponentDartZoom); null until a dart of their
+  // visit arrives with one.
+  OpponentDartZoom? _opponentDartZoom;
+  int _opponentDartZoomSeq = 0;
   List<int> _myRounds = [];
   List<int> _opponentRounds = [];
   int _dartsEmittedThisRound = 0; // Local guard for rapid throws before server ack
@@ -133,6 +140,7 @@ class GameProvider with ChangeNotifier {
   String? get lastThrow => _lastThrow;
   List<String> get currentRoundThrows => List.unmodifiable(_currentRoundThrows);
   List<String> get opponentRoundThrows => List.unmodifiable(_opponentRoundThrows);
+  OpponentDartZoom? get opponentDartZoom => _opponentDartZoom;
   List<int> get myRounds => List.unmodifiable(_myRounds);
   List<int> get opponentRounds => List.unmodifiable(_opponentRounds);
   double get myAveragePerRound => _myRounds.isEmpty ? 0.0 : _myRounds.reduce((a, b) => a + b) / _myRounds.length;
@@ -272,6 +280,7 @@ class GameProvider with ChangeNotifier {
       _lastThrow = null;
       _currentRoundThrows = [];
       _opponentRoundThrows = [];
+      _opponentDartZoom = null;
       _myRounds = [];
       _opponentRounds = [];
       _dartsEmittedThisRound = 0;
@@ -644,6 +653,11 @@ class GameProvider with ChangeNotifier {
       if (throws != null) {
         _opponentRoundThrows = throws.map((t) => t.toString()).toList();
       }
+      _noteOpponentDartZoom(
+        data,
+        notation: data['notation'] as String?,
+        dartIndex: _opponentRoundThrows.length,
+      );
     }
     
     notifyListeners();
@@ -667,6 +681,7 @@ class GameProvider with ChangeNotifier {
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
+    _opponentDartZoom = null;
     _dartsEmittedThisRound = 0;
     // The turn is committed: settle all per-dart delivery state. A dart still
     // pending here can no longer be applied (turn switched) — retrying it
@@ -911,6 +926,7 @@ class GameProvider with ChangeNotifier {
     _lastThrow = null;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
+    _opponentDartZoom = null;
     // Per-leg round history: without this, leg N+1 opened at "Round N+12"
     // with the previous leg's averages until the first round_complete.
     _myRounds = [];
@@ -1042,6 +1058,44 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// The opponent's dart just announced by [data]: remember where their phone
+  /// said it sits on their video, so the feed can zoom on it. Absent from an
+  /// older app or server, and then simply not noted. Returns true when noted.
+  bool _noteOpponentDartZoom(
+    dynamic data, {
+    required String? notation,
+    required int dartIndex,
+  }) {
+    final z = OpponentDartZoom.parse(data['zoom']);
+    if (z == null || notation == null || notation.isEmpty) return false;
+    _opponentDartZoom = OpponentDartZoom(
+      x: z.x,
+      y: z.y,
+      manual: z.manual,
+      notation: notation,
+      dartIndex: dartIndex,
+      seq: ++_opponentDartZoomSeq,
+    );
+    return true;
+  }
+
+  /// Their checkout or bust dart arrives as pending_win / pending_bust and no
+  /// score_updated follows it, so the zoom rides on that event instead.
+  void _noteOpponentPendingDart(dynamic data, {required String? notation}) {
+    final dartsThrown = data['dartsThrown'] as int?;
+    final noted = _noteOpponentDartZoom(
+      data,
+      notation: notation,
+      dartIndex: dartsThrown ?? _opponentRoundThrows.length + 1,
+    );
+    if (noted) notifyListeners();
+  }
+
+  static String? _finalDartNotation(dynamic data) {
+    final finalDart = data['finalDart'];
+    return finalDart is Map ? finalDart['notation'] as String? : null;
+  }
+
   void _handlePendingWin(dynamic data) {
     if (_isForeignMatch(data)) return;
     _applyCricketFields(data);
@@ -1049,6 +1103,7 @@ class GameProvider with ChangeNotifier {
     // Only show dialog if this is MY pending win, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
+      _noteOpponentPendingDart(data, notation: _finalDartNotation(data));
       return;
     }
     
@@ -1065,6 +1120,7 @@ class GameProvider with ChangeNotifier {
     // Only show dialog if this is MY pending bust, not opponent's
     final playerId = data['playerId'] as String?;
     if (playerId != _myUserId) {
+      _noteOpponentPendingDart(data, notation: data['notation'] as String?);
       return;
     }
     
@@ -1468,6 +1524,10 @@ class GameProvider with ChangeNotifier {
     double? radius,
     double? angle,
     double? confidence,
+    // Where this dart sits on the video the opponent receives, so their
+    // screen can zoom on it (see OpponentVideoFraming). Optional and
+    // additive: dropped by an older server, ignored by an older app.
+    VideoPoint? zoom,
   }) async {
     if (!isMyTurn || _dartsEmittedThisRound >= 3 || _gameEnded) {
       return;
@@ -1501,6 +1561,10 @@ class GameProvider with ChangeNotifier {
       if (a != null) payload['angle'] = a;
       if (c != null) payload['confidence'] = c;
     }
+    if (zoom != null) payload['zoom'] = {'x': zoom.x, 'y': zoom.y};
+    // A dart is on the board: the outgoing board crop stays still from
+    // here until my next turn (Lucas's spec, 2026-09-06).
+    OpponentVideoFraming.freeze();
 
     if (!SocketService.supportsDartAck) {
       // Legacy backend: it would strip dartId, score the dart, and never ack —
@@ -1668,6 +1732,18 @@ class GameProvider with ChangeNotifier {
           'isTriple': isTriple,
           'source': 'manual',
         };
+        // A typed score has no detected tip: point the opponent's zoom at
+        // the centre of the bed instead, flagged manual so their screen
+        // draws the wider ring (OpponentVideoFraming).
+        final zoom = OpponentVideoFraming.videoPointForNotation(
+          baseScore: baseScore,
+          isDouble: isDouble,
+          isTriple: isTriple,
+        );
+        if (zoom != null) {
+          payload['zoom'] = {'x': zoom.x, 'y': zoom.y, 'manual': true};
+        }
+        OpponentVideoFraming.freeze();
         if (SocketService.supportsDartAck) {
           payload['dartIndex'] = index;
           _emitDartWithTracking(payload);

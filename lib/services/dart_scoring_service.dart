@@ -137,6 +137,14 @@ class DartScore {
   /// or a lookup that fell back to a cached position).
   final double? confidence;
 
+  /// Where this dart sits in the video frame the opponent receives (normalized
+  /// 0..1, see OpponentVideoFraming) — the point their screen zooms on. Null
+  /// when the sender could not place it (no crop bookkeeping yet, or a tip
+  /// projected outside the streamed frame); the dart then scores exactly the
+  /// same and the opponent just sees the label without the zoom.
+  final double? videoX;
+  final double? videoY;
+
   DartScore({
     required this.score,
     required this.segment,
@@ -144,6 +152,8 @@ class DartScore {
     required this.radius,
     required this.angle,
     this.confidence,
+    this.videoX,
+    this.videoY,
   });
 
   /// The tip's position as it travels with a dart, dropping anything that is
@@ -171,6 +181,23 @@ class DartScore {
       radius: radius,
       angle: angle,
       confidence: value,
+      videoX: videoX,
+      videoY: videoY,
+    );
+  }
+
+  /// The same score, carrying where it sits on the outgoing video.
+  DartScore withVideoPoint(double? x, double? y) {
+    if (x == null || y == null) return this;
+    return DartScore(
+      score: score,
+      segment: segment,
+      ring: ring,
+      radius: radius,
+      angle: angle,
+      confidence: confidence,
+      videoX: x,
+      videoY: y,
     );
   }
 
@@ -342,6 +369,40 @@ class DartScoringService {
   /// centre at (170, 170), board edge radius 170). Same space DartsMind's
   /// CnfPoint and mergeTips operate in.
   List<double> toBoard(double x, double y) => _toBoard(x, y);
+
+  /// The centre of the bed a backend score designates, in the same absolute
+  /// board space as [toBoard] — where the opponent's screen zooms when a dart
+  /// was TYPED and no tip was ever detected. Singles land in the outer single
+  /// bed (the larger one, and where most singles fall); 25 is the bull ring,
+  /// 50 the centre. Null for a miss or an unknown segment.
+  static List<double>? boardPointForNotation({
+    required int baseScore,
+    required bool isDouble,
+    required bool isTriple,
+  }) {
+    if (baseScore <= 0) return null;
+    if (baseScore == 25) {
+      if (isDouble) return [_c, _c];
+      // Bull ring: the top of the ring (y-down screen space, so −π/2).
+      final r = (_innerBullR + _outerBullR) / 2 * _boardR;
+      return [_c, _c - r];
+    }
+    final range = _zoneRadianDict[baseScore];
+    if (range == null) return null;
+    final angle = (range.$1 + range.$2) / 2;
+    final double radius;
+    if (isTriple) {
+      radius = _tripleMidR;
+    } else if (isDouble) {
+      radius = (_zone2Lo + _zone2Hi) / 2;
+    } else {
+      radius = (_zone3Hi + _zone2Lo) / 2;
+    }
+    return [
+      _c + radius * _boardR * cos(angle),
+      _c + radius * _boardR * sin(angle),
+    ];
+  }
 
   // Inverse homography (board → image), computed lazily on first use.
   List<List<double>>? _hInv;

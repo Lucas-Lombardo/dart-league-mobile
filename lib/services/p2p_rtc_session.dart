@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -361,7 +362,15 @@ class P2pRtcSession {
   /// raw dimensions gave a portrait Android sender a landscape box around a
   /// portrait picture, and the inner `cover` zoomed ~1.8× straight into the
   /// board — so the box must be sized from the DISPLAYED (rotated) ones.
-  Widget remoteView() => ValueListenableBuilder<RTCVideoValue>(
+  ///
+  /// [zoom] is the opponent-turn dart zoom and [topInset] the badge row the
+  /// fitted video stays below (see [BoardSafeVideo]); both zero on screens
+  /// that only watch.
+  Widget remoteView({
+    ValueListenable<VideoZoomState>? zoom,
+    double topInset = 0,
+  }) =>
+      ValueListenableBuilder<RTCVideoValue>(
         valueListenable: remoteRenderer,
         builder: (context, value, _) {
           if (value.width <= 0 || value.height <= 0) {
@@ -374,6 +383,8 @@ class P2pRtcSession {
           return BoardSafeVideo(
             sourceWidth: rotated ? value.height : value.width,
             sourceHeight: rotated ? value.width : value.height,
+            zoom: zoom,
+            topInset: topInset,
             child: RTCVideoView(
               remoteRenderer,
               objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,

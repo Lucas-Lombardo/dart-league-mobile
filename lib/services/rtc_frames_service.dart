@@ -12,6 +12,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStreamTrack, WebRT
 import 'package:flutter_webrtc/src/native/media_stream_track_impl.dart'
     show MediaStreamTrackNative;
 
+import 'board_crop.dart' show PixelRect, kBoardCropOutputSide;
+
 /// Bridge to the app-local "RtcFrames" native companion (RtcFramesPlugin on
 /// iOS/Android): a WebRTC video track fed by the app-owned camera instead of
 /// a WebRTC-managed capturer, so the same frames feed the AI and the peer.
@@ -161,6 +163,12 @@ class RtcFramesService {
   /// [rotationDegrees] is the clockwise-to-upright rotation metadata.
   /// iOS: [bytes] is the raw BGRA plane ([format] 'bgra'), [bytesPerRow] its
   /// row stride, rotation 0 (frames already arrive upright).
+  ///
+  /// [crop], when given, is the board square in the RAW frame's pixels (the
+  /// frame as passed here, before any rotation): the native side crops it out
+  /// and scales it to [outputSide]×[outputSide] before the encoder, so the
+  /// peer receives the board alone (see OpponentVideoFraming). A crop that
+  /// does not fit the frame is ignored natively — the whole frame goes out.
   static void pushFrame(
     Uint8List bytes,
     int width,
@@ -168,6 +176,8 @@ class RtcFramesService {
     int rotationDegrees, {
     String? format,
     int? bytesPerRow,
+    PixelRect? crop,
+    int outputSide = kBoardCropOutputSide,
   }) {
     if (_track == null || _inFlight >= 2) return;
     _inFlight++;
@@ -178,6 +188,14 @@ class RtcFramesService {
       'rotation': rotationDegrees,
       'format': ?format,
       'bytesPerRow': ?bytesPerRow,
+      if (crop != null) ...<String, dynamic>{
+        'cropX': crop.x,
+        'cropY': crop.y,
+        'cropW': crop.width,
+        'cropH': crop.height,
+        'outW': outputSide,
+        'outH': outputSide,
+      },
     }).catchError((Object e) {
       if (!_pushErrorLogged) {
         _pushErrorLogged = true;

@@ -2614,6 +2614,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get liveBadge => 'LIVE';
   @override
+  String get manualDartTag => 'MANUAL';
+  @override
   String get playingBadge => 'PLAYING';
   @override
   String roundChip(int number) => 'ROUND $number';

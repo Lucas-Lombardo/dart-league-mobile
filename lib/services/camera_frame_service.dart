@@ -8,6 +8,7 @@ import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
+import 'board_crop.dart';
 import 'replay_buffer_service.dart';
 import 'rtc_frames_service.dart';
 import '../utils/storage_service.dart';
@@ -586,6 +587,40 @@ class CameraFrameService {
   }
 
   /// Send the frame to the RtcFrames native companion (WebRTC video source).
+  /// The board square to cut out of THIS raw frame before it is encoded, in
+  /// raw pixels — or null to stream the whole frame. Also records, for the
+  /// per-dart zoom point, what the opponent is now looking at.
+  ///
+  /// The plan is measured on the upright analysis frame; a push whose
+  /// rotation or aspect no longer matches it (device turned, camera switched
+  /// mid-turn) streams the whole frame until the next turn re-measures —
+  /// never a square cut from the wrong place.
+  PixelRect? _boardCropFor(int rawWidth, int rawHeight, int rotation) {
+    final plan = OpponentVideoFraming.plan;
+    final swapped = rotation == 90 || rotation == 270;
+    final uprightW = swapped ? rawHeight : rawWidth;
+    final uprightH = swapped ? rawWidth : rawHeight;
+    PixelRect? upright;
+    if (plan != null && plan.rotation == rotation) {
+      upright = BoardCropPlanner.uprightRect(plan, uprightW, uprightH);
+    }
+    OpponentVideoFraming.noteApplied(upright, uprightW, uprightH,
+        rotation: rotation);
+    if (upright == null) return null;
+    final raw = BoardCropPlanner.toRaw(upright, uprightW, uprightH, rotation);
+    if (raw.x < 0 ||
+        raw.y < 0 ||
+        raw.width <= 0 ||
+        raw.height <= 0 ||
+        raw.x + raw.width > rawWidth ||
+        raw.y + raw.height > rawHeight) {
+      OpponentVideoFraming.noteApplied(null, uprightW, uprightH,
+          rotation: rotation);
+      return null;
+    }
+    return raw;
+  }
+
   /// The method channel serializes the bytes synchronously during pushFrame,
   /// so the pooled buffer is reusable as soon as the call returns;
   /// back-pressure (drop when the platform side is behind) lives in
@@ -612,6 +647,7 @@ class CameraFrameService {
           format = _fillTightYuv(image, buffer);
         }
         final rotation = _effectiveRotation();
+        final crop = _boardCropFor(image.width, image.height, rotation);
         if (!_firstPushLogged) {
           _firstPushLogged = true;
           debugPrint('[CameraFrameService] first P2P push: '
@@ -623,6 +659,7 @@ class CameraFrameService {
           image.height,
           rotation,
           format: format,
+          crop: crop,
         );
       } else {
         // iOS: BGRA8888, frames already upright in every orientation →
@@ -630,6 +667,7 @@ class CameraFrameService {
         // straight through (single copy inside the method-channel codec);
         // the native side strips any row padding via bytesPerRow.
         final plane = image.planes[0];
+        final crop = _boardCropFor(image.width, image.height, 0);
         if (!_firstPushLogged) {
           _firstPushLogged = true;
           debugPrint('[CameraFrameService] first P2P push: '
@@ -643,6 +681,7 @@ class CameraFrameService {
           0,
           format: 'bgra',
           bytesPerRow: plane.bytesPerRow,
+          crop: crop,
         );
       }
     } catch (e) {

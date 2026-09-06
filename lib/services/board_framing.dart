@@ -22,6 +22,12 @@ class BoardFraming {
   final double centerX;
   final double centerY;
 
+  /// The circle's x / y extents as fractions of the image width / height —
+  /// what [spread] is the max of. Kept separately for the board crop, which
+  /// needs the board's size in PIXELS on a frame whose aspect is not 1.
+  final double extentX;
+  final double extentY;
+
   /// Whether the whole projected circle fits inside the frame (small margin).
   final bool fullyVisible;
 
@@ -37,7 +43,10 @@ class BoardFraming {
     required this.centerY,
     required this.fullyVisible,
     this.tiltDegrees,
-  });
+    double? extentX,
+    double? extentY,
+  })  : extentX = extentX ?? spread,
+        extentY = extentY ?? spread;
 
   static const double _edgeMargin = 0.01;
   static const double _centerTolerance = 0.18;
@@ -98,7 +107,8 @@ class BoardFraming {
       }
       final center = scorer.boardToImage(kBoardR, kBoardR);
       if (!center[0].isFinite || !center[1].isFinite) return null;
-      final spread = (maxX - minX) > (maxY - minY) ? maxX - minX : maxY - minY;
+      final extentX = maxX - minX, extentY = maxY - minY;
+      final spread = extentX > extentY ? extentX : extentY;
       // A wildly implausible projection (near-degenerate homography blowing
       // the circle up) is noise, not a measurement.
       if (spread <= 0.01 || spread > 5.0) return null;
@@ -118,6 +128,8 @@ class BoardFraming {
         centerY: center[1],
         fullyVisible: inside,
         tiltDegrees: tilt,
+        extentX: extentX,
+        extentY: extentY,
       );
     } catch (_) {
       return null;

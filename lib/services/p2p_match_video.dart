@@ -11,6 +11,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart'
         Helper;
 
 import '../models/rtc_v2_config.dart';
+import '../widgets/board_safe_video.dart';
 import 'p2p_rtc_session.dart';
 import 'rtc_frames_service.dart';
 import 'socket_service.dart';
@@ -123,7 +124,13 @@ class P2pMatchVideo {
   bool get isRemoteReady => _remoteReady;
   bool get isLinkUp => _session?.isLinkUp ?? false;
 
-  Widget? remoteView() => _session?.remoteView();
+  /// The peer's video, or null before a session exists. [zoom] is the
+  /// opponent-turn dart zoom the match screen drives (see [BoardSafeVideo]).
+  Widget? remoteView({
+    ValueListenable<VideoZoomState>? zoom,
+    double topInset = 0,
+  }) =>
+      _session?.remoteView(zoom: zoom, topInset: topInset);
 
   /// Starts the call. Returns once the first connection attempt has been
   /// made — failures are handled by the recovery loop, not by the caller.

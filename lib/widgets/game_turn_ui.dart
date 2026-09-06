@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/opponent_dart_zoom.dart';
 import '../services/dart_detection_types.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
+import 'board_safe_video.dart';
 import 'logo_watermark.dart';
 
 /// Shared building blocks for the in-match maquette UI (July 2026 redesign).
@@ -15,6 +17,12 @@ import 'logo_watermark.dart';
 /// Derived from the screen height minus the vertical chrome each layout needs
 /// below/above the camera, clamped so it neither collapses on small phones
 /// nor starves the scoring panels on tall ones.
+/// Height of the badge row docked on the opponent feed (back button, live
+/// badge, logo bug, mic/camera controls: top 10 + 40 px + a hair). The
+/// received board square is fitted BELOW it, so the top of the board is never
+/// under a badge — the same whole board in portrait and in landscape.
+const double kOpponentFeedBadgeRowHeight = 52;
+
 double gameCameraHeight(BuildContext context) {
   final mq = MediaQuery.of(context);
   final h = mq.size.height;
@@ -1275,115 +1283,307 @@ class VisitTotal extends StatelessWidget {
   }
 }
 
-/// Big glowing "T20 / +60 pts / FLÉCHETTE 2 / 3" flash overlaid on the
-/// opponent's camera whenever a new dart of theirs lands. Fades in, holds,
-/// fades out on its own.
-class DartHitFlash extends StatefulWidget {
+/// The opponent's dart, announced on their live feed (2026-09-06 redesign):
+/// a full-width band docked at the bottom of the feed ("T19  +57 pts …
+/// FLÉCHETTE 2 / 3" on a dark veil — option A of the second device round:
+/// the small corner pill was unreadable over a zoomed board) and, when the
+/// thrower sent where the dart sits in the frame, a zoom on it — scale 1 →
+/// 2.2 about the impact (350 ms), hold (1 400 ms — long enough to actually
+/// see the dart), back (500 ms). No marker on the dart: the zoom itself
+/// shows it. Replaces the 84 px centred flash that used to cover the board
+/// for almost three seconds.
+///
+/// [bottomInset] lifts the band above whatever the screen docks at the
+/// feed's bottom edge (the cricket visit ticker).
+///
+/// The zoom itself is painted by the video ([BoardSafeVideo]) through
+/// [controller]; this widget only drives it. A dart that lands while a zoom
+/// is in flight restarts the sequence FROM the current scale and focus (no
+/// jump back to 1). A typed score zooms on its bed centre with the wider ring
+/// and a MANUAL tag. Without a point (older app on the other side, tip out
+/// of frame) the label alone appears.
+class OpponentDartFlash extends StatefulWidget {
   final List<String> throws;
+  final OpponentDartZoom? zoom;
+  final VideoZoomController controller;
 
   /// Subtitle under the notation. Null keeps the X01 "+60 pts"; cricket
   /// passes marks ("3 marques").
   final String Function(String notation)? subtitleOf;
+  final double bottomInset;
 
-  const DartHitFlash({super.key, required this.throws, this.subtitleOf});
+  const OpponentDartFlash({
+    super.key,
+    required this.throws,
+    required this.zoom,
+    required this.controller,
+    this.subtitleOf,
+    this.bottomInset = 0,
+  });
 
   @override
-  State<DartHitFlash> createState() => _DartHitFlashState();
+  State<OpponentDartFlash> createState() => _OpponentDartFlashState();
 }
 
-class _DartHitFlashState extends State<DartHitFlash>
+class _OpponentDartFlashState extends State<OpponentDartFlash>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  Timer? _holdTimer;
+  static const _totalMs = 2250;
+  static const _total = Duration(milliseconds: _totalMs);
+  static const _zoomInEnd = 350 / _totalMs;
+  static const _zoomOutStart = 1750 / _totalMs;
+  static const _labelInEnd = 200 / _totalMs;
+  static const _maxScale = 2.2;
+
+  late final AnimationController _anim;
   String? _notation;
   int _dartIndex = 0;
+  bool _manual = false;
+  double? _targetX;
+  double? _targetY;
+  double _startScale = 1;
+  double _startX = 0.5;
+  double _startY = 0.5;
+  // A dart without a point while a zoom is in flight: ease the video back to
+  // 1 instead of leaving it stuck at 2.2× until the sequence ends.
+  bool _releaseOnly = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-      reverseDuration: const Duration(milliseconds: 450),
+    _anim = AnimationController(vsync: this, duration: _total)
+      ..addListener(_drive)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.controller.value = VideoZoomState.none;
+        }
+      });
+  }
+
+  @override
+  void didUpdateWidget(OpponentDartFlash oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final z = widget.zoom;
+    final newZoom = z != null && z.seq != oldWidget.zoom?.seq;
+    final newDart = widget.throws.length > oldWidget.throws.length &&
+        widget.throws.isNotEmpty;
+    if (!newZoom && !newDart) return;
+    // Restart from wherever the video is right now, never from a jump.
+    final current = widget.controller.value;
+    _startScale = current.scale;
+    if (newZoom) {
+      _notation = z.notation;
+      _dartIndex = z.dartIndex;
+      _manual = z.manual;
+      _targetX = z.x;
+      _targetY = z.y;
+      _releaseOnly = false;
+    } else {
+      _notation = widget.throws.last;
+      _dartIndex = widget.throws.length;
+      _manual = false;
+      _targetX = null;
+      _targetY = null;
+      _releaseOnly = current.scale > 1.0005;
+    }
+    if (current.scale > 1.0005) {
+      _startX = current.focusX;
+      _startY = current.focusY;
+    } else {
+      _startX = _targetX ?? 0.5;
+      _startY = _targetY ?? 0.5;
+    }
+    _anim.forward(from: 0);
+  }
+
+  void _drive() {
+    final t = _anim.value;
+    if (_releaseOnly) {
+      final k = Curves.easeInOut.transform((t / _zoomInEnd).clamp(0.0, 1.0));
+      widget.controller.value = VideoZoomState(
+        scale: _startScale + (1 - _startScale) * k,
+        focusX: _startX,
+        focusY: _startY,
+        manual: false,
+      );
+      return;
+    }
+    final tx = _targetX, ty = _targetY;
+    if (tx == null || ty == null) return; // label only, video untouched
+    final double scale;
+    if (t < _zoomInEnd) {
+      final k = Curves.easeOutCubic.transform(t / _zoomInEnd);
+      scale = _startScale + (_maxScale - _startScale) * k;
+    } else if (t < _zoomOutStart) {
+      scale = _maxScale;
+    } else {
+      final k = Curves.easeInOut.transform((t - _zoomOutStart) / (1 - _zoomOutStart));
+      scale = _maxScale + (1 - _maxScale) * k;
+    }
+    final f = Curves.easeOutCubic.transform((t / _zoomInEnd).clamp(0.0, 1.0));
+    widget.controller.value = VideoZoomState(
+      scale: scale,
+      focusX: _startX + (tx - _startX) * f,
+      focusY: _startY + (ty - _startY) * f,
+      manual: _manual,
     );
   }
 
   @override
-  void didUpdateWidget(DartHitFlash oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.throws.length > oldWidget.throws.length &&
-        widget.throws.isNotEmpty) {
-      _notation = widget.throws.last;
-      _dartIndex = widget.throws.length;
-      _holdTimer?.cancel();
-      _controller.forward(from: 0);
-      _holdTimer = Timer(const Duration(milliseconds: 2200), () {
-        if (mounted) _controller.reverse();
-      });
-    }
+  void dispose() {
+    _anim.dispose();
+    // The layout is going away (my turn now): leave the video plain for the
+    // next time the opponent's feed shows.
+    widget.controller.value = VideoZoomState.none;
+    super.dispose();
   }
 
-  @override
-  void dispose() {
-    _holdTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
+  double _labelOpacity(double t) {
+    if (t < _labelInEnd) return Curves.easeOut.transform(t / _labelInEnd);
+    if (t < _zoomOutStart) return 1;
+    return 1 - Curves.easeIn.transform((t - _zoomOutStart) / (1 - _zoomOutStart));
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final notation = _notation;
     return IgnorePointer(
-      child: FadeTransition(
-        opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-        child: _notation == null
-            ? const SizedBox.shrink()
-            : Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _notation!,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 84,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        shadows: [
-                          Shadow(
-                            color: AppTheme.opponentPink.withValues(alpha: 0.9),
-                            blurRadius: 36,
-                          ),
-                          Shadow(
-                            color: AppTheme.opponentPink.withValues(alpha: 0.6),
-                            blurRadius: 70,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.subtitleOf?.call(_notation!) ??
-                          l10n.plusPts(notationPoints(_notation!)),
-                      style: const TextStyle(
-                        color: AppTheme.opponentPinkBright,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      l10n.dartOf(_dartIndex),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2.5,
-                      ),
-                    ),
-                  ],
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: widget.bottomInset),
+          child: AnimatedBuilder(
+            animation: _anim,
+            builder: (context, child) {
+              final visible = _anim.isAnimating ? _labelOpacity(_anim.value) : 0.0;
+              return Opacity(
+                opacity: visible,
+                child: Transform.translate(
+                  offset: Offset(0, 10 * (1 - visible)),
+                  child: child,
                 ),
-              ),
+              );
+            },
+            child: notation == null
+                ? const SizedBox.shrink()
+                : Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 26, 16, 14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppTheme.gameBackground.withValues(alpha: 0),
+                          AppTheme.gameBackground.withValues(alpha: 0.92),
+                          AppTheme.gameBackground.withValues(alpha: 0.96),
+                        ],
+                        stops: const [0, 0.38, 1],
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          notation,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                            shadows: [
+                              Shadow(
+                                color:
+                                    AppTheme.opponentPink.withValues(alpha: 0.9),
+                                blurRadius: 18,
+                              ),
+                              Shadow(
+                                color:
+                                    AppTheme.opponentPink.withValues(alpha: 0.5),
+                                blurRadius: 40,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Points + MANUAL tag shrink together before anything
+                        // overflows on a narrow panel (iPhone SE).
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.bottomLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    widget.subtitleOf?.call(notation) ??
+                                        l10n.plusPts(notationPoints(notation)),
+                                    style: const TextStyle(
+                                      color: AppTheme.opponentPinkBright,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ),
+                                if (_manual) ...[
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: AppTheme.accent
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      l10n.manualDartTag,
+                                      style: const TextStyle(
+                                        color: AppTheme.accent,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Takes what is left and fades rather than overflows
+                        // on a narrow panel (iPhone SE, wide test font).
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              l10n.dartOf(_dartIndex),
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.fade,
+                              style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 2,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

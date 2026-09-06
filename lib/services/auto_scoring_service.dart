@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'board_crop.dart';
 import 'board_framing.dart';
 import 'camera_frame_service.dart';
 import 'dart_detection_service_stub.dart'
@@ -571,6 +572,7 @@ class AutoScoringService extends ChangeNotifier {
 
   /// DartsMind: clearDetectData
   void resetTurn() {
+    OpponentVideoFraming.noteScorer(null);
     _dartSlots = [null, null, null];
     _turnTotal = 0;
     _tipGroups = [];
@@ -1044,6 +1046,12 @@ class AutoScoringService extends ChangeNotifier {
       } catch (_) {
         scorer = null;
       }
+    }
+    // The turn's last valid homography, so a TYPED score can still be pointed
+    // at on the outgoing video (OpponentVideoFraming.videoPointForNotation).
+    if (scorer != null) {
+      OpponentVideoFraming.noteScorer(scorer,
+          rotation: _lastAnalysisRotation ?? 0);
     }
 
     // Convert detected tips to CnfPoints in board space (DartsMind parity).
@@ -2210,7 +2218,19 @@ class AutoScoringService extends ChangeNotifier {
           if (firstEmit) {
             _emittedSlots[s] = true;
             telemetry.recordAutoScored();
-            onDartDetected?.call(s, score);
+            // Where the opponent's screen should zoom: the tip, re-expressed
+            // in the frame we are streaming to them (the board crop when one
+            // is applied). Purely additive — the score itself is untouched.
+            DartScore emitted = score;
+            if (anchor != null) {
+              final vp = OpponentVideoFraming.videoPointForBoardNorm(
+                  anchor[0], anchor[1]);
+              if (vp != null) {
+                emitted = score.withVideoPoint(vp.x, vp.y);
+                _dartSlots[s] = emitted;
+              }
+            }
+            onDartDetected?.call(s, emitted);
           }
           break;
         }
@@ -2261,6 +2281,16 @@ class AutoScoringService extends ChangeNotifier {
       _zoomHint = ZoomHint.boardNotFullyVisible;
       return;
     }
+    // Feed the outgoing-video board crop (option B, 2026-09-06): the same
+    // projected circle, on the same upright analysis frame the AI saw —
+    // iOS frames are upright already (rotation 0), Android's were rotated by
+    // _lastAnalysisRotation before analysis. Turn-gated inside.
+    OpponentVideoFraming.reportFraming(
+      framing,
+      imageWidth: result.imageWidth,
+      imageHeight: result.imageHeight,
+      rotation: _lastAnalysisRotation ?? 0,
+    );
     // Feed the replay ring's orientation hint from where the 20 actually is
     // in the frame — the device-orientation sensor lies on rotation-locked
     // mounted phones (see CameraFrameService.reportBoardTilt).

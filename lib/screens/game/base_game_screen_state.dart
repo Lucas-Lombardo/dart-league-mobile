@@ -17,6 +17,7 @@ import '../../services/replay_clips_store.dart';
 import '../../services/replay_overlay_timeline.dart';
 import '../../services/replay_upload_service.dart';
 import '../../services/match_proof_service.dart';
+import '../../services/board_crop.dart' show OpponentVideoFraming, VideoPoint;
 import '../../services/rtc_frames_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/turn_report_service.dart';
@@ -33,6 +34,8 @@ import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../services/dataset_capture_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../models/opponent_dart_zoom.dart';
+import '../../widgets/board_safe_video.dart' show VideoZoomController;
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/turn_report_banner.dart';
 import '../../widgets/logo_watermark.dart';
@@ -516,6 +519,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// The whole P2P path in one object (session + native track + recovery
   /// loop) — see [P2pMatchVideo]. Null when the match got no video block.
   P2pMatchVideo? p2pVideo;
+  // Opponent-turn dart zoom: driven by OpponentDartFlash, painted by the
+  // remote video (BoardSafeVideo). One per screen, idle outside their turn.
+  final VideoZoomController videoZoom = VideoZoomController();
+  // Ownership token of the static outgoing-crop state (OpponentVideoFraming):
+  // this screen's deferred dispose must not wipe a successor match screen's.
+  int? _framingGeneration;
 
   // Guards initializeP2p against concurrent entry (initial init racing the
   // reconnect relaunch).
@@ -701,6 +710,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // REPORTED side matters most: a player who never flags anything still has
     // to answer a capture request, silently.
     TurnReportService.listen();
+    _framingGeneration = OpponentVideoFraming.claim();
     autoScoringService = AutoScoringService();
     autoScoringService!.telemetrySessionOf =
         () => (aiTelemetryContext, matchIdForLeave);
@@ -751,6 +761,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // and releases the native track.
     p2pVideo?.stopDetached();
     p2pVideo = null;
+    videoZoom.dispose();
+    // Outgoing board crop + zoom bookkeeping is static, like the turn gate
+    // it follows: forget this match's board — unless a newer match screen
+    // already owns it (deferred-dispose overlap).
+    OpponentVideoFraming.reset(ifGeneration: _framingGeneration);
     TurnReportService.stopListening();
     // Drops the visits cached for this match, including the winning one the
     // end screens could still flag. Runs at dispose and not at match end on
@@ -920,6 +935,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // silence, the peer's stall watchdog needs frames flowing (see
       // RtcFramesService). Audio stays live; no-op in solo modes.
       RtcFramesService.setSendActive(game.isMyTurn);
+      // Same turn moment for the outgoing board crop: my turn re-measures
+      // the square until my first dart, their turn keeps it still.
+      OpponentVideoFraming.setMyTurn(game.isMyTurn);
       if (game.currentPlayerId != lastKnownCurrentPlayer && lastKnownCurrentPlayer != null) {
         if (game.isMyTurn) {
           DartSoundService.playYourTurn();
@@ -1219,6 +1237,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // scorer's normalized board frame, so nothing is converted here. Together
       // with a later correction by the player, they are a ground-truth training
       // sample — the reason any of this is worth sending.
+      // Where the dart sits on the video the opponent receives — their
+      // screen zooms on it (OpponentDartFlash). Null when the sender could
+      // not place it; the dart scores the same either way.
+      final vx = dartScore.videoX, vy = dartScore.videoY;
       g.throwDart(
         baseScore: base,
         multiplier: mul,
@@ -1226,6 +1248,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         radius: dartScore.radius,
         angle: dartScore.angle,
         confidence: dartScore.confidence,
+        zoom: vx != null && vy != null ? VideoPoint(vx, vy) : null,
       );
     };
     await autoScoringService!.loadModel();
@@ -1973,13 +1996,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             // "no camera at all" in the 2026-08-03 airplane test.
             if (p2pVideo != null)
               (p2pVideo!.isRemoteReady && p2pVideo!.isLinkUp
-                  ? (p2pVideo!.remoteView() ?? waitingPlaceholder)
+                  ? (p2pVideo!.remoteView(
+                        zoom: videoZoom,
+                        topInset: kOpponentFeedBadgeRowHeight,
+                      ) ??
+                      waitingPlaceholder)
                   : waitingPlaceholder)
             else
               waitingPlaceholder,
-            // ── Dart-hit flash (big "T20 / +60 pts" glow) ──
-            DartHitFlash(
+            // ── Dart label + one-second zoom on the dart that just landed ──
+            OpponentDartFlash(
               throws: opponentThrows,
+              zoom: opponentDartZoomOf(game),
+              controller: videoZoom,
+              // Cricket docks its visit ticker at the feed's bottom edge
+              // (36 px, 12 px up): the score band sits above it.
+              bottomInset: bottomOverlay != null ? 54 : 0,
               subtitleOf: cricket != null
                   ? (n) => AppLocalizations.of(context)
                       .cricketMarks(cricketNotationMarks(n))
@@ -2057,6 +2089,16 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           ],
         ),
       );
+  }
+
+  /// The opponent's latest dart with its zoom point, or null when the
+  /// provider doesn't carry one (or none arrived for this visit).
+  OpponentDartZoom? opponentDartZoomOf(dynamic game) {
+    try {
+      return game.opponentDartZoom as OpponentDartZoom?;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Round number of the side currently throwing (1-based), or null when the

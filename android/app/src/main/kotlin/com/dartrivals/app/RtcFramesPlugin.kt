@@ -139,9 +139,33 @@ class RtcFramesPlugin(
     }
 
     /**
+     * The board square to cut out of the RAW frame before encoding, and the
+     * fixed size to scale it to (see OpponentVideoFraming on the Dart side).
+     * Present only when all six arguments are there and the square fits the
+     * frame; anything else means "stream the whole frame".
+     */
+    private class Crop(
+        val x: Int, val y: Int, val width: Int, val height: Int,
+        val outWidth: Int, val outHeight: Int,
+    )
+
+    private fun cropArgs(call: MethodCall, width: Int, height: Int): Crop? {
+        val x = call.argument<Int>("cropX") ?: return null
+        val y = call.argument<Int>("cropY") ?: return null
+        val w = call.argument<Int>("cropW") ?: return null
+        val h = call.argument<Int>("cropH") ?: return null
+        val outW = call.argument<Int>("outW") ?: return null
+        val outH = call.argument<Int>("outH") ?: return null
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || outW <= 0 || outH <= 0) return null
+        if (x + w > width || y + h > height) return null
+        return Crop(x, y, w, h, outW, outH)
+    }
+
+    /**
      * args: bytes (tight planar I420 or NV21, no row padding), width, height,
      * rotation (clockwise degrees to upright — same semantic as the camera
-     * push), format ('i420' | 'nv21').
+     * push), format ('i420' | 'nv21'), and optionally cropX/cropY/cropW/cropH
+     * + outW/outH (board crop, see [cropArgs]).
      */
     private fun pushFrame(call: MethodCall, result: MethodChannel.Result) {
         val source = videoSource
@@ -156,6 +180,7 @@ class RtcFramesPlugin(
         }
         val rotation = call.argument<Int>("rotation") ?: 0
         val format = call.argument<String>("format") ?: "nv21"
+        val crop = cropArgs(call, width, height)
         // libyuv reads w*h*1.5 bytes unconditionally on the NV21 path — a
         // short buffer would be a NATIVE overread (SIGSEGV, not a Java
         // exception the catch below could see).
@@ -183,7 +208,21 @@ class RtcFramesPlugin(
                     // onFrameCaptured, on THIS thread).
                     NV21Buffer(bytes, width, height, null)
                 }
-                val frame = VideoFrame(buffer, rotation, SystemClock.elapsedRealtimeNanos())
+                // Board crop: WebRTC's own cropAndScale (libyuv) cuts the
+                // square out of the raw planes and scales it to the fixed
+                // output size, so the encoder never sees a resolution change.
+                // The rotation metadata is untouched — the square was mapped
+                // into raw coordinates on the Dart side.
+                val outBuffer: VideoFrame.Buffer = if (crop != null) {
+                    val cropped = buffer.cropAndScale(
+                        crop.x, crop.y, crop.width, crop.height, crop.outWidth, crop.outHeight,
+                    )
+                    buffer.release()
+                    cropped
+                } else {
+                    buffer
+                }
+                val frame = VideoFrame(outBuffer, rotation, SystemClock.elapsedRealtimeNanos())
                 source.capturerObserver.onFrameCaptured(frame)
                 frame.release()
             } catch (_: Exception) {

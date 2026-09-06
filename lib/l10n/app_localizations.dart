@@ -993,6 +993,9 @@ abstract class AppLocalizations {
 
   // In-match maquette UI (turn header, visit chips, camera overlays)
   String get liveBadge;
+
+  /// Tag on the opponent-turn dart label when the score was typed by hand.
+  String get manualDartTag;
   String get playingBadge;
   String roundChip(int number);
   String get opponentAvgLabel;
