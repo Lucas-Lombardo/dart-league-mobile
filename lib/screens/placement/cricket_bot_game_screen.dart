@@ -534,26 +534,6 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
         '${AppLocalizations.of(context).legNumber(placement.currentLeg)}';
   }
 
-  String _chipSubtitle(AppLocalizations l10n, CricketDartEffect? effect) {
-    if (effect == null) return l10n.cricketMarks(0);
-    if (effect.pointsScored > 0) return l10n.plusPts(effect.pointsScored);
-    return l10n.cricketMarks(effect.marksApplied);
-  }
-
-  String _visitTotalText(
-    AppLocalizations l10n,
-    List<CricketDartEffect> effects,
-  ) {
-    var marks = 0;
-    var points = 0;
-    for (final e in effects) {
-      marks += e.marksApplied;
-      points += e.pointsScored;
-    }
-    if (points > 0) return l10n.plusPts(points);
-    return '+$marks';
-  }
-
   @override
   Widget build(BuildContext context) {
     final placement = context.watch<PlacementProvider>();
@@ -635,8 +615,8 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
                   myMpr: _myMpr,
                   rowHeight: 22,
                 ),
-                visitTotalText: _visitTotalText(l10n, _effects),
-                chipSubtitle: (i, _) => _chipSubtitle(
+                visitTotalText: cricketVisitTotalText(l10n, _effects),
+                chipSubtitle: (i, _) => cricketChipSubtitle(
                   l10n,
                   i < _effects.length ? _effects[i] : null,
                 ),
@@ -956,7 +936,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
             VisitTotal(
               total: 0,
               color: AppTheme.opponentPinkBright,
-              text: _visitTotalText(l10n, _botEffects),
+              text: cricketVisitTotalText(l10n, _botEffects),
             ),
           ],
         ),
@@ -975,7 +955,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
                     notation: notation,
                     accent: AppTheme.surfaceLight,
                     subtitle: notation != null
-                        ? _chipSubtitle(
+                        ? cricketChipSubtitle(
                             l10n,
                             i < _botEffects.length ? _botEffects[i] : null,
                           )

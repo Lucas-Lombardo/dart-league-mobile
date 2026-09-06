@@ -44,6 +44,7 @@ class CricketState {
   int _myPoints = 0;
   int _oppPoints = 0;
   int _myMarksTotal = 0;
+  int _oppMarksTotal = 0;
 
   CricketState({this.scoreMode = CricketScoreMode.score});
 
@@ -75,6 +76,10 @@ class CricketState {
   /// that counted: closing marks plus scoring overflow; darts on dead targets
   /// and wasted overflow are worth 0, the way real marks are tallied.
   int get myMarksTotal => _myMarksTotal;
+
+  /// The opponent's counterpart of [myMarksTotal]. Only meaningful when both
+  /// sides are humans on one phone (hot-seat), where each gets an MPR.
+  int get oppMarksTotal => _oppMarksTotal;
 
   int get myClosedCount =>
       kCricketTargets.where((t) => myMarks(t) >= 3).length;
@@ -148,7 +153,11 @@ class CricketState {
     // raw marks would credit "3 marques" and inflate the MPR for a dart that
     // changed nothing on the board.
     final effectiveMarks = applied + (points > 0 ? overflow : 0);
-    if (mine) _myMarksTotal += effectiveMarks;
+    if (mine) {
+      _myMarksTotal += effectiveMarks;
+    } else {
+      _oppMarksTotal += effectiveMarks;
+    }
 
     return CricketDartEffect(
       target: baseScore,
@@ -167,6 +176,22 @@ class CricketState {
     copy._myPoints = _myPoints;
     copy._oppPoints = _oppPoints;
     copy._myMarksTotal = _myMarksTotal;
+    copy._oppMarksTotal = _oppMarksTotal;
+    return copy;
+  }
+
+  /// Mirror image: the opponent becomes "me". The hot-seat local match keeps
+  /// the thrower on the "my" side (blue, left) like the X01 header does, so
+  /// it flips the board every time the phone changes hands. Deep copy, like
+  /// [clone].
+  CricketState flipped() {
+    final copy = CricketState(scoreMode: scoreMode);
+    copy._myMarks.addAll(_oppMarks);
+    copy._oppMarks.addAll(_myMarks);
+    copy._myPoints = _oppPoints;
+    copy._oppPoints = _myPoints;
+    copy._myMarksTotal = _oppMarksTotal;
+    copy._oppMarksTotal = _myMarksTotal;
     return copy;
   }
 

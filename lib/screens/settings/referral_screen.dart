@@ -609,9 +609,18 @@ class _ReferralScreenState extends State<ReferralScreen> {
         subtitle = l10n.referralStatusCancelled;
         break;
       case ReferralStatus.trial:
-        icon = Icons.schedule;
-        color = const Color(0xFFEAB308);
-        subtitle = l10n.referralStatusTrial;
+        // The server keeps `trial` until a subscription; the end date tells
+        // whether the free days are still running.
+        final ended = referee.trialEndsAt?.isBefore(DateTime.now()) ?? false;
+        if (ended) {
+          icon = Icons.timer_off_outlined;
+          color = AppTheme.textSecondary;
+          subtitle = l10n.referralStatusTrialEnded;
+        } else {
+          icon = Icons.schedule;
+          color = const Color(0xFFEAB308);
+          subtitle = l10n.referralStatusTrial;
+        }
         break;
     }
 

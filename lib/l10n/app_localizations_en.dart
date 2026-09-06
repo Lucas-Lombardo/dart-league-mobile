@@ -2498,6 +2498,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String localMatchWinner(String name) => '$name wins the match!';
   @override
   String get rematchButton => 'Play again';
+  @override
+  String get localCricketScoreHint =>
+      'A closed number keeps scoring until your opponent closes it';
+  @override
+  String localCricketAllClosedBody(String name) =>
+      '$name closed every number — leg won?';
 
   // Friendly (friend-invite) matches + play-again
   @override
@@ -3162,6 +3168,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get referralNoRefereesYet => 'No referee yet — share your code!';
   @override
   String get referralStatusTrial => 'On their free trial';
+  @override
+  String get referralStatusTrialEnded => 'Trial over, not subscribed';
   @override
   String referralStatusSubscribed(String amount) => 'Subscribed · $amount coming';
   @override

@@ -6,10 +6,12 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../shared/camera_setup_mixin.dart';
+import 'local_cricket_match_screen.dart';
 import 'local_match_screen.dart';
 
 /// Camera/permission gate before a local 1v1 match. Same gate the bot-training
-/// flow uses (AI auto-scoring, no microphone) — just routes into [LocalMatchScreen].
+/// flow uses (AI auto-scoring, no microphone) — just routes into
+/// [LocalMatchScreen] (X01) or [LocalCricketMatchScreen].
 class LocalMatchCameraSetupScreen extends StatefulWidget {
   final LocalMatchConfig config;
 
@@ -51,9 +53,12 @@ class _LocalMatchCameraSetupScreenState
     HapticService.mediumImpact();
     await prepareForNavigation();
     if (!mounted) return;
+    final config = widget.config;
     await AppNavigator.toScreen<void>(
       context,
-      LocalMatchScreen(config: widget.config),
+      config.isCricket
+          ? LocalCricketMatchScreen(config: config)
+          : LocalMatchScreen(config: config),
     );
     if (mounted) AppNavigator.back(context);
   }

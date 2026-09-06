@@ -13,6 +13,7 @@ import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/storage_service.dart';
+import '../../widgets/cricket_variant_segment.dart';
 import '../placement/placement_camera_setup_screen.dart';
 import '../placement/cricket_bot_game_screen.dart';
 
@@ -135,7 +136,12 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
                   _modeCards(l10n),
                   if (_config.isCricket) ...[
                     const SizedBox(height: 10),
-                    _cricketVariantSegment(l10n),
+                    CricketVariantSegment(
+                      value: _config.cricketScoreMode,
+                      onChanged: (mode) =>
+                          _update(_config.copyWith(cricketScoreMode: mode)),
+                      scoreHint: l10n.cricketScoreHint,
+                    ),
                   ],
                   _modeStatsLine(l10n),
                   const SizedBox(height: 22),
@@ -279,65 +285,6 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
           color: AppTheme.success,
           selected: _config.isCricket,
           onTap: () => _update(_config.copyWith(gameMode: BotGameMode.cricket)),
-        ),
-      ],
-    );
-  }
-
-  Widget _cricketVariantSegment(AppLocalizations l10n) {
-    Widget option(CricketScoreMode mode, String label) {
-      final selected = _config.cricketScoreMode == mode;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => _update(_config.copyWith(cricketScoreMode: mode)),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? AppTheme.success.withValues(alpha: 0.22)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: selected ? Colors.white : AppTheme.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppTheme.success.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Row(
-            children: [
-              option(CricketScoreMode.score, l10n.cricketScoreLabel),
-              const SizedBox(width: 6),
-              option(CricketScoreMode.noScore, l10n.cricketNoScoreLabel),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _config.cricketScoreMode == CricketScoreMode.score
-              ? l10n.cricketScoreHint
-              : l10n.cricketNoScoreHint,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
         ),
       ],
     );

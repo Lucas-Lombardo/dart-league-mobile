@@ -5,6 +5,29 @@ import '../models/cricket.dart';
 import '../utils/app_theme.dart';
 import 'game_turn_ui.dart';
 
+/// Visit-chip subtitle for one dart: "+60 pts" when it scored, else its mark
+/// count ("1 marque", "0 marque"). A null effect is an empty slot.
+String cricketChipSubtitle(AppLocalizations l10n, CricketDartEffect? effect) {
+  if (effect == null) return l10n.cricketMarks(0);
+  if (effect.pointsScored > 0) return l10n.plusPts(effect.pointsScored);
+  return l10n.cricketMarks(effect.marksApplied);
+}
+
+/// Visit TOTAL text: the points when any dart scored, else "+N" marks.
+String cricketVisitTotalText(
+  AppLocalizations l10n,
+  List<CricketDartEffect> effects,
+) {
+  var marks = 0;
+  var points = 0;
+  for (final e in effects) {
+    marks += e.marksApplied;
+    points += e.pointsScored;
+  }
+  if (points > 0) return l10n.plusPts(points);
+  return '+$marks';
+}
+
 /// The cricket marks grid: 7 horizontal columns (20 → 15, Bull), the player's
 /// marks on top (blue), the opponent's below (pink). A column the player has
 /// closed while the opponent is open glows gold (every hit scores); a column

@@ -169,4 +169,55 @@ void main() {
     expect(e.closedTarget, isTrue);
     expect(s.myMarksTotal, 3);
   });
+
+  test('oppMarksTotal tallies the other side the same way', () {
+    final s = CricketState();
+    s.applyDart(18, ScoreMultiplier.triple, mine: false);
+    s.applyDart(18, ScoreMultiplier.single, mine: false); // scoring overflow
+    expect(s.oppMarksTotal, 4);
+    expect(s.myMarksTotal, 0);
+  });
+
+  group('flipped (hot-seat orientation)', () {
+    test('mirrors marks, points and marks totals', () {
+      final s = CricketState();
+      s.applyDart(20, ScoreMultiplier.triple, mine: true);
+      s.applyDart(20, ScoreMultiplier.triple, mine: true); // me: 60 pts
+      s.applyDart(19, ScoreMultiplier.double, mine: false);
+      final f = s.flipped();
+      expect(f.myMarks(19), 2);
+      expect(f.oppMarks(20), 3);
+      expect(f.myPoints, 0);
+      expect(f.oppPoints, 60);
+      expect(f.myMarksTotal, 2);
+      expect(f.oppMarksTotal, 6);
+      expect(f.isScoringForMe(20), isFalse);
+      expect(f.scoreMode, s.scoreMode);
+    });
+
+    test('flipping twice restores the original and stays independent', () {
+      final s = CricketState(scoreMode: CricketScoreMode.noScore);
+      s.applyDart(15, ScoreMultiplier.single, mine: true);
+      final back = s.flipped().flipped();
+      expect(back.myMarks(15), 1);
+      expect(back.scoreMode, CricketScoreMode.noScore);
+      back.applyDart(15, ScoreMultiplier.single, mine: true);
+      expect(s.myMarks(15), 1);
+    });
+
+    test('a win on one side is a win for "me" after flipping', () {
+      final s = CricketState(scoreMode: CricketScoreMode.noScore);
+      for (final t in kCricketTargets) {
+        s.applyDart(t, ScoreMultiplier.triple, mine: false);
+        if (t == 25) {
+          s.applyDart(t, ScoreMultiplier.double, mine: false);
+          s.applyDart(t, ScoreMultiplier.single, mine: false);
+        }
+      }
+      expect(s.oppWon, isTrue);
+      final f = s.flipped();
+      expect(f.iWon, isTrue);
+      expect(f.oppWon, isFalse);
+    });
+  });
 }

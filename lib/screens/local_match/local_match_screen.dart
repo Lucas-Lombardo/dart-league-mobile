@@ -21,8 +21,9 @@ import '../../utils/storage_service.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
+import 'local_match_widgets.dart';
 
-/// Local (hot-seat) 1v1 match: two players share one device, alternating turns
+/// Local (hot-seat) 1v1 X01 match: two players share one device, alternating turns
 /// in front of the camera. Fully client-side — no sockets, no API, no stats,
 /// nothing persisted. The X01 scoring logic mirrors the bot-training screen but
 /// the "opponent's turn" is simply a hand-the-phone-over step.
@@ -615,47 +616,19 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     ).then((_) => _winDialogShowing = false);
   }
 
-  Future<bool> _showLeaveDialog() async {
-    final l10n = AppLocalizations.of(context);
-    final shouldLeave = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.error, width: 2),
-        ),
-        title: Row(children: [
-          const Icon(Icons.warning, color: AppTheme.error, size: 32),
-          const SizedBox(width: 12),
-          Text(l10n.leaveMatch,
-              style: AppTheme.titleLarge
-                  .copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
-        ]),
-        content: Text(l10n.leaveMatchWarning,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.stay),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: Text(l10n.leave),
-          ),
-        ],
-      ),
-    );
-    return shouldLeave ?? false;
-  }
-
   // ── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    if (_gameEnded) return _buildEndScreen();
+    if (_gameEnded) {
+      return LocalMatchEndView(
+        config: _config,
+        winner: _matchWinner ?? 0,
+        legsWon: _legsWon,
+        onRematch: _rematch,
+        onBack: () => Navigator.of(context).pop(),
+      );
+    }
 
     final safeTop = MediaQuery.of(context).padding.top;
 
@@ -663,36 +636,22 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldPop = await _showLeaveDialog();
+        final shouldPop = await showLeaveLocalMatchDialog(context);
         if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
         backgroundColor: AppTheme.background,
         body: Stack(
           children: [
-            if (_autoScoringLoading) _buildLoading() else _buildTurnView(),
-
-            // Top-center status: a transient "it's X's turn" banner right after
-            // an auto-switch, otherwise a compact leg-score indicator.
-            _buildTopStatus(safeTop),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoading() {
-    return Container(
-      color: AppTheme.background,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(color: AppTheme.primary),
-            const SizedBox(height: 16),
-            Text(AppLocalizations.of(context).loadingAutoScoring,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 14)),
+            if (_autoScoringLoading)
+              const LocalMatchLoadingView()
+            else
+              _buildTurnView(),
+            // Top-center: the transient turn-change banner. The persistent
+            // leg-score indicator lives in the score header's center column
+            // (2026-08-19 unified header).
+            if (_turnBannerName != null)
+              LocalTurnBanner(name: _turnBannerName!, safeTop: safeTop),
           ],
         ),
       ),
@@ -740,7 +699,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
           ? LocalCameraPreview(controller: _cameraService!.controller!)
           : null,
       onBack: () async {
-        final shouldLeave = await _showLeaveDialog();
+        final shouldLeave = await showLeaveLocalMatchDialog(context);
         if (shouldLeave && mounted) Navigator.of(context).pop();
       },
       onSwitchCamera: _switchCamera,
@@ -785,155 +744,6 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     );
   }
 
-  /// Top-center overlay: the transient turn-change banner. The persistent
-  /// leg-score indicator moved into the score header's center column
-  /// (2026-08-19 unified header).
-  Widget _buildTopStatus(double safeTop) {
-    if (_turnBannerName != null) return _buildTurnBanner(safeTop);
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildTurnBanner(double safeTop) {
-    final l10n = AppLocalizations.of(context);
-    return Positioned(
-      top: safeTop + 52,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: Center(
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            builder: (context, t, child) => Opacity(
-              opacity: t,
-              child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
-            ),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.5),
-                    blurRadius: 18,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.sports_esports,
-                      color: Colors.white, size: 20),
-                  const SizedBox(width: 10),
-                  Text(
-                    l10n.turnOf(_turnBannerName!).toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEndScreen() {
-    final l10n = AppLocalizations.of(context);
-    final winner = _matchWinner ?? 0;
-    final winnerName = _config.nameOf(winner);
-
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.success, width: 4),
-                    ),
-                    child: const Icon(Icons.emoji_events,
-                        color: AppTheme.success, size: 80),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    '${l10n.victory.toUpperCase()}!',
-                    style: AppTheme.displayLarge
-                        .copyWith(color: AppTheme.success, fontSize: 44),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.localMatchWinner(winnerName),
-                    style: AppTheme.bodyLarge.copyWith(color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_config.nameOf(0)}  ${_legsWon[0]} — ${_legsWon[1]}  ${_config.nameOf(1)}',
-                    style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _rematch,
-                      icon: const Icon(Icons.replay),
-                      label: Text(l10n.rematchButton),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: BorderSide(
-                            color: AppTheme.surfaceLight.withValues(alpha: 0.8)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text(l10n.backToHome),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _LocalDart {

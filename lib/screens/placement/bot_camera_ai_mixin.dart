@@ -9,11 +9,12 @@ import '../../services/dart_scoring_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/storage_service.dart';
 
-/// Local-camera auto-scoring plumbing shared by the solo bot screens (X01
-/// placement/bot-training and cricket): camera + AI init, capture start/stop,
-/// the manual AI toggle, zoom and lens switching. Solo mode means no RTC
-/// viewer: the camera runs a continuous image stream and caches the latest
-/// frame for the AI loop, which is stopped whenever nothing consumes it.
+/// Local-camera auto-scoring plumbing shared by the single-phone screens (X01
+/// placement/bot-training, bot cricket, local hot-seat cricket): camera + AI
+/// init, capture start/stop, the manual AI toggle, zoom and lens switching.
+/// Single-phone means no RTC viewer: the camera runs a continuous image
+/// stream and caches the latest frame for the AI loop, which is stopped
+/// whenever nothing consumes it.
 ///
 /// Screens keep their own lifecycle observer and dispose order, implement the
 /// two detection hooks, and may hook diagnostics into

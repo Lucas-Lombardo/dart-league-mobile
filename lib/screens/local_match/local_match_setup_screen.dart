@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../models/cricket.dart';
 import '../../models/local_match_config.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/cricket_variant_segment.dart';
 import 'local_match_camera_setup_screen.dart';
 
 /// Pre-match configuration for a local 1v1 (hot-seat) game: player names,
-/// starting score, match length and the double-out rule. Nothing is persisted.
+/// game mode (X01 with starting score + double-out, or cricket with its
+/// score / no-score variant) and match length. Nothing is persisted.
 class LocalMatchSetupScreen extends StatefulWidget {
   const LocalMatchSetupScreen({super.key});
 
@@ -19,6 +22,8 @@ class LocalMatchSetupScreen extends StatefulWidget {
 class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
   final _player1 = TextEditingController();
   final _player2 = TextEditingController();
+  LocalGameMode _gameMode = LocalGameMode.x01;
+  CricketScoreMode _cricketScoreMode = CricketScoreMode.score;
   int _startingScore = 501;
   int _bestOf = 3;
   bool _doubleOut = true;
@@ -31,6 +36,7 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
   }
 
   int get _legsToWin => (_bestOf ~/ 2) + 1;
+  bool get _isCricket => _gameMode == LocalGameMode.cricket;
 
   void _start() {
     final l10n = AppLocalizations.of(context);
@@ -38,6 +44,8 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
     final p1 = _player1.text.trim();
     final p2 = _player2.text.trim();
     final config = LocalMatchConfig(
+      gameMode: _gameMode,
+      cricketScoreMode: _cricketScoreMode,
       startingScore: _startingScore,
       bestOf: _bestOf,
       doubleOut: _doubleOut,
@@ -72,20 +80,47 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
                     hint2: l10n.player2DefaultName,
                   ),
                   const SizedBox(height: 28),
-                  _SectionLabel(l10n.startingScoreLabel),
+                  _SectionLabel(l10n.botSetupModeSection),
                   const SizedBox(height: 10),
-                  _OptionRow<int>(
-                    value: _startingScore,
+                  _OptionRow<LocalGameMode>(
+                    value: _gameMode,
                     options: [
-                      _Opt(301, '301', l10n.pointsLabel),
-                      _Opt(501, '501', l10n.pointsLabel),
-                      _Opt(701, '701', l10n.pointsLabel),
+                      _Opt(LocalGameMode.x01, 'X01', '301 · 501 · 701'),
+                      _Opt(LocalGameMode.cricket, l10n.cricketLabel,
+                          '15–20 · Bull'),
                     ],
                     onChanged: (v) {
                       HapticService.lightImpact();
-                      setState(() => _startingScore = v);
+                      setState(() => _gameMode = v);
                     },
                   ),
+                  if (_isCricket) ...[
+                    const SizedBox(height: 10),
+                    CricketVariantSegment(
+                      value: _cricketScoreMode,
+                      onChanged: (v) {
+                        HapticService.lightImpact();
+                        setState(() => _cricketScoreMode = v);
+                      },
+                      scoreHint: l10n.localCricketScoreHint,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 28),
+                    _SectionLabel(l10n.startingScoreLabel),
+                    const SizedBox(height: 10),
+                    _OptionRow<int>(
+                      value: _startingScore,
+                      options: [
+                        _Opt(301, '301', l10n.pointsLabel),
+                        _Opt(501, '501', l10n.pointsLabel),
+                        _Opt(701, '701', l10n.pointsLabel),
+                      ],
+                      onChanged: (v) {
+                        HapticService.lightImpact();
+                        setState(() => _startingScore = v);
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   _SectionLabel(l10n.matchLengthLabel),
                   const SizedBox(height: 10),
@@ -117,43 +152,46 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 28),
-                  _SectionLabel(l10n.rulesLabel),
-                  const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-                    ),
-                    child: SwitchListTile(
-                      value: _doubleOut,
-                      onChanged: (v) {
-                        HapticService.lightImpact();
-                        setState(() => _doubleOut = v);
-                      },
-                      activeThumbColor: AppTheme.primary,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      secondary: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.adjust,
-                            color: AppTheme.primary, size: 22),
+                  if (!_isCricket) ...[
+                    const SizedBox(height: 28),
+                    _SectionLabel(l10n.rulesLabel),
+                    const SizedBox(height: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color:
+                                AppTheme.surfaceLight.withValues(alpha: 0.5)),
                       ),
-                      title: Text(l10n.doubleOutLabel,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600)),
-                      subtitle: Text(l10n.doubleOutHint,
-                          style: const TextStyle(
-                              color: AppTheme.textSecondary, fontSize: 12)),
+                      child: SwitchListTile(
+                        value: _doubleOut,
+                        onChanged: (v) {
+                          HapticService.lightImpact();
+                          setState(() => _doubleOut = v);
+                        },
+                        activeThumbColor: AppTheme.primary,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        secondary: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.adjust,
+                              color: AppTheme.primary, size: 22),
+                        ),
+                        title: Text(l10n.doubleOutLabel,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
+                        subtitle: Text(l10n.doubleOutHint,
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 12)),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

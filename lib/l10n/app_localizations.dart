@@ -936,6 +936,8 @@ abstract class AppLocalizations {
   String turnOf(String name);
   String localMatchWinner(String name);
   String get rematchButton;
+  String get localCricketScoreHint;
+  String localCricketAllClosedBody(String name);
 
   // Friendly (friend-invite) matches + play-again
   String get inviteToPlay;
@@ -1252,6 +1254,7 @@ abstract class AppLocalizations {
   String referralPendingTotal(String amount);
   String get referralNoRefereesYet;
   String get referralStatusTrial;
+  String get referralStatusTrialEnded;
   String referralStatusSubscribed(String amount);
   String referralStatusRewardDue(String amount);
   String referralStatusRewardPaid(String amount);
