@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../utils/storage_service.dart';
 import 'detection_parsing.dart';
+import 'heavy_capability_probe.dart';
 
 /// One bundled AI scorer model: the asset to load and the output contract to
 /// parse it with.
@@ -55,20 +58,20 @@ class AiModel {
 /// Which model that is comes from two places, in order:
 ///  1. the admin's remote rollout, if this install drew into it and carries
 ///     the model it names ([applyRemoteConfig]);
-///  2. otherwise the device probe below — light on weak/unknown phones, heavy
-///     on capable ones — which is what every install did before the rollout
-///     existed and what it falls back to whenever anything is off.
+///  2. otherwise the device probe below — heavy on capable phones, v13 on
+///     weak/unknown ones — which is what it falls back to whenever anything
+///     is off. (Until 2026-09-06 the weak-phone pick was DartsMind light,
+///     since retired: v13 is cheaper on every compute path measured, and
+///     the rollout had already put it on every install.)
+///
+/// "Capable" is decided differently per platform. iOS: the chip generation
+/// (A14 and up), a reliable proxy because heavy runs on the Neural Engine
+/// there. Android: MEASURED — RAM only says whether heavy is worth trying,
+/// and phones that clear it still span a 10x range on the GPU that actually
+/// runs the graph (a 7.6 GB Redmi 13C: 826 ms a frame). See
+/// [HeavyCapabilityProbe]; until its verdict is in, the phone is v13.
 class ModelSelector {
   ModelSelector._();
-
-  /// DartsMind light model (3.9 MB) — acceptable everywhere, including
-  /// low-RAM Androids on CPU. The pick whenever the device is weak, unknown,
-  /// or the probe fails. iPhone 15 Pro: 56ms on CoreML (2026-08-10).
-  static const light = AiModel(
-    key: 'light',
-    asset: 'assets/models/dart-rival-ia-light.tflite',
-    layout: DetectionLayout.anchorDartLast,
-  );
 
   /// DartsMind heavy model (12.8 MB), the same architecture scaled up — more
   /// accurate, ~3x the weights. NOT benched per device: the capability
@@ -79,17 +82,19 @@ class ModelSelector {
     layout: DetectionLayout.anchorDartLast,
   );
 
-  /// Dart Rivals v13 (5.0 MB, quantized o2o export). Same anchor tensor as the
-  /// two above ([1, 13, 21504]) and the same float32 in/out, but the OTHER
+  /// Dart Rivals v13 (5.0 MB, quantized o2o export). Same anchor tensor as
+  /// [heavy] ([1, 13, 21504]) and the same float32 in/out, but the OTHER
   /// conventions on both axes the tensor cannot reveal: dart at class 0, boxes
   /// in canvas pixels — read off the file, 2026-08-28, and matching the v10
   /// o2o export.
   ///
-  /// The cheapest of the three: 59ms on the same frame and CPU against light's
-  /// 68ms and heavy's 208ms (Mac, xnnpack, 4 threads, 2026-08-28). It also
-  /// found the board on 304/304 frames of a real leg, with its weakest kept
-  /// control point at 0.86 against the 0.80 floor — quantization costs a few
-  /// points of confidence, and none of it came near the edge.
+  /// The pick whenever the device is weak, unknown, or the probe fails: the
+  /// cheapest model the app has shipped, 59ms on the same frame and CPU
+  /// against heavy's 208ms and the retired light's 68ms (Mac, xnnpack, 4
+  /// threads, 2026-08-28). It also found the board on 304/304 frames of a
+  /// real leg, with its weakest kept control point at 0.86 against the 0.80
+  /// floor — quantization costs a few points of confidence, and none of it
+  /// came near the edge.
   ///
   /// Those are RATIOS, not phone numbers: the delegate ranking is a property
   /// of the graph and has flipped between models before, so the numbers that
@@ -116,7 +121,7 @@ class ModelSelector {
   /// Every model this build carries. A remote choice naming anything else is
   /// ignored — that is what lets the backend switch on a model before every
   /// install has shipped with it.
-  static const List<AiModel> all = [light, heavy, v13];
+  static const List<AiModel> all = [heavy, v13];
 
   static AiModel? byKey(String? key) {
     for (final model in all) {
@@ -125,11 +130,11 @@ class ModelSelector {
     return null;
   }
 
-  /// The model this app run uses. Stays [light] until [init] resolves — every
+  /// The model this app run uses. Stays [v13] until [init] resolves — every
   /// load path sits behind user navigation (camera setup, match start), so in
   /// practice the probe from main() has long finished.
   static AiModel get current => _current;
-  static AiModel _current = light;
+  static AiModel _current = v13;
 
   static String get currentAsset => _current.asset;
   static String get currentModelName => _current.modelName;
@@ -139,12 +144,24 @@ class ModelSelector {
 
   /// What the device probe alone would pick, ignoring any rollout — the
   /// fallback for every install the rollout does not reach.
-  static AiModel _deviceModel = light;
+  static AiModel _deviceModel = v13;
 
   /// Whether this phone clears the heavy-model bar. The rollout can be
   /// restricted to capable devices, and the backend never sees the probe, so
   /// that filter has to be applied here.
   static bool _capable = false;
+
+  /// The rollout as last told (from storage at startup, from the wire
+  /// after), kept so the choice can be re-made when the device verdict
+  /// arrives late — the Android probe lands seconds after [init].
+  static String? _rolloutModel;
+  static int _rolloutPercent = 100;
+  static bool _rolloutCapableOnly = false;
+
+  /// The Android heavy measurement in flight, if any. Null once it has
+  /// reported, on iOS, and on phones the RAM floor already ruled out.
+  static HeavyCapabilityProbe? _probe;
+  static Future<void>? _probeDone;
 
   static bool _initialized = false;
 
@@ -170,14 +187,23 @@ class ModelSelector {
   /// which would make every per-model number a mix of both.
   static int _bucket = 0;
 
-  /// Android floor for the heavy model, in MB of physical RAM — meant as
-  /// "nominal 6 GB and up". physicalRamSize lands under the marketing number
-  /// (a "6 GB" phone reports ~5.6–5.9k MB), hence 5500 rather than 6144.
+  /// Android floor for even TRYING the heavy model, in MB of physical RAM —
+  /// meant as "nominal 6 GB and up". physicalRamSize lands under the
+  /// marketing number (a "6 GB" phone reports ~5.6–5.9k MB), hence 5500
+  /// rather than 6144. Below it the phone is v13 without a measurement: a
+  /// 4 GB phone should not load a 12.8 MB model to learn it is slow. Above
+  /// it the measurement decides — RAM does not (see [HeavyCapabilityProbe]).
   static const int _androidHeavyRamMb = 5500;
+
+  /// How long a real model load waits for an in-flight probe before
+  /// cancelling it. Far above a normal probe (a load plus four inferences,
+  /// under 5 s even on the Redmi) and under the load's own 30 s bound, so a
+  /// wedged probe costs the camera screen one wait, not two.
+  static const Duration _probeWait = Duration(seconds: 20);
 
   /// Probe the device, then apply whatever rollout the last launch saw.
   /// Called from main() before anything can loadModel; later calls are
-  /// no-ops. A failed probe or an unrecognized device keeps [light] — safe on
+  /// no-ops. A failed probe or an unrecognized device keeps [v13] — safe on
   /// every phone.
   static Future<void> init() async {
     if (_initialized || kIsWeb) return;
@@ -187,10 +213,11 @@ class ModelSelector {
       switch (defaultTargetPlatform) {
         case TargetPlatform.android:
           final info = await plugin.androidInfo;
-          _capable = !info.isLowRamDevice &&
+          final ramOk = !info.isLowRamDevice &&
               info.physicalRamSize >= _androidHeavyRamMb;
           debugPrint('[ModelSelector] android ram=${info.physicalRamSize}MB '
-              'lowRam=${info.isLowRamDevice} capable=$_capable');
+              'lowRam=${info.isLowRamDevice} ramOk=$ramOk');
+          _capable = ramOk && await _androidHeavyVerdict();
           break;
         case TargetPlatform.iOS:
           final machine = (await plugin.iosInfo).utsname.machine;
@@ -198,14 +225,14 @@ class ModelSelector {
           debugPrint('[ModelSelector] ios machine=$machine capable=$_capable');
           break;
         default:
-          _capable = false; // Desktop dev builds keep the light model.
+          _capable = false; // Desktop dev builds keep v13.
           break;
       }
     } catch (e) {
       _capable = false;
       debugPrint('[ModelSelector] device probe failed ($e)');
     }
-    _deviceModel = _capable ? heavy : light;
+    _deviceModel = _capable ? heavy : v13;
 
     // The rollout the last launch was told about, replayed before the first
     // frame. Reading it from storage rather than waiting on the network is
@@ -213,22 +240,101 @@ class ModelSelector {
     // which is after the camera setup screen can already have loaded a model.
     try {
       _bucket = await _readBucket();
-      final resolved = _resolve(
-        await StorageService.getAiModelChoice(),
-        await StorageService.getAiModelRolloutPercent(),
-        await StorageService.getAiModelCapableOnly(),
-      );
+      _rolloutModel = await StorageService.getAiModelChoice();
+      _rolloutPercent = await StorageService.getAiModelRolloutPercent();
+      _rolloutCapableOnly = await StorageService.getAiModelCapableOnly();
+      final resolved =
+          _resolve(_rolloutModel, _rolloutPercent, _rolloutCapableOnly);
       // The awaits above can outlast a debugForceModel that landed while they
       // were in flight; _initialized alone does not protect it, because this
       // call is already PAST that guard.
       if (!_forced) _current = resolved;
     } catch (e) {
       // flutter_secure_storage throws on a corrupted Android keystore. The
-      // device probe already ran, so fall back to it rather than to light.
+      // device probe already ran, so fall back to it rather than to v13.
       if (!_forced) _current = _deviceModel;
       debugPrint('[ModelSelector] stored rollout unreadable ($e)');
     }
     debugPrint('[ModelSelector] using $currentModelKey ($currentModelName)');
+  }
+
+  /// Android: the stored heavy verdict if it still holds, else start
+  /// measuring in the background and answer "not capable" for now. The
+  /// phone runs v13 until the measurement says otherwise — for this launch
+  /// if it lands before the first model load, for the next one after.
+  static Future<bool> _androidHeavyVerdict() async {
+    final appVersion = await _appVersion();
+    HeavyProbeVerdict? stored;
+    try {
+      stored = HeavyProbeVerdict.decode(await StorageService.getAiHeavyProbe());
+    } catch (e) {
+      debugPrint('[ModelSelector] stored heavy verdict unreadable ($e)');
+    }
+    if (stored != null && stored.isValidFor(appVersion)) {
+      debugPrint('[ModelSelector] heavy verdict from storage: $stored');
+      return stored.capable;
+    }
+    final probe = HeavyCapabilityProbe();
+    _probe = probe;
+    _probeDone = probe
+        .run(modelAsset: heavy.asset, appVersion: appVersion)
+        .then(_applyHeavyVerdict)
+        .catchError((Object e) {
+          debugPrint('[ModelSelector] heavy probe crashed ($e)');
+        })
+        .whenComplete(() {
+          if (identical(_probe, probe)) {
+            _probe = null;
+            _probeDone = null;
+          }
+        });
+    return false;
+  }
+
+  /// The probe's verdict: persist it, then adopt it now if nothing has
+  /// loaded a model yet — the same freeze rule as a rollout arriving from
+  /// the wire. Null (cancelled) changes nothing and stores nothing.
+  static Future<void> _applyHeavyVerdict(HeavyProbeVerdict? verdict) async {
+    if (verdict == null) return;
+    try {
+      await StorageService.saveAiHeavyProbe(verdict.encode());
+    } catch (e) {
+      debugPrint('[ModelSelector] heavy verdict not persisted ($e)');
+    }
+    _capable = verdict.capable;
+    _deviceModel = _capable ? heavy : v13;
+    if (_loaded || _forced) return;
+    final resolved =
+        _resolve(_rolloutModel, _rolloutPercent, _rolloutCapableOnly);
+    if (resolved.key == _current.key) return;
+    _current = resolved;
+    debugPrint('[ModelSelector] heavy verdict applied -> $currentModelKey');
+  }
+
+  /// Block a real model load until the Android measurement has reported,
+  /// bounded by [_probeWait]. Past the bound the probe is cancelled — its
+  /// verdict would be taken on whatever model the load swaps in — and the
+  /// phone keeps v13 for this run. No-op everywhere else.
+  static Future<void> waitForHeavyProbe() async {
+    final pending = _probeDone;
+    if (pending == null) return;
+    try {
+      await pending.timeout(_probeWait);
+    } on TimeoutException {
+      debugPrint('[ModelSelector] heavy probe still running after '
+          '${_probeWait.inSeconds}s — cancelled, v13 for this run');
+      _probe?.cancel();
+    }
+  }
+
+  static Future<String> _appVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return '${info.version}+${info.buildNumber}';
+    } catch (e) {
+      debugPrint('[ModelSelector] app version unavailable ($e)');
+      return 'unknown';
+    }
   }
 
   /// Apply the rollout carried by /app/version-config: persist it for the next
@@ -252,6 +358,9 @@ class ModelSelector {
     } catch (e) {
       debugPrint('[ModelSelector] rollout not persisted ($e)');
     }
+    _rolloutModel = model;
+    _rolloutPercent = rolloutPercent;
+    _rolloutCapableOnly = capableOnly;
     // Never swap the weights under a live interpreter, and never override a
     // bench that asked for a specific model.
     if (_loaded || _forced) return;
@@ -302,6 +411,9 @@ class ModelSelector {
   static bool debugForceModel(String key) {
     final model = byKey(key);
     if (model == null) return false;
+    // A probe still measuring would share the native thread with the
+    // bench and time whichever model was loaded last.
+    _probe?.cancel();
     _current = model;
     _initialized = true;
     _forced = true;
@@ -329,7 +441,7 @@ class ModelSelector {
     final savedDevice = _deviceModel;
     _capable = capable;
     _bucket = bucket;
-    _deviceModel = capable ? heavy : light;
+    _deviceModel = capable ? heavy : v13;
     final resolved = _resolve(model, rolloutPercent, capableOnly);
     _capable = savedCapable;
     _bucket = savedBucket;

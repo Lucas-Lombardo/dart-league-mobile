@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
+import 'bundled_asset_file.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'detection_parsing.dart';
@@ -232,6 +232,12 @@ class NativeInference {
       // reuses the interpreter when the model file is unchanged, so reloads
       // after a recovery are cheap.
       //
+      // On Android the device verdict may still be being MEASURED (the
+      // heavy probe runs in the background after startup, on this same
+      // serial native thread). Wait for it, bounded: loading now would
+      // swap the model under the probe and time the wrong graph.
+      await ModelSelector.waitForHeavyProbe();
+      //
       // Freeze the choice for the rest of the app run: from here on a rollout
       // change landing mid-session is persisted for the next launch but not
       // adopted. The parse layout is a property of the LOADED weights, and
@@ -242,15 +248,7 @@ class NativeInference {
         // Android: extract model to temp file via rootBundle (always works),
         // then pass the file path to native. This bypasses all Android
         // AssetManager path resolution and compression issues.
-        final modelData = await rootBundle.load(asset);
-        final tempDir = await getTemporaryDirectory();
-        final modelFile = File('${tempDir.path}/${asset.split('/').last}');
-        if (!modelFile.existsSync()) {
-          await modelFile.writeAsBytes(
-            modelData.buffer.asUint8List(),
-            flush: true,
-          );
-        }
+        final modelFile = await bundledAssetToTempFile(asset);
         final result = await _channel
             .invokeMethod('loadModelFile', modelFile.path)
             .timeout(_loadTimeout);

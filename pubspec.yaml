@@ -135,7 +135,6 @@ flutter:
     # otherwise the device probe (light 3.9 MB on weak phones, heavy 12.8 MB
     # on capable ones). All three ship in every build: the rollout can only
     # name a model the install already carries.
-    - assets/models/dart-rival-ia-light.tflite
     - assets/models/dart-rival-ia-heavy.tflite
     - assets/models/dart-rivals-v13.tflite
     - assets/models/check_inference.jpg

@@ -191,4 +191,17 @@ class StorageService {
   static Future<int?> getAiRolloutBucket() async {
     return int.tryParse(await _storage.read(key: _aiRolloutBucketKey) ?? '');
   }
+
+  // The measured heavy-model verdict for this Android phone (a
+  // HeavyProbeVerdict, JSON-encoded). Persisted because the measurement
+  // costs a model load; how long it stays valid is the verdict's business.
+  static const String _aiHeavyProbeKey = 'ai_heavy_probe';
+
+  static Future<void> saveAiHeavyProbe(String encodedVerdict) async {
+    await _storage.write(key: _aiHeavyProbeKey, value: encodedVerdict);
+  }
+
+  static Future<String?> getAiHeavyProbe() async {
+    return await _storage.read(key: _aiHeavyProbeKey);
+  }
 }

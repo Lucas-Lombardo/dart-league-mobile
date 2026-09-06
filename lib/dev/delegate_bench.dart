@@ -165,7 +165,7 @@ import '../services/model_selector.dart';
 /// stay commented so the ~2.3 MB never ships in a real build; the bench
 /// aborts loudly when they're missing).
 ///
-/// BENCH_MODEL ('light' | 'heavy' | 'v13') forces the model for that launch;
+/// BENCH_MODEL ('heavy' | 'v13') forces the model for that launch;
 /// omit it to bench whatever the device's own probe picks. One model per
 /// launch, from a COOL phone each time — thermal state moves the numbers
 /// more than the models do.
@@ -248,7 +248,7 @@ class DelegateBench {
   ];
 
   /// Which model to bench, from `--dart-define=BENCH_MODEL=<key>`
-  /// ('light' | 'heavy' | 'v13'). Empty = whatever the device's own probe
+  /// ('heavy' | 'v13'). Empty = whatever the device's own probe
   /// selected, which is the historical behaviour.
   ///
   /// It exists because the interesting model is usually the one the device
@@ -256,7 +256,7 @@ class DelegateBench {
   /// that will never be handed it by the probe, and a rollout must never be
   /// the way a bench selects its subject.
   ///
-  /// ONE model per launch, on purpose. Chaining all three would bench the
+  /// ONE model per launch, on purpose. Chaining them would bench the
   /// last one on a hot phone — the thermal state moves more than the models
   /// do (light: 56ms cool vs 71ms at thermal=2).
   static const String _benchModel = String.fromEnvironment('BENCH_MODEL');

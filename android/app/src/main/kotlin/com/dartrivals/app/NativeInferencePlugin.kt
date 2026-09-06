@@ -17,7 +17,6 @@ import org.tensorflow.lite.gpu.GpuDelegate
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -443,119 +442,33 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     // ---- Model Loading (DartsMind: Detector.updateTensorData) ----
 
+    /**
+     * Unreachable by design: on Android, Dart ALWAYS loads through
+     * [loadModelFromFile] with the model ModelSelector selected. This entry
+     * used to load DartsMind light in silence, defended as "safe on any
+     * device, same output layout as heavy" — that stopped being true with
+     * dart-rivals-v13 (dart on class 0, boxes in canvas pixels), and light
+     * itself was retired on 2026-09-06. Handing a caller a model it did not
+     * ask for raises no error anywhere: darts read as calibration points and
+     * every score on the board is wrong. So a caller landing here gets an
+     * error, never a model.
+     */
     private fun loadModel(result: MethodChannel.Result) {
-        // Idempotent — the interpreter persists for the engine's lifetime (only
-        // closed in onDetachedFromEngine), so reuse one built earlier (e.g. by
-        // the camera-setup screen) instead of rebuilding it per match, which
-        // re-inits the GPU delegate and leaked the old interpreter. A CPU-only
-        // interpreter left by a wedge recovery is NOT reused once forceCpuOnce
-        // has been consumed — the rebuild restores the GPU delegate. See iOS note.
-        // A GPU delegate already caught lying stays disqualified for the
-        // rest of the process — no point rebuilding it every match.
-        val buildCpuOnly = forceCpuOnce || gpuVerdict == false
-        if (interpreter != null) {
-            if (loadedCpuOnly == buildCpuOnly) {
-                android.util.Log.d("NativeInference", "Model already loaded — reusing")
-                mainHandler.post { result.success(true) }
-                return
-            }
-            android.util.Log.d("NativeInference", "Rebuilding with GPU delegate (was CPU-only after a wedge recovery)")
-            try { interpreter?.close() } catch (_: Throwable) {}
-            interpreter = null
+        android.util.Log.e("NativeInference", "loadModel without a model is unsupported on Android — use loadModelFile")
+        mainHandler.post {
+            result.error("INVALID_ARGS", "Pass the model file through loadModelFile", null)
         }
-        try {
-            // Use FlutterAssets to get the correct path inside the APK.
-            // Flutter bundles assets under "flutter_assets/" prefix — the raw
-            // pubspec key "assets/models/dart-rival-ia-light.tflite" doesn't
-            // work with Android's AssetManager directly.
-            //
-            // NB: on Android, Dart ALWAYS loads through loadModelFile with the
-            // model ModelSelector selected, so this no-arg path is unreachable
-            // — and it must stay that way. It used to be defended as "loads
-            // light, safe on any device, both models share one output layout";
-            // that stopped being true with dart-rivals-v13, whose head puts the
-            // dart on class 0 with boxes in canvas pixels. Serving light to a
-            // parser configured for v13 raises no error anywhere: darts read as
-            // calibration points and every score on the board is wrong. If a
-            // future caller ever lands here, it should be fixed to pass the
-            // model, not silently handed a different one.
-            val assetKey = flutterAssets.getAssetFilePathBySubpath("assets/models/dart-rival-ia-light.tflite")
-            android.util.Log.d("NativeInference", "Loading model from asset key: $assetKey")
-            val modelBuffer = loadModelFile(assetKey)
-            android.util.Log.d("NativeInference", "Model file loaded, size=${modelBuffer.capacity()} bytes")
-            var interp: Interpreter? = null
-
-            // DartsMind: try GPU first (updateTensorData$useGPU)
-            // Match DartsMind's GpuDelegateFactory.Options exactly:
-            //   precisionLossAllowed = true (enables FP16 for speed)
-            //   inferencePreference = 0 (INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER)
-            // Skipped for the ONE build right after a rebuildEngine — creating
-            // a new GpuDelegate on a wedged driver can hang the fresh executor
-            // too. Later loads try the GPU delegate again.
-            if (buildCpuOnly) {
-                android.util.Log.w("NativeInference", "CPU-only build after rebuild — skipping GPU delegate")
-            } else try {
-                if (gpuDelegate == null) {
-                    val gpuOptions = GpuDelegate.Options()
-                    gpuOptions.setPrecisionLossAllowed(true)
-                    gpuOptions.setInferencePreference(0) // FAST_SINGLE_ANSWER
-                    gpuDelegate = GpuDelegate(gpuOptions)
-                }
-                val options = Interpreter.Options().addDelegate(gpuDelegate)
-                // Build, then PROVE it computes before trusting it (see
-                // verifyGpuDelegate). A delegate that builds and lies is the
-                // one failure mode the old "GPU first, CPU on throw" missed.
-                val built = Interpreter(modelBuffer, options)
-                if (verifyGpuDelegate(built)) {
-                    interp = built
-                    android.util.Log.d("NativeInference", "Model loaded with GPU delegate")
-                } else {
-                    try { built.close() } catch (_: Throwable) {}
-                }
-            } catch (t: Throwable) {
-                // Catch Throwable (not just Exception) to handle NoClassDefFoundError,
-                // UnsatisfiedLinkError, etc. that R8/ProGuard stripping can cause.
-                android.util.Log.w("NativeInference", "GPU failed: ${t.javaClass.simpleName}: ${t.message}")
-                interp?.close()
-                interp = null
-            }
-
-            // DartsMind: fallback CPU with 4 threads (updateTensorData$useCPU)
-            if (interp == null) {
-                val options = Interpreter.Options().setNumThreads(4)
-                interp = Interpreter(modelBuffer, options)
-                android.util.Log.d("NativeInference", "Model loaded on CPU with 4 threads")
-            }
-
-            interpreter = interp
-            loadedCpuOnly = buildCpuOnly
-            // Consume the one-shot only on a build that actually used it — a
-            // failed attempt keeps it set so the caller's retry stays CPU-only.
-            if (buildCpuOnly) forceCpuOnce = false
-            prepareTensorBuffers(interp)
-            mainHandler.post { result.success(true) }
-        } catch (t: Throwable) {
-            // Catch Throwable to handle ALL errors including NoClassDefFoundError,
-            // UnsatisfiedLinkError, native crashes during Interpreter creation, etc.
-            android.util.Log.e("NativeInference", "Model load failed: ${t.javaClass.simpleName}: ${t.message}", t)
-            mainHandler.post { result.error("MODEL_LOAD_ERROR", "${t.javaClass.simpleName}: ${t.message}", null) }
-        }
-    }
-
-    private fun loadModelFile(assetPath: String): MappedByteBuffer {
-        val fd = context.assets.openFd(assetPath)
-        val inputStream = FileInputStream(fd.fileDescriptor)
-        val fileChannel = inputStream.channel
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
 
     /// Load model from a file path (used on Android where Dart extracts the
     /// asset to a temp file to avoid AssetManager path issues).
     private fun loadModelFromFile(path: String, result: MethodChannel.Result) {
-        // Idempotent for the SAME path — see loadModel(). Reuse an interpreter
-        // built earlier instead of rebuilding it per match (the Dart side
-        // always uses this file path on Android). A DIFFERENT path forces a
-        // rebuild: this is the adaptive ia-light <-> ia-heavy model switch. So does a
+        // Idempotent for the SAME path: the interpreter persists for the
+        // engine's lifetime (only closed in onDetachedFromEngine), so reuse one
+        // built earlier (e.g. by the camera-setup screen) instead of rebuilding
+        // it per match, which re-inits the GPU delegate and leaked the old
+        // interpreter. A DIFFERENT path forces a rebuild: this is the model
+        // switch (heavy <-> v13, from the probe or a rollout). So does a
         // CPU-only interpreter left by a wedge recovery once forceCpuOnce has
         // been consumed — that rebuild restores the GPU delegate. It runs on
         // dvExecutor, serialized behind any in-flight analyze, so the old
@@ -589,7 +502,9 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             var interp: Interpreter? = null
 
             // DartsMind: try GPU first (updateTensorData$useGPU)
-            // Skipped for the one build after a rebuildEngine — see loadModel().
+            // Skipped for the ONE build right after a rebuildEngine — creating
+            // a new GpuDelegate on a wedged driver can hang the fresh executor
+            // too. Later loads try the GPU delegate again.
             if (buildCpuOnly) {
                 android.util.Log.w("NativeInference", "CPU-only build after rebuild — skipping GPU delegate")
             } else try {
@@ -626,7 +541,8 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             interpreter = interp
             loadedModelPath = path
             loadedCpuOnly = buildCpuOnly
-            // One-shot consumed only by a build that used it (see loadModel).
+            // Consume the one-shot only on a build that actually used it — a
+            // failed attempt keeps it set so the caller's retry stays CPU-only.
             if (buildCpuOnly) forceCpuOnce = false
             prepareTensorBuffers(interp)
             mainHandler.post { result.success(true) }
@@ -875,8 +791,18 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private fun preprocess(rgba: ByteArray, origW: Int, origH: Int, buffer: ByteBuffer) {
         val sz = modelInputSize
         val scale = min(sz.toDouble() / origW, sz.toDouble() / origH)
-        val newW = (origW * scale + 0.5).roundToInt()
-        val newH = (origH * scale + 0.5).roundToInt()
+        // Nearest, clamped to the canvas. The old `(v + 0.5).roundToInt()`
+        // rounded twice: whenever the long side scaled to an exact integer
+        // (any 1024-wide or 1280x720 frame -> 1024.0 + 0.5 -> 1025) the
+        // scaled image was one pixel wider than the canvas, the padding-row
+        // branch was skipped for that extra row and the staging array
+        // overran by a few thousand floats: "Array index out of range:
+        // 3147891" on the 1024x720 reference photo, i.e. on every landscape
+        // frame through this path. Portrait frames never hit it because
+        // their long side is the height and the column padding absorbs the
+        // off-by-one.
+        val newW = min(sz, (origW * scale).roundToInt())
+        val newH = min(sz, (origH * scale).roundToInt())
 
         val srcStride = origW * 4
         val invNewW = origW.toFloat() / newW

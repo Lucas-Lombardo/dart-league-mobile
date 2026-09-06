@@ -28,7 +28,7 @@ Detection cp(int classId, double x, double y, {double conf = 0.9}) => Detection(
 
 void main() {
   const v10 = DetectionLayout.e2eDartFirst;
-  const light = DetectionLayout.anchorDartLast;
+  const heavy = DetectionLayout.anchorDartLast;
 
   group('deriveOutputShape', () {
     test('recognizes the e2e head from its float count', () {
@@ -56,10 +56,10 @@ void main() {
       expect(v10.toInternalClassId(-1), -1);
     });
 
-    test('the light model keeps the historical order', () {
-      expect(light.toInternalClassId(8), 8); // dart stays at 8
-      expect(light.toInternalClassId(0), 0); // p1 stays at 0
-      expect(light.toInternalClassId(9), -1);
+    test('the heavy model keeps the historical order', () {
+      expect(heavy.toInternalClassId(8), 8); // dart stays at 8
+      expect(heavy.toInternalClassId(0), 0); // p1 stays at 0
+      expect(heavy.toInternalClassId(9), -1);
     });
 
     test('layouts survive the round trip through the parse isolate', () {
@@ -69,8 +69,8 @@ void main() {
     });
 
     test('the selected model always parses under its OWN layout', () {
-      // The bundled models no longer agree on a contract: light and heavy put
-      // the dart last with normalized boxes, v13 puts it first in canvas
+      // The bundled models do not agree on a contract: heavy puts the dart
+      // last with normalized boxes, v13 puts it first in canvas
       // pixels. So the invariant is no longer "one const layout fits all" —
       // it is that the layout the parser gets is the one belonging to the
       // model actually selected. Break that pairing and nothing errors: darts
@@ -159,7 +159,7 @@ void main() {
       // scoring a garbage board.
       expect(parse([
         [246, 497, 266, 527, 0.95, 0],
-      ], layout: light), isEmpty);
+      ], layout: heavy), isEmpty);
     });
 
     test('darts pass at 0.50 but calibration points need 0.80', () {
@@ -238,7 +238,7 @@ void main() {
         floats[elements * 12 + i] = 0.9; // tip conf (channel 4+8)
       }
       final dets = parseModelOutput(floats, [1, 13, elements],
-          xScale: xScale, yScale: yScale, layout: light);
+          xScale: xScale, yScale: yScale, layout: heavy);
       expect(dets, hasLength(1));
       expect(dets.single.isTip, isTrue);
     });

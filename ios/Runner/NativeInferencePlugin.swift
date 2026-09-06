@@ -47,7 +47,7 @@ class NativeInferencePlugin: NSObject {
     // events (model load, rebuild, delegate choice) always print; the
     // per-inference line must not — it fired on every frame in release.
     private let verboseTiming = false
-    // Name (e.g. "dart-rival-ia-light") of the currently loaded model; nil
+    // Name (e.g. "dart-rivals-v13") of the currently loaded model; nil
     // before first load.
     private var loadedModelName: String?
     // Delegate the current interpreter was requested with ("auto" = the
@@ -83,7 +83,7 @@ class NativeInferencePlugin: NSObject {
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "loadModel":
-            // Optional {"modelName": "dart-rival-ia-light"} — which bundled
+            // Optional {"modelName": "dart-rivals-v13"} — which bundled
             // model to load.
             // Omitted → keep whatever is loaded, or default preference order.
             // Optional {"delegate": "auto"|"cpu"|"metal"|"coreml"} — debug
@@ -343,8 +343,9 @@ class NativeInferencePlugin: NSObject {
 
     // Must track the bundled models (ModelSelector). Dart always passes an
     // explicit modelName (the selected model), so this order only matters if
-    // that lookup misses — light first, safe on any device.
-    private let defaultModelOrder = ["dart-rival-ia-light", "dart-rival-ia-heavy", "dart-rivals-v13"]
+    // that lookup misses — v13 first, the model that runs on any device
+    // (DartsMind light retired 2026-09-06).
+    private let defaultModelOrder = ["dart-rivals-v13", "dart-rival-ia-heavy"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

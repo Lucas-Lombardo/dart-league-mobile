@@ -79,7 +79,7 @@ class DetectionLayout {
     required this.controlPointThreshold,
   });
 
-  /// DartsMind anchor head (dart-rival-ia-light): dart last, single 0.80
+  /// DartsMind anchor head (dart-rival-ia-heavy): dart last, single 0.80
   /// floor for every class — the historical behaviour, unchanged.
   static const anchorDartLast = DetectionLayout(
     id: 'anchor-dart-last',
