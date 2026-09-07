@@ -2028,12 +2028,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             ),
             // ── Back button (cricket: the screen has no header to host it) ──
             if (leading != null) Positioned(top: 10, left: 10, child: leading),
-            // ── Live badge (slides right when a back button is docked) ──
-            Positioned(
-              top: 12,
-              left: leading != null ? 58 : 12,
-              child: const LiveBadge(),
-            ),
+            // No live badge on the opponent feed (removed 2026-09-06 on
+            // request: the pink border already says it's live). Spectator
+            // screens keep theirs.
             // ── "TOUR n" pill (cricket: replaces the header's round chip) ──
             if (roundChipText != null)
               Positioned(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'app_audio_context.dart';
 import 'storage_service.dart';
 
 /// Voice "caller" that announces completed-visit scores and checkout
@@ -86,26 +87,15 @@ class DartCallerService {
   static Future<void> _ensureInit() => _initFuture ??= _doInit();
 
   static Future<void> _doInit() async {
-    // playAndRecord (not ambient): ambient is silenced by the iOS ring/silent
-    // switch, so with the ringer off — very common — the caller was mute for
-    // the entire match. playAndRecord ignores the silent switch and is the
-    // same category the match's voice call already uses, so we don't take the
-    // session away from it; mixWithOthers keeps both audible.
-    final context = AudioContext(
-      iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playAndRecord,
-        options: const {
-          AVAudioSessionOptions.mixWithOthers,
-          AVAudioSessionOptions.defaultToSpeaker,
-          AVAudioSessionOptions.allowBluetooth,
-        },
-      ),
-      android: const AudioContextAndroid(),
-    );
     try {
       final player = AudioPlayer();
       await player.setReleaseMode(ReleaseMode.stop);
-      await player.setAudioContext(context);
+      // The app-wide context, same as every DartSoundService player (see
+      // AppAudioContext: playAndRecord so the iOS silent switch can't mute
+      // the caller mid-match, and on Android a context that differs from the
+      // installed default would reset the call's speakerphone). This init
+      // runs on the FIRST announcement, i.e. in the middle of a match.
+      await player.setAudioContext(AppAudioContext.instance);
       _completeSub = player.onPlayerComplete.listen((_) => _playNext());
       _player = player;
     } catch (e) {

@@ -35,6 +35,7 @@ import 'services/api_service.dart';
 import 'services/dataset_capture_service.dart';
 import 'services/meta_events_service.dart';
 import 'services/model_selector.dart';
+import 'utils/app_audio_context.dart';
 import 'utils/app_navigator.dart';
 import 'utils/app_theme.dart';
 import 'utils/dart_caller_service.dart';
@@ -121,6 +122,14 @@ void main() async {
     await DatasetCaptureService.loadPreference();
   } catch (e) {
     debugPrint('⚠️ Sound preferences load failed: $e');
+  }
+  // Android: make the app's audioplayers context the plugin default BEFORE
+  // any AudioPlayer exists, so no sound loading mid-match can reset the
+  // phone's speakerphone underneath the WebRTC call (see AppAudioContext).
+  try {
+    await AppAudioContext.install();
+  } catch (e) {
+    debugPrint('⚠️ Audio context install failed: $e');
   }
 
   // Create GameProvider eagerly at app startup so listeners are ready

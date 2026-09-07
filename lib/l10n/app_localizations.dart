@@ -1350,6 +1350,43 @@ abstract class AppLocalizations {
   String seasonResetPrizeOn(String date);
   String get seasonResetPrize;
   String seasonResetPlay(int n);
+  // ── Tournament detail: bracket tree, focus card, participants ──
+  String get bracketYouAreHere;
+  String get bracketEliminatedHere;
+  String get bracketChampionMarker;
+  String get bracketWaiting;
+  String get bracketYourTurn;
+  String bracketWinnerOf(String round, int n);
+  String get roundShortFinal;
+  String get roundShortSemi;
+  String get roundShortQuarter;
+  String get roundShortOf16;
+  String get roundShortOf32;
+  String get roundShortOf64;
+  String roundShortN(int n);
+  String get roundTinyFinal;
+  String get roundTinySemi;
+  String get roundTinyQuarter;
+  String get roundTinyOf16;
+  String get roundTinyOf32;
+  String get roundTinyOf64;
+  String roundTinyN(int n);
+  String get nextMatchTag;
+  String get bracketNotifyWhenReady;
+  String get bracketWatchThisMatch;
+  String bracketEliminatedIn(String round);
+  String bracketLostScore(int mine, int theirs);
+  String get bracketThanksFollowLive;
+  String bracketDependsOn(String round, int n);
+  String get bracketQualifiedWaiting;
+  String bracketInRound(String round);
+  String bracketEliminatedAt(String round);
+  String bracketPlayersAlive(int total, int alive);
+  String get seedLabel;
+  String get bracketBye;
+  String get bracketQualifiedShort;
+  String bracketSpectators(int n);
+
 }
 
 class _AppLocalizationsDelegate

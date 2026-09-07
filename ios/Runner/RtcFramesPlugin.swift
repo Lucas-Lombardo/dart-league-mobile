@@ -1,3 +1,4 @@
+import AVFoundation
 import Flutter
 import UIKit
 import WebRTC
@@ -42,6 +43,8 @@ class RtcFramesPlugin: NSObject {
       pushFrame(call, result: result)
     case "dispose":
       disposeTrack(result: result)
+    case "setAudioSessionProfile":
+      setAudioSessionProfile(result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -178,6 +181,36 @@ class RtcFramesPlugin: NSObject {
                                 timeStampNs: timeNs)
       source.capturer(capturer, didCapture: frame)
     }
+  }
+
+  /// Makes the match's loudspeaker profile WebRTC's OWN stored session
+  /// configuration (`RTCAudioSessionConfiguration.webRTC()`), not just the
+  /// live AVAudioSession state.
+  ///
+  /// WebRTC re-applies that stored configuration on its own whenever its
+  /// audio unit (re)initializes — first when ICE connects and playout/record
+  /// start, then after every interruption or route change (Bluetooth,
+  /// headphones). The stock value is the phone-call profile: playAndRecord,
+  /// `allowBluetooth` only, mode `voiceChat` — no `defaultToSpeaker`, so each
+  /// re-apply moves the opponent's voice to the earpiece (useless with the
+  /// phone propped up facing the board) and caps the level. flutter_webrtc's
+  /// `setAppleAudioConfiguration` only touches the live session (it edits a
+  /// COPY of this object), and its `setSpeakerphoneOn` reads `config.mode`
+  /// from here — i.e. it forced voiceChat back on every call. Storing the
+  /// profile makes both paths converge on: loudspeaker, videoChat (Apple's
+  /// speakerphone profile — same voice-processing echo cancellation, full
+  /// speaker level). Options mirror what setSpeakerphoneOn(true) applies so
+  /// nothing flip-flops between the two. Idempotent; call before the first
+  /// PeerConnection.
+  private func setAudioSessionProfile(result: @escaping FlutterResult) {
+    let config = RTCAudioSessionConfiguration.webRTC()
+    config.category = AVAudioSession.Category.playAndRecord.rawValue
+    config.categoryOptions = [
+      .defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .allowAirPlay,
+    ]
+    config.mode = AVAudioSession.Mode.videoChat.rawValue
+    RTCAudioSessionConfiguration.setWebRTC(config)
+    result(nil)
   }
 
   private func disposeTrack(result: @escaping FlutterResult) {

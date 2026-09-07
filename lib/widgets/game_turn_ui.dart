@@ -17,8 +17,8 @@ import 'logo_watermark.dart';
 /// Derived from the screen height minus the vertical chrome each layout needs
 /// below/above the camera, clamped so it neither collapses on small phones
 /// nor starves the scoring panels on tall ones.
-/// Height of the badge row docked on the opponent feed (back button, live
-/// badge, logo bug, mic/camera controls: top 10 + 40 px + a hair). The
+/// Height of the badge row docked on the opponent feed (back button, logo
+/// bug, mic/camera controls: top 10 + 40 px + a hair). The
 /// received board square is fitted BELOW it, so the top of the board is never
 /// under a badge — the same whole board in portrait and in landscape.
 const double kOpponentFeedBadgeRowHeight = 52;

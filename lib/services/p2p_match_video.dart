@@ -140,30 +140,19 @@ class P2pMatchVideo {
     SocketService.addReconnectListener(_onSocketReconnected);
     _loop = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     // iOS: WebRTC's stock session profile is voiceChat — the phone-call
-    // profile, whose loudspeaker output is capped near earpiece level. With
-    // the phone propped up facing the board that turned the opponent AND every
-    // app sound into a whisper, the match-found jingle first: it is still
-    // playing when the call opens ~1s after match_found. videoChat is Apple's
-    // speakerphone profile — same voice-processing echo cancellation, full
-    // speaker level — and what flutter_webrtc itself picks for
-    // preferSpeakerOutput. Must land before the first PeerConnection: the
-    // audio unit reads this configuration when it starts. Options mirror the
-    // set setSpeakerphoneOn(true) re-applies below, so nothing flip-flops.
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        await Helper.setAppleAudioConfiguration(AppleAudioConfiguration(
-          appleAudioCategory: AppleAudioCategory.playAndRecord,
-          appleAudioCategoryOptions: {
-            AppleAudioCategoryOption.allowBluetooth,
-            AppleAudioCategoryOption.allowBluetoothA2DP,
-            AppleAudioCategoryOption.allowAirPlay,
-            AppleAudioCategoryOption.defaultToSpeaker,
-          },
-          appleAudioMode: AppleAudioMode.videoChat,
-        ));
-      } catch (e) {
-        debugPrint('P2P: apple audio configuration failed: $e');
-      }
+    // profile: earpiece unless overridden, loudspeaker output capped near
+    // earpiece level. With the phone propped up facing the board that turned
+    // the opponent AND every app sound into a whisper, the match-found jingle
+    // first: it is still playing when the call opens ~1s after match_found.
+    // videoChat is Apple's speakerphone profile — same voice-processing echo
+    // cancellation, full speaker level. Two steps, both before the first
+    // PeerConnection: store the profile as WebRTC's OWN configuration (what
+    // its audio unit re-applies whenever it starts — the live session state
+    // alone is overwritten the moment ICE connects), then apply it live so
+    // the jingle already plays through the loudspeaker.
+    if (_isIOS) {
+      await RtcFramesService.installAppleAudioSessionProfile();
+      await _applyAppleAudioProfile();
     }
     // Initial roles come from the server so both sides agree with no
     // round-trip: the impolite peer offers, the polite peer answers.
@@ -211,6 +200,11 @@ class P2pMatchVideo {
         _everConnected = true;
         _noteProgress();
         onChanged();
+        // ICE just connected: this is when WebRTC starts its audio unit
+        // (playout/record wait for a writable transport), i.e. when the
+        // native side last gets a say on the route. Re-asserting here costs
+        // nothing and covers any ordering the platform chooses.
+        unawaited(_routeToLoudspeaker());
       },
       onRemoteVideoReady: () {
         _remoteReady = true;
@@ -240,13 +234,56 @@ class P2pMatchVideo {
       }
       return track;
     });
-    // Remote audio through the loudspeaker (WebRTC's iOS default is the
-    // earpiece, which is useless with the phone propped up facing the board).
-    try {
-      await Helper.setSpeakerphoneOn(true);
-    } catch (_) {}
+    await _routeToLoudspeaker();
     // Re-apply the player's mic choice: every new session starts muted.
     if (_micEnabled) await session.setMicEnabled(true);
+  }
+
+  static bool get _isIOS =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// The match's iOS session profile. Options mirror the set flutter_webrtc's
+  /// setSpeakerphoneOn(true) applies, so the two never flip-flop; the same
+  /// values are stored natively as WebRTC's own configuration
+  /// (RtcFramesService.installAppleAudioSessionProfile).
+  static AppleAudioConfiguration get _appleAudioProfile =>
+      AppleAudioConfiguration(
+        appleAudioCategory: AppleAudioCategory.playAndRecord,
+        appleAudioCategoryOptions: {
+          AppleAudioCategoryOption.allowBluetooth,
+          AppleAudioCategoryOption.allowBluetoothA2DP,
+          AppleAudioCategoryOption.allowAirPlay,
+          AppleAudioCategoryOption.defaultToSpeaker,
+        },
+        appleAudioMode: AppleAudioMode.videoChat,
+      );
+
+  Future<void> _applyAppleAudioProfile() async {
+    try {
+      await Helper.setAppleAudioConfiguration(_appleAudioProfile);
+    } catch (e) {
+      debugPrint('P2P: apple audio configuration failed: $e');
+    }
+  }
+
+  /// Remote audio through the loudspeaker — the phone is propped up facing
+  /// the board, so the earpiece (WebRTC's default on both platforms) is
+  /// useless. Called after every connect and again on ICE-connected.
+  ///
+  /// Android: selects AudioSwitch's Speakerphone device (the call runs in
+  /// MODE_IN_COMMUNICATION with speakerphone on). Nothing else in the app may
+  /// touch AudioManager mid-match — audioplayers did, see AppAudioContext.
+  /// iOS: setSpeakerphoneOn also re-applies WebRTC's stored mode (videoChat
+  /// once installed natively, voiceChat if that failed), so the videoChat
+  /// profile is applied again right after it.
+  Future<void> _routeToLoudspeaker() async {
+    if (_stopped) return;
+    try {
+      await Helper.setSpeakerphoneOn(true);
+    } catch (e) {
+      debugPrint('P2P: setSpeakerphoneOn failed: $e');
+    }
+    if (_isIOS) await _applyAppleAudioProfile();
   }
 
   void _emitSignal(int gen, Map<String, dynamic> data) {

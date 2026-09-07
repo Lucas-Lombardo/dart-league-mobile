@@ -3387,4 +3387,76 @@ class AppLocalizationsFr extends AppLocalizations {
   String get seasonResetPrize => '50 € + trophée pour le n°1';
   @override
   String seasonResetPlay(int n) => 'Jouer la saison $n';
+  // ── Détail de tournoi : arbre, carte de situation, participants ──
+  @override
+  String get bracketYouAreHere => 'VOUS ÊTES ICI';
+  @override
+  String get bracketEliminatedHere => 'ÉLIMINÉ ICI';
+  @override
+  String get bracketChampionMarker => 'CHAMPION';
+  @override
+  String get bracketWaiting => 'En attente';
+  @override
+  String get bracketYourTurn => 'À TOI DE JOUER';
+  @override
+  String bracketWinnerOf(String round, int n) => 'Gagnant $round $n';
+  @override
+  String get roundShortFinal => 'FINALE';
+  @override
+  String get roundShortSemi => 'DEMIS';
+  @override
+  String get roundShortQuarter => 'QUARTS';
+  @override
+  String get roundShortOf16 => '8ES';
+  @override
+  String get roundShortOf32 => '16ES';
+  @override
+  String get roundShortOf64 => '32ES';
+  @override
+  String roundShortN(int n) => 'T$n';
+  @override
+  String get roundTinyFinal => 'finale';
+  @override
+  String get roundTinySemi => 'demi';
+  @override
+  String get roundTinyQuarter => 'quart';
+  @override
+  String get roundTinyOf16 => '8e';
+  @override
+  String get roundTinyOf32 => '16e';
+  @override
+  String get roundTinyOf64 => '32e';
+  @override
+  String roundTinyN(int n) => 'T$n';
+  @override
+  String get nextMatchTag => 'PROCHAIN MATCH';
+  @override
+  String get bracketNotifyWhenReady => 'Tu seras prévenu dès que ton match est prêt.';
+  @override
+  String get bracketWatchThisMatch => 'Regarder ce match';
+  @override
+  String bracketEliminatedIn(String round) => 'ÉLIMINÉ EN $round';
+  @override
+  String bracketLostScore(int mine, int theirs) => 'Battu $mine – $theirs';
+  @override
+  String get bracketThanksFollowLive => 'Merci d’avoir joué — la suite du tournoi se suit en direct ici.';
+  @override
+  String bracketDependsOn(String round, int n) => 'En attente de $round $n';
+  @override
+  String get bracketQualifiedWaiting => 'Qualifié — le tour suivant se prépare.';
+  @override
+  String bracketInRound(String round) => 'En $round';
+  @override
+  String bracketEliminatedAt(String round) => 'Éliminé · $round';
+  @override
+  String bracketPlayersAlive(int total, int alive) => '$total joueurs · $alive encore en lice';
+  @override
+  String get seedLabel => 'Tête de série';
+  @override
+  String get bracketBye => 'Exempt';
+  @override
+  String get bracketQualifiedShort => 'Qualifié';
+  @override
+  String bracketSpectators(int n) => n == 1 ? '1 spectateur' : '$n spectateurs';
+
 }

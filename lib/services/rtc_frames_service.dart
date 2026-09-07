@@ -116,6 +116,24 @@ class RtcFramesService {
 
   static bool get hasTrack => _track != null;
 
+  static bool _appleAudioProfileInstalled = false;
+
+  /// iOS only: stores the match's loudspeaker profile (playAndRecord +
+  /// defaultToSpeaker, mode videoChat) as WebRTC's own session configuration,
+  /// the one its audio unit re-applies whenever it (re)starts — see
+  /// RtcFramesPlugin.setAudioSessionProfile for the full why. Without it the
+  /// stock phone-call profile (voiceChat, earpiece) wins back the session
+  /// the moment ICE connects. Once per process; no-op elsewhere.
+  static Future<void> installAppleAudioSessionProfile() async {
+    if (kIsWeb || !Platform.isIOS || _appleAudioProfileInstalled) return;
+    try {
+      await _channel.invokeMethod<void>('setAudioSessionProfile');
+      _appleAudioProfileInstalled = true;
+    } catch (e) {
+      debugPrint('[RtcFramesService] setAudioSessionProfile failed: $e');
+    }
+  }
+
   /// Create (or reuse) the injectable local video track. Returns null when
   /// unsupported or when the native side failed — callers then run a
   /// receive-only call.

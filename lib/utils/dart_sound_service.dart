@@ -1,6 +1,7 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import '../providers/game_provider.dart';
+import 'app_audio_context.dart';
 import 'storage_service.dart';
 
 /// User-facing sound categories (Settings > Sounds). Each play method below
@@ -48,7 +49,6 @@ class DartSoundService {
   // In-flight load per asset, so concurrent plays of the same sound share one
   // load instead of racing two setSource calls on two players.
   static final Map<String, Future<void>> _loading = {};
-  static AudioContext? _context;
 
   static final Map<SoundCategory, bool> _categoryEnabled = {
     for (final c in SoundCategory.values) c: true,
@@ -67,29 +67,6 @@ class DartSoundService {
       _categoryEnabled[c] = await StorageService.getSoundEnabled('sound_${c.name}');
     }
   }
-
-  // playAndRecord + mixWithOthers (not ambient): ambient is silenced by the
-  // iOS ring/silent switch, so with the ringer off the game was completely
-  // mute. playAndRecord matches the WebRTC call's own session category, so the
-  // two coexist instead of one stealing the session. See DartCallerService.
-  static AudioContext _audioContext() => _context ??= AudioContext(
-        iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.playAndRecord,
-          options: const {
-            AVAudioSessionOptions.mixWithOthers,
-            AVAudioSessionOptions.defaultToSpeaker,
-            AVAudioSessionOptions.allowBluetooth,
-          },
-        ),
-        // No audio focus on Android. The match call (flutter_webrtc's
-        // AudioSwitchManager) requests AUDIOFOCUS_GAIN the moment it opens,
-        // about a second after match_found — and a player that HOLDS focus
-        // then gets AUDIOFOCUS_LOSS, on which audioplayers pauses it. That is
-        // how the match-found jingle died during its own first second. Short
-        // SFX need no focus (and shouldn't interrupt the player's music for
-        // 300ms either); playback itself never required it.
-        android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
-      );
 
   /// Preloads every sound. Idempotent, and safe to call repeatedly: assets
   /// already loaded (or loading) are skipped.
@@ -118,7 +95,11 @@ class DartSoundService {
     try {
       final player = AudioPlayer();
       await player.setReleaseMode(ReleaseMode.stop);
-      await player.setAudioContext(_audioContext());
+      // The app-wide context (see AppAudioContext for why there is exactly
+      // one). On Android this is a no-op by design — the same context was
+      // installed as the plugin default at startup, and a DIFFERENT one here
+      // would reset the phone's speakerphone underneath a live match call.
+      await player.setAudioContext(AppAudioContext.instance);
       await player.setSource(AssetSource(asset));
       _players[asset] = player;
     } catch (e) {
