@@ -36,6 +36,7 @@ import '../../services/dataset_capture_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/opponent_dart_zoom.dart';
 import '../../widgets/board_safe_video.dart' show VideoZoomController;
+import '../../widgets/design_system.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/turn_report_banner.dart';
 import '../../widgets/logo_watermark.dart';
@@ -1723,18 +1724,18 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final l10n = AppLocalizations.of(context);
     final result = await showGameDialog<bool>(
       context,
-      accent: AppTheme.opponentPink,
-      icon: Icons.warning_amber_rounded,
+      accent: AppTheme.error,
+      icon: Icons.logout_rounded,
       title: l10n.leaveMatch,
-      content: Text(leaveWarningText, style: AppTheme.bodyLarge.copyWith(fontSize: 15), textAlign: TextAlign.center),
+      content: Text(leaveWarningText, style: AppTheme.bodyMedium),
       actionsBuilder: (ctx) => [
-        TextButton(
+        OutlinedButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: Text(l10n.stayInMatch, style: const TextStyle(color: AppTheme.textSecondary)),
+          child: Text(l10n.stayInMatch),
         ),
         ElevatedButton(
           onPressed: () { leaveMatch(); Navigator.pop(ctx, true); },
-          style: gameFilledButtonStyle(AppTheme.opponentPink),
+          style: gameFilledButtonStyle(AppTheme.error),
           child: Text(l10n.leaveAndForfeit),
         ),
       ],
@@ -1771,29 +1772,28 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     showGameDialog(
       context,
       accent: AppTheme.success,
-      icon: Icons.emoji_events,
+      icon: Icons.emoji_events_outlined,
       title: isCricket ? l10n.cricketAllClosedTitle : l10n.checkout,
       bottomBar: checkoutBar,
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (isCricket) ...[
-          Text(l10n.cricketAllClosedBody, style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
+          Text(l10n.cricketAllClosedBody, style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          const SizedBox(height: 6),
         ] else if (notation != null && notation.isNotEmpty) ...[
-          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
+          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          const SizedBox(height: 6),
         ],
-        Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
+        Text(l10n.isThisCorrect, style: AppTheme.caption),
       ]),
       actionsBuilder: (ctx) => [
         OutlinedButton(
           onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
-          style: gameOutlineButtonStyle(AppTheme.playerBlue),
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
           onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); },
           style: gameFilledButtonStyle(AppTheme.success),
-          child: Text(l10n.confirmWin),
+          child: Text(dsSentence(l10n.confirmWin)),
         ),
       ],
     ).then((_) { if (mounted) winDialogShowing = false; });
@@ -1810,22 +1810,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     };
     showGameDialog(
       context,
-      accent: AppTheme.opponentPink,
-      icon: Icons.warning_amber_rounded,
+      accent: AppTheme.error,
+      icon: Icons.error_outline_rounded,
       title: l10n.bust,
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(reasonText, style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-        const SizedBox(height: 8), Text(l10n.confirmPassOrEdit, style: const TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(reasonText, style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+        const SizedBox(height: 6),
+        Text(l10n.confirmPassOrEdit, style: AppTheme.caption),
       ]),
       actionsBuilder: (ctx) => [
         OutlinedButton(
           onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
-          style: gameOutlineButtonStyle(AppTheme.playerBlue),
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
           onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmBust(); },
-          style: gameFilledButtonStyle(AppTheme.opponentPink),
           child: Text(l10n.confirmBustButton),
         ),
       ],
@@ -1844,7 +1843,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     String? subtitle,
     String? submitLabel,
     List<String>? reasons,
-    IconData icon = Icons.flag,
+    IconData icon = Icons.flag_outlined,
     // A per-visit report is only being FILLED IN here — it is sent later, from
     // the list screen — so the "submitted" confirmation would be a lie.
     bool showSuccessSnackBar = true,
@@ -1866,8 +1865,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             ],
         commentLabel: l10n.reportCommentLabel,
         commentHint: l10n.reportCommentHint,
-        cancelLabel: l10n.cancel.toUpperCase(),
-        submitLabel: submitLabel ?? l10n.submitReport,
+        cancelLabel: l10n.cancel,
+        submitLabel: dsSentence(submitLabel ?? l10n.submitReport),
         // Runs once the dialog has popped itself, so the messenger and the
         // `mounted` checks below are the SCREEN's, exactly as before.
         onSubmit: (reason, comment) async {
@@ -1893,10 +1892,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     if (shouldLeave && mounted) Navigator.of(context).pop();
   }
 
-  /// Back button styled like the in-camera controls (rounded square).
+  /// Back button styled like the in-camera controls (glass circle).
   Widget buildGameBackButton() => GameControlButton(
-        icon: Icons.arrow_back_ios_new,
-        color: AppTheme.textSecondary,
+        icon: Icons.arrow_back_ios_new_rounded,
         onTap: handleBackPressed,
       );
 
@@ -1919,22 +1917,23 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       left: 12,
       right: 12,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppTheme.error.withValues(alpha: 0.92),
+          color: AppTheme.surface.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.error.withValues(alpha: 0.5)),
         ),
         child: Row(
           children: [
             const SizedBox(
               width: 16, height: 16,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              child: CircularProgressIndicator(color: AppTheme.error, strokeWidth: 2),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 '${l10n.connectionLostReconnecting}\n${l10n.timeLeftToReconnect.replaceAll('{time}', formatSeconds(graceSeconds))}',
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(color: AppTheme.error, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3),
               ),
             ),
           ],
@@ -1954,11 +1953,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         body: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Image.asset('assets/logo/logo.png', width: 90, height: 90),
           const SizedBox(height: 32),
-          const CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
+          const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)),
           const SizedBox(height: 24),
-          Text(AppLocalizations.of(context).preparingMatch, style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary, letterSpacing: 3, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(loadingMessage, style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary)),
+          Text(dsSentence(AppLocalizations.of(context).preparingMatch), style: AppTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(loadingMessage, style: AppTheme.caption.copyWith(fontSize: 13)),
         ]))),
       ),
     );
@@ -1980,12 +1979,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final Widget waitingPlaceholder = Container(
       color: AppTheme.gamePanelEmpty,
       child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const Icon(Icons.videocam_off, size: 48, color: AppTheme.textSecondary), const SizedBox(height: 8),
-        Text(AppLocalizations.of(context).waitingUpper, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+        const Icon(Icons.videocam_off_outlined, size: 40, color: AppTheme.textSecondary), const SizedBox(height: 10),
+        Text(dsSentence(AppLocalizations.of(context).waitingUpper), style: AppTheme.caption),
       ])),
     );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       child: Stack(
         fit: StackFit.expand,
           children: [
@@ -2017,8 +2016,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                       .cricketMarks(cricketNotationMarks(n))
                   : null,
             ),
-            // ── Pink border ──
-            Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.opponentPink, width: 2), borderRadius: BorderRadius.circular(22))),
+            // ── Rose identity border: the turn cue (blue on my own turn) ──
+            IgnorePointer(child: Container(decoration: BoxDecoration(border: Border.all(color: AppTheme.opponentPink, width: 1.5), borderRadius: BorderRadius.circular(AppTheme.radiusCard)))),
             // ── Brand bug (top center), like a TV channel logo ──
             const Positioned(
               top: 12,
@@ -2036,41 +2035,25 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
               Positioned(
                 top: 58,
                 left: 10,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AppTheme.gameBackground.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppTheme.surfaceLight.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  child: Text(
-                    roundChipText,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
+                child: GameChip(
+                  text: roundChipText,
+                  color: AppTheme.textSecondary,
                 ),
               ),
-            // ── Mic / camera controls ──
+            // ── Mic / camera controls (mic open = the live, tinted one) ──
             Positioned(
               top: 10,
               right: 10,
               child: Row(children: [
                 GameControlButton(
-                  icon: isAudioMuted ? Icons.mic_off : Icons.mic,
-                  color: isAudioMuted ? AppTheme.opponentPink : AppTheme.playerBlue,
+                  icon: isAudioMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                  color: AppTheme.opponentPink,
+                  active: !isAudioMuted,
                   onTap: toggleAudio,
                 ),
                 const SizedBox(width: 8),
                 GameControlButton(
-                  icon: Icons.cameraswitch,
-                  color: AppTheme.playerBlue,
+                  icon: Icons.cameraswitch_rounded,
                   onTap: switchCamera,
                 ),
               ]),
@@ -2127,23 +2110,28 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
-  /// Yellow "opponent disconnected" strip (unchanged behavior, shared here so
-  /// both game screens stop duplicating it).
+  /// Quiet "opponent disconnected" strip (unchanged behavior, shared here so
+  /// both game screens stop duplicating it): surface, hairline, secondary
+  /// text — it informs, the rose warning banner below already alerts.
   Widget? buildOpponentDisconnectBanner(dynamic game) {
     if (game.opponentDisconnected != true) return null;
     final l10n = AppLocalizations.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: AppTheme.accent.withValues(alpha: 0.15),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.wifi_off, color: AppTheme.accent, size: 18),
-          const SizedBox(width: 8),
+          const Icon(Icons.wifi_off_rounded, color: AppTheme.textSecondary, size: 18),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               '${l10n.opponentDisconnected} — ${l10n.timeLeftToReconnect.replaceAll('{time}', formatSeconds(game.disconnectGraceSeconds))}',
-              style: const TextStyle(color: AppTheme.accent, fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -2301,6 +2289,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       myLegs: myLegs,
       opponentLegs: opponentLegs,
       showBadges: false,
+      myTurn: false,
     );
     final cameraView = buildOpponentTurnVideoLayout(
       game,
@@ -2412,23 +2401,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(children: [
-          Expanded(
-            child: Text(
-              l10n.visitOf(opponentUsername.toUpperCase()),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-          VisitTotal(total: total, color: AppTheme.opponentPinkBright),
-        ]),
-        const SizedBox(height: 8),
+        VisitLabelRow(
+          label: l10n.visitOf(opponentUsername),
+          total: total,
+          color: AppTheme.opponentPinkBright,
+        ),
+        const SizedBox(height: 10),
         SizedBox(
           height: 74,
           child: Row(
@@ -2519,9 +2497,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CircularProgressIndicator(color: AppTheme.primary),
+                      const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)),
                       const SizedBox(height: 16),
-                      Text(l10n.initializingMatch, style: const TextStyle(color: AppTheme.textSecondary, letterSpacing: 2, fontWeight: FontWeight.bold)),
+                      Text(dsSentence(l10n.initializingMatch), style: AppTheme.caption.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
                     ],
                   ),
           ),
@@ -2546,13 +2524,13 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         Text(
           l10n.matchNotStartingTitle,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          style: AppTheme.titleLarge,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Text(
           offline ? l10n.matchNotStartingOffline : l10n.matchNotStartingBody,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          style: AppTheme.bodyMedium,
         ),
         const SizedBox(height: 28),
         SizedBox(
@@ -2560,37 +2538,28 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           height: 52,
           child: ElevatedButton.icon(
             onPressed: retryingStart ? null : retryMatchStart,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
             icon: retryingStart
                 ? const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                : const Icon(Icons.refresh),
-            label: Text(l10n.retry, style: const TextStyle(fontWeight: FontWeight.bold)),
+                : const Icon(Icons.refresh_rounded, size: 20),
+            label: Text(l10n.retry),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
-          height: 52,
+          height: 48,
           child: OutlinedButton(
             // Through onWillPop: the match may still be live server-side, so
             // leaving must go through the same forfeit warning as the board.
             onPressed: () async {
               if (await onWillPop() && mounted) Navigator.of(context).pop();
             },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.textSecondary,
-              side: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.6), width: 2),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            child: Text(l10n.leave, style: const TextStyle(fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+            child: Text(l10n.leave),
           ),
         ),
       ],
@@ -2623,9 +2592,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const CircularProgressIndicator(color: AppTheme.primary),
+                        const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)),
                         const SizedBox(height: 16),
-                        Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                        Text(AppLocalizations.of(context).loadingAutoScoring, style: AppTheme.caption.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -2687,6 +2656,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                             myLegs: game.myLegsWon,
                             opponentLegs: game.opponentLegsWon,
                             showBadges: false,
+                            myTurn: true,
                           )
                         : null,
                     visitTotalText: cricket != null
@@ -2783,21 +2753,35 @@ class _ReportDialogState extends State<_ReportDialog> {
 
   @override
   Widget build(BuildContext context) => gameDialogFrame(
-        accent: AppTheme.opponentPink,
+        accent: AppTheme.textSecondary,
         icon: widget.icon,
         title: widget.title,
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-          const SizedBox(height: 16),
-          ...widget.reasons.map((r) => InkWell(
-            onTap: () => setState(() => _reason = r),
-            child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
-              Icon(_reason == r ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: _reason == r ? AppTheme.opponentPink : AppTheme.textSecondary),
-              const SizedBox(width: 12), Text(r, style: const TextStyle(color: Colors.white)),
-            ])),
-          )),
-          const SizedBox(height: 16),
-          Text(widget.commentLabel, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(widget.subtitle, style: AppTheme.caption),
+          const SizedBox(height: 14),
+          // One row per reason; the chosen one takes the primary tint, the
+          // only coloured border on the dialog (a state, not a decoration).
+          for (final r in widget.reasons) ...[
+            DsCard(
+              radius: AppTheme.radiusControl,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              color: _reason == r ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.background,
+              side: BorderSide(color: _reason == r ? AppTheme.primary : AppTheme.border),
+              onTap: () => setState(() => _reason = r),
+              child: Row(children: [
+                Icon(
+                  _reason == r ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                  size: 20,
+                  color: _reason == r ? AppTheme.primaryLight : AppTheme.textTertiary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(r, style: AppTheme.rowTitle.copyWith(fontSize: 14))),
+              ]),
+            ),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 6),
+          Text(widget.commentLabel, style: AppTheme.caption),
           const SizedBox(height: 8),
           TextField(
             controller: _comment,
@@ -2805,26 +2789,19 @@ class _ReportDialogState extends State<_ReportDialog> {
             maxLines: 5,
             maxLength: 500,
             textInputAction: TextInputAction.newline,
-            cursorColor: AppTheme.opponentPink,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
+            style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary),
             decoration: InputDecoration(
               hintText: widget.commentHint,
-              hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.6), fontSize: 14),
-              counterStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-              filled: true,
-              fillColor: AppTheme.surface,
+              counterStyle: AppTheme.caption.copyWith(fontSize: 11),
+              fillColor: AppTheme.background,
               contentPadding: const EdgeInsets.all(12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.opponentPink, width: 2)),
             ),
           ),
         ])),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(widget.cancelLabel, style: const TextStyle(color: AppTheme.textSecondary))),
+          OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: Text(widget.cancelLabel)),
           ElevatedButton(
             onPressed: _reason == null ? null : _submit,
-            style: gameFilledButtonStyle(AppTheme.opponentPink),
             child: Text(widget.submitLabel),
           ),
         ],

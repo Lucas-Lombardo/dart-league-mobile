@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/matchmaking_service.dart';
 import '../utils/app_theme.dart';
+import 'design_system.dart';
 
 /// Small bar chart on the queue screen showing at which hours (device-local)
 /// ranked matches usually get played, so a player waiting in a quiet queue
@@ -17,6 +18,8 @@ class _QueueActivityChartState extends State<QueueActivityChart> {
   // Below this many matches in the window the histogram is mostly noise, so
   // the card stays hidden (also covers brand-new deployments).
   static const _minSampleSize = 20;
+
+  static const _barsHeight = 56.0;
 
   List<int>? _localHourCounts;
 
@@ -49,53 +52,41 @@ class _QueueActivityChartState extends State<QueueActivityChart> {
       if (counts[h] > counts[peakHour]) peakHour = h;
     }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      decoration: BoxDecoration(
-        color: AppTheme.background,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                loc.peakHours,
-                style: AppTheme.labelLarge.copyWith(
-                  color: AppTheme.textSecondary,
+              Expanded(
+                child: Text(
+                  dsSentence(loc.peakHours),
+                  style: AppTheme.sectionTitle,
                 ),
               ),
-              const Spacer(),
               Container(
                 width: 7,
                 height: 7,
                 decoration: const BoxDecoration(
-                  color: AppTheme.accent,
+                  color: AppTheme.primary,
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Text(
                 loc.peakHoursNow,
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
-                  fontSize: 10,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 48,
+            height: _barsHeight,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(24, (hour) {
@@ -103,19 +94,17 @@ class _QueueActivityChartState extends State<QueueActivityChart> {
                 // rather than a gap in the chart.
                 final barHeight = counts[hour] == 0
                     ? 2.0
-                    : 4.0 + 44.0 * counts[hour] / maxCount;
+                    : 3.0 + (_barsHeight - 3.0) * counts[hour] / maxCount;
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
                     child: Container(
                       height: barHeight,
                       decoration: BoxDecoration(
                         color: hour == nowHour
-                            ? AppTheme.accent
-                            : AppTheme.primary,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(2),
-                        ),
+                            ? AppTheme.primary
+                            : AppTheme.primary.withValues(alpha: 0.30),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
@@ -123,39 +112,25 @@ class _QueueActivityChartState extends State<QueueActivityChart> {
               }),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (final h in const [0, 6, 12, 18])
-                Expanded(
-                  child: Text(
-                    '${h}h',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 9,
-                    ),
+              for (final h in const [0, 6, 12, 18, 24])
+                Text(
+                  loc.queueAxisHour(h),
+                  style: const TextStyle(
+                    color: AppTheme.textTertiary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           Text(
             loc.peakHoursHint(peakHour),
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 11,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            loc.peakHoursGrowing,
-            style: TextStyle(
-              color: AppTheme.textPrimary.withValues(alpha: 0.9),
-              fontSize: 11,
-              height: 1.3,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppTheme.caption.copyWith(height: 1.5),
           ),
         ],
       ),

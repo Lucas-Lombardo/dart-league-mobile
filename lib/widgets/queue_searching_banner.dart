@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/matchmaking_provider.dart';
+import '../utils/app_theme.dart';
 
-/// A high-contrast gold pill shown in training screens while the player is still
-/// queued for a ranked match. Gold stands out over both the dark UI and the live
-/// camera feed, and is distinct from the green "connected" / blue "match found"
-/// states. When an opponent is found, [MatchmakingNavigationGate] pulls the
+/// Surface pill shown in training screens while the player is still queued
+/// for a ranked match: a pulsing primary dot, "Recherche de match 0:42" and
+/// a chevron. The near-opaque surface keeps it readable over the live camera
+/// feed. When an opponent is found, [MatchmakingNavigationGate] pulls the
 /// player into the match automatically. Renders nothing when not searching.
 class QueueSearchingBanner extends StatefulWidget {
   const QueueSearchingBanner({super.key});
@@ -53,26 +54,12 @@ class _QueueSearchingBannerState extends State<QueueSearchingBanner>
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      height: 36,
+      padding: const EdgeInsets.fromLTRB(12, 0, 6, 0),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF59E0B), Color(0xFFEAB308)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEAB308).withValues(alpha: 0.45),
-            blurRadius: 12,
-            spreadRadius: 1,
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        color: AppTheme.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.primaryLight.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -80,10 +67,10 @@ class _QueueSearchingBannerState extends State<QueueSearchingBanner>
           FadeTransition(
             opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_pulse),
             child: Container(
-              width: 9,
-              height: 9,
+              width: 8,
+              height: 8,
               decoration: const BoxDecoration(
-                color: Colors.black87,
+                color: AppTheme.primary,
                 shape: BoxShape.circle,
               ),
             ),
@@ -92,21 +79,28 @@ class _QueueSearchingBannerState extends State<QueueSearchingBanner>
           Text(
             l10n.findingMatch,
             style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.3,
+              color: AppTheme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1,
             ),
           ),
           const SizedBox(width: 6),
           Text(
             _formatTime(searchTime),
             style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              fontFamily: 'monospace',
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
+          ),
+          const SizedBox(width: 2),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: AppTheme.textTertiary,
           ),
         ],
       ),

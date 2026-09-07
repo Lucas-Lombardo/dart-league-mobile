@@ -11,6 +11,7 @@ import '../../services/iap_service.dart';
 import '../../services/subscription_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../../providers/referral_provider.dart';
 import 'redeem_referral_screen.dart';
 
@@ -31,6 +32,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
 
   bool _isProcessing = false;
   bool _isRestoring = false;
+
+  /// Tapping a plan card selects it; the button under the cards buys it.
+  /// Yearly is preselected — it is the "best price" card.
+  SubscriptionPlan _selectedPlan = SubscriptionPlan.yearly;
 
   @override
   void initState() {
@@ -148,6 +153,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
     return _fallbackMonthlyPrice;
   }
 
+  /// Legacy ALL-CAPS hero titles ("PASSEZ PREMIUM") in sentence case, with the
+  /// product name kept capitalised: "Passez Premium".
+  String _heroTitle(String raw) =>
+      dsSentence(raw).replaceAll('premium', 'Premium');
+
+  String _formatDate(DateTime date) =>
+      DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(date);
+
   @override
   Widget build(BuildContext context) {
     final subscription = context.watch<SubscriptionProvider>();
@@ -159,11 +172,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.premium),
-        backgroundColor: AppTheme.surface,
-      ),
+      appBar: AppBar(title: Text(l10n.premium)),
       body: subscription.isLoading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : RefreshIndicator(
@@ -174,63 +183,58 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                 padding: const EdgeInsets.all(16),
                 children: [
                   _buildHero(l10n, isPremium, subscription.premiumExpiresAt),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 14),
                   if (showPaywall)
                     _buildPaywallSection(l10n)
                   else
                     _buildManageSection(l10n, subscription.premiumExpiresAt),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   _buildLegalFooter(l10n),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
     );
   }
 
+  /// Flat card, the crown on a gold disc — the one gold of the screen.
   Widget _buildHero(AppLocalizations l10n, bool isPremium, DateTime? expiresAt) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFC107), Color(0xFFEAB308)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEAB308).withValues(alpha: 0.4),
-            blurRadius: 20,
-            spreadRadius: 2,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
+    final caption = isPremium && expiresAt != null
+        ? l10n.premiumRenewsOn.replaceAll('{date}', _formatDate(expiresAt))
+        : l10n.unlockUnlimitedMatches;
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+      child: Row(
         children: [
-          const Icon(Icons.workspace_premium, size: 64, color: Colors.white),
-          const SizedBox(height: 12),
-          Text(
-            isPremium ? l10n.premiumActiveTitle : l10n.goPremiumTitle,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.accent.withValues(alpha: 0.14),
             ),
+            child: const Icon(Icons.workspace_premium_rounded,
+                size: 26, color: AppTheme.accent),
           ),
-          const SizedBox(height: 8),
-          Text(
-            isPremium && expiresAt != null
-                ? l10n.premiumRenewsOn.replaceAll(
-                    '{date}',
-                    DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(expiresAt),
-                  )
-                : l10n.unlockUnlimitedMatches,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _heroTitle(isPremium ? l10n.premiumActiveTitle : l10n.goPremiumTitle),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.displayMedium.copyWith(fontSize: 22),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.caption.copyWith(fontSize: 13),
+                ),
+              ],
             ),
           ),
         ],
@@ -243,35 +247,55 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildBenefitsCard(l10n),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         _buildPlanCard(
           plan: SubscriptionPlan.yearly,
           title: l10n.planYearly,
           price: _yearlyPrice(),
           period: '/${_yearShort(l10n)}',
           subtitle: l10n.yearlySubtitle,
-          highlight: true,
-          highlightLabel: l10n.bestValue,
+          badge: dsSentence(l10n.bestValue),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _buildPlanCard(
           plan: SubscriptionPlan.monthly,
           title: l10n.planMonthly,
           price: _monthlyPrice(),
           period: '/${_monthShort(l10n)}',
           subtitle: l10n.monthlySubtitle,
-          highlight: false,
-          highlightLabel: l10n.bestValue,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _isProcessing ? null : () => _startCheckout(_selectedPlan),
+            child: _isProcessing
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Text(
+                    _selectedPlan == SubscriptionPlan.yearly
+                        ? l10n.premiumContinueYearly
+                        : l10n.premiumContinueMonthly,
+                  ),
+          ),
+        ),
         _buildReferralRow(l10n),
-        const SizedBox(height: 24),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.fromLTRB(8, 18, 8, 0),
           child: Text(
             Platform.isIOS ? l10n.autoRenewDisclosure : l10n.paywallFooter,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            style: AppTheme.caption.copyWith(
+              fontSize: 11,
+              color: AppTheme.textTertiary,
+              height: 1.5,
+            ),
           ),
         ),
       ],
@@ -285,40 +309,52 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
     if (!referral.canRedeem) return const SizedBox.shrink();
     final days = referral.overview?.refereeTrialDays ?? 7;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () async {
-        HapticService.lightImpact();
-        final redeemed = await Navigator.of(context).push<bool>(
-          MaterialPageRoute(builder: (_) => const RedeemReferralScreen()),
-        );
-        if (!mounted) return;
-        await context.read<SubscriptionProvider>().refresh();
-        if (mounted && redeemed == true) Navigator.of(context).pop();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primary, width: 2),
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Material(
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          side: BorderSide(color: AppTheme.primaryLight.withValues(alpha: 0.3)),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.card_giftcard, color: AppTheme.primary, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                l10n.referralPaywallRow(days),
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () async {
+            HapticService.lightImpact();
+            final redeemed = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(builder: (_) => const RedeemReferralScreen()),
+            );
+            if (!mounted) return;
+            await context.read<SubscriptionProvider>().refresh();
+            if (mounted && redeemed == true) Navigator.of(context).pop();
+          },
+          child: SizedBox(
+            height: 48,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  const Icon(Icons.card_giftcard_outlined,
+                      size: 18, color: AppTheme.primaryLight),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      l10n.referralPaywallRow(days),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryLight,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 16, color: AppTheme.primaryLight),
+                ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: AppTheme.primary, size: 20),
-          ],
+          ),
         ),
       ),
     );
@@ -334,166 +370,117 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
 
   Widget _buildBenefitsCard(AppLocalizations l10n) {
     final benefits = [
-      (l10n.benefitUnlimitedMatches, Icons.all_inclusive),
-      (l10n.benefitPremiumBadge, Icons.workspace_premium),
-      (l10n.benefitSupportDev, Icons.favorite),
+      (l10n.benefitUnlimitedMatches, Icons.all_inclusive_rounded),
+      (l10n.benefitPremiumBadge, Icons.workspace_premium_rounded),
+      (l10n.benefitSupportDev, Icons.favorite_outline_rounded),
     ];
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.4)),
-      ),
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            l10n.whatYouGet,
-            style: const TextStyle(
-              color: AppTheme.primary,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-          for (final (label, icon) in benefits) ...[
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+          Text(l10n.whatYouGet.toUpperCase(), style: AppTheme.labelSmall),
+          const SizedBox(height: 12),
+          for (var i = 0; i < benefits.length; i++) ...[
+            if (i > 0) const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 36),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(benefits[i].$2,
+                        size: 17, color: AppTheme.primaryLight),
                   ),
-                  child: Icon(icon, color: AppTheme.primary, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      benefits[i].$1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.rowTitle,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            if (label != benefits.last.$1) const SizedBox(height: 12),
           ],
         ],
       ),
     );
   }
 
+  /// Selected = primary at 8 % + 1.5 px primary border; otherwise a plain
+  /// surface card. Tapping selects, the button below buys.
   Widget _buildPlanCard({
     required SubscriptionPlan plan,
     required String title,
     required String price,
     required String period,
     required String subtitle,
-    required bool highlight,
-    required String highlightLabel,
+    String? badge,
   }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: _isProcessing ? null : () => _startCheckout(plan),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: highlight ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: highlight
-                ? AppTheme.primary
-                : AppTheme.surfaceLight.withValues(alpha: 0.4),
-            width: highlight ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (highlight) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            highlightLabel,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+    final selected = _selectedPlan == plan;
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      color: selected ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surface,
+      side: selected ? const BorderSide(color: AppTheme.primary, width: 1.5) : null,
+      onTap: _isProcessing ? null : () => setState(() => _selectedPlan = plan),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Text(
-                      price,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.titleLarge,
                       ),
                     ),
-                    Text(
-                      period,
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 8),
+                      DsPill(label: badge),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                _isProcessing
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
-                        ),
-                      )
-                    : const Icon(Icons.arrow_forward_rounded, color: AppTheme.primary),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.caption,
+                ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                price,
+                style: AppTheme.displayMedium.copyWith(
+                  fontSize: 22,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(width: 3),
+              Text(period, style: AppTheme.caption),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -502,65 +489,46 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.4)),
-          ),
+        DsCard(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                l10n.statusLabel,
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              Text(l10n.statusLabel.toUpperCase(), style: AppTheme.labelSmall),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Icon(Icons.check_circle, color: AppTheme.success, size: 20),
+                  const Icon(Icons.check_circle_outline_rounded,
+                      size: 20, color: AppTheme.success),
                   const SizedBox(width: 8),
-                  Text(
-                    l10n.premiumActive,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      l10n.premiumActive,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
                   ),
                 ],
               ),
               if (expiresAt != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
-                  l10n.nextRenewal.replaceAll(
-                    '{date}',
-                    DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(expiresAt),
-                  ),
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                  l10n.nextRenewal.replaceAll('{date}', _formatDate(expiresAt)),
+                  style: AppTheme.caption,
                 ),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         SizedBox(
-          height: 56,
-          child: ElevatedButton.icon(
+          height: 52,
+          child: ElevatedButton(
             onPressed: _isProcessing ? null : _openPortal,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 4,
-            ),
-            icon: _isProcessing
+            child: _isProcessing
                 ? const SizedBox(
                     height: 20,
                     width: 20,
@@ -569,20 +537,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                : const Icon(Icons.open_in_new),
-            label: Text(
-              l10n.manageSubscription,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
-            ),
+                : Text(dsSentence(l10n.manageSubscription)),
           ),
         ),
-        const SizedBox(height: 12),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
           child: Text(
             Platform.isIOS ? l10n.autoRenewDisclosure : l10n.manageFooter,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            style: AppTheme.caption.copyWith(
+              fontSize: 11,
+              color: AppTheme.textTertiary,
+              height: 1.5,
+            ),
           ),
         ),
       ],
@@ -592,43 +559,44 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
   /// Legal footer is shown on both paywall and manage screens so Apple
   /// reviewers can always find Terms / Privacy / Restore.
   Widget _buildLegalFooter(AppLocalizations l10n) {
+    // Styles live on the Text children (AppTheme tokens carry the font);
+    // a styleFrom(textStyle:) would drop the theme's family.
+    final linkStyle = AppTheme.caption.copyWith(
+      fontWeight: FontWeight.w600,
+      decoration: TextDecoration.underline,
+      decorationColor: AppTheme.textSecondary,
+    );
+    final compact = TextButton.styleFrom(
+      foregroundColor: AppTheme.textSecondary,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      minimumSize: const Size(0, 32),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             TextButton(
               onPressed: () => _openExternal(_termsOfUseUrl),
-              child: Text(
-                l10n.termsOfUse,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  decoration: TextDecoration.underline,
-                  fontSize: 13,
-                ),
-              ),
+              style: compact,
+              child: Text(l10n.termsOfUse, style: linkStyle),
             ),
-            const Text(
-              '·',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-            ),
+            Text('·', style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600)),
             TextButton(
               onPressed: () => _openExternal(_privacyPolicyUrl),
-              child: Text(
-                l10n.privacyPolicy,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  decoration: TextDecoration.underline,
-                  fontSize: 13,
-                ),
-              ),
+              style: compact,
+              child: Text(l10n.privacyPolicy, style: linkStyle),
             ),
           ],
         ),
-        if (Platform.isIOS)
+        if (Platform.isIOS) ...[
+          const SizedBox(height: 6),
           TextButton.icon(
             onPressed: _isRestoring ? null : _restore,
+            style: compact,
             icon: _isRestoring
                 ? const SizedBox(
                     height: 14,
@@ -638,19 +606,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                       valueColor: AlwaysStoppedAnimation<Color>(AppTheme.textSecondary),
                     ),
                   )
-                : const Icon(
-                    Icons.restore_rounded,
-                    color: AppTheme.textSecondary,
-                    size: 16,
-                  ),
+                : const Icon(Icons.refresh_rounded,
+                    size: 14, color: AppTheme.textSecondary),
             label: Text(
               l10n.restorePurchases,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 13,
-              ),
+              style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
+        ],
       ],
     );
   }

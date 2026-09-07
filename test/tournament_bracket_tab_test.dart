@@ -186,14 +186,14 @@ void main() {
     ]);
 
     expect(find.byType(TournamentBracketTree), findsOneWidget);
-    expect(find.text('VOUS ÊTES ICI'), findsOneWidget);
-    expect(find.text('PROCHAIN MATCH · FINALE'), findsOneWidget);
+    expect(find.text('Vous êtes ici'), findsOneWidget);
+    expect(find.text('Prochain match · Finale'), findsOneWidget);
     // The empty final slot is named after the match that fills it, in the
     // tree and in the card.
     expect(find.text('Gagnant demi 2'), findsNWidgets(2));
-    expect(find.text('EN DIRECT'), findsOneWidget);
+    expect(find.text('En direct'), findsOneWidget);
     expect(find.textContaining('T20QUEEN – BULLSEYE_MAX'), findsOneWidget);
-    expect(find.text('REJOINDRE LE MATCH'), findsNothing);
+    expect(find.text('Rejoindre le match'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -222,9 +222,9 @@ void main() {
       pending: [semi],
     );
 
-    expect(find.text('VOTRE MATCH · DEMI-FINALE'), findsOneWidget);
-    expect(find.text('REJOINDRE LE MATCH'), findsOneWidget);
-    expect(find.text('À TOI DE JOUER'), findsOneWidget);
+    expect(find.text('Votre match · Demi-finale'), findsOneWidget);
+    expect(find.text('Rejoindre le match'), findsOneWidget);
+    expect(find.text('À toi de jouer'), findsOneWidget);
     expect(find.text('Gagnant demi 1'), findsOneWidget);
     expect(find.textContaining(RegExp(r'^0[0-6]:\d\d$')), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -253,10 +253,10 @@ void main() {
       m(id: 'f', round: 3, roundName: 'final', number: 1, p1: 'vati99'),
     ]);
 
-    expect(find.text('ÉLIMINÉ ICI'), findsOneWidget);
-    expect(find.text('ÉLIMINÉ EN DEMI-FINALE'), findsOneWidget);
+    expect(find.text('Éliminé ici'), findsOneWidget);
+    expect(find.text('Éliminé en demi-finale'), findsOneWidget);
     expect(find.text('Battu 1 – 2'), findsOneWidget);
-    expect(find.text('REJOINDRE LE MATCH'), findsNothing);
+    expect(find.text('Rejoindre le match'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -285,8 +285,8 @@ void main() {
     ], userId: 'someone-else');
 
     expect(find.byType(TournamentBracketTree), findsOneWidget);
-    expect(find.text('VOUS ÊTES ICI'), findsNothing);
-    expect(find.text('PROCHAIN MATCH · FINALE'), findsNothing);
+    expect(find.text('Vous êtes ici'), findsNothing);
+    expect(find.text('Prochain match · Finale'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

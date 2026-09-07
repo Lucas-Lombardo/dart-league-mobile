@@ -9,9 +9,10 @@ import '../utils/haptic_service.dart';
 import '../utils/rank_translation.dart';
 import '../utils/season_format.dart';
 
-/// Bottom sheet opened by the season pill on the home ring: one row per
-/// season (active first, then the closed ones, newest first), a check on the
-/// one the ring displays, and an "All seasons ›" link to the posters.
+/// Bottom sheet opened by the season pill on the home card: a 17 / 700
+/// title, one 52 px row per season (active first, then the closed ones,
+/// newest first) with a check on the one the card displays, and
+/// "Toutes les saisons ›" as the last row.
 ///
 /// Returns the tapped season number, or [allSeasonsResult] for the link.
 class SeasonPickerSheet extends StatelessWidget {
@@ -20,12 +21,9 @@ class SeasonPickerSheet extends StatelessWidget {
   const SeasonPickerSheet({super.key});
 
   static Future<int?> show(BuildContext context) {
+    // Surface + 24 px top corners come from the theme's bottomSheetTheme.
     return showModalBottomSheet<int>(
       context: context,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (_) => const SeasonPickerSheet(),
     );
   }
@@ -45,26 +43,26 @@ class SeasonPickerSheet extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppTheme.textSecondary.withValues(alpha: 0.4),
+                  color: AppTheme.surfaceLight,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.only(top: 14, bottom: 4),
-              child: _SheetTitle(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+              child: Text(l10n.seasonsTitle, style: AppTheme.titleLarge),
             ),
-            for (final season in rows)
+            for (final season in rows) ...[
               _SeasonRow(
                 season: season,
                 isActive: season.number == active?.number,
@@ -78,30 +76,13 @@ class SeasonPickerSheet extends StatelessWidget {
                   Navigator.pop(context, season.number);
                 },
               ),
-            InkWell(
+              const Divider(),
+            ],
+            _AllSeasonsRow(
               onTap: () {
                 HapticService.lightImpact();
                 Navigator.pop(context, allSeasonsResult);
               },
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                height: 48,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      l10n.seasonAllSeasons,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right, size: 16, color: AppTheme.primary),
-                  ],
-                ),
-              ),
             ),
           ],
         ),
@@ -110,22 +91,8 @@ class SeasonPickerSheet extends StatelessWidget {
   }
 }
 
-class _SheetTitle extends StatelessWidget {
-  const _SheetTitle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      AppLocalizations.of(context).seasonsTitle,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: Colors.white,
-      ),
-    );
-  }
-}
-
+/// 52 px: "Saison 1  En cours · 84 j" over "Vous êtes #14 · 1486 · Or",
+/// a check on the selected one.
 class _SeasonRow extends StatelessWidget {
   final Season season;
   final bool isActive;
@@ -151,13 +118,13 @@ class _SeasonRow extends StatelessWidget {
     final String detail;
     if (isActive) {
       status = season.endAt != null
-          ? '· ${l10n.seasonInProgress} · ${formatSeasonCountdown(l10n, timeLeft ?? season.timeLeft())}'
-          : '· ${l10n.seasonInProgress} · ${l10n.seasonEndToBeAnnounced}';
+          ? '${l10n.seasonInProgress} · ${formatSeasonCountdown(l10n, timeLeft ?? season.timeLeft())}'
+          : '${l10n.seasonInProgress} · ${l10n.seasonEndToBeAnnounced}';
       detail = me != null
           ? '${l10n.seasonYouAre(me.position)} · ${me.elo} · ${RankTranslation.translate(l10n, me.rank)}'
           : l10n.seasonNotRanked;
     } else {
-      status = '· ${l10n.seasonEnded}';
+      status = l10n.seasonEnded;
       detail = me != null
           ? '${l10n.seasonFinalRankLine(RankTranslation.translate(l10n, me.rank), me.position, season.playersCount ?? 0)} · ${me.elo}'
           : l10n.seasonNotRanked;
@@ -165,80 +132,84 @@ class _SeasonRow extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isActive
-                    ? AppTheme.primary.withValues(alpha: 0.15)
-                    : AppTheme.surfaceLight.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                l10n.seasonShort(season.number),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: isActive ? const Color(0xFF38BDF8) : AppTheme.textSecondary,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        text: l10n.seasonN(season.number),
+                        style: AppTheme.rowTitle,
+                        children: [
+                          TextSpan(
+                            text: '  $status',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isActive ? AppTheme.primaryLight : AppTheme.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.caption,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text.rich(
-                    TextSpan(
-                      text: '${l10n.seasonN(season.number)} ',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: status,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: isActive
-                                ? const Color(0xFF38BDF8)
-                                : AppTheme.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                  ),
-                ],
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 24,
+                child: isSelected
+                    ? const Icon(Icons.check_rounded, size: 20, color: AppTheme.primaryLight)
+                    : null,
               ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              isSelected ? Icons.check : Icons.chevron_right,
-              size: 18,
-              color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The last row: "Toutes les saisons ›".
+class _AllSeasonsRow extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AllSeasonsRow({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(AppLocalizations.of(context).seasonAllSeasons, style: AppTheme.rowTitle),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textTertiary),
+            ],
+          ),
         ),
       ),
     );

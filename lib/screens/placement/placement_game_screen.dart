@@ -21,10 +21,12 @@ import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
 import '../../widgets/queue_searching_banner.dart';
 import '../game/leg_end_view.dart';
+import '../game/match_end_view.dart';
 import 'bot_camera_ai_mixin.dart';
 
 class PlacementGameScreen extends StatefulWidget {
@@ -485,53 +487,43 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (_bustDialogShowing || !mounted) return;
     _bustDialogShowing = true;
     final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.error, width: 2),
+    showGameDialog(
+      context,
+      accent: AppTheme.error,
+      icon: Icons.error_outline_rounded,
+      title: l10n.bust,
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(l10n.scoreBusted, style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+        const SizedBox(height: 6),
+        Text(l10n.confirmPassOrEdit, style: AppTheme.caption),
+      ]),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () {
+            _bustDialogShowing = false;
+            Navigator.pop(ctx);
+            setState(() {
+              aiPausedForEdit = true;
+              _isBust = false;
+              _currentRoundThrows.clear();
+              _dartsThrown = 0;
+              _myScore = _scoreBeforeRound;
+            });
+            autoScoringService?.stopCapture();
+            for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
+          },
+          child: Text(dsSentence(l10n.editDarts)),
         ),
-        title: Row(children: [
-          const Icon(Icons.warning, color: AppTheme.error, size: 32),
-          const SizedBox(width: 12),
-          Text(l10n.bust, style: AppTheme.titleLarge.copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(l10n.scoreBusted, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(l10n.confirmPassOrEdit, style: const TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
-        ]),
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              _bustDialogShowing = false;
-              Navigator.pop(ctx);
-              setState(() {
-                aiPausedForEdit = true;
-                _isBust = false;
-                _currentRoundThrows.clear();
-                _dartsThrown = 0;
-                _myScore = _scoreBeforeRound;
-              });
-              autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
-            },
-            child: Text(l10n.editDarts),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _bustDialogShowing = false;
-              Navigator.pop(ctx);
-              _confirmRound();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: Text(l10n.confirmBustButton),
-          ),
-        ],
-      ),
+        ElevatedButton(
+          onPressed: () {
+            _bustDialogShowing = false;
+            Navigator.pop(ctx);
+            _confirmRound();
+          },
+          style: gameFilledButtonStyle(AppTheme.error),
+          child: Text(dsSentence(l10n.confirmBustButton)),
+        ),
+      ],
     ).then((_) => _bustDialogShowing = false);
   }
 
@@ -540,54 +532,44 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final notation = _currentRoundThrows.isNotEmpty ? _currentRoundThrows.last.notation : '—';
     _winDialogShowing = true;
     final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.success, width: 2),
+    showGameDialog(
+      context,
+      accent: AppTheme.success,
+      icon: Icons.emoji_events_outlined,
+      title: l10n.checkout,
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(l10n.youHitToFinish(notation), style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+        const SizedBox(height: 6),
+        Text(l10n.isThisCorrect, style: AppTheme.caption),
+      ]),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () {
+            _winDialogShowing = false;
+            Navigator.pop(ctx);
+            setState(() {
+              aiPausedForEdit = true;
+              _isWin = false;
+              _currentRoundThrows.clear();
+              _dartsThrown = 0;
+              _myScore = _scoreBeforeRound;
+            });
+            autoScoringService?.stopCapture();
+            for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
+          },
+          child: Text(dsSentence(l10n.editDarts)),
         ),
-        title: Row(children: [
-          const Icon(Icons.emoji_events, color: AppTheme.success, size: 32),
-          const SizedBox(width: 12),
-          Text(l10n.checkout, style: AppTheme.titleLarge.copyWith(color: AppTheme.success, fontWeight: FontWeight.bold)),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyLarge.copyWith(fontSize: 16), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(l10n.isThisCorrect, style: const TextStyle(color: AppTheme.textSecondary)),
-        ]),
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              _winDialogShowing = false;
-              Navigator.pop(ctx);
-              setState(() {
-                aiPausedForEdit = true;
-                _isWin = false;
-                _currentRoundThrows.clear();
-                _dartsThrown = 0;
-                _myScore = _scoreBeforeRound;
-              });
-              autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
-            },
-            child: Text(l10n.editDarts),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _winDialogShowing = false;
-              Navigator.pop(ctx);
-              DartSoundService.playWin();
-              _onPlayerCheckout();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
-            child: Text(l10n.confirmWin),
-          ),
-        ],
-      ),
+        ElevatedButton(
+          onPressed: () {
+            _winDialogShowing = false;
+            Navigator.pop(ctx);
+            DartSoundService.playWin();
+            _onPlayerCheckout();
+          },
+          style: gameFilledButtonStyle(AppTheme.success),
+          child: Text(dsSentence(l10n.confirmWin)),
+        ),
+      ],
     ).then((_) => _winDialogShowing = false);
   }
 
@@ -833,9 +815,21 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const CircularProgressIndicator(color: AppTheme.primary),
-                        const SizedBox(height: 16),
-                        Text(AppLocalizations.of(context).loadingAutoScoring, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: AppTheme.primary,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          dsSentence(
+                            AppLocalizations.of(context).loadingAutoScoring,
+                          ),
+                          style: AppTheme.caption.copyWith(fontSize: 13),
+                        ),
                       ],
                     ),
                   ),
@@ -862,6 +856,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                       myLegs: placement.myLegs,
                       opponentLegs: placement.botLegs,
                       showBadges: false,
+                      myTurn: true,
                     ),
                     localCameraPreview: !switchingCamera && cameraService?.controller != null && cameraService!.isInitialized
                         ? LocalCameraPreview(controller: cameraService!.controller!)
@@ -956,9 +951,9 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       seriesTitle: _seriesTitle(placement),
       myLegs: placement.myLegs,
       opponentLegs: placement.botLegs,
+      myTurn: false,
       leading: GameControlButton(
-        icon: Icons.arrow_back_ios_new,
-        color: AppTheme.textSecondary,
+        icon: Icons.arrow_back_ios_new_rounded,
         onTap: () async {
           final shouldLeave = await _showLeaveDialog();
           if (shouldLeave && mounted) Navigator.of(context).pop();
@@ -1035,10 +1030,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     );
   }
 
-  /// Center panel for the bot's turn — same pink frame and size as the
-  /// opponent camera, showing the bot throw animation instead of a live feed:
-  /// robot + spinner while the bot "aims", then the visit total as a big
-  /// glow with a BUST/CHECKOUT verdict when the throws land.
+  /// Center panel for the bot's turn — the opponent camera panel without a
+  /// feed: the same r20 frame and the same 1.5 px rose identity border, a
+  /// "BOT" chip in the badge-row slot, then the robot + spinner while the bot
+  /// "aims" and the visit total (with its bust / checkout verdict) once the
+  /// throws land. No glow: the rose type carries the identity.
   Widget _buildBotPanel(PlacementProvider placement) {
     final l10n = AppLocalizations.of(context);
     final throws = placement.lastBotThrows;
@@ -1046,7 +1042,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final visitTotal =
         throws.fold<int>(0, (sum, t) => sum + notationPoints(t.notation));
     return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -1056,53 +1052,43 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                 ? Column(mainAxisSize: MainAxisSize.min, children: [
                     Text(
                       l10n.plusPts(placement.botIsBust ? 0 : visitTotal),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 64,
-                        fontWeight: FontWeight.w900,
+                      style: const TextStyle(
+                        color: AppTheme.opponentPinkBright,
+                        fontSize: 56,
+                        fontWeight: FontWeight.w800,
                         height: 1,
-                        shadows: [
-                          Shadow(
-                            color: AppTheme.opponentPink.withValues(alpha: 0.9),
-                            blurRadius: 36,
-                          ),
-                          Shadow(
-                            color: AppTheme.opponentPink.withValues(alpha: 0.6),
-                            blurRadius: 70,
-                          ),
-                        ],
+                        letterSpacing: -1.5,
+                        fontFeatures: [FontFeature.tabularFigures()],
                       ),
                     ),
                     if (placement.botIsBust || placement.botIsCheckout) ...[
                       const SizedBox(height: 12),
                       Text(
-                        placement.botIsBust ? l10n.bust.toUpperCase() : l10n.checkout.toUpperCase(),
-                        style: TextStyle(
+                        (placement.botIsBust ? l10n.bust : l10n.checkout)
+                            .toUpperCase(),
+                        style: AppTheme.labelSmall.copyWith(
                           color: placement.botIsBust
                               ? AppTheme.opponentPinkBright
                               : AppTheme.success,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 2.5,
+                          height: 1,
                         ),
                       ),
                     ],
                   ])
                 : Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(
-                      Icons.smart_toy,
-                      size: 56,
-                      color: AppTheme.opponentPinkBright.withValues(alpha: 0.9),
+                    const Icon(
+                      Icons.smart_toy_outlined,
+                      size: 44,
+                      color: AppTheme.opponentPink,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Text(
-                      _botIsThrowingLabel(context, placement),
+                      dsSentence(_botIsThrowingLabel(context, placement)),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: AppTheme.opponentPinkBright,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1116,37 +1102,20 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     ),
                   ]),
           ),
-          // Pink frame, mirroring the opponent camera border.
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: AppTheme.opponentPink, width: 2),
-              borderRadius: BorderRadius.circular(22),
+          // ── Rose identity border: the same 1.5 px line as the live feed ──
+          IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.opponentPink, width: 1.5),
+                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              ),
             ),
           ),
-          // "BOT" pill where the live badge sits during online matches.
+          // "BOT" chip where the badge row sits on the opponent feed.
           Positioned(
-            top: 12,
-            left: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppTheme.opponentPink,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.smart_toy, size: 12, color: Colors.white),
-                SizedBox(width: 6),
-                Text(
-                  'BOT',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ]),
-            ),
+            top: 10,
+            left: 10,
+            child: GameChip(text: l10n.bot, color: AppTheme.opponentPinkBright),
           ),
         ],
       ),
@@ -1164,23 +1133,12 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(children: [
-          Expanded(
-            child: Text(
-              l10n.visitOf(botName.toUpperCase()),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-          VisitTotal(total: total, color: AppTheme.opponentPinkBright),
-        ]),
-        const SizedBox(height: 8),
+        VisitLabelRow(
+          label: l10n.visitOf(botName),
+          total: total,
+          color: AppTheme.opponentPinkBright,
+        ),
+        const SizedBox(height: 10),
         SizedBox(
           height: 74,
           child: Row(
@@ -1203,177 +1161,108 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     );
   }
 
+  /// End of a bot / placement match, on the shared [MatchEndView]: result
+  /// disc, sentence-case title, the two-coloured legs tile, the stat rows and
+  /// ONE primary action. A placement leg has no action — the result is being
+  /// saved — so its "panel" is the spinner it always was.
   Widget _buildGameEndScreen(bool didWin, {bool isBotTraining = false}) {
     final l10n = AppLocalizations.of(context);
-    final color = didWin ? AppTheme.success : AppTheme.error;
     final match = _myAverage;
+    final isSeries = isBotTraining && _endBestOf > 1;
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: color, width: 4),
-                    ),
-                    child: Icon(
-                      didWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-                      color: color,
-                      size: 80,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    didWin
-                        ? '${l10n.victory.toUpperCase()}!'
-                        : l10n.defeat.toUpperCase(),
-                    style: AppTheme.displayLarge.copyWith(
-                      color: color,
-                      fontSize: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    didWin
-                        ? '${l10n.youWon.replaceAll('!', '')} — bot'
-                        : '${l10n.youLost} — bot',
-                    style: AppTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                  if (isBotTraining && _endBestOf > 1) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      '$_endMyLegs – $_endBotLegs',
-                      style: AppTheme.displayLarge.copyWith(
-                        color: Colors.white,
-                        fontSize: 34,
-                      ),
-                    ),
-                    Text(
-                      l10n.legsShort.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 32),
-                  if (!isBotTraining) ...[
-                    const CircularProgressIndicator(color: AppTheme.primary),
-                    const SizedBox(height: 16),
-                    Text(
-                      l10n.savingResult,
-                      style: const TextStyle(color: AppTheme.textSecondary),
-                    ),
-                  ] else ...[
-                    _StatRow(
-                      label: l10n.matchAverageLabel,
-                      value: match != null && match > 0
-                          ? l10n.matchAverageValue(match.toStringAsFixed(1))
-                          : '—',
-                      color: AppTheme.primary,
-                      icon: Icons.timeline,
-                    ),
-                    const SizedBox(height: 12),
-                    _StatRow(
-                      label: l10n.overallBotAverageLabel,
-                      value: _statsLoading
-                          ? '…'
-                          : (_overallBotAverage != null &&
-                                  _overallBotAverage! > 0
-                              ? l10n.overallBotAverageValue(
-                                  _overallBotAverage!.toStringAsFixed(1))
-                              : '—'),
-                      color: AppTheme.accent,
-                      icon: Icons.equalizer,
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton(
-                      onPressed: _statsLoading
-                          ? null
-                          : () => Navigator.of(context).pop({
-                                'botTraining': true,
-                                'won': didWin,
-                              }),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: Text(
-                        l10n.continueButton,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+    final Widget panel = !isBotTraining
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: AppTheme.primary,
+                  strokeWidth: 2,
+                ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                dsSentence(l10n.savingResult),
+                style: AppTheme.caption.copyWith(fontSize: 13),
+              ),
+            ],
+          )
+        : SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _statsLoading
+                  ? null
+                  : () => Navigator.of(context)
+                      .pop({'botTraining': true, 'won': didWin}),
+              child: Text(dsSentence(l10n.continueButton)),
             ),
-          ),
-        ),
-      ),
+          );
+
+    final Widget? preCard = !isBotTraining
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StatRow(
+                  label: l10n.matchAverageLabel,
+                  value: match != null && match > 0
+                      ? l10n.matchAverageValue(match.toStringAsFixed(1))
+                      : '—',
+                  color: AppTheme.playerBlueBright,
+                  icon: Icons.timeline_rounded,
+                ),
+                const SizedBox(height: 10),
+                _StatRow(
+                  label: l10n.overallBotAverageLabel,
+                  value: _statsLoading
+                      ? '…'
+                      : (_overallBotAverage != null && _overallBotAverage! > 0
+                          ? l10n.overallBotAverageValue(
+                              _overallBotAverage!.toStringAsFixed(1))
+                          : '—'),
+                  color: AppTheme.textPrimary,
+                  icon: Icons.equalizer_rounded,
+                ),
+              ],
+            ),
+          );
+
+    return MatchEndView(
+      didWin: didWin,
+      title: didWin ? l10n.victory : l10n.defeat,
+      subtitle: didWin ? l10n.youWon : l10n.youLost,
+      badgeText: l10n.botPlayer,
+      scoreLine: isSeries ? '$_endMyLegs – $_endBotLegs' : null,
+      scoreCaption: isSeries ? l10n.bestOfN(_endBestOf) : null,
+      preCard: preCard,
+      panel: panel,
     );
   }
 
   Future<bool> _showLeaveDialog() async {
-    final shouldLeave = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.error, width: 2),
+    final l10n = AppLocalizations.of(context);
+    final shouldLeave = await showGameDialog<bool>(
+      context,
+      accent: AppTheme.error,
+      icon: Icons.logout_rounded,
+      title: l10n.leaveMatch,
+      content: Text(l10n.leaveMatchWarning, style: AppTheme.bodyMedium),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(dsSentence(l10n.stay)),
         ),
-        title: Row(
-          children: [
-            const Icon(Icons.warning, color: AppTheme.error, size: 32),
-            const SizedBox(width: 12),
-            Text(
-              AppLocalizations.of(context).leaveMatch,
-              style: AppTheme.titleLarge.copyWith(
-                color: AppTheme.error,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: gameFilledButtonStyle(AppTheme.error),
+          child: Text(dsSentence(l10n.leave)),
         ),
-        content: Text(
-          AppLocalizations.of(context).leaveMatchWarning,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(AppLocalizations.of(context).stay),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext, true);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: Text(AppLocalizations.of(context).leave),
-          ),
-        ],
-      ),
+      ],
     );
     return shouldLeave ?? false;
   }
@@ -1472,6 +1361,8 @@ class _DartThrow {
   }
 }
 
+/// One end-of-match figure: a flat surface card with a hairline, an outlined
+/// icon, the label and the value in [color].
 class _StatRow extends StatelessWidget {
   final String label;
   final String value;
@@ -1487,34 +1378,29 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 320,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
-      ),
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 24),
+          Icon(icon, color: AppTheme.textSecondary, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.rowTitle,
             ),
           ),
           Text(
             value,
             style: TextStyle(
               color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],

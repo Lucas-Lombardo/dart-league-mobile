@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/rank_translation.dart';
 import '../../utils/rank_utils.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 
+/// End of the placement run: the result disc, "Placement terminé", the won /
+/// played line, then one card with the assigned badge, "Tu commences en Or"
+/// and the starting ELO — and the single primary button into ranked play.
 class PlacementResultScreen extends StatefulWidget {
   final String assignedRank;
   final int assignedElo;
@@ -59,183 +64,125 @@ class _PlacementResultScreenState extends State<PlacementResultScreen>
     super.dispose();
   }
 
-  Color _getRankColor(String rank) {
-    switch (rank.toLowerCase()) {
-      case 'bronze':
-        return const Color(0xFFCD7F32);
-      case 'silver':
-        return const Color(0xFFC0C0C0);
-      case 'gold':
-        return const Color(0xFFFFD700);
-      case 'platinum':
-        return const Color(0xFF00CED1);
-      case 'diamond':
-        return const Color(0xFFB9F2FF);
-      case 'master':
-        return const Color(0xFFFF4500);
-      default:
-        return AppTheme.textSecondary;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final rankColor = _getRankColor(widget.assignedRank);
+    final l10n = AppLocalizations.of(context);
+    final rankLabel = RankTranslation.translate(l10n, widget.assignedRank);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Animated rank badge
-                AnimatedBuilder(
-                  animation: _scaleAnimation,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _scaleAnimation.value,
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: rankColor.withValues(alpha: 0.4),
-                          blurRadius: 40,
-                          spreadRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: SizedBox(
-                      width: 140,
-                      height: 140,
-                      child: RankUtils.getRankBadge(
-                        widget.assignedRank,
-                        size: 140,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Animated text
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight - 64),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
                     children: [
-                      Text(
-                        AppLocalizations.of(context).placementComplete,
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '${AppLocalizations.of(context).youWonOutOf} ${widget.wins} / ${widget.totalMatches}',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Rank card
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.surfaceGradient,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: rankColor.withValues(alpha: 0.5),
-                            width: 2,
+                      ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppTheme.primary.withValues(alpha: 0.6),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: AppTheme.primaryLight,
+                            size: 38,
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 18),
+                      FadeTransition(
+                        opacity: _fadeAnimation,
                         child: Column(
                           children: [
                             Text(
-                              AppLocalizations.of(context).yourRank,
+                              dsSentence(l10n.placementComplete),
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
+                                color: AppTheme.textPrimary,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.7,
+                                height: 1.05,
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              widget.assignedRank.toUpperCase(),
-                              style: TextStyle(
-                                color: rankColor,
-                                fontSize: 36,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 3,
-                              ),
+                              '${l10n.youWonOutOf} ${widget.wins} / ${widget.totalMatches}',
+                              textAlign: TextAlign.center,
+                              style: AppTheme.caption.copyWith(fontSize: 14),
                             ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${AppLocalizations.of(context).startingElo}: ${widget.assignedElo}',
-                                style: const TextStyle(
-                                  color: AppTheme.primary,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            const SizedBox(height: 18),
+                            SizedBox(
+                              width: double.infinity,
+                              child: _buildRankCard(l10n, rankLabel),
                             ),
                           ],
                         ),
                       ),
-
-                      const SizedBox(height: 48),
-
-                      // Continue button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            AppNavigator.toHomeClearing(context);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: rankColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Text(
-                            AppLocalizations.of(context).startPlayingRanked,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
-                ),
-              ],
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: () => AppNavigator.toHomeClearing(context),
+                            child: Text(dsSentence(l10n.startPlayingRanked)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The verdict card: the 96 px badge, "Tu commences en Or" and the starting
+  /// ELO as the hero number.
+  Widget _buildRankCard(AppLocalizations l10n, String rankLabel) {
+    return DsCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          RankUtils.getRankBadge(widget.assignedRank, size: 96),
+          const SizedBox(height: 14),
+          Text(
+            l10n.placementResultStartsIn(rankLabel),
+            textAlign: TextAlign.center,
+            style: AppTheme.rowTitle,
+          ),
+          const SizedBox(height: 18),
+          Text('${widget.assignedElo}', style: AppTheme.displayLarge),
+          const SizedBox(height: 5),
+          Text(
+            l10n.startingElo.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.labelSmall,
+          ),
+        ],
       ),
     );
   }

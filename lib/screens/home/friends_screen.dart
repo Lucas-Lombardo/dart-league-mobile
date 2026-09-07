@@ -8,14 +8,22 @@ import '../../models/chat_message.dart';
 import '../../models/user.dart';
 import '../../services/friends_service.dart';
 import '../../l10n/app_localizations.dart';
-import '../../widgets/rank_badge.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/premium_badge.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/friendly_match_launcher.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/rank_utils.dart';
 import '../chat/chat_thread_screen.dart';
 import '../profile/player_stats_screen.dart';
+
+/// Every row of this tab (team, friend, request, search result) is a 64 px
+/// flat card with the same inner padding.
+const double _kRowHeight = 64;
+const EdgeInsets _kRowPadding = EdgeInsets.fromLTRB(14, 0, 12, 0);
+const EdgeInsets _kListPadding = EdgeInsets.fromLTRB(16, 14, 16, 24);
+const Color _kIconMuted = Color(0xFFCBD5E1);
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -170,15 +178,13 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
 
   Future<void> _removeFriend(String friendId, String username) async {
     final l10n = AppLocalizations.of(context);
+    // The dialog theme (surface, r20, Manrope) does the styling; only the
+    // destructive action is colored.
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: Text(l10n.removeFriendTitle, style: const TextStyle(color: Colors.white)),
-        content: Text(
-          l10n.removeFriendMessage.replaceAll('{username}', username),
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
+        title: Text(l10n.removeFriendTitle),
+        content: Text(l10n.removeFriendMessage.replaceAll('{username}', username)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -219,115 +225,79 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     }
   }
 
+  void _openSearch() {
+    setState(() => _showSearch = true);
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    setState(() {
+      _showSearch = false;
+      _searchResults = [];
+    });
+  }
+
+  void _openStats(User user) {
+    AppNavigator.toScreen(
+      context,
+      PlayerStatsScreen(userId: user.id, username: user.username),
+    );
+  }
+
+  void _openThread(String counterpartId, String username) {
+    AppNavigator.toScreen(
+      context,
+      ChatThreadScreen(counterpartId: counterpartId, username: username),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_showSearch) return _buildSearchView();
+
     final friendsProvider = context.watch<FriendsProvider>();
     final l10n = AppLocalizations.of(context);
-
-    if (_showSearch) {
-      return Column(
-        children: [
-          _buildSearchSection(),
-          Expanded(child: _buildSearchResults()),
-        ],
-      );
-    }
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(
-            children: [
-              Text(
-                l10n.friends,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textPrimary,
-                ),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: DsScreenHeader(
+            title: l10n.friends,
+            actions: [
+              DsIconButton(
+                icon: Icons.search_rounded,
+                tooltip: MaterialLocalizations.of(context).searchFieldLabel,
+                onTap: _openSearch,
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: AppTheme.surfaceLight.withValues(alpha: 0.7),
-                  ),
-                ),
-                child: Text(
-                  '${friendsProvider.friends.length}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: () {
-                  HapticService.lightImpact();
-                  setState(() => _showSearch = true);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: const Icon(Icons.person_add, size: 16),
-                label: Text(l10n.add, style: const TextStyle(fontSize: 12.5)),
+              DsIconButton(
+                icon: Icons.person_add_alt_1_outlined,
+                tooltip: l10n.addFriendsButton,
+                onTap: _openSearch,
               ),
             ],
           ),
         ),
-        TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.primary,
-          unselectedLabelColor: AppTheme.textSecondary,
-          indicatorColor: AppTheme.primary,
-          dividerColor: Colors.transparent,
-          labelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-          tabs: [
-            Tab(
-              height: 40,
-              text: '${l10n.friendsCount} (${friendsProvider.friends.length})',
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: AnimatedBuilder(
+            // Follows the swipe of the TabBarView, not only the settled index.
+            animation: _tabController.animation!,
+            builder: (context, _) => _SegmentedControl(
+              index: _tabController.animation!.value.round(),
+              labels: [
+                '${l10n.friendsCount} (${friendsProvider.friends.length})',
+                '${l10n.requests} (${friendsProvider.pendingRequestsCount})',
+              ],
+              onSelect: (i) => _tabController.animateTo(i),
             ),
-            Tab(
-              height: 40,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(l10n.requests),
-                  if (friendsProvider.pendingRequestsCount > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${friendsProvider.pendingRequestsCount}',
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 4),
         Expanded(
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildFriendsList(friendsProvider.friends, friendsProvider),
+              _buildFriendsList(friendsProvider),
               _buildRequestsList(friendsProvider),
             ],
           ),
@@ -336,77 +306,194 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildSearchSection() {
+  // ─── Friends tab ────────────────────────────────────────────────────────
+
+  Widget _buildFriendsList(FriendsProvider provider) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    if (provider.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      );
+    }
+
+    if (provider.error != null) {
+      return _ErrorState(
+        message: provider.error!.replaceAll('Exception: ', ''),
+        onRetry: () => provider.loadFriends(),
+      );
+    }
+
+    final chat = context.watch<ChatProvider>();
+    final friends = provider.friends;
+    // Online friends first — they're the ones you can actually challenge now.
+    final online = friends.where((f) => provider.isOnline(f.id)).toList();
+    final offline = friends.where((f) => !provider.isOnline(f.id)).toList();
+
+    // Row 0 is the pinned "Équipe Dart Rivals" — everyone can write to the
+    // team, without it being a friendship (and without being challengeable).
+    final children = <Widget>[
+      _TeamRow(
+        unreadCount: chat.unreadSupport,
+        onTap: () => _openThread(kSupportConversationId, l10n.teamDartRivals),
       ),
-      child: Column(
+    ];
+
+    if (friends.isEmpty) {
+      children.add(const SizedBox(height: 14));
+      children.add(_EmptyState(
+        icon: Icons.people_outline_rounded,
+        title: l10n.noFriendsYet,
+        subtitle: l10n.addFriendsHint,
+        action: ElevatedButton(
+          onPressed: _openSearch,
+          child: Text(l10n.addFriendsButton),
+        ),
+      ));
+    } else {
+      void addGroup(String label, List<User> group) {
+        if (group.isEmpty) return;
+        children.add(const SizedBox(height: 20));
+        children.add(_GroupLabel('${label.toUpperCase()} · ${group.length}'));
+        for (final friend in group) {
+          final isOnline = provider.isOnline(friend.id);
+          children.add(const SizedBox(height: 10));
+          children.add(_FriendRow(
+            friend: friend,
+            isOnline: isOnline,
+            unreadCount: chat.unreadFrom(friend.id),
+            onChallenge: () => FriendlyMatchLauncher.invite(context, friend),
+            onMessage: () => _openThread(friend.id, friend.username),
+            onRemove: () => _removeFriend(friend.id, friend.username),
+            onTap: () => _openStats(friend),
+          ));
+        }
+      }
+
+      addGroup(l10n.online, online);
+      addGroup(l10n.friendsOffline, offline);
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => provider.loadFriends(),
+      color: AppTheme.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _kListPadding,
+        children: children,
+      ),
+    );
+  }
+
+  // ─── Requests tab ───────────────────────────────────────────────────────
+
+  Widget _buildRequestsList(FriendsProvider provider) {
+    final l10n = AppLocalizations.of(context);
+    final pendingRequests = provider.pendingRequests;
+    final sentRequests = provider.sentRequests;
+
+    if (pendingRequests.isEmpty && sentRequests.isEmpty) {
+      return ListView(
+        padding: _kListPadding,
         children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: () {
-                  HapticService.lightImpact();
-                  setState(() {
-                    _showSearch = false;
-                    _searchController.clear();
-                    _searchResults = [];
-                  });
-                },
-                icon: const Icon(Icons.arrow_back),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: l10n.searchByUsernameHint,
-                    hintStyle: TextStyle(color: AppTheme.textSecondary),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: AppTheme.surfaceLight),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: AppTheme.surfaceLight),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                    ),
-                    prefixIcon: const Icon(Icons.search, color: AppTheme.textSecondary),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, color: AppTheme.textSecondary),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchResults = [];
-                              });
-                            },
-                          )
-                        : null,
-                  ),
-                  onChanged: (value) {
-                    _performSearch(value);
-                  },
-                ),
-              ),
-            ],
+          _EmptyState(
+            icon: Icons.people_outline_rounded,
+            title: l10n.noFriendRequests,
           ),
         ],
-      ),
+      );
+    }
+
+    return ListView(
+      padding: _kListPadding,
+      children: [
+        if (pendingRequests.isNotEmpty) ...[
+          _GroupLabel(l10n.incomingRequests.toUpperCase()),
+          for (final request in pendingRequests) ...[
+            const SizedBox(height: 10),
+            _PlayerRow(
+              user: request.user,
+              onTap: () => _openStats(request.user),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _RoundIconButton(
+                    icon: Icons.check_rounded,
+                    iconSize: 18,
+                    color: AppTheme.success,
+                    fillColor: AppTheme.success.withValues(alpha: 0.14),
+                    semanticsLabel: l10n.acceptButton,
+                    onTap: () => _acceptRequest(request.id, request.user.username),
+                  ),
+                  const SizedBox(width: 8),
+                  _RoundIconButton(
+                    icon: Icons.close_rounded,
+                    iconSize: 18,
+                    color: AppTheme.error,
+                    fillColor: AppTheme.error.withValues(alpha: 0.14),
+                    semanticsLabel: l10n.declineInvite,
+                    onTap: () => _rejectRequest(request.id, request.user.username),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+        if (sentRequests.isNotEmpty) ...[
+          if (pendingRequests.isNotEmpty) const SizedBox(height: 20),
+          _GroupLabel(l10n.sentRequests.toUpperCase()),
+          for (final request in sentRequests) ...[
+            const SizedBox(height: 10),
+            _PlayerRow(
+              user: request.user,
+              onTap: () => _openStats(request.user),
+              trailing: DsPill(label: l10n.pendingStatus, color: AppTheme.textSecondary),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  // ─── Search view ────────────────────────────────────────────────────────
+
+  Widget _buildSearchView() {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: DsScreenHeader(
+            title: l10n.addFriendsButton,
+            showBack: true,
+            onBack: _closeSearch,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            autofocus: true,
+            // The input theme paints the field (surface, r14, primary focus).
+            decoration: InputDecoration(
+              hintText: l10n.searchByUsernameHint,
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchResults = [];
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            onChanged: _performSearch,
+          ),
+        ),
+        Expanded(child: _buildSearchResults()),
+      ],
     );
   }
 
@@ -419,358 +506,287 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     }
 
     if (_searchController.text.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
-            Text(
-              l10n.searchForUsersByUsername,
-              style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
+      return ListView(
+        padding: _kListPadding,
+        children: [
+          _EmptyState(icon: Icons.search_rounded, title: l10n.searchForUsersByUsername),
+        ],
       );
     }
 
     if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_off, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
-            Text(
-              l10n.noUsersFound,
-              style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
+      return ListView(
+        padding: _kListPadding,
+        children: [
+          _EmptyState(icon: Icons.person_off_outlined, title: l10n.noUsersFound),
+        ],
       );
     }
 
     final friendsProvider = context.watch<FriendsProvider>();
 
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: _kListPadding,
       itemCount: _searchResults.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final user = _searchResults[index];
         final status = friendsProvider.getFriendshipStatus(user.id);
-        
-        return Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-          ),
-          child: ListTile(
-            leading: RankBadge(
-              rank: user.rank,
-              size: 40,
-              showLabel: false,
-            ),
-            title: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    user.username,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                PremiumBadge(isPremium: user.isPremiumActive, size: 14),
-              ],
-            ),
-            subtitle: Text(
-              'ELO: ${user.elo} • ${user.wins}W - ${user.losses}L',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-            ),
-            trailing: _buildSearchResultAction(user.id, user.username, status),
-            onTap: () {
-              AppNavigator.toScreen(
-                context,
-                PlayerStatsScreen(userId: user.id, username: user.username),
-              );
-            },
-          ),
+        return _PlayerRow(
+          user: user,
+          onTap: () => _openStats(user),
+          trailing: _buildSearchResultAction(user, status),
         );
       },
     );
   }
 
-  Widget _buildSearchResultAction(String userId, String username, String status) {
+  Widget _buildSearchResultAction(User user, String status) {
     final l10n = AppLocalizations.of(context);
     switch (status) {
       case 'friends':
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, color: AppTheme.success, size: 20),
-            SizedBox(width: 4),
-            Text(l10n.friendsStatus, style: TextStyle(color: AppTheme.success, fontSize: 12)),
-          ],
-        );
+        return DsPill(label: l10n.friendsStatus, color: AppTheme.success);
       case 'pending_sent':
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
-            SizedBox(width: 4),
-            Text(l10n.pendingStatus, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-          ],
-        );
+        return DsPill(label: l10n.pendingStatus, color: AppTheme.textSecondary);
       case 'pending_received':
-        return TextButton(
-          onPressed: () async {
+        return _SmallPill(
+          label: l10n.acceptButton,
+          filled: true,
+          onTap: () async {
             final friendsProvider = context.read<FriendsProvider>();
-            final request = friendsProvider.pendingRequests.firstWhere((r) => r.user.id == userId);
-            await _acceptRequest(request.id, username);
+            final request = friendsProvider.pendingRequests.firstWhere((r) => r.user.id == user.id);
+            await _acceptRequest(request.id, user.username);
           },
-          child: Text(l10n.acceptButton, style: const TextStyle(fontSize: 12)),
         );
       default:
-        return IconButton(
-          icon: const Icon(Icons.person_add, color: AppTheme.primary),
-          onPressed: () => _sendFriendRequest(userId, username),
+        return _RoundIconButton(
+          icon: Icons.person_add_alt_1_outlined,
+          iconSize: 18,
+          color: AppTheme.primaryLight,
+          fillColor: AppTheme.primary.withValues(alpha: 0.14),
+          semanticsLabel: l10n.addFriendsButton,
+          onTap: () => _sendFriendRequest(user.id, user.username),
         );
     }
   }
+}
 
-  Widget _buildRequestsList(FriendsProvider provider) {
-    final l10n = AppLocalizations.of(context);
-    final pendingRequests = provider.pendingRequests;
-    final sentRequests = provider.sentRequests;
+// ─── Private building blocks ──────────────────────────────────────────────
 
-    if (pendingRequests.isEmpty && sentRequests.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people_outline, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
-            Text(
-              l10n.noFriendRequests,
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
-            ),
-          ],
-        ),
-      );
-    }
+/// "Amis (5) | Demandes (2)": a surface container with the active segment on
+/// a surfaceLight pad. Drives (and is driven by) the TabController.
+class _SegmentedControl extends StatelessWidget {
+  final int index;
+  final List<String> labels;
+  final ValueChanged<int> onSelect;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (pendingRequests.isNotEmpty) ...[
-          Text(
-            l10n.incomingRequests,
-            style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          ...pendingRequests.map((request) => _buildRequestCard(request, true)),
-          const SizedBox(height: 24),
-        ],
-        if (sentRequests.isNotEmpty) ...[
-          Text(
-            l10n.sentRequests,
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          ...sentRequests.map((request) => _buildRequestCard(request, false)),
-        ],
-      ],
-    );
-  }
+  const _SegmentedControl({
+    required this.index,
+    required this.labels,
+    required this.onSelect,
+  });
 
-  Widget _buildRequestCard(FriendRequest request, bool isIncoming) {
-    final l10n = AppLocalizations.of(context);
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      height: 40,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isIncoming ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surfaceLight.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: AppTheme.border),
       ),
-      child: ListTile(
-        leading: RankBadge(
-          rank: request.user.rank,
-          size: 40,
-          showLabel: false,
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                request.user.username,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 3),
+                child: _segment(i),
               ),
             ),
-            PremiumBadge(isPremium: request.user.isPremiumActive, size: 14),
-          ],
-        ),
-        subtitle: Text(
-          'ELO: ${request.user.elo} • ${request.user.wins}W - ${request.user.losses}L',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-        ),
-        trailing: isIncoming
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.check, color: AppTheme.success),
-                    onPressed: () => _acceptRequest(request.id, request.user.username),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: AppTheme.error),
-                    onPressed: () => _rejectRequest(request.id, request.user.username),
-                  ),
-                ],
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.schedule, color: AppTheme.textSecondary, size: 20),
-                  SizedBox(width: 4),
-                  Text(l10n.pendingStatus, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                ],
-              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(int i) {
+    final active = i == index;
+    return Material(
+      color: active ? AppTheme.surfaceLight : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
         onTap: () {
-          AppNavigator.toScreen(
-            context,
-            PlayerStatsScreen(userId: request.user.id, username: request.user.username),
-          );
+          HapticService.lightImpact();
+          onSelect(i);
         },
-      ),
-    );
-  }
-
-  Widget _buildFriendsList(List<User> friends, FriendsProvider provider) {
-    final l10n = AppLocalizations.of(context);
-    if (provider.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.primary),
-      );
-    }
-
-    if (provider.error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              provider.error!.replaceAll('Exception: ', ''),
-              style: const TextStyle(color: AppTheme.error),
-              textAlign: TextAlign.center,
+        child: Center(
+          child: Text(
+            labels[i],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+              color: active ? AppTheme.textPrimary : AppTheme.textSecondary,
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => provider.loadFriends(),
-              child: Text(l10n.retry),
-            ),
-          ],
+          ),
         ),
-      );
-    }
-
-    if (friends.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people_outline, size: 64, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
-            Text(
-              l10n.noFriendsYet,
-              style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              l10n.addFriendsHint,
-              style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showSearch = true;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              ),
-              icon: const Icon(Icons.person_add),
-              label: Text(l10n.addFriendsButton),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Online friends first — they're the ones you can actually challenge now.
-    final sorted = [
-      ...friends.where((f) => provider.isOnline(f.id)),
-      ...friends.where((f) => !provider.isOnline(f.id)),
-    ];
-    final chat = context.watch<ChatProvider>();
-
-    // Row 0 is the pinned "Équipe Dart Rivals" — everyone can write to the
-    // team, without it being a friendship (and without being challengeable).
-    return RefreshIndicator(
-      onRefresh: () => provider.loadFriends(),
-      color: AppTheme.primary,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: sorted.length + 1,
-        separatorBuilder: (context, index) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return _TeamRow(
-              unreadCount: chat.unreadSupport,
-              onTap: () => _openThread(kSupportConversationId, l10n.teamDartRivals),
-            );
-          }
-          final friend = sorted[index - 1];
-          final isOnline = provider.isOnline(friend.id);
-          return _FriendRow(
-            friend: friend,
-            isOnline: isOnline,
-            unreadCount: chat.unreadFrom(friend.id),
-            onChallenge: () => FriendlyMatchLauncher.invite(context, friend),
-            onMessage: () => _openThread(friend.id, friend.username),
-            onRemove: () => _removeFriend(friend.id, friend.username),
-            onTap: () {
-              AppNavigator.toScreen(
-                context,
-                PlayerStatsScreen(userId: friend.id, username: friend.username),
-              );
-            },
-          );
-        },
       ),
-    );
-  }
-
-  void _openThread(String counterpartId, String username) {
-    HapticService.lightImpact();
-    AppNavigator.toScreen(
-      context,
-      ChatThreadScreen(counterpartId: counterpartId, username: username),
     );
   }
 }
 
-/// Dense friend row: presence dot on the rank badge, one "Challenge" CTA
-/// (solid when the friend is online), removal moved behind a swipe so the
-/// destructive action is never one accidental tap away.
+/// "EN LIGNE · 1 ───────" group label with a hairline.
+class _GroupLabel extends StatelessWidget {
+  final String text;
+  const _GroupLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(text, style: AppTheme.labelSmall),
+        const SizedBox(width: 12),
+        Expanded(child: Container(height: 1, color: AppTheme.border)),
+      ],
+    );
+  }
+}
+
+/// 36 px rank badge; when [isOnline] is given, a 12 px presence dot sits on
+/// its bottom-right corner (success online, surfaceLight offline).
+class _RankAvatar extends StatelessWidget {
+  final String rank;
+  final bool? isOnline;
+
+  const _RankAvatar({required this.rank, this.isOnline});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          RankUtils.getRankBadge(rank, size: 36),
+          if (isOnline != null)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Semantics(
+                label: isOnline! ? l10n.online : l10n.friendsOffline,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: isOnline! ? AppTheme.success : AppTheme.surfaceLight,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.surface, width: 2),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The 64 px player row shared by friends, requests and search results:
+/// rank badge, name + premium crown, "1240 ELO · 12V · 8D" caption (prefixed
+/// by "En ligne" when [isOnline]), and a caller-provided trailing.
+class _PlayerRow extends StatelessWidget {
+  final User user;
+  final bool? isOnline;
+  final Widget trailing;
+  final VoidCallback onTap;
+
+  const _PlayerRow({
+    required this.user,
+    this.isOnline,
+    required this.trailing,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final stats =
+        '${user.elo} ${l10n.eloLabel} · ${user.wins}${l10n.formWinLetter} · ${user.losses}${l10n.formLossLetter}';
+
+    return SizedBox(
+      height: _kRowHeight,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: _kRowPadding,
+        onTap: onTap,
+        child: Row(
+          children: [
+            _RankAvatar(rank: user.rank, isOnline: isOnline),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.sectionTitle,
+                        ),
+                      ),
+                      PremiumBadge(
+                        isPremium: user.isPremiumActive,
+                        size: 12,
+                        color: AppTheme.accent,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text.rich(
+                    TextSpan(
+                      style: AppTheme.caption,
+                      children: [
+                        if (isOnline == true) ...[
+                          TextSpan(
+                            text: l10n.online,
+                            style: const TextStyle(
+                              color: AppTheme.success,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const TextSpan(text: ' · '),
+                        ],
+                        TextSpan(text: stats),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            trailing,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Friend row: presence dot on the rank badge, round message button with the
+/// unread badge, "Défier" pill (filled when the friend is online). Removal
+/// stays behind a swipe so the destructive action is never one accidental
+/// tap away.
 class _FriendRow extends StatelessWidget {
   final User friend;
   final bool isOnline;
@@ -795,7 +811,7 @@ class _FriendRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(13),
+      borderRadius: BorderRadius.circular(AppTheme.radiusRow),
       child: Dismissible(
         key: ValueKey('friend-${friend.id}'),
         direction: DismissDirection.endToStart,
@@ -813,7 +829,7 @@ class _FriendRow extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.person_remove, color: Colors.white, size: 20),
+              const Icon(Icons.person_remove_outlined, color: Colors.white, size: 20),
               const SizedBox(height: 2),
               Text(
                 l10n.removeButton,
@@ -826,140 +842,28 @@ class _FriendRow extends StatelessWidget {
             ],
           ),
         ),
-        child: InkWell(
+        child: _PlayerRow(
+          user: friend,
+          isOnline: isOnline,
           onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(
-                color: isOnline
-                    ? AppTheme.success.withValues(alpha: 0.35)
-                    : AppTheme.surfaceLight.withValues(alpha: 0.55),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _RoundIconButton(
+                icon: Icons.chat_bubble_outline_rounded,
+                color: _kIconMuted,
+                borderColor: AppTheme.surfaceLight,
+                badge: unreadCount > 0 ? DsBadge(count: unreadCount) : null,
+                semanticsLabel: l10n.chatMessageAction,
+                onTap: onMessage,
               ),
-            ),
-            child: Row(
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    RankBadge(rank: friend.rank, size: 36, showLabel: false),
-                    Positioned(
-                      right: -1,
-                      bottom: -1,
-                      child: Semantics(
-                        label: isOnline ? l10n.online : null,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: isOnline
-                                ? AppTheme.success
-                                : AppTheme.surfaceLight,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppTheme.surface, width: 2),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              friend.username,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          PremiumBadge(isPremium: friend.isPremiumActive, size: 12),
-                        ],
-                      ),
-                      const SizedBox(height: 1),
-                      Text.rich(
-                        TextSpan(
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                          ),
-                          children: [
-                            if (isOnline)
-                              TextSpan(
-                                text: '● ${l10n.online} · ',
-                                style: const TextStyle(
-                                  color: AppTheme.success,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            TextSpan(
-                              text:
-                                  '${friend.elo} · ${friend.wins}${l10n.formWinLetter}-${friend.losses}${l10n.formLossLetter}',
-                            ),
-                          ],
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _MessageButton(unreadCount: unreadCount, onTap: onMessage),
-                const SizedBox(width: 8),
-                Material(
-                  color: isOnline ? AppTheme.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () {
-                      HapticService.lightImpact();
-                      onChallenge();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        border: isOnline
-                            ? null
-                            : Border.all(
-                                color: AppTheme.primary.withValues(alpha: 0.45),
-                              ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.track_changes,
-                            size: 14,
-                            color: isOnline ? Colors.white : AppTheme.primary,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            l10n.challengeFriend,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: isOnline ? Colors.white : AppTheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              const SizedBox(width: 8),
+              _SmallPill(
+                label: l10n.challengeFriend,
+                filled: isOnline,
+                onTap: onChallenge,
+              ),
+            ],
           ),
         ),
       ),
@@ -967,69 +871,109 @@ class _FriendRow extends StatelessWidget {
   }
 }
 
-/// Round 💬 button on a friend row; a red bubble shows this friend's unread
-/// count (same counter that feeds the AppBar badge).
-class _MessageButton extends StatelessWidget {
-  final int unreadCount;
+/// 36 px round icon button: outline ([borderColor]) or tinted ([fillColor]),
+/// optional badge on the top-right corner.
+class _RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final double iconSize;
+  final Color color;
+  final Color? fillColor;
+  final Color? borderColor;
   final VoidCallback onTap;
+  final Widget? badge;
+  final String? semanticsLabel;
 
-  const _MessageButton({required this.unreadCount, required this.onTap});
+  const _RoundIconButton({
+    required this.icon,
+    this.iconSize = 17,
+    required this.color,
+    this.fillColor,
+    this.borderColor,
+    required this.onTap,
+    this.badge,
+    this.semanticsLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
+    final Widget button = Material(
+      color: fillColor ?? Colors.transparent,
+      shape: CircleBorder(
+        side: borderColor == null ? BorderSide.none : BorderSide(color: borderColor!),
+      ),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Center(
+            child: Icon(icon, size: iconSize, color: color, semanticLabel: semanticsLabel),
+          ),
+        ),
+      ),
+    );
+    if (badge == null) return button;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          child: InkWell(
+        button,
+        Positioned(top: -4, right: -4, child: badge!),
+      ],
+    );
+  }
+}
+
+/// 32 px action pill ("Défier", "Accepter"): primary gradient + white when
+/// [filled], hairline outline + textPrimary otherwise.
+class _SmallPill extends StatelessWidget {
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+
+  const _SmallPill({
+    required this.label,
+    required this.filled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        // Ink (not Container) so the ripple paints above the gradient.
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: filled ? AppTheme.primaryGradient : null,
             borderRadius: BorderRadius.circular(999),
-            onTap: () {
-              HapticService.lightImpact();
-              onTap();
-            },
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.45)),
-              ),
-              child: Semantics(
-                label: l10n.chatMessageAction,
-                child: const Icon(Icons.chat_bubble_outline,
-                    size: 15, color: AppTheme.primary),
+            border: filled ? null : Border.all(color: AppTheme.surfaceLight),
+          ),
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: filled ? Colors.white : AppTheme.textPrimary,
+                height: 1,
               ),
             ),
           ),
         ),
-        if (unreadCount > 0)
-          Positioned(
-            top: -4,
-            right: -4,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 16),
-              height: 16,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.error,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppTheme.surface, width: 2),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                unreadCount > 9 ? '9+' : '$unreadCount',
-                style: const TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }
@@ -1045,16 +989,14 @@ class _TeamRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(13),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
-        ),
+    return SizedBox(
+      height: _kRowHeight,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: _kRowPadding,
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        side: BorderSide(color: AppTheme.primaryLight.withValues(alpha: 0.3)),
+        onTap: onTap,
         child: Row(
           children: [
             Container(
@@ -1062,65 +1004,113 @@ class _TeamRow extends StatelessWidget {
               height: 36,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                    colors: [AppTheme.primary, AppTheme.primaryDark]),
+                gradient: AppTheme.primaryGradient,
               ),
               alignment: Alignment.center,
-              child: const Text('🎯', style: TextStyle(fontSize: 16)),
+              child: Image.asset(
+                'assets/logo/logo-without-letters.png',
+                width: 22,
+                height: 22,
+                fit: BoxFit.contain,
+              ),
             ),
-            const SizedBox(width: 11),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          l10n.teamDartRivals,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.15),
-                          border: Border.all(
-                              color: AppTheme.accent.withValues(alpha: 0.4)),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          l10n.teamBadge,
-                          style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.accent,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    l10n.teamDartRivals,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.sectionTitle,
                   ),
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 3),
                   Text(
                     l10n.teamConversationSubtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 11),
+                    style: AppTheme.caption,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            _MessageButton(unreadCount: unreadCount, onTap: onTap),
+            const SizedBox(width: 10),
+            _RoundIconButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              color: AppTheme.primaryLight,
+              borderColor: AppTheme.primaryLight.withValues(alpha: 0.45),
+              badge: unreadCount > 0 ? DsBadge(count: unreadCount) : null,
+              semanticsLabel: l10n.chatMessageAction,
+              onTap: onTap,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Quiet empty state on a card: 32 px tertiary icon, a title, an optional
+/// hint and an optional action.
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? action;
+
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 32, color: AppTheme.textTertiary),
+          const SizedBox(height: 12),
+          Text(title, textAlign: TextAlign.center, style: AppTheme.rowTitle),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, textAlign: TextAlign.center, style: AppTheme.caption),
+          ],
+          if (action != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(width: double.infinity, child: action),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 32, color: AppTheme.error),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center, style: AppTheme.bodyMedium),
+            const SizedBox(height: 16),
+            OutlinedButton(onPressed: onRetry, child: Text(l10n.retry)),
           ],
         ),
       ),

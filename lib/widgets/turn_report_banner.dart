@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/turn_report_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
+import 'design_system.dart';
 
 /// The winning-visit banner, on the two screens a losing player can land on
 /// after their opponent checks out: the between-legs screen and the end-of-
@@ -59,70 +60,65 @@ class _WinningVisitBannerState extends State<WinningVisitBanner> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // Rose-tinted card: the opponent's identity colour, as everywhere a
+    // report concerns THEIR visit. The pill flips to an outline once sent.
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _sent ? null : _tap,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.opponentPink.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppTheme.opponentPink.withValues(alpha: 0.55),
+      child: DsCard(
+        radius: AppTheme.radiusControl,
+        color: AppTheme.secondary.withValues(alpha: 0.08),
+        side: BorderSide(color: AppTheme.opponentPink.withValues(alpha: 0.5)),
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        onTap: _sent ? null : _tap,
+        child: Row(
+          children: [
+            const Icon(
+              Icons.flag_outlined,
+              color: AppTheme.opponentPinkBright,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                dsSentence(
+                  widget.volleyScore != null
+                      ? l10n.flagWinningVisit(widget.volleyScore!)
+                      : l10n.turnReportWinningNoLeg,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  _sent ? Icons.flag : Icons.flag_outlined,
-                  color: AppTheme.opponentPinkBright,
-                  size: 18,
+            const SizedBox(width: 10),
+            Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _sent ? Colors.transparent : AppTheme.opponentPink,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: _sent
+                      ? AppTheme.opponentPink.withValues(alpha: 0.6)
+                      : AppTheme.opponentPink,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.volleyScore != null
-                        ? l10n.flagWinningVisit(widget.volleyScore!)
-                        : l10n.turnReportWinningNoLeg,
-                    style: const TextStyle(
-                      color: AppTheme.opponentPinkBright,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+              ),
+              child: Text(
+                dsSentence(_sent ? l10n.flagDone : l10n.flagAction),
+                style: TextStyle(
+                  color: _sent ? AppTheme.opponentPinkBright : Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
                 ),
-                const SizedBox(width: 10),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _sent
-                        ? Colors.transparent
-                        : AppTheme.opponentPink.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.opponentPinkBright.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  child: Text(
-                    _sent ? '${l10n.flagDone} ✓' : l10n.flagAction,
-                    style: TextStyle(
-                      color: _sent
-                          ? AppTheme.opponentPinkBright
-                          : Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.9,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

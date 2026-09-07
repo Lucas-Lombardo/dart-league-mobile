@@ -7,6 +7,7 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../widgets/cricket_variant_segment.dart';
+import '../../widgets/design_system.dart';
 import 'local_match_camera_setup_screen.dart';
 
 /// Pre-match configuration for a local 1v1 (hot-seat) game: player names,
@@ -69,7 +70,7 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 children: [
                   _SectionLabel(l10n.playersLabel),
                   const SizedBox(height: 10),
@@ -139,15 +140,15 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.emoji_events_outlined,
-                          color: AppTheme.accent, size: 16),
+                      const Icon(Icons.flag_outlined,
+                          color: AppTheme.textSecondary, size: 16),
                       const SizedBox(width: 6),
-                      Text(
-                        l10n.firstToNLegs(_legsToWin),
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                      Expanded(
+                        child: Text(
+                          l10n.firstToNLegs(_legsToWin),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.caption,
                         ),
                       ),
                     ],
@@ -156,71 +157,38 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
                     const SizedBox(height: 28),
                     _SectionLabel(l10n.rulesLabel),
                     const SizedBox(height: 10),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color:
-                                AppTheme.surfaceLight.withValues(alpha: 0.5)),
-                      ),
+                    DsCard(
+                      radius: AppTheme.radiusRow,
+                      padding: EdgeInsets.zero,
                       child: SwitchListTile(
                         value: _doubleOut,
                         onChanged: (v) {
                           HapticService.lightImpact();
                           setState(() => _doubleOut = v);
                         },
-                        activeThumbColor: AppTheme.primary,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        secondary: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.adjust,
-                              color: AppTheme.primary, size: 22),
-                        ),
+                            horizontal: 14, vertical: 4),
+                        secondary: const Icon(Icons.adjust_rounded,
+                            color: AppTheme.textSecondary, size: 20),
                         title: Text(l10n.doubleOutLabel,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600)),
+                            style: AppTheme.rowTitle),
                         subtitle: Text(l10n.doubleOutHint,
-                            style: const TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 12)),
+                            style: AppTheme.caption),
                       ),
                     ),
                   ],
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              decoration: BoxDecoration(
-                color: AppTheme.background,
-                border: Border(
-                  top: BorderSide(
-                      color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
-                ),
-              ),
+            // The one filled block of the screen.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               child: SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                height: 56,
+                child: ElevatedButton(
                   onPressed: _start,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: Text(l10n.startMatchButton),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    textStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1),
-                  ),
+                  child: Text(dsSentence(l10n.startMatchButton)),
                 ),
               ),
             ),
@@ -233,6 +201,8 @@ class _LocalMatchSetupScreenState extends State<LocalMatchSetupScreen> {
 
 // ── Versus players card ──────────────────────────────────────────────────────
 
+/// One card, two themed name fields and a quiet "vs" rule between them —
+/// no gradient, no badge disc.
 class _VersusCard extends StatelessWidget {
   final TextEditingController player1;
   final TextEditingController player2;
@@ -248,65 +218,34 @@ class _VersusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final l10n = AppLocalizations.of(context);
+    return DsCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.surface,
-            AppTheme.surfaceLight.withValues(alpha: 0.4),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
       child: Column(
         children: [
           _PlayerField(
             controller: player1,
             hint: hint1,
             number: 1,
-            color: AppTheme.primary,
+            color: AppTheme.primaryLight,
           ),
-          // VS badge bridging the two fields.
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(
               children: [
-                Expanded(child: _divider()),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppTheme.primary, AppTheme.secondary],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Text(
-                    'VS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                const Expanded(child: Divider(color: AppTheme.border, height: 1)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    l10n.vs,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textTertiary,
                     ),
                   ),
                 ),
-                Expanded(child: _divider()),
+                const Expanded(child: Divider(color: AppTheme.border, height: 1)),
               ],
             ),
           ),
@@ -314,17 +253,12 @@ class _VersusCard extends StatelessWidget {
             controller: player2,
             hint: hint2,
             number: 2,
-            color: AppTheme.secondary,
+            color: AppTheme.opponentPinkBright,
           ),
         ],
       ),
     );
   }
-
-  Widget _divider() => Container(
-        height: 1,
-        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-      );
 }
 
 class _PlayerField extends StatelessWidget {
@@ -344,59 +278,57 @@ class _PlayerField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
-      style: const TextStyle(
-          color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+      style: AppTheme.rowTitle,
       textCapitalization: TextCapitalization.words,
       textInputAction: TextInputAction.next,
       maxLength: 20,
       decoration: InputDecoration(
         counterText: '',
         hintText: hint,
-        hintStyle: const TextStyle(color: AppTheme.textSecondary),
+        hintStyle: const TextStyle(color: AppTheme.textTertiary),
         isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         prefixIcon: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.only(left: 12, right: 10),
           child: Container(
-            width: 30,
-            height: 30,
+            width: 26,
+            height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.18),
+              color: color.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '$number',
               style: TextStyle(
                 color: color,
-                fontWeight: FontWeight.w900,
-                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
               ),
             ),
           ),
         ),
-        prefixIconConstraints:
-            const BoxConstraints(minWidth: 0, minHeight: 0),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         filled: true,
-        fillColor: AppTheme.background.withValues(alpha: 0.4),
+        fillColor: AppTheme.background,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          borderSide: const BorderSide(color: AppTheme.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide:
-              BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          borderSide: const BorderSide(color: AppTheme.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: color, width: 2),
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
         ),
       ),
     );
   }
 }
 
-// ── Option cards (score / length) ────────────────────────────────────────────
+// ── Option chips (mode / score / length) ─────────────────────────────────────
 
 class _Opt<T> {
   final T value;
@@ -436,6 +368,8 @@ class _OptionRow<T> extends StatelessWidget {
   }
 }
 
+/// A value chip: flat surface when idle, primary at 14 % with a primaryLight
+/// hairline and label when active. No shadow, no glow.
 class _OptionCard extends StatelessWidget {
   final String label;
   final String caption;
@@ -455,48 +389,43 @@ class _OptionCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppTheme.radiusRow),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
           decoration: BoxDecoration(
             color: selected
-                ? AppTheme.primary.withValues(alpha: 0.16)
+                ? AppTheme.primary.withValues(alpha: 0.14)
                 : AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppTheme.radiusRow),
             border: Border.all(
               color: selected
-                  ? AppTheme.primary
-                  : AppTheme.surfaceLight.withValues(alpha: 0.5),
-              width: selected ? 2 : 1,
+                  ? AppTheme.primaryLight.withValues(alpha: 0.55)
+                  : AppTheme.border,
             ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.25),
-                      blurRadius: 14,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: selected ? AppTheme.primary : Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
+                  color: selected ? AppTheme.primaryLight : AppTheme.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: selected
-                      ? AppTheme.primary.withValues(alpha: 0.8)
+                      ? AppTheme.primaryLight.withValues(alpha: 0.8)
                       : AppTheme.textSecondary,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -510,20 +439,13 @@ class _OptionCard extends StatelessWidget {
   }
 }
 
+/// 11 / 700 spaced group label of the system.
 class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel(this.text);
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        color: AppTheme.textSecondary,
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.5,
-      ),
-    );
+    return Text(text.toUpperCase(), style: AppTheme.labelSmall);
   }
 }

@@ -1,10 +1,15 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
+import '../utils/rank_translation.dart';
 import '../utils/rank_utils.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 
+/// Full-screen "your rank changed" overlay, shown after [EloChangeOverlay]
+/// when the accepted result crossed a rank floor: sentence-case title, the
+/// old badge → the new one (the rank is read on the badge image, its name
+/// only as a caption), and the primary "Continuer à jouer" button pinned at
+/// the bottom. Same staggered entrance as before; no glow, no particles.
 class RankChangeOverlay extends StatefulWidget {
   final String oldRank;
   final String newRank;
@@ -43,34 +48,13 @@ class RankChangeOverlay extends StatefulWidget {
     }
   }
 
-  static Color getRankColor(String rank) {
-    switch (rank.toLowerCase()) {
-      case 'bronze':
-        return const Color(0xFFCD7F32);
-      case 'silver':
-        return const Color(0xFFC0C0C0);
-      case 'gold':
-        return const Color(0xFFFFD700);
-      case 'platinum':
-        return const Color(0xFF00CED1);
-      case 'diamond':
-        return const Color(0xFFB9F2FF);
-      case 'master':
-        return const Color(0xFFFF4500);
-      default:
-        return AppTheme.textSecondary;
-    }
-  }
-
   @override
   State<RankChangeOverlay> createState() => _RankChangeOverlayState();
 }
 
 class _RankChangeOverlayState extends State<RankChangeOverlay>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
-  late final AnimationController _pulseController;
-  late final AnimationController _particleController;
 
   late final Animation<double> _backgroundFade;
   late final Animation<double> _oldRankScale;
@@ -80,7 +64,6 @@ class _RankChangeOverlayState extends State<RankChangeOverlay>
   late final Animation<double> _newRankScale;
   late final Animation<double> _newRankFade;
   late final Animation<double> _textFade;
-  late final Animation<double> _glowPulse;
   late final Animation<double> _buttonFade;
 
   bool _isRankUp = false;
@@ -96,89 +79,40 @@ class _RankChangeOverlayState extends State<RankChangeOverlay>
       duration: const Duration(milliseconds: 2500),
     );
 
-    // Looping pulse for glow
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
+    Animation<double> step(double from, double to, {Curve curve = Curves.easeOut}) =>
+        Tween<double>(begin: 0, end: 1).animate(
+          CurvedAnimation(
+            parent: _entranceController,
+            curve: Interval(from, to, curve: curve),
+          ),
+        );
 
-    // Particles
-    _particleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3000),
-    );
-
-    // Staggered entrance animations
-    _backgroundFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0, 0.2, curve: Curves.easeOut),
-      ),
-    );
-
+    _backgroundFade = step(0, 0.2);
     _oldRankScale = Tween<double>(begin: 0.5, end: 1).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.1, 0.3, curve: Curves.elasticOut),
       ),
     );
-
-    _oldRankFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.1, 0.25, curve: Curves.easeOut),
-      ),
-    );
-
-    _arrowFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.3, 0.45, curve: Curves.easeOut),
-      ),
-    );
-
-    _arrowSlide = Tween<double>(begin: 20, end: 0).animate(
+    _oldRankFade = step(0.1, 0.25);
+    _arrowFade = step(0.3, 0.45);
+    _arrowSlide = Tween<double>(begin: 16, end: 0).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.3, 0.5, curve: Curves.easeOut),
       ),
     );
-
     _newRankScale = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.45, 0.7, curve: Curves.elasticOut),
       ),
     );
-
-    _newRankFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.45, 0.6, curve: Curves.easeOut),
-      ),
-    );
-
-    _textFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.65, 0.8, curve: Curves.easeOut),
-      ),
-    );
-
-    _buttonFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.8, 1.0, curve: Curves.easeOut),
-      ),
-    );
-
-    _glowPulse = Tween<double>(begin: 0.4, end: 1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+    _newRankFade = step(0.45, 0.6);
+    _textFade = step(0.65, 0.8);
+    _buttonFade = step(0.8, 1.0);
 
     _entranceController.forward();
-    _pulseController.repeat(reverse: true);
-    if (_isRankUp) _particleController.repeat();
 
     // Haptic at the moment the new rank appears
     Future.delayed(const Duration(milliseconds: 1200), () {
@@ -189,177 +123,104 @@ class _RankChangeOverlayState extends State<RankChangeOverlay>
   @override
   void dispose() {
     _entranceController.dispose();
-    _pulseController.dispose();
-    _particleController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final newRankColor = RankChangeOverlay.getRankColor(widget.newRank);
     final l10n = AppLocalizations.of(context);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _entranceController,
-        _pulseController,
-        _particleController,
-      ]),
+      animation: _entranceController,
       builder: (context, _) {
         return Material(
           color: Colors.transparent,
           child: Stack(
             children: [
-              // Background
               Opacity(
                 opacity: _backgroundFade.value,
                 child: Container(
-                  color: AppTheme.background.withValues(alpha: 0.95),
+                  color: AppTheme.background.withValues(alpha: 0.97),
                 ),
               ),
-
-              // Particles (rank up only)
-              if (_isRankUp)
-                ..._buildParticles(newRankColor),
-
-              // Main content
-              Center(
+              SafeArea(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Title
-                    FadeTransition(
-                      opacity: _textFade,
-                      child: Text(
-                        _isRankUp
-                            ? l10n.rankUp.toUpperCase()
-                            : l10n.rankDown.toUpperCase(),
-                        style: TextStyle(
-                          color: _isRankUp ? newRankColor : AppTheme.error,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 6,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Old rank badge
-                    Opacity(
-                      opacity: _oldRankFade.value,
-                      child: Transform.scale(
-                        scale: _oldRankScale.value,
-                        child: Column(
-                          children: [
-                            SizedBox(
-                              width: 80,
-                              height: 80,
-                              child: RankUtils.getRankBadge(
-                                  widget.oldRank, size: 80),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.oldRank.toUpperCase(),
-                              style: TextStyle(
-                                color: RankChangeOverlay.getRankColor(
-                                    widget.oldRank),
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Arrow
-                    Opacity(
-                      opacity: _arrowFade.value,
-                      child: Transform.translate(
-                        offset: Offset(
-                            0, _isRankUp ? -_arrowSlide.value : _arrowSlide.value),
-                        child: Icon(
-                          _isRankUp
-                              ? Icons.keyboard_double_arrow_up
-                              : Icons.keyboard_double_arrow_down,
-                          color: _isRankUp ? newRankColor : AppTheme.error,
-                          size: 40,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // New rank badge with glow
-                    Opacity(
-                      opacity: _newRankFade.value,
-                      child: Transform.scale(
-                        scale: _newRankScale.value,
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: newRankColor
-                                    .withValues(alpha: _glowPulse.value * 0.5),
-                                blurRadius: 50,
-                                spreadRadius: 15,
-                              ),
-                            ],
-                          ),
+                    Expanded(
+                      child: Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 16),
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              SizedBox(
-                                width: 120,
-                                height: 120,
-                                child: RankUtils.getRankBadge(
-                                    widget.newRank, size: 120),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                widget.newRank.toUpperCase(),
-                                style: TextStyle(
-                                  color: newRankColor,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 3,
+                              FadeTransition(
+                                opacity: _textFade,
+                                child: Text(
+                                  _isRankUp ? l10n.rankUp : l10n.rankDown,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.7,
+                                    height: 1,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(height: 40),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Opacity(
+                                    opacity: _oldRankFade.value,
+                                    child: Transform.scale(
+                                      scale: _oldRankScale.value,
+                                      child: _badge(l10n, widget.oldRank,
+                                          size: 72, emphasis: false),
+                                    ),
+                                  ),
+                                  Opacity(
+                                    opacity: _arrowFade.value,
+                                    child: Transform.translate(
+                                      offset: Offset(-_arrowSlide.value, 0),
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal: 18),
+                                        child: Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: AppTheme.textTertiary,
+                                          size: 28,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Opacity(
+                                    opacity: _newRankFade.value,
+                                    child: Transform.scale(
+                                      scale: _newRankScale.value,
+                                      child: _badge(l10n, widget.newRank,
+                                          size: 112, emphasis: true),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 48),
-
-                    // Continue button
-                    FadeTransition(
-                      opacity: _buttonFade,
-                      child: SizedBox(
-                        width: 200,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: widget.onDismiss,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                _isRankUp ? newRankColor : AppTheme.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Text(
-                            l10n.continuePlaying,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 1,
-                            ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: FadeTransition(
+                        opacity: _buttonFade,
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: widget.onDismiss,
+                            child: Text(l10n.continuePlaying),
                           ),
                         ),
                       ),
@@ -374,29 +235,41 @@ class _RankChangeOverlayState extends State<RankChangeOverlay>
     );
   }
 
-  List<Widget> _buildParticles(Color color) {
-    final random = Random(42); // Fixed seed for deterministic layout
-    return List.generate(20, (i) {
-      final startX = random.nextDouble() * 400 - 200;
-      final startY = random.nextDouble() * 200 + 100;
-      final size = random.nextDouble() * 6 + 2;
-      final speed = random.nextDouble() * 0.5 + 0.5;
-
-      return Positioned(
-        left: MediaQuery.of(context).size.width / 2 + startX,
-        bottom: _particleController.value * startY * speed,
-        child: Opacity(
-          opacity: (1 - _particleController.value).clamp(0, 1),
-          child: Container(
+  /// A rank badge image with its localized name as a caption under it. Both
+  /// columns share the tall badge's height, bottom-aligned, so the two
+  /// captions sit on one line whatever the badge sizes.
+  Widget _badge(
+    AppLocalizations l10n,
+    String rank, {
+    required double size,
+    required bool emphasis,
+  }) {
+    return SizedBox(
+      height: 112 + 10 + 18,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          SizedBox(
             width: size,
             height: size,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.8),
-              shape: BoxShape.circle,
+            child: RankUtils.getRankBadge(rank, size: size),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 18,
+            child: Text(
+              RankTranslation.translate(l10n, rank),
+              style: emphasis
+                  ? const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    )
+                  : AppTheme.caption,
             ),
           ),
-        ),
-      );
-    });
+        ],
+      ),
+    );
   }
 }

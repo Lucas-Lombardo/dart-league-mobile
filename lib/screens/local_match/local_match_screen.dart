@@ -19,6 +19,7 @@ import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/auto_score_display.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../widgets/local_camera_preview.dart';
 import 'local_match_widgets.dart';
@@ -495,61 +496,51 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     if (_bustDialogShowing || !mounted) return;
     _bustDialogShowing = true;
     final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.error, width: 2),
-        ),
-        title: Row(children: [
-          const Icon(Icons.warning, color: AppTheme.error, size: 32),
-          const SizedBox(width: 12),
-          Text(l10n.bust,
-              style: AppTheme.titleLarge
-                  .copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+    showGameDialog<void>(
+      context,
+      accent: AppTheme.error,
+      icon: Icons.error_outline_rounded,
+      title: l10n.bust,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(l10n.scoreBusted,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(l10n.confirmPassOrEdit,
-              style: const TextStyle(color: AppTheme.textSecondary),
-              textAlign: TextAlign.center),
-        ]),
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              _bustDialogShowing = false;
-              Navigator.pop(ctx);
-              setState(() {
-                _aiPausedForEdit = true;
-                _isBust = false;
-                _currentRoundThrows.clear();
-                _dartsThrown = 0;
-                _scores[_activePlayer] = _scoreBeforeRound;
-              });
-              _autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) {
-                _autoScoringService?.clearDart(i);
-              }
-            },
-            child: Text(l10n.editDarts),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _bustDialogShowing = false;
-              Navigator.pop(ctx);
-              _confirmRound();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: Text(l10n.confirmBustButton),
-          ),
+              style:
+                  AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          const SizedBox(height: 6),
+          Text(l10n.confirmPassOrEdit, style: AppTheme.caption),
         ],
       ),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () {
+            _bustDialogShowing = false;
+            Navigator.pop(ctx);
+            setState(() {
+              _aiPausedForEdit = true;
+              _isBust = false;
+              _currentRoundThrows.clear();
+              _dartsThrown = 0;
+              _scores[_activePlayer] = _scoreBeforeRound;
+            });
+            _autoScoringService?.stopCapture();
+            for (int i = 0; i < 3; i++) {
+              _autoScoringService?.clearDart(i);
+            }
+          },
+          child: Text(dsSentence(l10n.editDarts)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            _bustDialogShowing = false;
+            Navigator.pop(ctx);
+            _confirmRound();
+          },
+          style: gameFilledButtonStyle(AppTheme.error),
+          child: Text(dsSentence(l10n.confirmBustButton)),
+        ),
+      ],
     ).then((_) => _bustDialogShowing = false);
   }
 
@@ -559,60 +550,51 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
         _currentRoundThrows.isNotEmpty ? _currentRoundThrows.last.notation : '—';
     _winDialogShowing = true;
     final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.success, width: 2),
-        ),
-        title: Row(children: [
-          const Icon(Icons.emoji_events, color: AppTheme.success, size: 32),
-          const SizedBox(width: 12),
-          Text(l10n.checkout,
-              style: AppTheme.titleLarge.copyWith(
-                  color: AppTheme.success, fontWeight: FontWeight.bold)),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+    showGameDialog<void>(
+      context,
+      accent: AppTheme.success,
+      icon: Icons.emoji_events_outlined,
+      title: l10n.checkout,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(l10n.youHitToFinish(notation),
-              style: AppTheme.bodyLarge.copyWith(fontSize: 16),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(l10n.isThisCorrect,
-              style: const TextStyle(color: AppTheme.textSecondary)),
-        ]),
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              _winDialogShowing = false;
-              Navigator.pop(ctx);
-              setState(() {
-                _aiPausedForEdit = true;
-                _isWin = false;
-                _currentRoundThrows.clear();
-                _dartsThrown = 0;
-                _scores[_activePlayer] = _scoreBeforeRound;
-              });
-              _autoScoringService?.stopCapture();
-              for (int i = 0; i < 3; i++) {
-                _autoScoringService?.clearDart(i);
-              }
-            },
-            child: Text(l10n.editDarts),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _winDialogShowing = false;
-              Navigator.pop(ctx);
-              _handleLegWon(_activePlayer);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
-            child: Text(l10n.confirmWin),
-          ),
+              style:
+                  AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          const SizedBox(height: 6),
+          Text(l10n.isThisCorrect, style: AppTheme.caption),
         ],
       ),
+      actionsBuilder: (ctx) => [
+        OutlinedButton(
+          onPressed: () {
+            _winDialogShowing = false;
+            Navigator.pop(ctx);
+            setState(() {
+              _aiPausedForEdit = true;
+              _isWin = false;
+              _currentRoundThrows.clear();
+              _dartsThrown = 0;
+              _scores[_activePlayer] = _scoreBeforeRound;
+            });
+            _autoScoringService?.stopCapture();
+            for (int i = 0; i < 3; i++) {
+              _autoScoringService?.clearDart(i);
+            }
+          },
+          child: Text(dsSentence(l10n.editDarts)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            _winDialogShowing = false;
+            Navigator.pop(ctx);
+            _handleLegWon(_activePlayer);
+          },
+          style: gameFilledButtonStyle(AppTheme.success),
+          child: Text(dsSentence(l10n.confirmWin)),
+        ),
+      ],
     ).then((_) => _winDialogShowing = false);
   }
 
@@ -651,7 +633,11 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
             // leg-score indicator lives in the score header's center column
             // (2026-08-19 unified header).
             if (_turnBannerName != null)
-              LocalTurnBanner(name: _turnBannerName!, safeTop: safeTop),
+              LocalTurnBanner(
+                name: _turnBannerName!,
+                safeTop: safeTop,
+                player: _activePlayer,
+              ),
           ],
         ),
       ),
@@ -692,6 +678,9 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
         myLegs: _legsWon[_activePlayer],
         opponentLegs: _legsWon[_opponent],
         showBadges: false,
+        // The thrower is always the blue side here, so the identity dot sits
+        // on the left name — same cue as the online header.
+        myTurn: true,
       ),
       localCameraPreview: !_switchingCamera &&
               _cameraService?.controller != null &&

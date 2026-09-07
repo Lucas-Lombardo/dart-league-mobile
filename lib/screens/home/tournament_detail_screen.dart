@@ -9,6 +9,7 @@ import '../../models/tournament.dart';
 import '../../services/tournament_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/rank_translation.dart';
 import '../../utils/rank_utils.dart';
 import '../../utils/tournament_bracket_logic.dart';
 import '../../utils/tournament_registration_gate.dart';
@@ -18,6 +19,7 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/round_labels.dart';
 import '../../services/socket_service.dart';
 import '../../services/spectate_service.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/tournament_bracket_tree.dart';
 import '../../widgets/trophy_image.dart';
 import '../spectate/spectator_match_screen.dart';
@@ -31,14 +33,21 @@ String _initials(String? username) {
       : name.toUpperCase();
 }
 
-Color get _hairline => AppTheme.surfaceLight.withValues(alpha: 0.45);
-
-const TextStyle _sectionLabelStyle = TextStyle(
-  fontSize: 11,
-  fontWeight: FontWeight.w700,
-  letterSpacing: 1.2,
-  color: AppTheme.textSecondary,
-);
+/// "Or+", "≤ Argent", "Argent – Or": the rank requirement of a tournament in
+/// the user's language. [Tournament.rankRequirementLabel] is English-only,
+/// every screen must go through this instead (the agenda tab shares it).
+String localizedRankRequirement(AppLocalizations l10n, Tournament tournament) {
+  final min = tournament.minRank;
+  final max = tournament.maxRank;
+  String tr(String rank) => RankTranslation.translate(l10n, rank);
+  if (min != null && max != null) {
+    if (min == max) return tr(min);
+    return '${tr(min)} – ${tr(max)}';
+  }
+  if (min != null) return '${tr(min)}+';
+  if (max != null) return '≤ ${tr(max)}';
+  return '';
+}
 
 /// Opens the camera setup for one of the signed-in player's matches (join an
 /// invite, or reconnect to a live leg when [rejoinGameMatchId] is given).
@@ -220,7 +229,9 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
       builder: (context, provider, _) {
         if (provider.isLoading && provider.currentTournament == null) {
           return const _DetailScaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: Center(
+              child: CircularProgressIndicator(color: AppTheme.primary),
+            ),
           );
         }
 
@@ -228,40 +239,40 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
         if (tournament == null) {
           final hasError = provider.error != null;
           return _DetailScaffold(
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      hasError ? Icons.cloud_off : Icons.search_off,
-                      size: 56,
-                      color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      hasError
-                          ? l10n.tournamentLoadError
-                          : l10n.tournamentNotFound,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+              children: [
+                DsCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Icon(
+                        hasError
+                            ? Icons.cloud_off_outlined
+                            : Icons.search_off_rounded,
+                        size: 32,
+                        color: AppTheme.textTertiary,
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        provider.clearError();
-                        _loadData();
-                      },
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: Text(l10n.retry),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      Text(
+                        hasError
+                            ? l10n.tournamentLoadError
+                            : l10n.tournamentNotFound,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.rowTitle,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          provider.clearError();
+                          _loadData();
+                        },
+                        child: Text(l10n.retry),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
           );
         }
@@ -286,6 +297,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                   children: [
                     RefreshIndicator(
                       onRefresh: _refresh,
+                      color: AppTheme.primary,
                       child: TournamentBracketTab(
                         tournament: tournament,
                         bracket: bracket,
@@ -296,6 +308,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                     ),
                     RefreshIndicator(
                       onRefresh: _refresh,
+                      color: AppTheme.primary,
                       child: _ParticipantsTab(
                         tournamentId: widget.tournamentId,
                         bracket: bracket,
@@ -313,9 +326,9 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   }
 }
 
-/// App bar shared by all states of the screen: tournament name and a one-line
-/// summary as the title (the generic label while loading), status pill on the
-/// right — a live dot while the tournament runs.
+/// App bar shared by all states of the screen: tournament name over a
+/// one-line summary as the title (the generic label while loading), the
+/// status pill on the right — a live dot while the tournament runs.
 class _DetailScaffold extends StatelessWidget {
   final Tournament? tournament;
   final int? bestOf;
@@ -332,17 +345,8 @@ class _DetailScaffold extends StatelessWidget {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         titleSpacing: 0,
-        centerTitle: false,
         title: t == null
-            ? Text(
-                l10n.tournamentDetails,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              )
+            ? Text(l10n.tournamentDetails)
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,11 +355,9 @@ class _DetailScaffold extends StatelessWidget {
                     t.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: AppTheme.displayMedium.copyWith(fontSize: 20),
                   ),
+                  const SizedBox(height: 3),
                   _MetaLine(tournament: t, bestOf: bestOf),
                 ],
               ),
@@ -400,15 +402,13 @@ class _MetaLine extends StatelessWidget {
       parts.join(' · '),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: AppTheme.textSecondary,
-      ),
+      style: AppTheme.caption,
     );
   }
 }
 
+/// Quiet status pill: a live dot while the tournament runs; the same colour
+/// rules as the agenda rows otherwise.
 class _StatusPill extends StatelessWidget {
   final String status;
 
@@ -418,47 +418,24 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     if (status == 'in_progress') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.secondary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const LiveDot(size: 6),
-            const SizedBox(width: 6),
-            Text(
-              l10n.tournamentStatusInProgress.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-                color: AppTheme.secondary,
-              ),
-            ),
-          ],
-        ),
+      return DsPill(
+        label: l10n.tournamentStatusInProgress,
+        color: AppTheme.primaryLight,
+        dot: true,
       );
     }
-    final color = tournamentStatusColor(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        localizedTournamentStatus(l10n, status),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: color,
-        ),
-      ),
-    );
+    final Color color;
+    switch (status) {
+      case 'completed':
+        color = AppTheme.textTertiary;
+      case 'cancelled':
+        color = AppTheme.error;
+      case 'registration_open':
+        color = AppTheme.success;
+      default:
+        color = AppTheme.textSecondary;
+    }
+    return DsPill(label: localizedTournamentStatus(l10n, status), color: color);
   }
 }
 
@@ -493,87 +470,87 @@ class _HeaderExtras extends StatelessWidget {
 
     if (!showDetails && !showRegistration) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (showDetails &&
-            tournament.description != null &&
-            tournament.description!.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Text(
-              tournament.description!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showDetails &&
+              tournament.description != null &&
+              tournament.description!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                tournament.description!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTheme.bodyMedium.copyWith(fontSize: 13),
               ),
             ),
-          ),
-        if (showDetails && tournament.hasTrophyImage)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _TrophyPrizeCard(tournament: tournament),
-          ),
-        if (showDetails)
-          SizedBox(
-            height: 46,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              children: [
-                _InfoChip(
-                  icon: Icons.calendar_today,
-                  text: _formatDate(tournament.scheduledDate),
-                ),
-                _InfoChip(
-                  icon: Icons.people,
-                  text:
-                      '${tournament.currentParticipants}/${tournament.maxParticipants}',
-                ),
-                // The prize card above already shows the trophy — the chip only
-                // remains for cash prizes and trophies without a picked model.
-                if (tournament.hasPrize && !tournament.hasTrophyImage)
-                  _InfoChip(
-                    icon: Icons.emoji_events,
-                    text: tournament.formattedPrize,
-                    color: AppTheme.accent,
-                  ),
-                if (tournament.premiumRequired)
-                  _InfoChip(
-                    icon: Icons.workspace_premium,
-                    text: l10n.tournamentPremiumRequired,
-                    color: AppTheme.accent,
-                  ),
-                if (tournament.hasRankRequirement)
-                  _InfoChip(
-                    icon: Icons.shield,
-                    text: tournament.rankRequirementLabel,
-                    color: AppTheme.primary,
-                  ),
-              ],
+          if (showDetails && tournament.hasTrophyImage)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TrophyPrizeCard(tournament: tournament),
             ),
-          ),
-        if (showRegistration)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: _RegistrationButton(
-              tournament: tournament,
-              isRegistered: isRegistered!,
-              canRegister: tournament.isRegistrationOpen,
-              onChanged: onRegistrationChanged,
+          if (showDetails)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InfoChip(
+                    icon: Icons.calendar_today_outlined,
+                    text: _formatDate(tournament.scheduledDate.toLocal()),
+                  ),
+                  _InfoChip(
+                    icon: Icons.people_outline_rounded,
+                    text:
+                        '${tournament.currentParticipants}/${tournament.maxParticipants}',
+                  ),
+                  // The prize card above already shows the trophy — the chip
+                  // only remains for cash prizes and trophies without a picked
+                  // model. Gold on the icon: it is a real prize.
+                  if (tournament.hasPrize && !tournament.hasTrophyImage)
+                    _InfoChip(
+                      icon: Icons.emoji_events_outlined,
+                      text: tournament.formattedPrize,
+                      iconColor: AppTheme.accent,
+                    ),
+                  if (tournament.premiumRequired)
+                    _InfoChip(
+                      icon: Icons.workspace_premium_outlined,
+                      text: l10n.tournamentPremiumRequired,
+                      iconColor: AppTheme.accent,
+                    ),
+                  if (tournament.hasRankRequirement)
+                    _InfoChip(
+                      icon: Icons.shield_outlined,
+                      text: localizedRankRequirement(l10n, tournament),
+                    ),
+                ],
+              ),
             ),
-          ),
-      ],
+          if (showRegistration)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _RegistrationButton(
+                tournament: tournament,
+                isRegistered: isRegistered!,
+                canRegister: tournament.isRegistrationOpen,
+                onChanged: onRegistrationChanged,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
-/// "À gagner" banner for tournaments awarding a physical trophy. Shows the
-/// render of the actual prize and nothing about the object itself (no model
-/// name, no specs) — the picture does the selling; the admin's
-/// prizeDescription, when set, is the only text besides the shipping note.
+/// "À gagner" card for tournaments awarding a physical trophy: the render of
+/// the actual prize and nothing about the object itself (no model name, no
+/// specs) — the picture does the selling; the admin's prizeDescription, when
+/// set, is the only text besides the shipping note.
 class _TrophyPrizeCard extends StatelessWidget {
   final Tournament tournament;
 
@@ -587,64 +564,57 @@ class _TrophyPrizeCard extends StatelessWidget {
         ? description
         : l10n.trophyLabel;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [AppTheme.accent.withValues(alpha: 0.10), AppTheme.surface],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
-      ),
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l10n.prizeToWin.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                    color: AppTheme.accent,
-                  ),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.emoji_events_outlined,
+                      size: 14,
+                      color: AppTheme.accent,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      l10n.prizeToWin.toUpperCase(),
+                      style: AppTheme.labelSmall,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
-                  ),
+                  style: AppTheme.sectionTitle,
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   l10n.trophyShippedToWinner,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: AppTheme.textSecondary,
-                  ),
+                  style: AppTheme.caption,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           TrophyImage(
             url: tournament.trophyThumbUrl,
-            size: 84,
+            size: 64,
             fallback: const SizedBox(
-              width: 84,
-              height: 84,
-              child: Icon(Icons.emoji_events, size: 40, color: AppTheme.accent),
+              width: 64,
+              height: 64,
+              child: Icon(
+                Icons.emoji_events_outlined,
+                size: 32,
+                color: AppTheme.accent,
+              ),
             ),
           ),
         ],
@@ -653,33 +623,36 @@ class _TrophyPrizeCard extends StatelessWidget {
   }
 }
 
+/// Quiet info chip: surface, hairline, 12 / 600 text, a 13 px outlined icon.
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String text;
-  final Color? color;
+  final Color? iconColor;
 
-  const _InfoChip({required this.icon, required this.text, this.color});
+  const _InfoChip({required this.icon, required this.text, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.6)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color ?? AppTheme.textSecondary),
-          const SizedBox(width: 5),
+          Icon(icon, size: 13, color: iconColor ?? AppTheme.textSecondary),
+          const SizedBox(width: 6),
           Text(
             text,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: color ?? AppTheme.textPrimary,
+              color: AppTheme.textPrimary,
+              height: 1,
             ),
           ),
         ],
@@ -688,6 +661,8 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+/// Tableau / Participants — the theme's underlined tab bar (primary
+/// indicator, no divider) over a hairline.
 class _UnderlineTabs extends StatelessWidget {
   final TabController controller;
 
@@ -698,8 +673,8 @@ class _UnderlineTabs extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: _hairline)),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: TabBar(
         controller: controller,
@@ -707,12 +682,8 @@ class _UnderlineTabs extends StatelessWidget {
         tabAlignment: TabAlignment.start,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         labelPadding: const EdgeInsets.only(right: 24),
-        indicatorColor: AppTheme.primary,
         indicatorSize: TabBarIndicatorSize.label,
         indicatorWeight: 2,
-        dividerColor: Colors.transparent,
-        labelColor: AppTheme.textPrimary,
-        unselectedLabelColor: AppTheme.textSecondary,
         labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         unselectedLabelStyle: const TextStyle(
           fontSize: 14,
@@ -753,18 +724,25 @@ class TournamentBracketTab extends StatelessWidget {
     if (bracket.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
-          const SizedBox(height: 80),
-          Icon(
-            Icons.account_tree_outlined,
-            size: 48,
-            color: AppTheme.textSecondary.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.bracketNotGenerated,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.account_tree_outlined,
+                  size: 32,
+                  color: AppTheme.textTertiary,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  l10n.bracketNotGenerated,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.rowTitle,
+                ),
+              ],
+            ),
           ),
         ],
       );
@@ -791,6 +769,8 @@ class TournamentBracketTab extends StatelessWidget {
         ),
     };
 
+    // Marker colours are semantic: primary = you, error = out, success =
+    // champion.
     String? markerLabel;
     Color markerColor = AppTheme.primary;
     switch (focus.kind) {
@@ -803,10 +783,10 @@ class TournamentBracketTab extends StatelessWidget {
       case TournamentFocusKind.eliminated:
       case TournamentFocusKind.notPlayed:
         markerLabel = l10n.bracketEliminatedHere;
-        markerColor = AppTheme.surfaceLight;
+        markerColor = AppTheme.error;
       case TournamentFocusKind.champion:
         markerLabel = l10n.bracketChampionMarker;
-        markerColor = AppTheme.accent;
+        markerColor = AppTheme.success;
       case TournamentFocusKind.qualified:
       case TournamentFocusKind.none:
         markerLabel = null;
@@ -887,7 +867,7 @@ class TournamentBracketTab extends StatelessWidget {
               championName: championName,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
         ],
         TournamentBracketTree(
           index: index,
@@ -904,7 +884,7 @@ class TournamentBracketTab extends StatelessWidget {
         if (!focus.isNone &&
             focus.kind != TournamentFocusKind.champion &&
             currentUserId != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _FocusCard(
@@ -925,7 +905,7 @@ class TournamentBracketTab extends StatelessWidget {
           ),
         ],
         if (otherLive.isNotEmpty) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 28),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _LiveNowList(
@@ -974,12 +954,12 @@ class _FocusCard extends StatelessWidget {
     final oppName = isPlayer1 ? match.player2Username : match.player1Username;
     final myScore = isPlayer1 ? match.player1Score : match.player2Score;
     final oppScore = isPlayer1 ? match.player2Score : match.player1Score;
-    final roundUpper = localizedRoundName(match.roundName, l10n).toUpperCase();
+    final round = localizedRoundName(match.roundName, l10n);
 
     final me = _VsSide(
       name: myName ?? l10n.tbdLabel,
-      sub: l10n.you,
-      subColor: AppTheme.primary,
+      sub: dsSentence(l10n.you),
+      subColor: AppTheme.primaryLight,
       isMe: true,
     );
     final opponent = oppId == null
@@ -994,21 +974,23 @@ class _FocusCard extends StatelessWidget {
       case TournamentFocusKind.ready:
         final deadline = match.inviteSentAt?.add(TournamentProvider.joinWindow);
         return _FocusShell(
-          border: AppTheme.primary.withValues(alpha: 0.6),
-          tag: '${l10n.yourMatchTag} · $roundUpper',
-          tagColor: AppTheme.primary,
+          border: AppTheme.primaryLight.withValues(alpha: 0.45),
+          title: '${dsSentence(l10n.yourMatchTag)} · $round',
           trailing: deadline == null
               ? null
               : _InviteCountdown(deadline: deadline),
           children: [
             _VsRow(left: me, right: opponent),
             const SizedBox(height: 14),
-            _PrimaryButton(
-              icon: Icons.sports_esports,
-              label: l10n.joinTournamentMatch,
-              onTap: () => onJoin(match, null),
+            // THE filled block of the screen: the join button.
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => onJoin(match, null),
+                child: Text(dsSentence(l10n.joinTournamentMatch)),
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _Note(l10n.tournamentInvitePromptForfeitWarning),
           ],
         );
@@ -1024,18 +1006,19 @@ class _FocusCard extends StatelessWidget {
             : (isPlayer1 ? liveMatch.player2LegsWon : liveMatch.player1LegsWon);
         final activeMatch = context.read<TournamentProvider>().activeMatch;
         return _FocusShell(
-          border: AppTheme.primary.withValues(alpha: 0.6),
-          tag: '${l10n.yourMatchTag} · $roundUpper',
-          tagColor: AppTheme.primary,
+          border: AppTheme.primaryLight.withValues(alpha: 0.45),
+          title: '${dsSentence(l10n.yourMatchTag)} · $round',
           trailing: _LiveLabel(text: l10n.matchStatusInProgress),
           children: [
             _VsRow(left: me, right: opponent, center: '$mine – $theirs'),
             if (focus.kind == TournamentFocusKind.resumable) ...[
               const SizedBox(height: 14),
-              _PrimaryButton(
-                icon: Icons.play_arrow,
-                label: l10n.resumeTournamentMatch,
-                onTap: () => onJoin(match, activeMatch?.lastGameId),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => onJoin(match, activeMatch?.lastGameId),
+                  child: Text(dsSentence(l10n.resumeTournamentMatch)),
+                ),
               ),
             ],
           ],
@@ -1043,16 +1026,11 @@ class _FocusCard extends StatelessWidget {
 
       case TournamentFocusKind.disputed:
         return _FocusShell(
-          border: AppTheme.accent.withValues(alpha: 0.4),
-          tag: '${l10n.yourMatchTag} · $roundUpper',
-          tagColor: AppTheme.accent,
-          trailing: Text(
-            l10n.underReviewBadge,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.accent,
-            ),
+          border: AppTheme.border,
+          title: '${dsSentence(l10n.yourMatchTag)} · $round',
+          trailing: DsPill(
+            label: dsSentence(l10n.underReviewBadge),
+            color: AppTheme.textSecondary,
           ),
           children: [
             _VsRow(left: me, right: opponent, center: '$myScore – $oppScore'),
@@ -1060,16 +1038,16 @@ class _FocusCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.gavel, size: 16, color: AppTheme.accent),
+                const Icon(
+                  Icons.gavel_rounded,
+                  size: 16,
+                  color: AppTheme.textSecondary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     l10n.disputedMatchBanner,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.3,
-                      color: AppTheme.textSecondary,
-                    ),
+                    style: AppTheme.caption.copyWith(height: 1.3),
                   ),
                 ),
               ],
@@ -1081,27 +1059,11 @@ class _FocusCard extends StatelessWidget {
         final dep = focus.dependency;
         final depLive = dep == null ? null : liveById[dep.id];
         return _FocusShell(
-          border: AppTheme.primary.withValues(alpha: 0.35),
-          tag: '${l10n.nextMatchTag} · $roundUpper',
-          tagColor: AppTheme.primary,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.schedule,
-                size: 12,
-                color: AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                l10n.bracketWaiting,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-            ],
+          border: AppTheme.border,
+          title: '${dsSentence(l10n.nextMatchTag)} · $round',
+          trailing: DsPill(
+            label: l10n.bracketWaiting,
+            color: AppTheme.textSecondary,
           ),
           children: [
             _VsRow(left: me, right: opponent),
@@ -1109,9 +1071,8 @@ class _FocusCard extends StatelessWidget {
               const SizedBox(height: 12),
               _DependencyLine(match: dep, live: depLive, index: index),
               if (depLive != null) ...[
-                const SizedBox(height: 12),
-                _OutlineButton(
-                  icon: Icons.play_arrow,
+                const SizedBox(height: 8),
+                _WatchLink(
                   label: l10n.bracketWatchThisMatch,
                   onTap: () => onWatch(depLive),
                 ),
@@ -1124,16 +1085,11 @@ class _FocusCard extends StatelessWidget {
 
       case TournamentFocusKind.qualified:
         return _FocusShell(
-          border: AppTheme.success.withValues(alpha: 0.4),
-          tag: l10n.yourMatchTag,
-          tagColor: AppTheme.success,
-          trailing: Text(
-            l10n.youAdvanceTitle,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.success,
-            ),
+          border: AppTheme.success.withValues(alpha: 0.35),
+          title: '${dsSentence(l10n.yourMatchTag)} · $round',
+          trailing: DsPill(
+            label: l10n.bracketQualifiedShort,
+            color: AppTheme.success,
           ),
           children: [
             _VsRow(left: me, right: opponent, center: '$myScore – $oppScore'),
@@ -1145,16 +1101,13 @@ class _FocusCard extends StatelessWidget {
       case TournamentFocusKind.eliminated:
         final firstLive = otherLive.isEmpty ? null : otherLive.first;
         return _FocusShell(
-          border: _hairline,
-          tag: l10n.bracketEliminatedIn(roundUpper),
-          tagColor: AppTheme.textSecondary,
+          border: AppTheme.border,
+          title: dsSentence(l10n.bracketEliminatedIn(round.toUpperCase())),
           trailing: Text(
             l10n.bracketLostScore(myScore, oppScore),
-            style: const TextStyle(
-              fontSize: 11,
+            style: AppTheme.caption.copyWith(
               fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
-              fontFeatures: [FontFeature.tabularFigures()],
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
           children: [
@@ -1162,7 +1115,7 @@ class _FocusCard extends StatelessWidget {
               left: me,
               right: _VsSide(
                 name: oppName ?? l10n.tbdLabel,
-                sub: l10n.winner.toUpperCase(),
+                sub: l10n.winner,
                 subColor: AppTheme.success,
                 winner: true,
               ),
@@ -1171,9 +1124,8 @@ class _FocusCard extends StatelessWidget {
             if (firstLive != null) ...[
               const SizedBox(height: 12),
               _LiveMatchLine(match: firstLive),
-              const SizedBox(height: 12),
-              _OutlineButton(
-                icon: Icons.play_arrow,
+              const SizedBox(height: 8),
+              _WatchLink(
                 label: l10n.bracketWatchThisMatch,
                 onTap: () => onWatch(firstLive),
               ),
@@ -1186,8 +1138,8 @@ class _FocusCard extends StatelessWidget {
       case TournamentFocusKind.notPlayed:
         return _FocusShell(
           border: AppTheme.error.withValues(alpha: 0.4),
-          tag: '${l10n.matchStatusNotPlayed.toUpperCase()} · $roundUpper',
-          tagColor: AppTheme.error,
+          title: '${l10n.matchStatusNotPlayed} · $round',
+          trailing: null,
           children: [
             _VsRow(left: me, right: opponent),
             const SizedBox(height: 10),
@@ -1202,30 +1154,26 @@ class _FocusCard extends StatelessWidget {
   }
 }
 
+/// The focus card frame: a [DsCard] whose border colour is the only state
+/// signal, a 15 / 700 title line with an optional trailing pill, the body.
 class _FocusShell extends StatelessWidget {
   final Color border;
-  final String tag;
-  final Color tagColor;
+  final String title;
   final Widget? trailing;
   final List<Widget> children;
 
   const _FocusShell({
     required this.border,
-    required this.tag,
-    required this.tagColor,
-    this.trailing,
+    required this.title,
+    required this.trailing,
     required this.children,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
+    return DsCard(
+      side: BorderSide(color: border),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1233,13 +1181,13 @@ class _FocusShell extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  tag,
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: _sectionLabelStyle.copyWith(color: tagColor),
+                  style: AppTheme.sectionTitle,
                 ),
               ),
-              ?trailing,
+              if (trailing != null) ...[const SizedBox(width: 10), trailing!],
             ],
           ),
           const SizedBox(height: 14),
@@ -1297,9 +1245,9 @@ class _VsRow extends StatelessWidget {
             children: [
               if (side.winner && !alignEnd) ...[
                 const Icon(
-                  Icons.emoji_events,
+                  Icons.check_circle_outline_rounded,
                   size: 13,
-                  color: AppTheme.accent,
+                  color: AppTheme.success,
                 ),
                 const SizedBox(width: 4),
               ],
@@ -1314,27 +1262,28 @@ class _VsRow extends StatelessWidget {
               if (side.winner && alignEnd) ...[
                 const SizedBox(width: 4),
                 const Icon(
-                  Icons.emoji_events,
+                  Icons.check_circle_outline_rounded,
                   size: 13,
-                  color: AppTheme.accent,
+                  color: AppTheme.success,
                 ),
               ],
             ],
           ),
-          if (side.sub != null)
+          if (side.sub != null) ...[
+            const SizedBox(height: 2),
             Text(
               side.sub!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: side.isMe || side.winner ? 9 : 11,
+                fontSize: 11,
                 fontWeight: side.isMe || side.winner
-                    ? FontWeight.w800
-                    : FontWeight.w400,
-                letterSpacing: side.isMe || side.winner ? 0.6 : 0,
+                    ? FontWeight.w700
+                    : FontWeight.w500,
                 color: side.subColor,
               ),
             ),
+          ],
         ],
       ),
     );
@@ -1356,7 +1305,7 @@ class _VsRow extends StatelessWidget {
               fontSize: center == null ? 12 : 18,
               fontWeight: FontWeight.w800,
               color: center == null
-                  ? AppTheme.textSecondary
+                  ? AppTheme.textTertiary
                   : AppTheme.textPrimary,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
@@ -1370,6 +1319,8 @@ class _VsRow extends StatelessWidget {
   }
 }
 
+/// Initials disc: tinted link colour for "me", surfaceLight for the
+/// opponent, a hairline ring for an unknown player.
 class _Avatar extends StatelessWidget {
   final String name;
   final double size;
@@ -1393,25 +1344,20 @@ class _Avatar extends StatelessWidget {
         color: tbd
             ? Colors.transparent
             : isMe
-            ? AppTheme.primary
+            ? AppTheme.primaryLight.withValues(alpha: 0.15)
             : AppTheme.surfaceLight,
-        border: tbd
-            ? Border.all(
-                color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                width: 1.5,
-              )
-            : null,
+        border: tbd ? Border.all(color: AppTheme.surfaceLight, width: 1.5) : null,
       ),
       child: Center(
         child: Text(
           tbd ? '?' : _initials(name),
           style: TextStyle(
-            fontSize: size * 0.38,
-            fontWeight: FontWeight.bold,
+            fontSize: size * 0.36,
+            fontWeight: FontWeight.w700,
             color: tbd
                 ? AppTheme.textSecondary
                 : isMe
-                ? Colors.white
+                ? AppTheme.primaryLight
                 : AppTheme.textPrimary,
           ),
         ),
@@ -1467,12 +1413,7 @@ class _DependencyLine extends StatelessWidget {
       ],
     ];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(10),
-      ),
+    return _InsetLine(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1484,11 +1425,9 @@ class _DependencyLine extends StatelessWidget {
                   tinyRoundLabel(l10n, match.roundName, match.roundNumber),
                   match.matchNumber,
                 ),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: AppTheme.textSecondary,
+                style: AppTheme.caption.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -1499,7 +1438,7 @@ class _DependencyLine extends StatelessWidget {
                 const SizedBox(width: 8),
               ] else ...[
                 const Icon(
-                  Icons.schedule,
+                  Icons.schedule_outlined,
                   size: 12,
                   color: AppTheme.textSecondary,
                 ),
@@ -1510,10 +1449,8 @@ class _DependencyLine extends StatelessWidget {
                   TextSpan(children: children),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                    fontFeatures: [FontFeature.tabularFigures()],
+                  style: AppTheme.caption.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -1534,12 +1471,7 @@ class _LiveMatchLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(10),
-      ),
+    return _InsetLine(
       child: Row(
         children: [
           const LiveDot(size: 6),
@@ -1571,15 +1503,32 @@ class _LiveMatchLine extends StatelessWidget {
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-                fontFeatures: [FontFeature.tabularFigures()],
+              style: AppTheme.caption.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Darker inset line inside a card (a dependency, a live match).
+class _InsetLine extends StatelessWidget {
+  final Widget child;
+
+  const _InsetLine({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: child,
     );
   }
 }
@@ -1591,26 +1540,12 @@ class _LiveLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const LiveDot(size: 6),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.secondary,
-          ),
-        ),
-      ],
-    );
+    return DsPill(label: text, color: AppTheme.primaryLight, dot: true);
   }
 }
 
-/// mm:ss left on an invite, gold then red under two minutes (same rule as the
-/// full-screen invite prompt).
+/// mm:ss left on an invite, red under two minutes (same rule as the
+/// full-screen invite prompt and the agenda's pinned card).
 class _InviteCountdown extends StatefulWidget {
   final DateTime deadline;
 
@@ -1643,18 +1578,22 @@ class _InviteCountdownState extends State<_InviteCountdown> {
     if (left.isNegative) left = Duration.zero;
     final mm = left.inMinutes.toString().padLeft(2, '0');
     final ss = (left.inSeconds % 60).toString().padLeft(2, '0');
-    final color = left.inMinutes < 2 ? AppTheme.error : AppTheme.accent;
+    final urgent = left.inMinutes < 2;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.timer_outlined, size: 12, color: color),
-        const SizedBox(width: 4),
+        const Icon(
+          Icons.schedule_outlined,
+          size: 16,
+          color: AppTheme.textSecondary,
+        ),
+        const SizedBox(width: 6),
         Text(
           '$mm:$ss',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: urgent ? AppTheme.error : AppTheme.textPrimary,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
@@ -1663,71 +1602,44 @@ class _InviteCountdownState extends State<_InviteCountdown> {
   }
 }
 
-class _PrimaryButton extends StatelessWidget {
-  final IconData icon;
+/// "▶ Regarder ce match" — the quiet 13 / 600 link of the system.
+class _WatchLink extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _PrimaryButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _WatchLink({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    return Center(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.play_arrow_rounded,
+                size: 16,
+                color: AppTheme.primaryLight,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryLight,
+                ),
+              ),
+            ],
           ),
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
-        icon: Icon(icon, size: 20),
-        label: Text(label),
-      ),
-    );
-  }
-}
-
-class _OutlineButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _OutlineButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.primary,
-          side: BorderSide(
-            color: AppTheme.primary.withValues(alpha: 0.6),
-            width: 1.5,
-          ),
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        ),
-        icon: Icon(icon, size: 18),
-        label: Text(label),
       ),
     );
   }
@@ -1743,16 +1655,12 @@ class _Note extends StatelessWidget {
     return Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(
-        fontSize: 11,
-        height: 1.3,
-        color: AppTheme.textSecondary,
-      ),
+      style: AppTheme.caption.copyWith(height: 1.3),
     );
   }
 }
 
-/// "EN CE MOMENT" — the other live matches of this tournament, watchable in
+/// "En ce moment" — the other live matches of this tournament, watchable in
 /// one tap.
 class _LiveNowList extends StatelessWidget {
   final List<LiveTournamentMatch> matches;
@@ -1766,17 +1674,19 @@ class _LiveNowList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n.spectateLiveNow, style: _sectionLabelStyle),
+        DsSectionHeader(title: dsSentence(l10n.spectateLiveNow)),
         const SizedBox(height: 10),
-        for (final match in matches) ...[
-          _LiveNowRow(match: match, onWatch: () => onWatch(match)),
-          const SizedBox(height: 8),
+        for (var i = 0; i < matches.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          _LiveNowRow(match: matches[i], onWatch: () => onWatch(matches[i])),
         ],
       ],
     );
   }
 }
 
+/// 64 px live row: rose dot, "A vs B", round · spectators, the legs score in
+/// the identity colours and a "Regarder" link.
 class _LiveNowRow extends StatelessWidget {
   final LiveTournamentMatch match;
   final VoidCallback onWatch;
@@ -1786,111 +1696,96 @@ class _LiveNowRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Material(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
+    final score = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w800,
+      height: 1,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return SizedBox(
+      height: 64,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         onTap: onWatch,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: AppTheme.secondary.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Row(
-            children: [
-              const LiveDot(size: 6),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${match.player1.username} vs ${match.player2.username}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
+        child: Row(
+          children: [
+            const LiveDot(size: 8),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${match.player1.username} ${l10n.vs} ${match.player2.username}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
                     ),
-                    const SizedBox(height: 3),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '${match.player1LegsWon}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.playerBlue,
-                            ),
-                          ),
-                          TextSpan(
-                            text: ' – ',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.textSecondary.withValues(
-                                alpha: 0.6,
-                              ),
-                            ),
-                          ),
-                          TextSpan(
-                            text: '${match.player2LegsWon}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.opponentPink,
-                            ),
-                          ),
-                          TextSpan(
-                            text:
-                                '  ·  ${localizedRoundLabelRaw(l10n, match.roundName, match.roundNumber)}'
-                                '  ·  ${l10n.bracketSpectators(match.spectatorCount)}',
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${localizedRoundLabelRaw(l10n, match.roundName, match.roundNumber)}'
+                    ' · ${l10n.bracketSpectators(match.spectatorCount)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+            ),
+            const SizedBox(width: 10),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${match.player1LegsWon}',
+                    style: score.copyWith(color: AppTheme.playerBlue),
+                  ),
+                  TextSpan(
+                    text: ' – ',
+                    style: score.copyWith(color: AppTheme.textTertiary),
+                  ),
+                  TextSpan(
+                    text: '${match.player2LegsWon}',
+                    style: score.copyWith(color: AppTheme.opponentPink),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.play_arrow_rounded,
+                  size: 16,
+                  color: AppTheme.primaryLight,
                 ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
+                const SizedBox(width: 2),
+                Text(
                   l10n.spectateWatch,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.primary,
+                    color: AppTheme.primaryLight,
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Gold celebration card shown above the tree once the tournament has a
-/// winner.
+/// Celebration card shown above the tree once the tournament has a winner:
+/// a success disc, "X remporte le tournoi !" and the ELO reward.
 class _ChampionCard extends StatelessWidget {
   final Tournament tournament;
   final String? championName;
@@ -1901,37 +1796,43 @@ class _ChampionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppTheme.accent.withValues(alpha: 0.16), AppTheme.surface],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
-      ),
-      child: Column(
+    return DsCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
         children: [
-          const Icon(Icons.emoji_events, size: 36, color: AppTheme.accent),
-          const SizedBox(height: 8),
-          Text(
-            l10n.championCrowned(championName ?? l10n.winner),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.success.withValues(alpha: 0.12),
+            ),
+            child: const Icon(
+              Icons.emoji_events_outlined,
+              size: 20,
+              color: AppTheme.success,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '+${tournament.winnerEloReward} ${l10n.eloLabel}',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.accent,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.championCrowned(championName ?? l10n.winner),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.sectionTitle,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '+${tournament.winnerEloReward} ${l10n.eloLabel}',
+                  style: AppTheme.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.success,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -2008,121 +1909,58 @@ class _RegistrationButtonState extends State<_RegistrationButton> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
-    // If registration is not open yet, show info message
+    // Registration not open yet: a muted row says so.
     if (!widget.canRegister) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppTheme.textSecondary.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.schedule,
-              size: 18,
-              color: AppTheme.textSecondary.withValues(alpha: 0.8),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              l10n.registrationOpensSoon,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.textSecondary.withValues(alpha: 0.8),
-              ),
-            ),
-          ],
-        ),
+      return DsPrimaryRow(
+        icon: Icons.schedule_outlined,
+        title: l10n.registrationOpensSoon,
+        muted: true,
+        height: 56,
       );
     }
+
+    const spinner = SizedBox(
+      width: 20,
+      height: 20,
+      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+    );
 
     // Product spec: the register button stays VISIBLE even when the user
     // doesn't meet the conditions — tapping it explains why in a popup (see
     // TournamentRegistrationGate). Replacing the button with a banner here
     // also mis-blocked genuinely premium users whose subscription state was
     // stale, with no way to let the server decide.
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: widget.isRegistered
-            ? null
-            : LinearGradient(
-                colors: [
-                  AppTheme.primary,
-                  AppTheme.primary.withValues(alpha: 0.8),
-                ],
-              ),
-        color: widget.isRegistered
-            ? AppTheme.success.withValues(alpha: 0.15)
-            : null,
-        borderRadius: BorderRadius.circular(14),
-        border: widget.isRegistered
-            ? Border.all(color: AppTheme.success.withValues(alpha: 0.5))
-            : null,
-        boxShadow: widget.isRegistered
-            ? null
-            : [
-                BoxShadow(
-                  color: AppTheme.primary.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _isLoading ? null : _toggleRegistration,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: _isLoading
-                ? const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        widget.isRegistered
-                            ? Icons.check_circle
-                            : Icons.add_circle_outline,
-                        size: 20,
-                        color: widget.isRegistered
-                            ? AppTheme.success
-                            : Colors.white,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        widget.isRegistered
-                            ? l10n.unregister
-                            : l10n.registerNow,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: widget.isRegistered
-                              ? AppTheme.success
-                              : Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
+    if (widget.isRegistered) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton(
+          onPressed: _isLoading ? null : _toggleRegistration,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.success,
+            side: BorderSide(color: AppTheme.success.withValues(alpha: 0.5)),
           ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.success,
+                  ),
+                )
+              : Text(dsSentence(l10n.unregister)),
         ),
+      );
+    }
+
+    // THE filled block of the screen before the tournament starts.
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _toggleRegistration,
+        child: _isLoading ? spinner : Text(dsSentence(l10n.registerNow)),
       ),
     );
   }
@@ -2178,7 +2016,7 @@ class _ParticipantStanding {
       return _ParticipantStanding(
         registration: reg,
         label: l10n.bracketInRound(round),
-        color: open.isInProgress ? AppTheme.secondary : AppTheme.primary,
+        color: open.isInProgress ? AppTheme.primaryLight : AppTheme.success,
         live: open.isInProgress,
         alive: true,
         champion: false,
@@ -2199,8 +2037,8 @@ class _ParticipantStanding {
     if (last.winnerId == reg.userId && index.isFinal(last)) {
       return _ParticipantStanding(
         registration: reg,
-        label: l10n.bracketChampionMarker,
-        color: AppTheme.accent,
+        label: dsSentence(l10n.bracketChampionMarker),
+        color: AppTheme.success,
         live: false,
         alive: true,
         champion: true,
@@ -2224,7 +2062,7 @@ class _ParticipantStanding {
       label: last.winnerId == null
           ? l10n.matchStatusNotPlayed
           : l10n.bracketEliminatedAt(localizedRoundName(last.roundName, l10n)),
-      color: AppTheme.textSecondary,
+      color: AppTheme.textTertiary,
       live: false,
       alive: false,
       champion: false,
@@ -2282,25 +2120,34 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
     final l10n = AppLocalizations.of(context);
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      );
     }
 
     final regs = _registrations;
     if (regs == null || regs.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
-          const SizedBox(height: 80),
-          Icon(
-            Icons.people_outline,
-            size: 48,
-            color: AppTheme.textSecondary.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.noParticipantsYet,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+          DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.people_outline_rounded,
+                  size: 32,
+                  color: AppTheme.textTertiary,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  l10n.noParticipantsYet,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.rowTitle,
+                ),
+              ],
+            ),
           ),
         ],
       );
@@ -2336,28 +2183,20 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
         Row(
           children: [
             Expanded(
               child: Text(
-                index == null
-                    ? '${regs.length} ${l10n.players}'.toUpperCase()
-                    : l10n
-                          .bracketPlayersAlive(regs.length, alive)
-                          .toUpperCase(),
-                style: _sectionLabelStyle,
+                (index == null
+                        ? '${regs.length} ${l10n.players}'
+                        : l10n.bracketPlayersAlive(regs.length, alive))
+                    .toUpperCase(),
+                style: AppTheme.labelSmall,
               ),
             ),
-            Text(
-              l10n.seedLabel,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
-              ),
-            ),
+            Text(l10n.seedLabel, style: AppTheme.caption),
           ],
         ),
         const SizedBox(height: 4),
@@ -2373,6 +2212,7 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
   }
 }
 
+/// 56 px row: seed, 28 px rank badge, name (+ "Vous"), status pill or ELO.
 class _ParticipantRow extends StatelessWidget {
   final _ParticipantStanding standing;
   final int seed;
@@ -2391,98 +2231,78 @@ class _ParticipantRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final reg = standing.registration;
     final name = reg.username ?? l10n.tbdLabel;
-    final dim = standing.label != null && !standing.alive;
+    final out = standing.label != null && !standing.alive;
     final elo = reg.elo;
 
-    return Opacity(
-      opacity: dim ? 0.6 : 1,
-      child: Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: _hairline)),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 16,
-              child: Text(
-                '$seed',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            child: Text(
+              '$seed',
+              textAlign: TextAlign.center,
+              style: AppTheme.caption.copyWith(
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            const SizedBox(width: 12),
-            _Avatar(name: name, size: 34, isMe: isMe),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isMe ? AppTheme.primary : AppTheme.textPrimary,
-                      ),
+          ),
+          const SizedBox(width: 12),
+          RankUtils.getRankBadge(reg.rank ?? 'unranked', size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.rowTitle.copyWith(
+                      color: isMe
+                          ? AppTheme.primaryLight
+                          : out
+                          ? AppTheme.textSecondary
+                          : AppTheme.textPrimary,
                     ),
                   ),
-                  if (isMe) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      l10n.you,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.6,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                  ],
+                ),
+                if (isMe) ...[
                   const SizedBox(width: 6),
-                  RankUtils.getRankBadge(reg.rank ?? 'unranked', size: 22),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (standing.label != null)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (standing.live) ...[
-                    const LiveDot(size: 5),
-                    const SizedBox(width: 6),
-                  ],
                   Text(
-                    standing.label!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: standing.color,
+                    dsSentence(l10n.you),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primaryLight,
                     ),
                   ),
                 ],
-              )
-            else if (showElo && elo != null)
-              Text(
-                '$elo ${l10n.eloLabel}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (standing.label != null)
+            DsPill(
+              label: standing.label!,
+              color: standing.color,
+              dot: standing.live,
+            )
+          else if (showElo && elo != null)
+            Text(
+              '$elo ${l10n.eloLabel}',
+              style: AppTheme.caption.copyWith(
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

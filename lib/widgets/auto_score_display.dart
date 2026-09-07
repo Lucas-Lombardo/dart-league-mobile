@@ -5,6 +5,7 @@ import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
+import 'design_system.dart';
 import 'game_turn_ui.dart';
 
 /// Full-screen auto-scoring layout for when it's the player's turn (maquette
@@ -123,18 +124,17 @@ class AutoScoreGameView extends StatelessWidget {
           borderColor: AppTheme.playerBlue,
           onBack: onBack,
           controls: [
+            // Mic open = the one "live" control (primary tint); muted = rose.
             if (onToggleAudio != null)
               GameControlButton(
-                icon: isAudioMuted ? Icons.mic_off : Icons.mic,
-                color: isAudioMuted
-                    ? AppTheme.opponentPink
-                    : AppTheme.playerBlue,
+                icon: isAudioMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                color: AppTheme.opponentPink,
+                active: !isAudioMuted,
                 onTap: onToggleAudio,
               ),
             if (onSwitchCamera != null)
               GameControlButton(
-                icon: Icons.cameraswitch,
-                color: AppTheme.playerBlue,
+                icon: Icons.cameraswitch_rounded,
                 onTap: onSwitchCamera,
               ),
           ],
@@ -148,92 +148,69 @@ class AutoScoreGameView extends StatelessWidget {
           bottomBar: captureButton,
         );
 
-        // ── Visit label row: "VOTRE VOLÉE — TOUR n"  +  TOTAL ──
-        final visitLabel = Row(
-          children: [
-            Expanded(
-              child: Text(
-                roundNumber != null
-                    ? '${l10n.yourVisit} — ${l10n.roundChip(roundNumber!)}'
-                    : l10n.yourVisit,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-            VisitTotal(
-              total: turnTotal,
-              color: AppTheme.playerBlueBright,
-              text: visitTotalText,
-            ),
-          ],
+        // ── Visit label row: "VOTRE VOLÉE · TOUR n"  +  TOTAL ──
+        final visitLabel = VisitLabelRow(
+          label: roundNumber != null
+              ? '${l10n.yourVisit} · ${l10n.roundChip(roundNumber!)}'
+              : l10n.yourVisit,
+          total: turnTotal,
+          color: AppTheme.playerBlueBright,
+          totalText: visitTotalText,
         );
 
-        // ── CONFIRM button: full-size in the X01 bottom row, narrow
-        // vertical pill sharing the cricket chip row ──
+        // ── CONFIRM button: outlined while idle, filled once a visit is
+        // pending; full-size in the X01 bottom row, narrow vertical pill
+        // sharing the cricket chip row ──
         const compactConfirmPadding = WidgetStatePropertyAll(
           EdgeInsets.symmetric(horizontal: 8),
         );
         const compactConfirmText = WidgetStatePropertyAll(
           TextStyle(
+            fontFamily: AppTheme.fontFamily,
             fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1,
+            fontWeight: FontWeight.w700,
           ),
         );
         final confirmHighlighted = pendingConfirmation || manualConfirmNeeded;
         // Option C (2026-09-01) : quand la confirmation manuelle est requise,
         // le bouton CONFIRMER devient l'alerte — doré, texte sombre. L'or est
         // réservé à cet état pour qu'il tranche avec le bleu du jeu.
-        final goldConfirmStyle = ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accent,
-          foregroundColor: AppTheme.gameBackground,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-          ),
+        final goldConfirmStyle = gameFilledButtonStyle(AppTheme.accent).copyWith(
+          foregroundColor: const WidgetStatePropertyAll(AppTheme.background),
         );
         final baseConfirmStyle = manualConfirmNeeded
             ? goldConfirmStyle
             : confirmHighlighted
-            ? gameFilledButtonStyle(AppTheme.playerBlue)
+            ? gameFilledButtonStyle(AppTheme.primary)
             : gameOutlineButtonStyle(AppTheme.playerBlue);
         final confirmStyle = confirmBesideChips
             ? baseConfirmStyle.copyWith(
                 padding: compactConfirmPadding,
                 textStyle: compactConfirmText,
               )
-            : baseConfirmStyle;
+            : baseConfirmStyle.copyWith(
+                minimumSize: const WidgetStatePropertyAll(Size(140, 56)),
+              );
         void handleConfirm() {
           HapticService.heavyImpact();
           onConfirm();
         }
+        final confirmLabel = Text(dsSentence(l10n.confirmUpper));
         final confirmButton = confirmHighlighted
             ? ElevatedButton(
                 onPressed: handleConfirm,
                 style: confirmStyle,
-                child: Text(l10n.confirmUpper),
+                child: confirmLabel,
               )
             : OutlinedButton(
                 onPressed: handleConfirm,
                 style: confirmStyle,
-                child: Text(l10n.confirmUpper),
+                child: confirmLabel,
               );
 
         // ── Option C « confirme toi-même » : cible vide + 1 seule fléchette
-        // comptée. Une ligne d'explication dorée + le bouton CONFIRMER MA
-        // VOLÉE doré pleine largeur, qui remplace toute la rangée du bas
+        // comptée. Une ligne d'explication dorée + le bouton « Confirmer ma
+        // volée » doré pleine largeur, qui remplace toute la rangée du bas
         // (X01). Cricket garde son bouton docké (passé en doré) et affiche la
         // ligne d'explication au-dessus des chips.
         final manualConfirmExplainerText = Text(
@@ -241,11 +218,9 @@ class AutoScoreGameView extends StatelessWidget {
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: AppTheme.caption.copyWith(
             color: AppTheme.accent,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.4,
+            fontWeight: FontWeight.w600,
             height: 1.25,
           ),
         );
@@ -254,11 +229,14 @@ class AutoScoreGameView extends StatelessWidget {
           children: [
             manualConfirmExplainerText,
             const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: handleConfirm,
-              style: goldConfirmStyle,
-              icon: const Icon(Icons.touch_app, size: 17),
-              label: Text(l10n.manualConfirmButton),
+            SizedBox(
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: handleConfirm,
+                style: goldConfirmStyle,
+                icon: const Icon(Icons.touch_app_outlined, size: 18),
+                label: Text(dsSentence(l10n.manualConfirmButton)),
+              ),
             ),
           ],
         );
@@ -302,7 +280,7 @@ class AutoScoreGameView extends StatelessWidget {
           ),
         );
 
-        // ── X01 bottom row: AUTO VALIDATION chip + CONFIRM button ──
+        // ── X01 bottom row: AUTO VALIDATION strip + CONFIRM button ──
         final showAutoValidation =
             aiEnabled && (scoringService.isCapturing || pendingConfirmation);
         final bottomRow = IntrinsicHeight(
@@ -313,17 +291,15 @@ class AutoScoreGameView extends StatelessWidget {
                 child: showAutoValidation
                     ? Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+                          horizontal: 14,
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: AppTheme.gamePanelEmpty,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppTheme.playerBlueDim.withValues(
-                              alpha: 0.5,
-                            ),
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusRow,
                           ),
+                          border: Border.all(color: AppTheme.border),
                         ),
                         child: Row(
                           children: [
@@ -335,7 +311,7 @@ class AutoScoreGameView extends StatelessWidget {
                                 shape: BoxShape.circle,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -343,20 +319,21 @@ class AutoScoreGameView extends StatelessWidget {
                                 children: [
                                   Text(
                                     l10n.autoValidation,
-                                    style: const TextStyle(
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTheme.labelSmall.copyWith(
                                       color: AppTheme.playerBlue,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1.2,
+                                      letterSpacing: 0.7,
+                                      height: 1,
                                     ),
                                   ),
+                                  const SizedBox(height: 3),
                                   Text(
                                     l10n.autoValidationHint,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 10,
+                                    style: AppTheme.caption.copyWith(
+                                      fontSize: 11,
                                       height: 1.2,
                                     ),
                                   ),

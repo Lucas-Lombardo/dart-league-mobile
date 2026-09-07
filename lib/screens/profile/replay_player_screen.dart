@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/haptic_service.dart';
 import '../../utils/notification_service.dart';
 
 /// Full-screen player for one replay clip — local file (fresh capture) or
@@ -148,24 +149,29 @@ class _ReplayPlayerScreenState extends State<ReplayPlayerScreen> {
     }
   }
 
+  void _togglePlayback() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    HapticService.lightImpact();
+    setState(() {
+      controller.value.isPlaying ? controller.pause() : controller.play();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final controller = _controller;
     final ready = controller != null && controller.value.isInitialized;
     return Scaffold(
-      backgroundColor: AppTheme.gameBackground,
+      backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Stack(
           fit: StackFit.expand,
           children: [
             if (ready)
               GestureDetector(
-                onTap: () => setState(() {
-                  controller.value.isPlaying
-                      ? controller.pause()
-                      : controller.play();
-                }),
+                onTap: _togglePlayback,
                 child: Center(
                   child: AspectRatio(
                     aspectRatio: controller.value.aspectRatio,
@@ -176,77 +182,105 @@ class _ReplayPlayerScreenState extends State<ReplayPlayerScreen> {
             else
               Center(
                 child: _failed
-                    ? const Icon(Icons.videocam_off,
-                        color: AppTheme.textSecondary, size: 48)
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.videocam_off_outlined,
+                              size: 32, color: AppTheme.textTertiary),
+                          const SizedBox(height: 10),
+                          Text(l10n.errorOccurred, style: AppTheme.caption),
+                        ],
+                      )
                     : const CircularProgressIndicator(color: AppTheme.primary),
+              ),
+            // The pause glyph only shows while the clip is stopped: a control
+            // over a playing video is a control in the way of the video.
+            if (ready)
+              ValueListenableBuilder<VideoPlayerValue>(
+                valueListenable: controller,
+                builder: (context, value, _) => value.isPlaying
+                    ? const SizedBox.shrink()
+                    : Center(
+                        child: _GlassButton(
+                          icon: Icons.play_arrow_rounded,
+                          size: 64,
+                          onTap: _togglePlayback,
+                        ),
+                      ),
               ),
             Positioned(
               top: 8,
-              left: 8,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+              left: 12,
+              child: _GlassButton(
+                icon: Icons.close_rounded,
+                tooltip: l10n.close,
+                onTap: () => Navigator.of(context).pop(),
               ),
             ),
             Positioned(
               left: 20,
               right: 20,
               bottom: 16,
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _actionsDisabled ? null : _saveToGallery,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            AppTheme.primary.withValues(alpha: 0.4),
-                        disabledForegroundColor:
-                            Colors.white.withValues(alpha: 0.7),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size.fromHeight(52),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      icon: _saving
-                          ? const _ButtonSpinner()
-                          : const Icon(Icons.download_rounded, size: 20),
-                      label: Text(
-                        l10n.replaySaveToGallery,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15),
+                  if (ready) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: SizedBox(
+                        height: 3,
+                        child: VideoProgressIndicator(
+                          controller,
+                          allowScrubbing: false,
+                          padding: EdgeInsets.zero,
+                          colors: VideoProgressColors(
+                            playedColor: AppTheme.primary,
+                            bufferedColor: Colors.white.withValues(alpha: 0.16),
+                            backgroundColor: Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _actionsDisabled ? null : _share,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        disabledForegroundColor:
-                            Colors.white.withValues(alpha: 0.4),
-                        side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.35)),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size.fromHeight(52),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                    const SizedBox(height: 14),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _actionsDisabled ? null : _saveToGallery,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          icon: _saving
+                              ? const _ButtonSpinner()
+                              : const Icon(Icons.download_rounded, size: 20),
+                          label: Text(
+                            l10n.replaySaveToGallery,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                      icon: _sharing
-                          ? const _ButtonSpinner()
-                          : const Icon(Icons.ios_share, size: 18),
-                      label: Text(
-                        l10n.replayShare,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 15),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _actionsDisabled ? null : _share,
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          icon: _sharing
+                              ? const _ButtonSpinner()
+                              : const Icon(Icons.ios_share_rounded, size: 18),
+                          label: Text(
+                            l10n.replayShare,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -255,6 +289,52 @@ class _ReplayPlayerScreenState extends State<ReplayPlayerScreen> {
         ),
       ),
     );
+  }
+}
+
+/// A control that has to sit ON the video: a glass disc instead of the
+/// system's surface, so it reads over any frame without hiding it.
+class _GlassButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final double size;
+
+  const _GlassButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.size = 40,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button = Material(
+      color: Colors.white.withValues(alpha: 0.08),
+      shape: CircleBorder(
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(
+            child: Icon(
+              icon,
+              size: size <= 40 ? 20 : size * 0.44,
+              color: const Color(0xFFE2E8F0),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip != null) button = Tooltip(message: tooltip!, child: button);
+    return button;
   }
 }
 

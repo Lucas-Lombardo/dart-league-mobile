@@ -5,6 +5,7 @@ import '../../../services/stats_service.dart';
 import '../../../utils/app_navigator.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/haptic_service.dart';
+import '../../../widgets/design_system.dart';
 import '../../profile/match_history_screen.dart';
 import 'stats_filter_sheet.dart';
 import 'stats_pages.dart';
@@ -85,24 +86,22 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
       return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: AppTheme.error, size: 56),
-              const SizedBox(height: 16),
-              Text(
-                _error!,
-                style: const TextStyle(color: AppTheme.error),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(onPressed: _load, child: Text(l10n.retry)),
-            ],
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        children: [
+          DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 32, color: AppTheme.textTertiary),
+                const SizedBox(height: 10),
+                Text(_error!, textAlign: TextAlign.center, style: AppTheme.caption),
+                const SizedBox(height: 14),
+                OutlinedButton(onPressed: _load, child: Text(l10n.retry)),
+              ],
+            ),
           ),
-        ),
+        ],
       );
     }
 
@@ -114,58 +113,44 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
       color: AppTheme.primary,
       child: StatsOverviewPage(
         summary: summary,
-        filterBar: _FilterBar(filter: _filter, onTap: _openFilters),
+        filterBar: StatsFilterBar(filter: _filter, onTap: _openFilters),
       ),
     );
   }
 
+  /// No leg matches the filter. The filter pill stays so the player can widen
+  /// it — otherwise a narrow filter would leave no way back.
   Widget _buildEmpty(AppLocalizations l10n) {
     return RefreshIndicator(
       onRefresh: () => _load(showSpinner: false),
       color: AppTheme.primary,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
-          Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-            ),
+          StatsFilterBar(filter: _filter, onTap: _openFilters),
+          const SizedBox(height: 12),
+          DsCard(
+            padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                const Icon(Icons.query_stats, size: 46, color: AppTheme.textSecondary),
-                const SizedBox(height: 16),
-                Text(
-                  l10n.statsNoDataForFilter,
-                  style: AppTheme.bodyLarge.copyWith(color: Colors.white),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
+                const Icon(Icons.query_stats_rounded, size: 32, color: AppTheme.textTertiary),
+                const SizedBox(height: 10),
+                Text(l10n.statsNoDataForFilter, textAlign: TextAlign.center, style: AppTheme.rowTitle),
+                const SizedBox(height: 4),
                 Text(
                   l10n.statsNoDataHint,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
                   textAlign: TextAlign.center,
+                  style: AppTheme.caption.copyWith(height: 1.45),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
             onPressed: () => AppNavigator.toScreen(context, const MatchHistoryScreen()),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.surfaceLight,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-            ),
-            icon: const Icon(Icons.history_rounded),
-            label: Text(l10n.viewFullMatchHistory),
+            icon: const Icon(Icons.history_rounded, size: 20),
+            label: Text(dsSentence(l10n.viewFullMatchHistory)),
           ),
         ],
       ),
@@ -173,11 +158,12 @@ class _MatchesStatsTabState extends State<MatchesStatsTab> {
   }
 }
 
-class _FilterBar extends StatelessWidget {
+/// "30 j · Classé ▾" — the current filter in one line; tapping opens the sheet.
+class StatsFilterBar extends StatelessWidget {
   final StatsFilter filter;
   final VoidCallback onTap;
 
-  const _FilterBar({required this.filter, required this.onTap});
+  const StatsFilterBar({super.key, required this.filter, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -187,45 +173,29 @@ class _FilterBar extends StatelessWidget {
         .map((m) => modeLabel(l10n, m))
         .join(' · ');
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SizedBox(
+      height: 40,
+      child: DsCard(
+        radius: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight.withValues(alpha: 0.42),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Text(
-                periodLabel(l10n, filter.period),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${periodLabel(l10n, filter.period)} · $modes',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.textPrimary,
                   fontSize: 13,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 7),
-                child: Text('·', style: TextStyle(color: AppTheme.textSecondary)),
-              ),
-              Expanded(
-                child: Text(
-                  modes,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const Icon(Icons.expand_more, color: AppTheme.textSecondary, size: 18),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.expand_more_rounded, color: AppTheme.textSecondary, size: 18),
+          ],
         ),
       ),
     );

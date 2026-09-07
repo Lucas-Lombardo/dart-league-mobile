@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/friends_provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../services/user_service.dart';
 import '../../models/match.dart';
 import '../../models/inactivity_penalty.dart';
 import '../../l10n/app_localizations.dart';
-import 'match_detail_screen.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
+import '../../widgets/recent_matches_widget.dart';
+import '../home/stats/stats_widgets.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../placement/placement_hub_screen.dart';
 
+/// The full match history: one [MatchRowTile] per match (or per BO3 series),
+/// inactivity penalties in the same timeline, a chip row to filter by kind
+/// once the list mixes several.
 class MatchHistoryScreen extends StatefulWidget {
   const MatchHistoryScreen({super.key});
 
@@ -20,10 +23,15 @@ class MatchHistoryScreen extends StatefulWidget {
   State<MatchHistoryScreen> createState() => _MatchHistoryScreenState();
 }
 
+/// Kinds a history can be narrowed to. Placement legs count as bot matches,
+/// as they do in the Stats filter.
+enum _HistoryFilter { all, ranked, friendly, tournament, bot }
+
 class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   List<_HistoryEntry> _entries = [];
   bool _isLoading = true;
   String? _error;
+  _HistoryFilter _filter = _HistoryFilter.all;
 
   @override
   void initState() {
@@ -74,7 +82,7 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   /// Collapse BO3 legs (same seriesId) into ONE history entry. The newest leg
   /// is the representative: its winner IS the series winner (the series ends
   /// on the deciding leg) and it carries the series ELO deltas (intermediate
-  /// legs are stamped 0). Legs won are counted across the group so the card
+  /// legs are stamped 0). Legs won are counted across the group so the row
   /// shows "2 – 1" instead of a 501 remainder.
   List<_HistoryEntry> _collapseSeriesLegs(List<Match> matches) {
     final entries = <_HistoryEntry>[];
@@ -103,29 +111,40 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     return entries;
   }
 
-  Future<void> _sendFriendRequest(String friendId, String username) async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      await context.read<FriendsProvider>().sendFriendRequest(friendId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.friendRequestSent.replaceAll('{username}', username)),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: AppTheme.error,
-          ),
-        );
-      }
-    }
+  static _HistoryFilter _kindOf(Match match) => switch (match.matchType) {
+        'friendly' => _HistoryFilter.friendly,
+        'tournament' => _HistoryFilter.tournament,
+        'bot' || 'placement' => _HistoryFilter.bot,
+        _ => _HistoryFilter.ranked,
+      };
+
+  /// "Tous" plus every kind the list actually contains, in a fixed order.
+  List<_HistoryFilter> get _availableFilters {
+    final present = _entries
+        .where((e) => e.match != null)
+        .map((e) => _kindOf(e.match!))
+        .toSet();
+    return [
+      _HistoryFilter.all,
+      for (final f in _HistoryFilter.values)
+        if (f != _HistoryFilter.all && present.contains(f)) f,
+    ];
   }
+
+  /// Penalties are an ELO event: they belong to the ranked timeline.
+  bool _matchesFilter(_HistoryEntry entry) {
+    if (_filter == _HistoryFilter.all) return true;
+    if (entry.penalty != null) return _filter == _HistoryFilter.ranked;
+    return _kindOf(entry.match!) == _filter;
+  }
+
+  String _filterLabel(AppLocalizations l10n, _HistoryFilter filter) => switch (filter) {
+        _HistoryFilter.all => l10n.historyFilterAll,
+        _HistoryFilter.ranked => l10n.statsModeRanked,
+        _HistoryFilter.friendly => l10n.statsModeFriendly,
+        _HistoryFilter.tournament => l10n.statsModeTournament,
+        _HistoryFilter.bot => l10n.statsModeBot,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -134,66 +153,82 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.matchHistoryTitle),
-        backgroundColor: AppTheme.surface,
+      appBar: AppBar(title: Text(l10n.matchHistoryTitle)),
+      body: _buildBody(l10n, userId),
+    );
+  }
+
+  Widget _buildBody(AppLocalizations l10n, String userId) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+    }
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: _MessageCard(
+          icon: Icons.error_outline_rounded,
+          title: l10n.errorWithMessage.replaceAll('{message}', _error ?? ''),
+          action: ElevatedButton(onPressed: _loadMatches, child: Text(l10n.retry)),
+        ),
+      );
+    }
+    if (_entries.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: _MessageCard(
+          icon: Icons.history_rounded,
+          title: l10n.noMatchesYet,
+          subtitle: l10n.playGameToSeeHistory,
+        ),
+      );
+    }
+
+    final filters = _availableFilters;
+    // A single kind needs no chips; "Tous" alone would be a button that does
+    // nothing.
+    final showChips = filters.length > 2;
+    final visible = _entries.where(_matchesFilter).toList();
+
+    return RefreshIndicator(
+      onRefresh: _loadMatches,
+      color: AppTheme.primary,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        itemCount: visible.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            if (!showChips) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _FilterRow(
+                labels: [for (final f in filters) _filterLabel(l10n, f)],
+                index: filters.indexOf(_filter),
+                onChanged: (i) => setState(() => _filter = filters[i]),
+              ),
+            );
+          }
+          final entry = visible[index - 1];
+          return Padding(
+            padding: EdgeInsets.only(bottom: index == visible.length ? 0 : 10),
+            child: entry.penalty != null
+                ? _PenaltyRow(penalty: entry.penalty!)
+                : _buildMatchRow(entry, userId),
+          );
+        },
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error: $_error', style: const TextStyle(color: AppTheme.error)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadMatches,
-                        child: Text(l10n.retry),
-                      ),
-                    ],
-                  ),
-                )
-              : _entries.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.history, size: 64, color: AppTheme.textSecondary),
-                          const SizedBox(height: 16),
-                          Text(
-                            l10n.noMatchesYet,
-                            style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            l10n.playGameToSeeHistory,
-                            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadMatches,
-                      color: AppTheme.primary,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _entries.length,
-                        itemBuilder: (context, index) {
-                          final entry = _entries[index];
-                          if (entry.penalty != null) {
-                            return _buildInactivityCard(entry.penalty!);
-                          }
-                          return _buildMatchCard(entry.match!, userId,
-                              seriesP1Legs: entry.seriesP1Legs,
-                              seriesP2Legs: entry.seriesP2Legs);
-                        },
-                      ),
-                    ),
+    );
+  }
+
+  Widget _buildMatchRow(_HistoryEntry entry, String userId) {
+    final match = entry.match!;
+    return MatchRowTile(
+      match: match,
+      userId: userId,
+      seriesP1Legs: entry.seriesP1Legs,
+      seriesP2Legs: entry.seriesP2Legs,
+      // A finished match opens its detail (the tile's default); one still in
+      // progress takes the player back into it.
+      onTap: match.isInProgress ? () => _rejoinMatch(match, userId) : null,
     );
   }
 
@@ -214,315 +249,133 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
       ),
     ).then((_) => _loadMatches());
   }
+}
 
-  Widget _buildMatchCard(Match match, String userId,
-      {int? seriesP1Legs, int? seriesP2Legs}) {
-    final l10n = AppLocalizations.of(context);
-    final isSeries = seriesP1Legs != null && seriesP2Legs != null;
-    final isInProgress = match.isInProgress;
-    final isWin = match.isWinner(userId);
-    final eloChange = match.getEloChange(userId);
-    final opponentUsername = match.getOpponentUsername(userId);
-    // A BO3 card shows legs won (e.g. 2 – 1) instead of the 501 remainders.
-    final iAmPlayer1 = userId == match.player1Id;
-    final myScore = isSeries
-        ? (iAmPlayer1 ? seriesP1Legs : seriesP2Legs)
-        : match.getMyScore(userId);
-    final opponentScore = isSeries
-        ? (iAmPlayer1 ? seriesP2Legs : seriesP1Legs)
-        : match.getOpponentScore(userId);
-    final dateFormat = DateFormat('MMM d, y • h:mm a');
-    final Color borderColor = isInProgress
-        ? AppTheme.accent
-        : (isWin ? AppTheme.success : AppTheme.error);
-    final Color badgeColor = isInProgress
-        ? AppTheme.accent
-        : (isWin ? AppTheme.success : AppTheme.error);
-    final String badgeLabel = isInProgress
-        ? 'IN PROGRESS'
-        : (isWin ? l10n.win.toUpperCase() : l10n.loss.toUpperCase());
+/// Horizontal row of quiet filter chips (the Stats tab's chip), 8 px apart.
+class _FilterRow extends StatelessWidget {
+  final List<String> labels;
+  final int index;
+  final ValueChanged<int> onChanged;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: borderColor.withValues(alpha: 0.3),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            if (isInProgress) {
-              _rejoinMatch(match, userId);
-            } else {
-              AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: badgeColor),
-                      ),
-                      child: Text(
-                        badgeLabel,
-                        style: TextStyle(
-                          color: badgeColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '${l10n.vs} $opponentUsername',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (!isInProgress)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${eloChange >= 0 ? '+' : ''}$eloChange',
-                          style: TextStyle(
-                            color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildScoreColumn(l10n.youLabel, '$myScore', AppTheme.primary),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        '-',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    _buildScoreColumn(l10n.opponentLabel, '$opponentScore', Colors.white),
-                  ],
-                ),
-                if (isSeries)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        l10n.bestOfN(3),
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      dateFormat.format(match.createdAt),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Consumer<FriendsProvider>(
-                      builder: (context, friendsProvider, _) {
-                        final opponentId = match.getOpponentId(userId);
-                        final isFriend = friendsProvider.isFriend(opponentId);
-                        
-                        if (isFriend) {
-                          return Row(
-                            children: [
-                              Icon(Icons.check_circle, color: AppTheme.success, size: 16),
-                              const SizedBox(width: 4),
-                              Text(
-                                l10n.friendsStatus,
-                                style: TextStyle(color: AppTheme.success, fontSize: 12),
-                              ),
-                            ],
-                          );
-                        }
-                        
-                        return TextButton.icon(
-                          onPressed: () => _sendFriendRequest(opponentId, opponentUsername),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.primary,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          ),
-                          icon: const Icon(Icons.person_add, size: 16),
-                          label: Text(l10n.addFriendButton, style: const TextStyle(fontSize: 12)),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
+  const _FilterRow({required this.labels, required this.index, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            StatsChip(
+              label: labels[i],
+              selected: i == index,
+              onTap: () {
+                if (i != index) onChanged(i);
+              },
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScoreColumn(String label, String score, Color color) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          score,
-          style: TextStyle(
-            color: color,
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInactivityCard(InactivityPenalty penalty) {
-    final l10n = AppLocalizations.of(context);
-    final dateFormat = DateFormat('MMM d, y • h:mm a');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
+          ],
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+/// An inactivity penalty in the timeline: same 60 px row as a match, an
+/// hourglass square in place of the result and the ELO taken on the right.
+class _PenaltyRow extends StatelessWidget {
+  final InactivityPenalty penalty;
+
+  const _PenaltyRow({required this.penalty});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SizedBox(
+      height: 60,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.hourglass_empty,
-                    color: AppTheme.error,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.inactivityPenaltyTitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        l10n.inactivityPenaltyDescription,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '-${penalty.amount}',
-                    style: const TextStyle(
-                      color: AppTheme.error,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
+            Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.hourglass_empty_rounded, size: 18, color: AppTheme.error),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  dateFormat.format(penalty.createdAt),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.inactivityPenaltyTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.rowTitle,
                   ),
-                ),
-                Text(
-                  '${penalty.eloBefore} → ${penalty.eloAfter}',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 2),
+                  Text(
+                    '${l10n.inactivityPenaltyDescription} · '
+                    '${MatchRowTile.relativeDate(context, penalty.createdAt)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
                   ),
-                ),
-              ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '-${penalty.amount}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.error,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Empty / error state: a card with a quiet icon, a title, an optional line
+/// and an optional action.
+class _MessageCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? action;
+
+  const _MessageCard({required this.icon, required this.title, this.subtitle, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+      child: Column(
+        children: [
+          Icon(icon, size: 32, color: AppTheme.textTertiary),
+          const SizedBox(height: 12),
+          Text(title, textAlign: TextAlign.center, style: AppTheme.rowTitle),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, textAlign: TextAlign.center, style: AppTheme.caption),
+          ],
+          if (action != null) ...[
+            const SizedBox(height: 16),
+            action!,
+          ],
+        ],
       ),
     );
   }

@@ -1,15 +1,12 @@
-// Renders the real TournamentInviteGate prompt to PNG, with real fonts, so
-// the screen can be reviewed without a device. Not a test of behaviour —
-// skipped unless run explicitly:
+// Renders the real TournamentInviteGate prompt to PNG, with the app's real
+// font, so the screen can be reviewed without a device. Not a test of
+// behaviour — skipped unless run explicitly:
 //
 //   flutter test test/preview/invite_prompt_preview_test.dart \
 //     --dart-define=PREVIEW=true \
-//     --dart-define=PREVIEW_OUT=/abs/dir \
-//     --dart-define=PREVIEW_FONTS=/abs/dir/with/roboto-N.ttf
+//     --dart-define=PREVIEW_OUT=/abs/dir
 //
-// The app declares fontFamily 'Inter' without bundling it, so on a phone it
-// falls back to the system face (Roboto on Android). Here the Roboto files
-// are registered under the 'Inter' family name so the theme resolves to them.
+// Manrope now ships in assets/fonts, so the harness loads it from there.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -30,16 +27,13 @@ import 'package:mobile/widgets/tournament_invite_gate.dart';
 
 const _enabled = bool.fromEnvironment('PREVIEW');
 const _outDir = String.fromEnvironment('PREVIEW_OUT');
-const _fontsDir = String.fromEnvironment('PREVIEW_FONTS');
 
 Future<void> _loadFonts() async {
-  final dir = Directory(_fontsDir);
-  final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.ttf')).toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
-  // 'Inter' is what the theme asks for; Material 3 button styles still
-  // resolve to the typography default 'Roboto' — register both.
-  for (final family in ['Inter', 'Roboto']) {
-    final loader = FontLoader(family);
+  final dir = Directory('${Directory.current.path}/assets/fonts');
+  if (dir.existsSync()) {
+    final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.ttf')).toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+    final loader = FontLoader(AppTheme.fontFamily);
     for (final f in files) {
       final bytes = await f.readAsBytes();
       loader.addFont(Future.value(ByteData.view(bytes.buffer)));
@@ -59,28 +53,9 @@ Future<void> _loadFonts() async {
   }
 }
 
-/// The app theme, with the engine-default font of button labels pinned to
-/// the loaded face. ButtonStyle.textStyle replaces (not merges) the text
-/// theme, so on a phone those labels use the system font; in the test
-/// engine "no family" means the blocky FlutterTest face.
-ThemeData _previewTheme() {
-  final base = AppTheme.themeData;
-  WidgetStateProperty<TextStyle?>? pin(WidgetStateProperty<TextStyle?>? p) =>
-      p == null
-          ? null
-          : WidgetStateProperty.resolveWith(
-              (states) => p.resolve(states)?.copyWith(fontFamily: 'Inter'));
-  return base.copyWith(
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: base.elevatedButtonTheme.style?.copyWith(
-          textStyle: pin(base.elevatedButtonTheme.style?.textStyle)),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: base.textButtonTheme.style?.copyWith(
-          textStyle: pin(base.textButtonTheme.style?.textStyle)),
-    ),
-  );
-}
+/// The theme already carries Manrope everywhere; the harness only needs the
+/// app theme as-is.
+ThemeData _previewTheme() => AppTheme.themeData;
 
 /// A stand-in for the spectator screen: same palette as the game UI, enough
 /// to show the prompt sits over a live match.
@@ -187,7 +162,45 @@ class _FakeSpectateScreen extends StatelessWidget {
   }
 }
 
+/// The gate plays the invite sound; audioplayers and path_provider have no
+/// implementation in the test engine and their errors would fail a harness
+/// whose only job is to draw a PNG. Drop those, keep everything else.
+Future<void> _ignorePluginNoise(WidgetTester tester) async {
+  // The plugin errors surface on a later microtask, so let them land first.
+  await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)));
+  await tester.pump();
+  final error = tester.takeException();
+  if (error == null || error is MissingPluginException) return;
+  // ignore: only_throw_errors
+  throw error;
+}
+
 void main() {
+  // The gate plays the invite sound; audioplayers has no implementation in
+  // the test engine, and its stream error would fail the test even though the
+  // widget renders fine. Answer its channels with nulls.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final name in const [
+      'xyz.luan/audioplayers',
+      'xyz.luan/audioplayers.global',
+    ]) {
+      messenger.setMockMethodCallHandler(
+          MethodChannel(name), (call) async => null);
+    }
+    for (final name in const [
+      'xyz.luan/audioplayers/events',
+      'xyz.luan/audioplayers.global/events',
+    ]) {
+      messenger.setMockStreamHandler(EventChannel(name), MockStreamHandler.inline(
+        onListen: (arguments, sink) {},
+      ));
+    }
+  });
+
   TournamentMatch invite({required DateTime sentAt}) => TournamentMatch(
         id: 'm-r3',
         tournamentId: 't4',
@@ -270,9 +283,12 @@ void main() {
 
   testWidgets('invite prompt — fresh (6:58 left)', (tester) async {
     await render(tester, 'invite_prompt', DateTime.now().subtract(const Duration(seconds: 2)));
+    await _ignorePluginNoise(tester);
   }, skip: !_enabled);
 
   testWidgets('invite prompt — urgent (1:30 left)', (tester) async {
-    await render(tester, 'invite_prompt_urgent', DateTime.now().subtract(const Duration(minutes: 5, seconds: 30)));
+    await render(tester, 'invite_prompt_urgent',
+        DateTime.now().subtract(const Duration(minutes: 5, seconds: 30)));
+    await _ignorePluginNoise(tester);
   }, skip: !_enabled);
 }

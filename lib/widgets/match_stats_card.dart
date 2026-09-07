@@ -3,6 +3,7 @@ import '../l10n/app_localizations.dart';
 import '../models/match_stats.dart';
 import '../services/stats_service.dart';
 import '../utils/app_theme.dart';
+import 'design_system.dart';
 
 /// The stats of the match that just ended, on the end-of-match screen.
 ///
@@ -21,7 +22,16 @@ class MatchStatsCard extends StatefulWidget {
   /// Landscape packs the same card into a narrower column.
   final bool compact;
 
-  const MatchStatsCard({super.key, required this.matchId, this.compact = false});
+  /// Figures to show without fetching — previews and tests only; the game
+  /// screens always leave this null and let the card load itself.
+  final MatchStats? initialStats;
+
+  const MatchStatsCard({
+    super.key,
+    required this.matchId,
+    this.compact = false,
+    this.initialStats,
+  });
 
   @override
   State<MatchStatsCard> createState() => _MatchStatsCardState();
@@ -33,7 +43,8 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _stats = widget.initialStats;
+    if (_stats == null) _load();
   }
 
   Future<void> _load() async {
@@ -58,31 +69,18 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
     final them = stats.opponent;
     final delta = stats.deltaVsWindow;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: AppTheme.gamePanel,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.6)),
-      ),
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
-                child: Text(
-                  l10n.matchStatsTitle.toUpperCase(),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
+                child: Text(l10n.matchStatsTitle, style: AppTheme.sectionTitle),
               ),
-              _Legend(label: l10n.you, color: AppTheme.playerBlue),
-              const SizedBox(width: 10),
+              _Legend(label: dsSentence(l10n.you), color: AppTheme.playerBlueDim),
+              const SizedBox(width: 12),
               Flexible(
                 child: _Legend(
                   label: them.username.isEmpty ? '—' : them.username,
@@ -91,7 +89,7 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           _DuelRow(
             label: l10n.avgThreeDart,
             mine: me.average,
@@ -119,12 +117,11 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
               theirs: them.bestCheckout?.toDouble(),
               decimals: 0,
               showBars: false,
-              highlightBest: true,
             ),
           if (delta != null) ...[
             const SizedBox(height: 8),
-            const Divider(height: 1, color: AppTheme.surfaceLight),
-            const SizedBox(height: 8),
+            const Divider(),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -133,18 +130,24 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
                       _format(stats.windowAverage!),
                       stats.windowDays,
                     ),
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: AppTheme.caption,
                   ),
                 ),
+                Icon(
+                  delta >= 0
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 14,
+                  color: delta >= 0 ? AppTheme.success : AppTheme.error,
+                ),
+                const SizedBox(width: 3),
                 Text(
-                  '${delta >= 0 ? '▲' : '▼'} ${_format(delta.abs())}',
+                  _format(delta.abs()),
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w800,
                     color: delta >= 0 ? AppTheme.success : AppTheme.error,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -159,6 +162,7 @@ class _MatchStatsCardState extends State<MatchStatsCard> {
 String _format(double value) =>
     value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 
+/// "● Vous" / "● DODO180": 7 px identity dot + 11 / 600 secondary label.
 class _Legend extends StatelessWidget {
   final String label;
   final Color color;
@@ -178,14 +182,14 @@ class _Legend extends StatelessWidget {
         const SizedBox(width: 5),
         Flexible(
           child: Text(
-            label.toUpperCase(),
+            label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.4,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              height: 1,
             ),
           ),
         ),
@@ -194,7 +198,9 @@ class _Legend extends StatelessWidget {
   }
 }
 
-/// One figure for each side, with a bar splitting the row in proportion.
+/// One figure for each side — mine on the left in bright blue, theirs on the
+/// right in bright rose, the label between — over a 4 px two-tone bar split in
+/// proportion.
 class _DuelRow extends StatelessWidget {
   final String label;
   final double? mine;
@@ -204,7 +210,6 @@ class _DuelRow extends StatelessWidget {
   final String? mineCaption;
   final String? theirsCaption;
   final bool showBars;
-  final bool highlightBest;
 
   const _DuelRow({
     required this.label,
@@ -215,13 +220,52 @@ class _DuelRow extends StatelessWidget {
     this.mineCaption,
     this.theirsCaption,
     this.showBars = true,
-    this.highlightBest = false,
   });
 
   String _value(double? value) {
     if (value == null) return '—';
     final text = decimals == 0 ? value.toStringAsFixed(0) : _format(value);
     return '$text$suffix';
+  }
+
+  Widget _side({required bool mine}) {
+    final value = mine ? this.mine : theirs;
+    final caption = mine ? mineCaption : theirsCaption;
+    return SizedBox(
+      width: 70,
+      child: Column(
+        crossAxisAlignment:
+            mine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: mine ? Alignment.centerLeft : Alignment.centerRight,
+            child: Text(
+              _value(value),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+                color: mine
+                    ? AppTheme.playerBlueBright
+                    : AppTheme.opponentPinkBright,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          if (caption != null)
+            Text(
+              caption,
+              style: const TextStyle(
+                color: AppTheme.textTertiary,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                height: 1.2,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -231,104 +275,62 @@ class _DuelRow extends StatelessWidget {
     final total = a + b;
     final mineFlex = total > 0 ? (a / total * 1000).round() : 500;
     final theirsFlex = total > 0 ? (b / total * 1000).round() : 500;
-    final mineLeads = mine != null && (theirs == null || a > b);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 52,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _side(mine: true),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    _value(mine),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: highlightBest && mineLeads
-                          ? AppTheme.gold
-                          : AppTheme.playerBlueBright,
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                if (mineCaption != null)
-                  Text(
-                    mineCaption!,
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
-                  ),
-              ],
-            ),
+              ),
+              _side(mine: false),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              children: [
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                ),
-                if (showBars) ...[
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(
-                      height: 8,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: mineFlex.clamp(1, 1000),
-                            child: Container(color: AppTheme.playerBlue),
-                          ),
-                          Container(width: 2, color: AppTheme.gamePanel),
-                          Expanded(
-                            flex: theirsFlex.clamp(1, 1000),
-                            child: Container(color: AppTheme.opponentPink),
-                          ),
-                        ],
+          if (showBars) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 4,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: mineFlex.clamp(1, 1000),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.playerBlueDim,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    flex: theirsFlex.clamp(1, 1000),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.opponentPink.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 52,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _value(theirs),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: highlightBest && !mineLeads && theirs != null
-                          ? AppTheme.gold
-                          : AppTheme.opponentPinkBright,
-                    ),
-                  ),
-                ),
-                if (theirsCaption != null)
-                  Text(
-                    theirsCaption!,
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
-                  ),
-              ],
-            ),
-          ),
+          ],
         ],
       ),
     );

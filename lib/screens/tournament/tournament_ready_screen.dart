@@ -15,6 +15,7 @@ import '../../providers/tournament_game_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import 'tournament_camera_setup_screen.dart';
 import 'tournament_game_screen.dart';
 
@@ -475,6 +476,7 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
   }
 
   Future<void> _onCancelPressed() async {
+    if (_cancelling) return;
     HapticService.lightImpact();
     setState(() => _cancelling = true);
     try {
@@ -519,64 +521,67 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 40),
-            // Tournament info
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    widget.tournamentName,
-                    style: const TextStyle(
-                      color: AppTheme.primary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${localizedRoundName(widget.roundName, l10n).toUpperCase()} • ${l10n.bestOf} ${widget.bestOf}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: DsScreenHeader(
+                title: widget.tournamentName,
+                showBack: true,
+                onBack: _onCancelPressed,
               ),
             ),
-
-            const Spacer(),
-
-            // Player cards
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
               child: Row(
                 children: [
-                  Expanded(child: _buildPlayerCard(myUsername, _myReady, true)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  DsPill(label: localizedRoundName(widget.roundName, l10n)),
+                  const SizedBox(width: 10),
+                  Expanded(
                     child: Text(
-                      l10n.vs.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                      ),
+                      '${l10n.bestOf} ${widget.bestOf}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.caption,
                     ),
                   ),
-                  Expanded(child: _buildPlayerCard(widget.opponentUsername, _opponentReady, false)),
                 ],
               ),
             ),
+            const Spacer(),
 
-            const SizedBox(height: 48),
+            // The two lobby seats: 56 px state disc, the name, and the ready
+            // pill. The border turns green the moment a player is ready.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              // IntrinsicHeight so both seats share the taller card's height:
+              // a bare `stretch` would ask for an infinite height inside this
+              // unbounded Column.
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _buildPlayerCard(myUsername, _myReady, true)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Center(
+                        child: Text(
+                          l10n.vs,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textTertiary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildPlayerCard(widget.opponentUsername, _opponentReady, false),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 28),
 
             // Waiting indicator / expired state. Everyone on this screen has
             // already readied, so when the window closes with the opponent
@@ -584,61 +589,19 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
             // red "YOU didn't join" copy would read as a loss. Reserve it for
             // the odd case where the opponent did ready (lost start event).
             if (_expired && _myReady && !_opponentReady)
-              Column(
-                children: [
-                  const Icon(Icons.hourglass_bottom, size: 44, color: AppTheme.accent),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.opponentNoShowTitle,
-                    style: const TextStyle(
-                      color: AppTheme.accent,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      l10n.opponentNoShowHint,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: AppTheme.textSecondary,
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ],
+              _buildStatusBlock(
+                icon: Icons.hourglass_bottom_rounded,
+                color: AppTheme.primaryLight,
+                title: l10n.opponentNoShowTitle,
+                hint: l10n.opponentNoShowHint,
+                spinner: true,
               )
             else if (_expired)
-              Column(
-                children: [
-                  const Icon(Icons.timer_off_outlined, size: 44, color: AppTheme.error),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.matchWindowExpiredTitle,
-                    style: const TextStyle(
-                      color: AppTheme.error,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      l10n.matchWindowExpiredHint,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                    ),
-                  ),
-                ],
+              _buildStatusBlock(
+                icon: Icons.timer_off_outlined,
+                color: AppTheme.error,
+                title: l10n.matchWindowExpiredTitle,
+                hint: l10n.matchWindowExpiredHint,
               )
             else
               Column(
@@ -646,35 +609,30 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
                   AnimatedBuilder(
                     animation: _pulseController,
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: 0.5 + (_pulseController.value * 0.5),
-                        child: child,
-                      );
+                      return Opacity(opacity: 0.5 + (_pulseController.value * 0.5), child: child);
                     },
                     child: Column(
                       children: [
                         const SizedBox(
-                          width: 32,
-                          height: 32,
+                          width: 28,
+                          height: 28,
                           child: CircularProgressIndicator(
                             color: AppTheme.primary,
-                            strokeWidth: 3,
+                            strokeWidth: 2.5,
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         Text(
-                          _opponentReady ? l10n.startingMatch : l10n.waitingForOpponent,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 16,
-                          ),
+                          dsSentence(_opponentReady ? l10n.startingMatch : l10n.waitingForOpponent),
+                          textAlign: TextAlign.center,
+                          style: AppTheme.bodyMedium,
                         ),
                       ],
                     ),
                   ),
                   if (widget.inviteSentAt != null && !_opponentReady) ...[
-                    const SizedBox(height: 16),
-                    _buildCountdownPill(),
+                    const SizedBox(height: 14),
+                    _buildCountdown(),
                   ],
                 ],
               ),
@@ -684,16 +642,10 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
             // Back button — withdraws the ready state server-side so the
             // opponent readying later doesn't start a game with nobody here.
             Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: TextButton(
                 onPressed: _cancelling ? null : _onCancelPressed,
-                child: Text(
-                  AppLocalizations.of(context).cancelButton,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 16,
-                  ),
-                ),
+                child: Text(dsSentence(l10n.cancelButton)),
               ),
             ),
           ],
@@ -702,83 +654,99 @@ class _TournamentReadyScreenState extends State<TournamentReadyScreen>
     );
   }
 
-  Widget _buildCountdownPill() {
-    final low = _remaining.inSeconds <= 60;
-    final color = low ? AppTheme.error : AppTheme.textSecondary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+  /// Expired / no-show block: a quiet 20 px glyph, the verdict and its hint.
+  Widget _buildStatusBlock({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String hint,
+    bool spinner = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
         children: [
-          Icon(Icons.timer_outlined, size: 14, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 26, color: color),
+          const SizedBox(height: 12),
           Text(
-            _formatRemaining(_remaining),
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+            dsSentence(title),
+            textAlign: TextAlign.center,
+            style: AppTheme.titleLarge.copyWith(color: color),
           ),
+          const SizedBox(height: 6),
+          Text(hint, textAlign: TextAlign.center, style: AppTheme.caption),
+          if (spinner) ...[
+            const SizedBox(height: 16),
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(color: AppTheme.textSecondary, strokeWidth: 2),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildPlayerCard(String username, bool isReady, bool isMe) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isReady ? AppTheme.success : AppTheme.surfaceLight,
-          width: isReady ? 2 : 1,
+  /// mm:ss left in the join window, 14 / 700 tabular; red under a minute.
+  Widget _buildCountdown() {
+    final low = _remaining.inSeconds <= 60;
+    final color = low ? AppTheme.error : AppTheme.textPrimary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.schedule_outlined, size: 16, color: AppTheme.textSecondary),
+        const SizedBox(width: 6),
+        Text(
+          _formatRemaining(_remaining),
+          style: TextStyle(
+            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
-      ),
+      ],
+    );
+  }
+
+  /// One lobby seat: 56 px state disc, the name, the ready pill. The card's
+  /// hairline turns green when that player is in.
+  Widget _buildPlayerCard(String username, bool isReady, bool isMe) {
+    final l10n = AppLocalizations.of(context);
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+      side: BorderSide(color: isReady ? AppTheme.success.withValues(alpha: 0.45) : AppTheme.border),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: isReady
-                  ? AppTheme.success.withValues(alpha: 0.2)
-                  : AppTheme.surfaceLight,
               shape: BoxShape.circle,
+              color: isReady ? AppTheme.success.withValues(alpha: 0.14) : AppTheme.surfaceLight,
             ),
             child: Icon(
-              isReady ? Icons.check : Icons.hourglass_empty,
+              isReady ? Icons.check_rounded : Icons.hourglass_empty_rounded,
               color: isReady ? AppTheme.success : AppTheme.textSecondary,
-              size: 28,
+              size: 26,
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            isMe ? AppLocalizations.of(context).you : username,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
+            isMe ? l10n.you : username,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppTheme.rowTitle,
           ),
-          const SizedBox(height: 4),
-          Text(
-            isReady ? AppLocalizations.of(context).ready : AppLocalizations.of(context).waiting2,
-            style: TextStyle(
-              color: isReady ? AppTheme.success : AppTheme.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
-            ),
+          const SizedBox(height: 8),
+          DsPill(
+            label: dsSentence(isReady ? l10n.ready : l10n.waiting2),
+            color: isReady ? AppTheme.success : AppTheme.textSecondary,
+            dot: !isReady,
           ),
         ],
       ),

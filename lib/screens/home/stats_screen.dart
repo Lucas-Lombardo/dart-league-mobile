@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
-import '../../utils/app_theme.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
+import '../profile/match_history_screen.dart';
 import 'stats/matches_stats_tab.dart';
+import 'stats/stats_widgets.dart';
 import 'training_stats_tab.dart';
 
 enum StatsTab { matches, training }
 
+/// The Stats tab: its own header (the shell draws none for bottom-bar tabs),
+/// a Matchs / Entraînement segmented control, and the selected page.
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
@@ -23,29 +28,26 @@ class _StatsScreenState extends State<StatsScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: _TabButton(
-                  // "Classé" is no longer a tab — it moved into the Mode filter,
-                  // alongside friendly, tournament and bot legs.
-                  label: l10n.matchStatsTab,
-                  icon: Icons.sports_esports_outlined,
-                  selected: _tab == StatsTab.matches,
-                  onTap: () => _selectTab(StatsTab.matches),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _TabButton(
-                  label: l10n.trainingStatsTab,
-                  icon: Icons.fitness_center,
-                  selected: _tab == StatsTab.training,
-                  onTap: () => _selectTab(StatsTab.training),
-                ),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: DsScreenHeader(
+            title: l10n.stats,
+            actions: [
+              DsIconButton(
+                icon: Icons.history_rounded,
+                tooltip: dsSentence(l10n.viewFullMatchHistory),
+                onTap: () => AppNavigator.toScreen(context, const MatchHistoryScreen()),
               ),
             ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: StatsSegmentedControl(
+            // "Classé" is no longer a tab — it moved into the Mode filter,
+            // alongside friendly, tournament and bot legs.
+            labels: [l10n.matchStatsTab, l10n.trainingStatsTab],
+            index: _tab.index,
+            onChanged: (i) => _selectTab(StatsTab.values[i]),
           ),
         ),
         Expanded(
@@ -61,64 +63,5 @@ class _StatsScreenState extends State<StatsScreen> {
     if (tab == _tab) return;
     HapticService.lightImpact();
     setState(() => _tab = tab);
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TabButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppTheme.primary.withValues(alpha: 0.18)
-                : AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? AppTheme.primary
-                  : AppTheme.surfaceLight.withValues(alpha: 0.5),
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? AppTheme.primary : AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppTheme.primary : AppTheme.textSecondary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

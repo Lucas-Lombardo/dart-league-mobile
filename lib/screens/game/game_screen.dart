@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/match_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
@@ -56,9 +57,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
 
   @override
   Widget buildAppBarTitle() => Row(children: [
-    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.error, shape: BoxShape.circle)),
+    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.secondary, shape: BoxShape.circle)),
     const SizedBox(width: 8),
-    Text(AppLocalizations.of(context).liveMatch, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
+    Text(dsSentence(AppLocalizations.of(context).liveMatch), style: AppTheme.sectionTitle),
   ]);
 
   // The series this screen instance was opened for. _storedMatchId may only
@@ -226,33 +227,43 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     final isWinner = winnerId == auth.currentUser?.id;
     showGameDialog(
       context,
-      accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
-      icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
+      accent: isWinner ? AppTheme.success : AppTheme.error,
+      icon: isWinner ? Icons.emoji_events_outlined : Icons.logout_rounded,
       title: isWinner ? l10n.victory : l10n.gameOver,
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             isWinner ? l10n.opponentLeftForfeit : l10n.youLeftForfeited,
-            style: AppTheme.bodyLarge.copyWith(fontSize: 16),
-            textAlign: TextAlign.center,
+            style: AppTheme.bodyMedium,
           ),
           if (isWinner) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${l10n.eloChange}: ${eloChange >= 0 ? '+' : ''}$eloChange',
-                style: const TextStyle(
-                  color: AppTheme.success,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(l10n.eloChange, style: AppTheme.caption),
+                const SizedBox(width: 10),
+                Container(
+                  height: 28,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${eloChange >= 0 ? '+' : ''}$eloChange',
+                    style: const TextStyle(
+                      color: AppTheme.success,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ],
@@ -279,7 +290,6 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               newRank: newRank,
             );
           },
-          style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
           child: Text(l10n.continuePlaying),
         ),
       ],
@@ -310,19 +320,16 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       );
     }
 
+    // The ONE filled block of the screen (accept) over a quiet outlined
+    // report action — no card around them, the hero above already frames the
+    // result.
     final resultPanel = Column(mainAxisSize: MainAxisSize.min, children: [
-      Text(l10n.matchResult, style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-      const SizedBox(height: 8),
-      Text(l10n.pleaseConfirmResult, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center),
-      const SizedBox(height: 20),
-      SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+      SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
         onPressed: () { HapticService.mediumImpact(); _acceptMatchResult(game, auth); },
-        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-        icon: const Icon(Icons.check_circle_outline),
-        label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+        child: Text(dsSentence(l10n.acceptResult)),
       )),
-      const SizedBox(height: 12),
-      SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+      const SizedBox(height: 10),
+      SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(
         onPressed: () {
           HapticService.lightImpact();
           showReportDialog(
@@ -336,9 +343,9 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
             onComplete: () {},
           );
         },
-        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-        icon: const Icon(Icons.flag_outlined),
-        label: Text(l10n.reportPlayer, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.textSecondary, textStyle: gameButtonTextStyle.copyWith(fontSize: 14)),
+        icon: const Icon(Icons.flag_outlined, size: 16),
+        label: Text(dsSentence(l10n.reportPlayer)),
       )),
     ]);
 
@@ -414,15 +421,15 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     Widget content;
     if (game.rematchDeclined) {
       content = Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.sentiment_dissatisfied,
-            color: AppTheme.textSecondary, size: 40),
-        const SizedBox(height: 12),
+        const Icon(Icons.sentiment_dissatisfied_outlined,
+            color: AppTheme.textSecondary, size: 32),
+        const SizedBox(height: 10),
         Text(
           l10n.opponentDeclinedRematch,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          style: AppTheme.bodyMedium,
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
           height: 52,
@@ -431,100 +438,77 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
               HapticService.lightImpact();
               AppNavigator.toHomeClearing(context);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-            ),
-            child: Text(l10n.continueButton,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            child: Text(dsSentence(l10n.continueButton)),
           ),
         ),
       ]);
     } else if (game.rematchWaiting) {
       content = Column(mainAxisSize: MainAxisSize.min, children: [
-        const CircularProgressIndicator(color: AppTheme.primary),
-        const SizedBox(height: 16),
+        const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
+        ),
+        const SizedBox(height: 14),
         Text(
           l10n.waitingForOpponent,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         TextButton(
           onPressed: () => _leaveFriendlyToHome(game),
-          child: Text(l10n.cancel,
-              style: const TextStyle(color: AppTheme.textSecondary)),
+          style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+          child: Text(l10n.cancel),
         ),
       ]);
     } else {
       content = Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          l10n.playAgainQuestion,
-          style: AppTheme.titleLarge
-              .copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
-        ),
+        Text(l10n.playAgainQuestion, style: AppTheme.sectionTitle),
         if (game.opponentWantsRematch) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             l10n.opponentWantsToPlayAgain
                 .replaceAll('{username}', widget.opponentUsername),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.success, fontSize: 13),
+            style: AppTheme.caption.copyWith(
+                color: AppTheme.success, fontWeight: FontWeight.w600),
           ),
         ],
-        SizedBox(height: isLandscape ? 16 : 24),
+        SizedBox(height: isLandscape ? 12 : 16),
         SizedBox(
           width: double.infinity,
-          height: 56,
+          height: 52,
           child: ElevatedButton.icon(
             onPressed: () {
               HapticService.mediumImpact();
               game.requestRematch();
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.success,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-            ),
-            icon: const Icon(Icons.replay),
-            label: Text(l10n.playAgain,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            icon: const Icon(Icons.replay_rounded, size: 20),
+            label: Text(l10n.playAgain),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
-          height: 56,
+          height: 48,
           child: OutlinedButton(
             onPressed: () => _leaveFriendlyToHome(game),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.textSecondary,
-              side: BorderSide(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.5), width: 2),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+              textStyle: gameButtonTextStyle.copyWith(fontSize: 14),
             ),
-            child: Text(l10n.no,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            child: Text(l10n.no),
           ),
         ),
       ]);
     }
 
-    // No card chrome here: MatchEndView wraps the panel in the shared card.
+    // No card chrome here: the end screen lays its actions flat on the
+    // background, under a group label.
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      Text(
-        l10n.friendlyMatchLabel.toUpperCase(),
-        style: const TextStyle(
-            color: AppTheme.textSecondary, fontSize: 12, letterSpacing: 1.5),
-      ),
-      SizedBox(height: isLandscape ? 12 : 16),
+      Text(l10n.friendlyMatchLabel.toUpperCase(), style: AppTheme.labelSmall),
+      SizedBox(height: isLandscape ? 10 : 14),
       content,
     ]);
   }

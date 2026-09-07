@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../utils/app_theme.dart';
+import '../../../utils/haptic_service.dart';
+import '../../../widgets/design_system.dart';
 
-/// Shared building blocks for the four Stats sub-tabs. Each sub-tab is a page
-/// about one subject, so the pieces here exist to enforce one rule: exactly one
-/// number dominates a page, everything else explains it.
+/// Shared building blocks of the Stats tab (the head-to-head screen reuses
+/// the card and the empty block). They enforce one rule per card: exactly one
+/// number dominates, everything else explains it — on flat surface cards with
+/// a hairline, in the app's visual system.
 
 class StatsCard extends StatelessWidget {
   final String? label;
@@ -14,24 +17,19 @@ class StatsCard extends StatelessWidget {
     super.key,
     this.label,
     required this.children,
-    this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    this.padding = const EdgeInsets.all(18),
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DsCard(
       padding: padding,
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (label != null) ...[
             StatsLabel(label!),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
           ],
           ...children,
         ],
@@ -40,6 +38,7 @@ class StatsCard extends StatelessWidget {
   }
 }
 
+/// 11 / 700 spaced group label — the one place uppercase is allowed.
 class StatsLabel extends StatelessWidget {
   final String text;
 
@@ -47,19 +46,11 @@ class StatsLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        color: AppTheme.textSecondary,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.2,
-      ),
-    );
+    return Text(text.toUpperCase(), style: AppTheme.labelSmall);
   }
 }
 
-/// The one number a page is about. Nothing else on the page comes close in size.
+/// The one number a card is about. Nothing else on the card comes close in size.
 class StatsHero extends StatelessWidget {
   final String value;
   final String? unit;
@@ -89,13 +80,7 @@ class StatsHero extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1,
-                    letterSpacing: -1.5,
-                  ),
+                  style: AppTheme.displayLarge.copyWith(fontSize: 44, letterSpacing: -1),
                 ),
               ),
             ),
@@ -118,16 +103,14 @@ class StatsHero extends StatelessWidget {
         ),
         if (caption != null) ...[
           const SizedBox(height: 6),
-          Text(
-            caption!,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
-          ),
+          Text(caption!, style: AppTheme.caption.copyWith(height: 1.35)),
         ],
       ],
     );
   }
 }
 
+/// Signed change next to a hero number: green up, red down.
 class StatsDelta extends StatelessWidget {
   final double value;
 
@@ -136,17 +119,31 @@ class StatsDelta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final positive = value >= 0;
-    return Text(
-      '${positive ? '▲' : '▼'} ${value.abs().toStringAsFixed(1)}',
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w800,
-        color: positive ? AppTheme.success : AppTheme.error,
-      ),
+    final color = positive ? AppTheme.success : AppTheme.error;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          positive ? Icons.north_rounded : Icons.south_rounded,
+          size: 14,
+          color: color,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          value.abs().toStringAsFixed(1),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: color,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }
 
+/// "Label ............ value" line of a card.
 class StatsRow extends StatelessWidget {
   final String label;
   final String value;
@@ -161,36 +158,39 @@ class StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? AppTheme.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// A labelled bar. [fraction] is the drawn width, kept separate from [value]
-/// because the two breakdowns scale differently: the visit distribution is
-/// relative to its own largest bucket, the double ladder to a fixed ceiling.
+/// A labelled 8 px bar. [fraction] is the drawn width, kept separate from
+/// [value] because the two breakdowns scale differently: the visit
+/// distribution is relative to its own largest bucket, the double ladder to a
+/// fixed ceiling.
 class StatsBar extends StatelessWidget {
   final String label;
   final double fraction;
@@ -208,35 +208,41 @@ class StatsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
           SizedBox(
             width: 52,
             child: Text(
               label,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(5),
-              child: Stack(
-                children: [
-                  Container(height: 10, color: AppTheme.surfaceLight.withValues(alpha: 0.45)),
-                  FractionallySizedBox(
-                    // A non-zero count must still be visible, otherwise "3 × 180"
-                    // renders as an empty row and reads as zero.
-                    widthFactor: fraction <= 0 ? 0 : fraction.clamp(0.02, 1.0),
-                    child: Container(
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(5),
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 8,
+                child: Stack(
+                  children: [
+                    Container(color: Colors.white.withValues(alpha: 0.08)),
+                    FractionallySizedBox(
+                      // A non-zero count must still be visible, otherwise
+                      // "3 × 180" renders as an empty row and reads as zero.
+                      widthFactor: fraction <= 0 ? 0 : fraction.clamp(0.02, 1.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -246,9 +252,10 @@ class StatsBar extends StatelessWidget {
               value,
               textAlign: TextAlign.right,
               style: const TextStyle(
-                color: Colors.white,
+                color: AppTheme.textPrimary,
                 fontSize: 13,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -258,7 +265,7 @@ class StatsBar extends StatelessWidget {
   }
 }
 
-/// Rolling-average curve for the Form page, with the previous block drawn as a
+/// Rolling-average curve of the form card, with the previous block drawn as a
 /// dashed baseline so the delta above it is legible without a legend.
 class StatsCurve extends StatelessWidget {
   final List<double> points;
@@ -306,9 +313,9 @@ class _CurvePainter extends CustomPainter {
     if (baseline != null) {
       final y = yOf(baseline!);
       final dash = Paint()
-        ..color = AppTheme.surfaceLight
+        ..color = AppTheme.textTertiary
         ..strokeWidth = 1;
-      for (double x = 0; x < size.width; x += 7) {
+      for (double x = 0; x < size.width; x += 8) {
         canvas.drawLine(Offset(x, y), Offset(x + 4, y), dash);
       }
     }
@@ -329,7 +336,7 @@ class _CurvePainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppTheme.primary.withValues(alpha: 0.32),
+            AppTheme.primary.withValues(alpha: 0.30),
             AppTheme.primary.withValues(alpha: 0),
           ],
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
@@ -357,8 +364,8 @@ class _CurvePainter extends CustomPainter {
       old.points != points || old.baseline != baseline;
 }
 
-/// Closing note on a page, explaining what the headline number actually means.
-/// Cheap to render, and it stops the same question reaching support.
+/// Closing note of the page, explaining what the headline number actually
+/// means. Cheap to render, and it stops the same question reaching support.
 class StatsExplainer extends StatelessWidget {
   final String title;
   final String body;
@@ -370,14 +377,7 @@ class StatsExplainer extends StatelessWidget {
     return StatsCard(
       label: title,
       children: [
-        Text(
-          body,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            height: 1.45,
-          ),
-        ),
+        Text(body, style: AppTheme.caption.copyWith(height: 1.5)),
       ],
     );
   }
@@ -394,15 +394,117 @@ class StatsBlockEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     return StatsCard(
       children: [
-        Text(
-          message,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            height: 1.45,
+        Text(message, style: AppTheme.caption.copyWith(height: 1.5)),
+      ],
+    );
+  }
+}
+
+/// Two-or-more-way segmented control, 40 px: a surface track with the active
+/// segment lifted on surfaceLight. Haptics belong to the caller.
+class StatsSegmentedControl extends StatelessWidget {
+  final List<String> labels;
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  const StatsSegmentedControl({
+    super.key,
+    required this.labels,
+    required this.index,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            if (i > 0) const SizedBox(width: 3),
+            Expanded(child: _segment(i)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(int i) {
+    final selected = i == index;
+    return Material(
+      color: selected ? AppTheme.surfaceLight : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: selected ? null : () => onChanged(i),
+        child: Center(
+          child: Text(
+            labels[i],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+              color: selected ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+}
+
+/// Filter chip: quiet surface pill, tinted primary when selected.
+class StatsChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const StatsChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = StadiumBorder(
+      side: BorderSide(
+        color: selected
+            ? AppTheme.primaryLight.withValues(alpha: 0.4)
+            : AppTheme.border,
+      ),
+    );
+    return Material(
+      color: selected ? AppTheme.primary.withValues(alpha: 0.14) : AppTheme.surface,
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        customBorder: shape,
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+              color: selected ? AppTheme.primaryLight : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

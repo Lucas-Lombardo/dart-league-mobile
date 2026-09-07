@@ -3,6 +3,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../models/stats_summary.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/haptic_service.dart';
+import 'stats_widgets.dart';
 
 class StatsFilter {
   final StatsPeriod period;
@@ -23,11 +24,7 @@ Future<StatsFilter?> showStatsFilterSheet(
 ) {
   return showModalBottomSheet<StatsFilter>(
     context: context,
-    backgroundColor: AppTheme.surface,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
     builder: (sheetContext) {
       var draft = current;
       final l10n = AppLocalizations.of(sheetContext);
@@ -36,7 +33,7 @@ Future<StatsFilter?> showStatsFilterSheet(
         builder: (builderContext, setSheetState) {
           return SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,32 +51,30 @@ Future<StatsFilter?> showStatsFilterSheet(
                   const SizedBox(height: 18),
                   Text(l10n.statsFilters, style: AppTheme.titleLarge),
                   const SizedBox(height: 20),
-                  _SheetLabel(l10n.statsPeriod),
+                  StatsLabel(l10n.statsPeriod),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
                       for (final period in StatsPeriod.values)
-                        _Chip(
+                        StatsChip(
                           label: _periodLabel(l10n, period),
                           selected: draft.period == period,
-                          onTap: () {
-                            HapticService.lightImpact();
-                            setSheetState(() => draft = draft.copyWith(period: period));
-                          },
+                          onTap: () =>
+                              setSheetState(() => draft = draft.copyWith(period: period)),
                         ),
                     ],
                   ),
                   const SizedBox(height: 22),
-                  _SheetLabel(l10n.statsMode),
+                  StatsLabel(l10n.statsMode),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
                       for (final mode in MatchMode.values)
-                        _Chip(
+                        StatsChip(
                           label: modeLabel(l10n, mode),
                           selected: draft.modes.contains(mode),
                           onTap: () {
@@ -87,7 +82,6 @@ Future<StatsFilter?> showStatsFilterSheet(
                             // Clearing the last mode would show an empty screen
                             // with no way back, so the last one is sticky.
                             if (next.contains(mode) && next.length == 1) return;
-                            HapticService.lightImpact();
                             next.contains(mode) ? next.remove(mode) : next.add(mode);
                             setSheetState(() => draft = draft.copyWith(modes: next));
                           },
@@ -100,10 +94,6 @@ Future<StatsFilter?> showStatsFilterSheet(
                       HapticService.mediumImpact();
                       Navigator.of(builderContext).pop(draft);
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
                     child: Text(l10n.statsApply),
                   ),
                 ],
@@ -131,60 +121,3 @@ String modeLabel(AppLocalizations l10n, MatchMode mode) => switch (mode) {
 };
 
 String periodLabel(AppLocalizations l10n, StatsPeriod period) => _periodLabel(l10n, period);
-
-class _SheetLabel extends StatelessWidget {
-  final String text;
-
-  const _SheetLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        color: AppTheme.textSecondary,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.2,
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _Chip({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? AppTheme.primary.withValues(alpha: 0.18) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? AppTheme.primary : AppTheme.surfaceLight,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? AppTheme.primary : AppTheme.textSecondary,
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -5,6 +5,7 @@ import '../models/tournament.dart';
 import '../utils/app_theme.dart';
 import '../utils/round_labels.dart';
 import '../utils/tournament_bracket_logic.dart';
+import 'design_system.dart';
 
 /// "Gagnant demi 2" for an empty slot, or the generic TBD label when the
 /// bracket carries no feeder link.
@@ -36,9 +37,8 @@ class BracketLiveInfo {
   });
 }
 
-Color get _hairline => AppTheme.surfaceLight.withValues(alpha: 0.45);
-
-/// Pulsing red dot used for everything live on the tournament screen.
+/// The rose dot that marks everything live on the tournament screens — the
+/// only place the secondary colour appears outside a match.
 class LiveDot extends StatelessWidget {
   final double size;
 
@@ -49,15 +49,9 @@ class LiveDot extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
         color: AppTheme.secondary,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.secondary.withValues(alpha: 0.22),
-            spreadRadius: 3,
-          ),
-        ],
       ),
     );
   }
@@ -65,9 +59,12 @@ class LiveDot extends StatelessWidget {
 
 /// The whole bracket as a paper-style tree: one column per round, connectors
 /// between feeders and their next match, the signed-in player's winning path
-/// in blue and a marker pinned above the match that concerns them now.
-/// Scrolls horizontally when the columns exceed the width and lands on the
-/// marked match on first layout.
+/// in the primary colour and a marker pinned above the match that concerns
+/// them now. Scrolls horizontally when the columns exceed the width and lands
+/// on the marked match on first layout.
+///
+/// Visual system D: surface tiles with a hairline, the primary path, a
+/// coloured border only for "mine" and "live", sentence-case labels.
 class TournamentBracketTree extends StatefulWidget {
   final BracketIndex index;
   final String? currentUserId;
@@ -232,6 +229,8 @@ class _TournamentBracketTreeState extends State<TournamentBracketTree> {
   }
 }
 
+/// "QUARTS" / "DEMIS" / "FINALE" — the 10 / 700 spaced group label of a
+/// column; the current round reads in the link colour.
 class _ColumnHeader extends StatelessWidget {
   final String label;
   final bool done;
@@ -252,23 +251,22 @@ class _ColumnHeader extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+            style: AppTheme.labelSmall.copyWith(
               fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: current ? AppTheme.primary : AppTheme.textSecondary,
+              color: current ? AppTheme.primaryLight : AppTheme.textSecondary,
             ),
           ),
         ),
         if (done) ...[
           const SizedBox(width: 4),
-          const Icon(Icons.check, size: 11, color: AppTheme.success),
+          const Icon(Icons.check_rounded, size: 11, color: AppTheme.success),
         ],
       ],
     );
   }
 }
 
+/// "Vous êtes ici" / "Éliminé ici" / "Champion" flag pinned above a tile.
 class _Marker extends StatelessWidget {
   final String label;
   final Color color;
@@ -292,12 +290,12 @@ class _Marker extends StatelessWidget {
               const Icon(Icons.flag_outlined, size: 10, color: Colors.white),
               const SizedBox(width: 5),
               Text(
-                label,
+                dsSentence(label),
                 style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
+                  height: 1.2,
                 ),
               ),
             ],
@@ -348,7 +346,7 @@ class _ConnectorPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final dim = Paint()
-      ..color = AppTheme.textSecondary.withValues(alpha: 0.3)
+      ..color = AppTheme.surfaceLight
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke
       ..strokeJoin = StrokeJoin.round;
@@ -414,13 +412,15 @@ class _BracketTile extends StatelessWidget {
     final showScore = match.isCompleted || isLive;
     final padding = compact ? 7.0 : 10.0;
 
+    // The border is the tile's only state signal: my match, a live match,
+    // or the plain hairline.
     final Color border;
     if (_mine) {
       border = AppTheme.primary.withValues(alpha: 0.6);
     } else if (isLive) {
       border = AppTheme.secondary.withValues(alpha: 0.5);
     } else {
-      border = _hairline;
+      border = AppTheme.border;
     }
 
     Widget row(int slot) {
@@ -464,11 +464,11 @@ class _BracketTile extends StatelessWidget {
                       children: [
                         if (me && !compact)
                           TextSpan(
-                            text: '  ${l10n.you}',
+                            text: '  ${dsSentence(l10n.you)}',
                             style: const TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryLight,
                             ),
                           ),
                       ],
@@ -484,7 +484,7 @@ class _BracketTile extends StatelessWidget {
                       color: tbd
                           ? AppTheme.textSecondary
                           : me
-                          ? AppTheme.primary
+                          ? AppTheme.primaryLight
                           : AppTheme.textPrimary,
                     ),
                   ),
@@ -525,7 +525,7 @@ class _BracketTile extends StatelessWidget {
           row(0),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: padding),
-            child: Container(height: 1, color: _hairline),
+            child: Container(height: 1, color: AppTheme.border),
           ),
           row(1),
           if (!compact) _footer(l10n),
@@ -549,19 +549,19 @@ class _BracketTile extends StatelessWidget {
     final Widget content;
     if (match.isDisputed) {
       content = _footerLine(
-        Icons.gavel,
-        l10n.underReviewBadge,
-        AppTheme.accent,
+        Icons.gavel_rounded,
+        dsSentence(l10n.underReviewBadge),
+        AppTheme.textSecondary,
       );
     } else if (match.isCompleted && match.winnerId == null) {
       content = _footerLine(
-        Icons.close,
+        Icons.close_rounded,
         l10n.matchStatusNotPlayed,
         AppTheme.error,
       );
     } else if (match.isCompleted) {
       content = _footerLine(
-        Icons.check,
+        Icons.check_rounded,
         l10n.matchStatusCompleted,
         AppTheme.success,
       );
@@ -574,36 +574,38 @@ class _BracketTile extends StatelessWidget {
           // free width before it ever ellipsizes.
           Expanded(
             child: Text(
-              l10n.liveBadge,
+              dsSentence(l10n.liveBadge),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
+                fontWeight: FontWeight.w700,
                 color: AppTheme.secondary,
               ),
             ),
           ),
-          const Icon(Icons.chevron_right, size: 14, color: AppTheme.primary),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 14,
+            color: AppTheme.primaryLight,
+          ),
         ],
       );
     } else if (joinable) {
       content = _footerLine(
         Icons.notifications_active_outlined,
-        l10n.bracketYourTurn,
-        AppTheme.accent,
-        letterSpacing: 0.2,
+        dsSentence(l10n.bracketYourTurn),
+        AppTheme.primaryLight,
       );
     } else if (match.player1Id != null && match.player2Id != null) {
       content = _footerLine(
-        Icons.schedule,
+        Icons.schedule_outlined,
         l10n.matchStatusUpcoming,
         AppTheme.textSecondary,
       );
     } else {
       content = _footerLine(
-        Icons.schedule,
+        Icons.schedule_outlined,
         l10n.bracketWaiting,
         AppTheme.textSecondary,
       );
@@ -612,20 +614,15 @@ class _BracketTile extends StatelessWidget {
     return Container(
       height: 22,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.5),
-        border: Border(top: BorderSide(color: _hairline)),
+      decoration: const BoxDecoration(
+        color: AppTheme.background,
+        border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: content,
     );
   }
 
-  Widget _footerLine(
-    IconData icon,
-    String text,
-    Color color, {
-    double letterSpacing = 0,
-  }) {
+  Widget _footerLine(IconData icon, String text, Color color) {
     return Row(
       children: [
         Icon(icon, size: 12, color: color),
@@ -638,7 +635,6 @@ class _BracketTile extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              letterSpacing: letterSpacing,
               color: color,
             ),
           ),

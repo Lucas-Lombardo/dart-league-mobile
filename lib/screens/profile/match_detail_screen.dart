@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/friends_provider.dart';
 import '../../services/match_service.dart';
 import '../../models/match.dart';
+import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/notification_service.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/premium_badge.dart';
+import '../../widgets/recent_matches_widget.dart';
 import '../../l10n/app_localizations.dart';
+import 'replay_library_screen.dart';
 
+/// One match: summary card (result, the two players in their in-match
+/// colours, score, context line), the friend action, the legs of a BO3, the
+/// duel of figures and the round-by-round table.
 class MatchDetailScreen extends StatefulWidget {
   final String matchId;
 
@@ -37,7 +46,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     try {
       final auth = context.read<AuthProvider>();
       final userId = auth.currentUser?.id ?? '';
-      
+
       final response = await MatchService.getMatchDetail(widget.matchId);
       final match = Match.fromJson(response, userId);
       setState(() {
@@ -56,539 +65,719 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final userId = auth.currentUser?.id ?? '';
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(AppLocalizations.of(context).matchDetails),
-        backgroundColor: AppTheme.surface,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
-                      const SizedBox(height: 16),
-                      Text(AppLocalizations.of(context).errorWithMessage.replaceAll('{message}', _error ?? ''), style: const TextStyle(color: AppTheme.error)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadMatchDetail,
-                        child: Text(AppLocalizations.of(context).retry),
-                      ),
-                    ],
-                  ),
-                )
-              : _match == null
-                  ? Center(child: Text(AppLocalizations.of(context).matchNotFound))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildMatchHeader(_match!, userId),
-                          if (_match!.series != null) ...[
-                            const SizedBox(height: 24),
-                            _buildSeriesCard(_match!, userId),
-                          ],
-                          const SizedBox(height: 24),
-                          _buildScoreCard(_match!, userId),
-                          const SizedBox(height: 24),
-                          _buildMatchStats(_match!, userId),
-                          if (_match!.rounds != null && _match!.rounds!.isNotEmpty) ...[
-                            const SizedBox(height: 24),
-                            _buildRoundHistory(_match!, userId),
-                          ],
-                        ],
-                      ),
-                    ),
+      appBar: AppBar(title: Text(l10n.matchDetails)),
+      body: _buildBody(l10n, userId),
     );
   }
 
-  Widget _buildMatchHeader(Match match, String userId) {
-    final isWin = match.isWinner(userId);
-    final eloChange = match.getEloChange(userId);
-    final dateFormat = DateFormat('EEEE, MMMM d, y • h:mm a');
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isWin
-              ? [AppTheme.success.withValues(alpha: 0.2), AppTheme.success.withValues(alpha: 0.05)]
-              : [AppTheme.error.withValues(alpha: 0.2), AppTheme.error.withValues(alpha: 0.05)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isWin ? AppTheme.success : AppTheme.error,
-          width: 2,
-        ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: isWin ? AppTheme.success : AppTheme.error,
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Text(
-              isWin ? AppLocalizations.of(context).victoryEmoji : AppLocalizations.of(context).defeatEmoji,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
+  Widget _buildBody(AppLocalizations l10n, String userId) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+    }
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: DsCard(
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 32, color: AppTheme.textTertiary),
+              const SizedBox(height: 12),
+              Text(
+                l10n.errorWithMessage.replaceAll('{message}', _error ?? ''),
+                textAlign: TextAlign.center,
+                style: AppTheme.rowTitle,
               ),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: _loadMatchDetail, child: Text(l10n.retry)),
+            ],
+          ),
+        ),
+      );
+    }
+    final match = _match;
+    if (match == null) {
+      return Center(child: Text(l10n.matchNotFound, style: AppTheme.bodyMedium));
+    }
+
+    final series = match.series;
+    final rounds = match.rounds;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MatchSummaryCard(match: match, userId: userId),
+          _FriendAction(match: match, userId: userId),
+          if (series != null) ...[
+            const SizedBox(height: 28),
+            DsSectionHeader(title: dsSentence(l10n.bestOfN(series.bestOf))),
+            const SizedBox(height: 12),
+            _LegsCard(match: match, userId: userId, currentLegId: widget.matchId),
+          ],
+          if (match.statistics != null) ...[
+            const SizedBox(height: 14),
+            MatchDuelStatsCard(match: match, userId: userId),
+          ],
+          if (rounds != null && rounds.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            DsSectionHeader(title: l10n.roundHistory),
+            const SizedBox(height: 12),
+            _RoundsCard(match: match, userId: userId),
+          ],
+          const SizedBox(height: 20),
+          Center(
+            child: TextButton.icon(
+              onPressed: () => AppNavigator.toScreen(context, const ReplayLibraryScreen()),
+              style: TextButton.styleFrom(
+                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              icon: const Icon(Icons.movie_outlined, size: 18),
+              label: Text(l10n.myReplays),
             ),
           ),
-          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
+
+/// The summary: a result pill and the ELO delta, then me (blue) and the
+/// opponent (rose) around the score — legs won for a series, 501 remainders
+/// otherwise — and the "Classé · Au meilleur de 3 · date" line.
+class MatchSummaryCard extends StatelessWidget {
+  final Match match;
+  final String userId;
+
+  const MatchSummaryCard({super.key, required this.match, required this.userId});
+
+  static String _longDate(BuildContext context, DateTime when) {
+    final at = when.toLocal();
+    try {
+      return DateFormat('EEEE d MMMM y, HH:mm', Localizations.localeOf(context).languageCode).format(at);
+    } catch (_) {
+      return DateFormat('d MMM y, HH:mm').format(at);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final inProgress = match.isInProgress;
+    final isWin = match.isWinner(userId);
+    final eloChange = match.getEloChange(userId);
+    final isPlacement = match.isPlacement;
+    final opponent = isPlacement
+        ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
+        : match.getOpponentUsername(userId);
+    final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
+    final series = match.series;
+    final iAmPlayer1 = userId == match.player1Id;
+    final myScore = series != null
+        ? (iAmPlayer1 ? series.player1LegsWon : series.player2LegsWon)
+        : match.getMyScore(userId);
+    final oppScore = series != null
+        ? (iAmPlayer1 ? series.player2LegsWon : series.player1LegsWon)
+        : match.getOpponentScore(userId);
+    final showDelta = !inProgress && !isPlacement && (eloChange != 0 || match.matchType == 'ranked');
+    final deltaColor = eloChange >= 0 ? AppTheme.success : AppTheme.error;
+    final (String resultLabel, Color resultColor) = inProgress
+        ? (dsSentence(l10n.matchStatusInProgress), AppTheme.primaryLight)
+        : isWin
+            ? (dsSentence(l10n.win), AppTheme.success)
+            : (dsSentence(l10n.loss), AppTheme.error);
+    final details = [
+      MatchRowTile.kindLabel(l10n, match),
+      if (series != null) dsSentence(l10n.bestOfN(series.bestOf)),
+      _longDate(context, match.createdAt),
+    ].join(' · ');
+
+    const scoreStyle = TextStyle(
+      fontSize: 28,
+      fontWeight: FontWeight.w800,
+      height: 1,
+      letterSpacing: -0.5,
+      fontFeatures: [FontFeature.tabularFigures()],
+    );
+
+    return DsCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                AppLocalizations.of(context).eloChange,
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${eloChange >= 0 ? '+' : ''}$eloChange',
+              DsPill(label: resultLabel, color: resultColor),
+              const Spacer(),
+              if (showDelta)
+                Text(
+                  '${eloChange >= 0 ? '+' : ''}$eloChange ${l10n.eloLabel}',
                   style: TextStyle(
-                    color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: deltaColor,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _PlayerName(
+                  name: l10n.youLabel,
+                  isPremium: false,
+                  color: AppTheme.playerBlueBright,
+                  alignEnd: false,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text.rich(
+                  TextSpan(
+                    style: scoreStyle,
+                    children: [
+                      TextSpan(text: '$myScore', style: const TextStyle(color: AppTheme.playerBlueBright)),
+                      const TextSpan(text: ' – ', style: TextStyle(color: AppTheme.textTertiary)),
+                      TextSpan(text: '$oppScore', style: const TextStyle(color: AppTheme.opponentPinkBright)),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _PlayerName(
+                  name: opponent,
+                  isPremium: opponentIsPremium,
+                  color: AppTheme.opponentPinkBright,
+                  alignEnd: true,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
           Text(
-            dateFormat.format(match.createdAt),
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 14,
-            ),
+            details,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.caption,
           ),
         ],
       ),
     );
   }
+}
 
-  /// BO3 series breakdown: series score in legs + one result row per leg.
-  /// The leg currently displayed is highlighted; the others open their own
-  /// detail screen (each leg is a full match with rounds and stats).
-  Widget _buildSeriesCard(Match match, String userId) {
+/// A player's name in its identity colour, the premium crown after it.
+class _PlayerName extends StatelessWidget {
+  final String name;
+  final bool isPremium;
+  final Color color;
+  final bool alignEnd;
+
+  const _PlayerName({
+    required this.name,
+    required this.isPremium,
+    required this.color,
+    required this.alignEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color),
+          ),
+        ),
+        PremiumBadge(isPremium: isPremium, size: 12, color: AppTheme.accent),
+      ],
+    );
+  }
+}
+
+/// Add the opponent as a friend from the match (or nothing when they already
+/// are, or when the opponent was a bot). A request already sent either way
+/// shows as a disabled "En attente".
+class _FriendAction extends StatefulWidget {
+  final Match match;
+  final String userId;
+
+  const _FriendAction({required this.match, required this.userId});
+
+  @override
+  State<_FriendAction> createState() => _FriendActionState();
+}
+
+class _FriendActionState extends State<_FriendAction> {
+  bool _busy = false;
+
+  Future<void> _sendRequest(String friendId, String username) async {
     final l10n = AppLocalizations.of(context);
-    final series = match.series!;
-    final iAmPlayer1 = userId == match.player1Id;
-    final myLegs = iAmPlayer1 ? series.player1LegsWon : series.player2LegsWon;
-    final oppLegs = iAmPlayer1 ? series.player2LegsWon : series.player1LegsWon;
+    setState(() => _busy = true);
+    try {
+      await context.read<FriendsProvider>().sendFriendRequest(friendId);
+      if (mounted) {
+        NotificationService.showSuccess(
+          context,
+          l10n.friendRequestSent.replaceAll('{username}', username),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        NotificationService.showError(context, e.toString().replaceAll('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+  @override
+  Widget build(BuildContext context) {
+    final match = widget.match;
+    final opponentId = match.getOpponentId(widget.userId);
+    if (match.isPlacement || match.matchType == 'bot' || opponentId.isEmpty || opponentId == widget.userId) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final status = context.watch<FriendsProvider>().getFriendshipStatus(opponentId);
+    if (status == 'friends') return const SizedBox.shrink();
+
+    final pending = status == 'pending_sent' || status == 'pending_received';
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: OutlinedButton.icon(
+        onPressed: pending || _busy
+            ? null
+            : () => _sendRequest(opponentId, match.getOpponentUsername(widget.userId)),
+        icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+        label: Text(pending ? l10n.pendingStatus : l10n.addFriendButton),
       ),
+    );
+  }
+}
+
+/// The legs of a BO3, one row each: number, result score coloured by who
+/// took it, a chevron on the legs that open their own detail. The leg being
+/// displayed reads in primaryLight and stays put.
+class _LegsCard extends StatelessWidget {
+  final Match match;
+  final String userId;
+  final String currentLegId;
+
+  const _LegsCard({required this.match, required this.userId, required this.currentLegId});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final legs = match.series!.legs;
+    final iAmPlayer1 = userId == match.player1Id;
+
+    return DsCard(
+      padding: EdgeInsets.zero,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  l10n.bestOfN(series.bestOf).toUpperCase(),
-                  style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$myLegs – $oppLegs',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...series.legs.map((leg) => _buildLegRow(match, leg, userId)),
+          for (var i = 0; i < legs.length; i++) ...[
+            if (i > 0) const Divider(indent: 16, endIndent: 16),
+            _legRow(context, l10n, legs[i], iAmPlayer1),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildLegRow(Match match, SeriesLeg leg, String userId) {
-    final l10n = AppLocalizations.of(context);
-    final iAmPlayer1 = userId == match.player1Id;
-    final isCurrent = leg.id == widget.matchId;
+  Widget _legRow(BuildContext context, AppLocalizations l10n, SeriesLeg leg, bool iAmPlayer1) {
+    final isCurrent = leg.id == currentLegId;
     final iWonLeg = leg.winnerId != null && leg.winnerId == userId;
     final finished = leg.status == 'finished' || leg.status == 'forfeit';
     final myScore = iAmPlayer1 ? leg.player1Score : leg.player2Score;
     final oppScore = iAmPlayer1 ? leg.player2Score : leg.player1Score;
 
-    final row = Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isCurrent ? AppTheme.primary.withValues(alpha: 0.12) : AppTheme.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCurrent
-              ? AppTheme.primary
-              : AppTheme.surfaceLight.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Text(
-            l10n.legNumber(leg.legNumber),
-            style: TextStyle(
-              color: isCurrent ? AppTheme.primary : AppTheme.textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
-          if (finished) ...[
-            Icon(
-              iWonLeg ? Icons.emoji_events : Icons.close,
-              color: iWonLeg ? AppTheme.success : AppTheme.error,
-              size: 16,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${myScore ?? '—'} – ${oppScore ?? '—'}',
-              style: TextStyle(
-                color: iWonLeg ? AppTheme.success : AppTheme.error,
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ] else
-            const Icon(Icons.hourglass_empty, color: AppTheme.textSecondary, size: 16),
-          if (!isCurrent) ...[
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 18),
-          ],
-        ],
-      ),
-    );
-
-    if (isCurrent) return row;
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => MatchDetailScreen(matchId: leg.id),
-          ),
-        );
-      },
-      child: row,
-    );
-  }
-
-  Widget _buildScoreCard(Match match, String userId) {
-    final myScore = match.getMyScore(userId);
-    final opponentScore = match.getOpponentScore(userId);
-    final opponentUsername = match.getOpponentUsername(userId);
-    final opponentIsPremium = !match.isPlacement && match.getOpponentIsPremium(userId);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Expanded(
-            child: _buildPlayerInfo(AppLocalizations.of(context).you.toUpperCase(), myScore, true),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              AppLocalizations.of(context).vs,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          Expanded(
-            child: _buildPlayerInfo(opponentUsername, opponentScore, false, isPremium: opponentIsPremium),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlayerInfo(String name, int score, bool isMe, {bool isPremium = false}) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                name,
-                style: TextStyle(
-                  color: isMe ? AppTheme.primary : Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            PremiumBadge(isPremium: isPremium, size: 14),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '$score',
-          style: TextStyle(
-            color: isMe ? AppTheme.primary : Colors.white,
-            fontSize: 48,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMatchStats(Match match, String userId) {
-    // Use statistics from backend if available
-    if (match.statistics == null) return const SizedBox.shrink();
-
-    final stats = match.statistics!;
-    final isPlayer1 = userId == match.player1Id;
-    final myStats = isPlayer1 ? stats.player1 : stats.player2;
-    final opponentStats = isPlayer1 ? stats.player2 : stats.player1;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AppLocalizations.of(context).matchStatistics,
-            style: AppTheme.titleLarge,
-          ),
-          const SizedBox(height: 20),
-          _buildStatRow(AppLocalizations.of(context).totalRounds, '${myStats.rounds}', '${opponentStats.rounds}'),
-          const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow(
-            AppLocalizations.of(context).avgScoreRound,
-            myStats.average.toStringAsFixed(1),
-            opponentStats.average.toStringAsFixed(1),
-          ),
-          const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow(AppLocalizations.of(context).highestRound, '${myStats.highest}', '${opponentStats.highest}'),
-          const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow(AppLocalizations.of(context).perfect180s, '${myStats.total180s}', '${opponentStats.total180s}'),
-          const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow(
-            AppLocalizations.of(context).bestCheckout,
-            myStats.checkout > 0 ? '${myStats.checkout}' : '—',
-            opponentStats.checkout > 0 ? '${opponentStats.checkout}' : '—',
-          ),
-          const Divider(height: 24, color: AppTheme.surfaceLight),
-          _buildStatRow(
-            AppLocalizations.of(context).finishingDoubles,
-            '${myStats.doublePercentage.toStringAsFixed(1)}%',
-            '${opponentStats.doublePercentage.toStringAsFixed(1)}%',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatRow(String label, String myValue, String opponentValue) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            myValue,
-            style: const TextStyle(
-              color: AppTheme.primary,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: Text(
-            label,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        Expanded(
-          child: Text(
-            opponentValue,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRoundHistory(Match match, String userId) {
-    final rounds = match.rounds!;
-    final roundNumbers = rounds.map((r) => r.roundNumber).toSet().toList()..sort();
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AppLocalizations.of(context).roundHistory,
-            style: AppTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-          ...roundNumbers.map((roundNum) {
-            final myRound = rounds.firstWhere(
-              (r) => r.roundNumber == roundNum && r.playerId == userId,
-              orElse: () => MatchRound(roundNumber: roundNum, playerId: '', throws: [], roundScore: 0),
-            );
-            final opponentRound = rounds.firstWhere(
-              (r) => r.roundNumber == roundNum && r.playerId != userId,
-              orElse: () => MatchRound(roundNumber: roundNum, playerId: '', throws: [], roundScore: 0),
-            );
-
-            return _buildRoundCard(roundNum, myRound, opponentRound);
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoundCard(int roundNumber, MatchRound myRound, MatchRound opponentRound) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            AppLocalizations.of(context).roundLabel.replaceAll('{number}', roundNumber.toString()),
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
+      onTap: isCurrent
+          ? null
+          : () => AppNavigator.toScreen(context, MatchDetailScreen(matchId: leg.id)),
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
             children: [
               Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      myRound.throws.join(' • '),
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${myRound.roundScore}',
-                      style: const TextStyle(
-                        color: AppTheme.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  l10n.legNumber(leg.legNumber),
+                  style: AppTheme.rowTitle.copyWith(
+                    color: isCurrent ? AppTheme.primaryLight : AppTheme.textPrimary,
+                  ),
                 ),
               ),
-              Container(
-                width: 1,
-                height: 30,
-                color: AppTheme.surfaceLight,
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      opponentRound.throws.join(' • '),
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${opponentRound.roundScore}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+              if (finished)
+                Text(
+                  '${myScore ?? '—'} – ${oppScore ?? '—'}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: iWonLeg ? AppTheme.success : AppTheme.error,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                )
+              else
+                const Icon(Icons.hourglass_empty_rounded, size: 16, color: AppTheme.textTertiary),
+              if (!isCurrent) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textTertiary),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The figures of the match, me against the opponent, in the same duel
+/// layout as the end-of-match card: my value left in bright blue, theirs
+/// right in bright rose, the label between, a 4 px two-tone bar split in
+/// proportion. Fed by the match's own statistics, no extra request.
+class MatchDuelStatsCard extends StatelessWidget {
+  final Match match;
+  final String userId;
+
+  const MatchDuelStatsCard({super.key, required this.match, required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = match.statistics;
+    if (stats == null) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
+    final isPlayer1 = userId == match.player1Id;
+    final me = isPlayer1 ? stats.player1 : stats.player2;
+    final them = isPlayer1 ? stats.player2 : stats.player1;
+    final opponent = match.isPlacement
+        ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
+        : match.getOpponentUsername(userId);
+
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(l10n.matchStatistics, style: AppTheme.sectionTitle)),
+              _Legend(label: l10n.youLabel, color: AppTheme.playerBlueDim),
+              const SizedBox(width: 12),
+              Flexible(
+                child: _Legend(
+                  label: opponent.isEmpty ? '—' : opponent,
+                  color: AppTheme.opponentPink,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 14),
+          _DuelRow(label: l10n.avgScoreRound, mine: me.average, theirs: them.average),
+          _DuelRow(
+            label: l10n.highestRound,
+            mine: me.highest.toDouble(),
+            theirs: them.highest.toDouble(),
+            decimals: 0,
+          ),
+          _DuelRow(
+            label: l10n.perfect180s,
+            mine: me.total180s.toDouble(),
+            theirs: them.total180s.toDouble(),
+            decimals: 0,
+          ),
+          _DuelRow(
+            label: l10n.finishingDoubles,
+            mine: me.doublePercentage,
+            theirs: them.doublePercentage,
+            suffix: ' %',
+          ),
+          _DuelRow(
+            label: l10n.bestCheckout,
+            mine: me.checkout > 0 ? me.checkout.toDouble() : null,
+            theirs: them.checkout > 0 ? them.checkout.toDouble() : null,
+            decimals: 0,
+            showBars: false,
+          ),
+          _DuelRow(
+            label: l10n.totalRounds,
+            mine: me.rounds.toDouble(),
+            theirs: them.rounds.toDouble(),
+            decimals: 0,
+            showBars: false,
+          ),
         ],
       ),
+    );
+  }
+}
+
+String _format(double value) =>
+    value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+
+/// "● Vous" / "● DODO180": 7 px identity dot + 11 / 600 secondary label.
+class _Legend extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _Legend({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              height: 1,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DuelRow extends StatelessWidget {
+  final String label;
+  final double? mine;
+  final double? theirs;
+  final int decimals;
+  final String suffix;
+  final bool showBars;
+
+  const _DuelRow({
+    required this.label,
+    required this.mine,
+    required this.theirs,
+    this.decimals = 1,
+    this.suffix = '',
+    this.showBars = true,
+  });
+
+  String _value(double? value) {
+    if (value == null) return '—';
+    final text = decimals == 0 ? value.toStringAsFixed(0) : _format(value);
+    return '$text$suffix';
+  }
+
+  Widget _side({required bool mine}) {
+    final value = mine ? this.mine : theirs;
+    return SizedBox(
+      width: 70,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: mine ? Alignment.centerLeft : Alignment.centerRight,
+        child: Text(
+          _value(value),
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            color: mine ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = mine ?? 0;
+    final b = theirs ?? 0;
+    final total = a + b;
+    final mineFlex = total > 0 ? (a / total * 1000).round() : 500;
+    final theirsFlex = total > 0 ? (b / total * 1000).round() : 500;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _side(mine: true),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              _side(mine: false),
+            ],
+          ),
+          if (showBars) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 4,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: mineFlex.clamp(1, 1000),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.playerBlueDim,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    flex: theirsFlex.clamp(1, 1000),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.opponentPink.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Round by round: the number, my visit (score over the three darts) in
+/// blue, the opponent's in rose, one hairline between rounds.
+class _RoundsCard extends StatelessWidget {
+  final Match match;
+  final String userId;
+
+  const _RoundsCard({required this.match, required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final rounds = match.rounds!;
+    final roundNumbers = rounds.map((r) => r.roundNumber).toSet().toList()..sort();
+    final opponent = match.isPlacement
+        ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
+        : match.getOpponentUsername(userId);
+
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: 56),
+              Expanded(child: _Legend(label: l10n.youLabel, color: AppTheme.playerBlueDim)),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _Legend(label: opponent.isEmpty ? '—' : opponent, color: AppTheme.opponentPink),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final roundNum in roundNumbers) ...[
+            const Divider(),
+            _roundRow(
+              l10n,
+              roundNum,
+              rounds.firstWhere(
+                (r) => r.roundNumber == roundNum && r.playerId == userId,
+                orElse: () => MatchRound(roundNumber: roundNum, playerId: '', throws: [], roundScore: 0),
+              ),
+              rounds.firstWhere(
+                (r) => r.roundNumber == roundNum && r.playerId != userId,
+                orElse: () => MatchRound(roundNumber: roundNum, playerId: '', throws: [], roundScore: 0),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _roundRow(AppLocalizations l10n, int number, MatchRound mine, MatchRound theirs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(
+              dsSentence(l10n.roundLabel.replaceAll('{number}', '$number')),
+              style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(child: _visit(mine, AppTheme.playerBlueBright, alignEnd: false)),
+          Expanded(child: _visit(theirs, AppTheme.opponentPinkBright, alignEnd: true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _visit(MatchRound round, Color color, {required bool alignEnd}) {
+    return Column(
+      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${round.roundScore}',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            color: color,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+        if (round.throws.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            round.throws.join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textTertiary,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

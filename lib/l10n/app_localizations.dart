@@ -593,6 +593,9 @@ abstract class AppLocalizations {
   String get trainingBustLeftOne;
   String get trainingBustOutOfDarts;
   String get trainingPlayCardTitle;
+
+  /// Home: subtitle of the Compétitif primary row ("Match classé").
+  String get homeCompetitiveSubtitle;
   String get trainingPlayCardSubtitle;
   String get trainingAiUnavailable;
   String get trainingCameraInfo;
@@ -1387,6 +1390,59 @@ abstract class AppLocalizations {
   String get bracketQualifiedShort;
   String bracketSpectators(int n);
 
+  // Premium paywall / settings (system D restyle)
+  String get premiumContinueYearly;
+  String get premiumContinueMonthly;
+  String get settingsEditShort;
+
+  /// Friends tab: "HORS LIGNE" group label (the online one reuses [online]).
+  String get friendsOffline;
+
+  // Leaderboard (system D)
+  /// "Toutes ›" — the link to the seasons screen at the end of the chips row.
+  String get leaderboardAllSeasons;
+
+  // Matchmaking queue + training hub (system D)
+  /// Hour tick under the peak-hours chart ("0 h", "6 h", …).
+  String queueAxisHour(int hour);
+  /// One-line subtitle of the "bot" primary row on the training hub.
+  String get trainingBotRowSubtitle;
+  /// Suffix of the Calcul tile caption: the drills need no camera.
+  String get trainingNoCameraShort;
+
+  // Stats tab (system D restyle)
+  String get statsLegendYou;
+  String get statsLegendMedian;
+  String statsWindowDays(int days);
+  String historyPlacementOrdinal(int place);
+  String placementHubPlayMatch(int n);
+  String placementHubResumeMatch(String bot);
+  String get placementHubToPlay;
+  String placementHubBotAverage(int avg);
+  String placementHubBotName(String rank);
+  String placementResultStartsIn(String rank);
+  String get spectateHubEmptyHint;
+
+
+  /// Quiz stat tile: the number of questions answered.
+  String get trainingQuizQuestionLabel;
+
+  /// Quiz stat tile: the number of correct answers.
+  String get trainingQuizCorrectLabel;
+
+  /// Replay library empty state: the title of the card.
+  String get replaysEmptyTitle;
+
+  /// Replay library empty state: how to get a first clip.
+  String get replaysEmptyHint;
+
+  /// Per-double progress card: when the last block on this double was thrown
+  /// ("dernière séance hier").
+  String trainingProgressLastSession(String when);
+
+  /// Per-double progress empty state: the title of the card.
+  String get trainingProgressEmptyTitle;
+
 }
 
 class _AppLocalizationsDelegate
@@ -1411,4 +1467,6 @@ class _AppLocalizationsDelegate
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
+
+
 }

@@ -4,6 +4,7 @@ import '../../../models/stats_summary.dart';
 import '../../../utils/app_navigator.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/haptic_service.dart';
+import '../../../widgets/design_system.dart';
 import '../../profile/match_history_screen.dart';
 import 'comparison_section.dart';
 import 'stats_widgets.dart';
@@ -44,10 +45,15 @@ class StatsOverviewPage extends StatelessWidget {
   /// governs everything below and nothing above.
   final Widget filterBar;
 
+  /// The standing block. Defaults to the self-loading section; injectable so
+  /// the page can be rendered without the network.
+  final Widget comparison;
+
   const StatsOverviewPage({
     super.key,
     required this.summary,
     required this.filterBar,
+    this.comparison = const ComparisonSection(),
   });
 
   @override
@@ -56,7 +62,7 @@ class StatsOverviewPage extends StatelessWidget {
     final children = <Widget>[
       // Unfiltered: the standing is drawn from its own 90-day window, which is
       // why it sits ABOVE the filter rather than under it.
-      const ComparisonSection(),
+      comparison,
       filterBar,
     ];
 
@@ -98,7 +104,7 @@ class StatsOverviewPage extends StatelessWidget {
                   child: _Tally(
                     label: l10n.winRate,
                     value: '${_num(record.winRate)} %',
-                    color: AppTheme.primary,
+                    color: AppTheme.primaryLight,
                   ),
                 ),
               ],
@@ -123,11 +129,6 @@ class StatsOverviewPage extends StatelessWidget {
                 label: bucket.label,
                 fraction: maxCount == 0 ? 0 : bucket.count / maxCount,
                 value: '${bucket.count}',
-                color: switch (bucket.label) {
-                  '180' => AppTheme.gold,
-                  '<60' => AppTheme.error,
-                  _ => AppTheme.primary,
-                },
               ),
           ],
         ),
@@ -168,7 +169,7 @@ class StatsOverviewPage extends StatelessWidget {
     return _PageBody(children: children);
   }
 
-  Widget _divider() => Container(width: 1, height: 38, color: AppTheme.surfaceLight);
+  Widget _divider() => Container(width: 1, height: 36, color: AppTheme.border);
 }
 
 class _MatchHistoryButton extends StatelessWidget {
@@ -177,18 +178,13 @@ class _MatchHistoryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return ElevatedButton.icon(
+    return OutlinedButton.icon(
       onPressed: () {
         HapticService.lightImpact();
         AppNavigator.toScreen(context, const MatchHistoryScreen());
       },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppTheme.surfaceLight,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-      ),
-      icon: const Icon(Icons.history_rounded),
-      label: Text(l10n.viewFullMatchHistory),
+      icon: const Icon(Icons.history_rounded, size: 20),
+      label: Text(dsSentence(l10n.viewFullMatchHistory)),
     );
   }
 }
@@ -202,7 +198,7 @@ class _PageBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       itemCount: children.length,
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) => children[index],
@@ -223,28 +219,15 @@ class _UnlockCurve extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(5),
-          child: Stack(
-            children: [
-              Container(height: 8, color: AppTheme.surfaceLight.withValues(alpha: 0.45)),
-              FractionallySizedBox(
-                widthFactor: progress,
-                child: Container(height: 8, color: AppTheme.primary),
-              ),
-            ],
-          ),
-        ),
+        DsProgressBar(value: progress, height: 6),
         const SizedBox(height: 8),
-        Text(
-          l10n.statsUnlockCurve(remaining),
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
-        ),
+        Text(l10n.statsUnlockCurve(remaining), style: AppTheme.caption.copyWith(height: 1.4)),
       ],
     );
   }
 }
 
+/// One column of the record card: group label over a 22 / 700 figure.
 class _Tally extends StatelessWidget {
   final String label;
   final String value;
@@ -256,22 +239,24 @@ class _Tally extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          label.toUpperCase(),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.6,
-          ),
+        // One line per label so the three figures share a baseline; the long
+        // "taux de victoire" shrinks rather than wraps.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label.toUpperCase(), maxLines: 1, style: AppTheme.labelSmall),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 6),
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
             value,
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: color),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: color,
+              height: 1.1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ),
       ],
@@ -296,10 +281,7 @@ class _RecordsCard extends StatelessWidget {
       return StatsCard(
         label: l10n.statsRecords,
         children: [
-          Text(
-            l10n.statsNoRecordsYet,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.45),
-          ),
+          Text(l10n.statsNoRecordsYet, style: AppTheme.caption.copyWith(height: 1.5)),
         ],
       );
     }
@@ -308,16 +290,12 @@ class _RecordsCard extends StatelessWidget {
       label: l10n.statsRecords,
       children: [
         for (var i = 0; i < records.length; i++) ...[
-          if (i > 0) const Divider(height: 18, color: AppTheme.surfaceLight),
+          if (i > 0) const Divider(height: 20),
           _RecordLine(record: records[i]),
         ],
         if (bestVisit != null) ...[
-          if (records.isNotEmpty) const Divider(height: 18, color: AppTheme.surfaceLight),
-          StatsRow(
-            label: l10n.statsBestVisit,
-            value: '$bestVisit',
-            valueColor: AppTheme.gold,
-          ),
+          if (records.isNotEmpty) const Divider(height: 20),
+          StatsRow(label: l10n.statsBestVisit, value: '$bestVisit'),
         ],
       ],
     );
@@ -360,13 +338,19 @@ class _RecordLine extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (subtitle.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                ),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTheme.caption),
               ],
             ],
           ),
@@ -375,9 +359,10 @@ class _RecordLine extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            color: AppTheme.gold,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
+            color: AppTheme.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFeatures: [FontFeature.tabularFigures()],
           ),
         ),
       ],

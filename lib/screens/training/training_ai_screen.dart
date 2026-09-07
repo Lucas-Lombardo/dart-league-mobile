@@ -19,7 +19,7 @@ import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/dartboard_edit_modal.dart';
-import '../../widgets/game_turn_ui.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/local_camera_preview.dart';
 import '../../widgets/queue_searching_banner.dart';
 import 'logic/training_strategy.dart';
@@ -430,8 +430,11 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        // Resolved before the dialog so the pop doesn't read a context that
+        // the await may have invalidated.
+        final navigator = Navigator.of(context);
         if (await _confirmLeave() && mounted) {
-          Navigator.of(context).pop();
+          navigator.pop();
         }
       },
       child: Scaffold(
@@ -470,47 +473,47 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     };
     return IgnorePointer(
       child: Container(
-        color: Colors.black.withValues(alpha: 0.6),
+        color: AppTheme.background.withValues(alpha: 0.72),
         alignment: Alignment.center,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 32),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
-          decoration: BoxDecoration(
-            color: AppTheme.error,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.error.withValues(alpha: 0.5),
-                blurRadius: 30,
-                spreadRadius: 4,
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.warning_rounded, color: Colors.white, size: 48),
-              const SizedBox(height: 8),
-              Text(
-                l10n.trainingBusted.toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: SizedBox(
+          width: double.infinity,
+          child: DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.error.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: AppTheme.error.withValues(alpha: 0.6),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: AppTheme.error,
+                    size: 28,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                reasonText,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 16),
+                Text(
+                  dsSentence(l10n.trainingBusted),
+                  style: AppTheme.displayMedium.copyWith(color: AppTheme.error),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  reasonText,
+                  style: AppTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -527,12 +530,16 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const CircularProgressIndicator(color: AppTheme.playerBlue),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.loadingAi,
-                    style: const TextStyle(color: AppTheme.textSecondary),
+                  const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: AppTheme.primary,
+                    ),
                   ),
+                  const SizedBox(height: 16),
+                  Text(l10n.loadingAi, style: AppTheme.bodyMedium),
                 ],
               ),
             ),
@@ -554,30 +561,36 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         children: [
           _buildTopBar(l10n),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.videocam_off,
-                      color: AppTheme.error,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      msg,
-                      style: AppTheme.bodyLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      style: gameFilledButtonStyle(AppTheme.playerBlue),
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text(l10n.backToHome),
-                    ),
-                  ],
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: DsCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.videocam_off_outlined,
+                        size: 32,
+                        color: AppTheme.textSecondary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        msg,
+                        style: AppTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(l10n.backToHome),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -617,32 +630,19 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     );
   }
 
-  /// Minimal header for the pre-game states (AI loading, camera error) — once
-  /// the drill starts, TrainingGameView carries its own in-camera back button.
+  /// Header of the pre-game states (AI loading, camera error) — once the
+  /// drill starts, TrainingGameView carries its own in-camera back button.
   Widget _buildTopBar(AppLocalizations l10n) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Row(
-        children: [
-          GameControlButton(
-            icon: Icons.arrow_back_ios_new,
-            color: AppTheme.textSecondary,
-            onTap: () async {
-              if (await _confirmLeave() && mounted) {
-                Navigator.of(context).pop();
-              }
-            },
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              trainingDisplayName(l10n, _strategy.trainingType),
-              style: AppTheme.titleLarge,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: DsScreenHeader(
+        title: trainingDisplayName(l10n, _strategy.trainingType),
+        showBack: true,
+        onBack: () async {
+          if (await _confirmLeave() && mounted) {
+            Navigator.of(context).pop();
+          }
+        },
       ),
     );
   }

@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -43,39 +44,51 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.surfaceGradient,
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset(
-                    'assets/logo/logo.png',
-                    width: 160,
-                    height: 160,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 48),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: _linkSent ? _buildSuccessView(l10n) : _buildFormView(l10n),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 64),
+                    Image.asset(
+                      'assets/logo/logo-without-letters.png',
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.contain,
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: () {
-                      context.read<AuthProvider>().clearError();
-                      AppNavigator.toAuth(context, '/login');
-                    },
-                    child: Text(l10n.backToLogin),
-                  ),
-                ],
+                    const SizedBox(height: 14),
+                    Text(
+                      l10n.dartRivals,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: AppTheme.textPrimary,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    _linkSent ? _buildSuccessView(l10n) : _buildFormView(l10n),
+                    const Spacer(),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: TextButton(
+                        onPressed: () {
+                          context.read<AuthProvider>().clearError();
+                          AppNavigator.toAuth(context, '/login');
+                        },
+                        child: Text(l10n.backToLogin),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
             ),
           ),
@@ -90,12 +103,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.lock_reset,
-            size: 48,
-            color: AppTheme.primary,
-          ),
-          const SizedBox(height: 16),
           Text(
             l10n.forgotPasswordTitle,
             style: AppTheme.displayMedium,
@@ -107,14 +114,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             style: AppTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
+          Text(
+            l10n.email,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
-            style: const TextStyle(color: Colors.white),
-            decoration: AppTheme.inputDecoration(
-              label: l10n.email,
-              prefixIcon: Icons.email_outlined,
+            style: AppTheme.rowTitle,
+            decoration: InputDecoration(
+              hintText: l10n.email,
+              prefixIcon: const Icon(Icons.mail_outline_rounded,
+                  size: 18, color: AppTheme.textSecondary),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -126,53 +143,54 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               return null;
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
-              if (authProvider.errorMessage != null) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.error),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppTheme.error, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            authProvider.errorMessage!,
-                            style: const TextStyle(color: AppTheme.error),
-                          ),
+              final message = authProvider.errorMessage;
+              if (message == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: DsCard(
+                  radius: AppTheme.radiusControl,
+                  color: AppTheme.error.withValues(alpha: 0.10),
+                  side: BorderSide(color: AppTheme.error.withValues(alpha: 0.4)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          size: 18, color: AppTheme.error),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          message,
+                          style: AppTheme.caption.copyWith(
+                              color: AppTheme.textPrimary, height: 1.35),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                );
-              }
-              return const SizedBox.shrink();
+                ),
+              );
             },
           ),
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
               return SizedBox(
-                height: 56,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: authProvider.isLoading ? null : _handleSubmit,
                   child: authProvider.isLoading
                       ? const SizedBox(
-                          height: 24,
-                          width: 24,
+                          height: 20,
+                          width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                      : Text(l10n.sendResetLink.toUpperCase()),
+                      : Text(dsSentence(l10n.sendResetLink)),
                 ),
               );
             },
@@ -187,7 +205,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       children: [
         const Icon(
           Icons.mark_email_read_outlined,
-          size: 64,
+          size: 48,
           color: AppTheme.success,
         ),
         const SizedBox(height: 16),

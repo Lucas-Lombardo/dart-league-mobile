@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../providers/matchmaking_provider.dart';
 import '../screens/game/game_screen.dart';
 import '../utils/app_theme.dart';
+import 'design_system.dart';
 
 /// Owns match-found navigation globally, independent of the current screen.
 ///
@@ -87,84 +88,60 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
     showDialog(
       context: ctx,
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppTheme.primary, width: 2),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle, color: AppTheme.primary, size: 80),
-              const SizedBox(height: 16),
-              Text(
-                AppLocalizations.of(context).matchFoundExclamation,
-                style: TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+      // Theme dialog (surface, 20 px radius): a success check, the title in
+      // sentence case, the opponent on a flat card, the "starting" caption.
+      builder: (context) {
+        final l10n = AppLocalizations.of(context);
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: AppTheme.success,
+                  size: 48,
                 ),
-              ),
-              const SizedBox(height: 24),
-              if (matchmaking.opponentId != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.background,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+                const SizedBox(height: 14),
+                Text(
+                  dsSentence(l10n.matchFoundExclamation),
+                  style: AppTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+                if (matchmaking.opponentId != null) ...[
+                  const SizedBox(height: 18),
+                  DsCard(
+                    child: Column(
+                      children: [
+                        Text(
+                          matchmaking.opponentUsername ?? l10n.unknownPlayer,
+                          style: AppTheme.titleLarge,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          l10n.eloValue.replaceAll(
+                              '{value}', '${matchmaking.opponentElo ?? '???'}'),
+                          style: AppTheme.caption,
+                        ),
+                      ],
                     ),
                   ),
-                  child: Column(
-                    children: [
-                      Text(
-                        AppLocalizations.of(context).opponent,
-                        style: AppTheme.labelLarge
-                            .copyWith(color: AppTheme.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        matchmaking.opponentUsername ??
-                            AppLocalizations.of(context).unknownPlayer,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        AppLocalizations.of(context).eloValue.replaceAll(
-                            '{value}', '${matchmaking.opponentElo ?? '???'}'),
-                        style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  l10n.startingGame,
+                  style: AppTheme.caption,
+                  textAlign: TextAlign.center,
                 ),
-              const SizedBox(height: 24),
-              Text(
-                AppLocalizations.of(context).startingGame,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 14,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     ).then((_) {
       // Cleared however the dialog closes (our dismiss, or removal by the
       // pushAndRemoveUntil into GameScreen).

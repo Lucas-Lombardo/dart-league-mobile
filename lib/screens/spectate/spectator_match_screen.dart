@@ -4,11 +4,19 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/spectator_provider.dart';
 import '../../services/spectate_service.dart';
 import '../../utils/app_theme.dart';
-import '../../widgets/game_turn_ui.dart' show CameraScoreBand, LiveBadge;
+import '../../widgets/design_system.dart';
+import '../../widgets/game_turn_ui.dart'
+    show GameControlButton, LiveBadge, VisitTotal;
+import '../../widgets/tv_scoreboard.dart';
 import '../../widgets/virtual_dartboard.dart';
 
 /// Read-only live view of a ranked/tournament match: virtual board animated
 /// by the per-dart stream, score band, current visit and last-visits feed.
+///
+/// Laid out like the opponent-turn screen of a real match (system D,
+/// 2026-09): a badge row over the panel (glass back button, live badge,
+/// viewer count), the r20 panel with the 1.5 px identity border of whoever is
+/// throwing, then the score band and the quiet surface rows below.
 class SpectatorMatchScreen extends StatefulWidget {
   final String matchId;
 
@@ -49,6 +57,15 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     super.dispose();
   }
 
+  /// Player 1 is the blue side of every spectator display, player 2 the rose
+  /// one — the same identity convention as an in-match screen.
+  bool _throwerIsPlayer1(SpectatorProvider p) =>
+      p.currentPlayerId != null && p.currentPlayerId == p.player1?.id;
+
+  Color _throwerColor(SpectatorProvider p) => _throwerIsPlayer1(p)
+      ? AppTheme.playerBlueBright
+      : AppTheme.opponentPinkBright;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -60,21 +77,28 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
           builder: (context, _) {
             final p = _provider;
             return Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildHeader(p),
+                  _buildBadgeRow(p),
                   const SizedBox(height: 10),
-                  Expanded(child: _buildBoardPanel(context, p, l10n)),
+                  Expanded(child: _buildBoardPanel(p, l10n)),
+                  const SizedBox(height: 10),
+                  _buildScoreBand(p, l10n),
                   const SizedBox(height: 10),
                   _buildVisitTicker(p, l10n),
-                  const SizedBox(height: 10),
-                  _buildStatsRow(p, l10n),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildLastVisits(p, l10n),
                   const SizedBox(height: 12),
-                  _buildLeaveButton(l10n),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      child: Text(dsSentence(l10n.spectateLeave)),
+                    ),
+                  ),
                 ],
               ),
             );
@@ -84,145 +108,137 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     );
   }
 
-  Widget _buildHeader(SpectatorProvider p) {
-    return Row(
-      children: [
-        InkWell(
-          onTap: () => Navigator.of(context).maybePop(),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 40,
-            height: 40,
+  /// Back / live badge / viewer count — the badge row the opponent feed docks
+  /// on its video, here above the virtual board.
+  Widget _buildBadgeRow(SpectatorProvider p) {
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          GameControlButton(
+            icon: Icons.arrow_back_ios_new_rounded,
+            onTap: () => Navigator.of(context).maybePop(),
+          ),
+          const Expanded(child: Center(child: LiveBadge())),
+          Container(
+            height: 26,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              color: AppTheme.gamePanel,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.surfaceLight, width: 1.4),
+              color: AppTheme.gameBackground.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
-            child: const Icon(Icons.arrow_back_ios_new,
-                size: 18, color: AppTheme.textPrimary),
-          ),
-        ),
-        const Expanded(child: Center(child: LiveBadge())),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppTheme.gamePanel,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.visibility_outlined,
-                  size: 14, color: AppTheme.textSecondary),
-              const SizedBox(width: 5),
-              Text(
-                '${p.spectatorCount}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.visibility_outlined,
+                  size: 14,
                   color: AppTheme.textSecondary,
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Text(
+                  '${p.spectatorCount}',
+                  style: AppTheme.labelSmall.copyWith(height: 1),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildBoardPanel(
-      BuildContext context, SpectatorProvider p, AppLocalizations l10n) {
-    final throwerIsPlayer1 =
-        p.currentPlayerId != null && p.currentPlayerId == p.player1?.id;
-    final borderColor =
-        throwerIsPlayer1 ? AppTheme.playerBlue : AppTheme.opponentPink;
+  /// The virtual board in the camera panel's clothes: flat empty-panel
+  /// background, r20, and the 1.5 px identity border of the thrower (a quiet
+  /// hairline while the match is not live).
+  Widget _buildBoardPanel(SpectatorProvider p, AppLocalizations l10n) {
+    final isLive = p.status == SpectatorStatus.live;
+    final borderColor = !isLive
+        ? AppTheme.border
+        : _throwerIsPlayer1(p)
+            ? AppTheme.playerBlue
+            : AppTheme.opponentPink;
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: p.status == SpectatorStatus.live
-              ? borderColor
-              : AppTheme.surfaceLight,
-          width: 2,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: RadialGradient(
-              center: Alignment(0, -0.2),
-              radius: 1.1,
-              colors: [Color(0xFF1D2740), AppTheme.gameBackground],
-            ),
-          ),
-          child: LayoutBuilder(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: AppTheme.gamePanelEmpty),
+          LayoutBuilder(
             builder: (context, constraints) {
-              final boardSize =
-                  (constraints.maxWidth - 90).clamp(160.0, 300.0);
-              return Stack(
-                alignment: Alignment.center,
+              // Fitted to the panel in BOTH directions: the board used to be
+              // sized on the width alone and was cut off by the panel's
+              // bottom edge on short phones.
+              final available = constraints.maxWidth - 40 < constraints.maxHeight - 56
+                  ? constraints.maxWidth - 40
+                  : constraints.maxHeight - 56;
+              final boardSize = available.clamp(120.0, 300.0);
+              return Column(
                 children: [
-                  Positioned(
-                    top: 30,
-                    child: VirtualDartboard(
-                      throws: p.currentRoundThrows,
-                      size: boardSize,
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.spectateVirtualBoard.toUpperCase(),
+                    style: AppTheme.labelSmall.copyWith(
+                      color: AppTheme.textTertiary,
+                      height: 1,
                     ),
                   ),
-                  Positioned(
-                    top: 10,
-                    child: Text(
-                      l10n.spectateVirtualBoard,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                        color: AppTheme.textPrimary.withValues(alpha: 0.35),
-                      ),
+                  Expanded(
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        VirtualDartboard(
+                          throws: p.currentRoundThrows,
+                          size: boardSize,
+                        ),
+                        if (!isLive) _buildStatusPill(p, l10n),
+                      ],
                     ),
                   ),
-                  if (p.status != SpectatorStatus.live) _buildStatusOverlay(p, l10n),
-                  Positioned(
-                    left: 10,
-                    right: 10,
-                    bottom: 10,
-                    child: CameraScoreBand(
-                      myName: p.player1?.username ?? '…',
-                      opponentName: p.player2?.username ?? '…',
-                      myScore: p.player1Score,
-                      opponentScore: p.player2Score,
-                      seriesTitle: widget.title,
-                      myLegs: p.player1LegsWon,
-                      opponentLegs: p.player2LegsWon,
-                    ),
-                  ),
+                  const SizedBox(height: 12),
                 ],
               );
             },
           ),
-        ),
+          IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: borderColor, width: 1.5),
+                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatusOverlay(SpectatorProvider p, AppLocalizations l10n) {
+  /// Same glass hint pill as the camera guidance ones: background at 85 %, a
+  /// hairline and 12 / 600 text.
+  Widget _buildStatusPill(SpectatorProvider p, AppLocalizations l10n) {
     final String message;
-    final Widget? leading;
+    final Widget leading;
     switch (p.status) {
       case SpectatorStatus.connecting:
         message = l10n.spectateConnecting;
         leading = const SizedBox(
-          width: 16,
-          height: 16,
+          width: 14,
+          height: 14,
           child: CircularProgressIndicator(
-              strokeWidth: 2, color: AppTheme.accent),
+            strokeWidth: 2,
+            color: AppTheme.textSecondary,
+          ),
         );
         break;
       case SpectatorStatus.waitingNextLeg:
         message = l10n.spectateWaitingNextLeg;
-        leading = null;
+        leading = const Icon(
+          Icons.hourglass_empty_rounded,
+          size: 15,
+          color: AppTheme.textSecondary,
+        );
         break;
       case SpectatorStatus.ended:
         final winner = p.winnerId == p.player1?.id
@@ -231,35 +247,48 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
                 ? p.player2?.username
                 : null;
         message = winner != null
-            ? '${l10n.spectateMatchOver} · 🏆 $winner'
+            ? '${l10n.spectateMatchOver} · $winner'
             : l10n.spectateMatchOver;
-        leading = null;
+        leading = const Icon(
+          Icons.emoji_events_outlined,
+          size: 15,
+          color: AppTheme.textSecondary,
+        );
         break;
       case SpectatorStatus.denied:
         message = l10n.spectateUnavailable;
-        leading = null;
+        leading = const Icon(
+          Icons.videocam_off_outlined,
+          size: 15,
+          color: AppTheme.textSecondary,
+        );
         break;
       case SpectatorStatus.live:
         return const SizedBox.shrink();
     }
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: AppTheme.gameBackground.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: AppTheme.accent.withValues(alpha: 0.6), width: 1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (leading != null) ...[leading, const SizedBox(width: 8)],
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textPrimary,
+          leading,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              message,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
             ),
           ),
         ],
@@ -267,111 +296,110 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     );
   }
 
+  /// The shared score band: names in their identity colours over white
+  /// tabular scores, the series context and both averages in the middle.
+  Widget _buildScoreBand(SpectatorProvider p, AppLocalizations l10n) {
+    final p1Avg = p.averageOf(true);
+    final p2Avg = p.averageOf(false);
+    return TvScoreboard(
+      myName: p.player1?.username ?? '…',
+      opponentName: p.player2?.username ?? '…',
+      myScore: p.player1Score,
+      opponentScore: p.player2Score,
+      isMyTurn: _throwerIsPlayer1(p),
+      myAverage: p1Avg > 0 ? p1Avg : null,
+      opponentAverage: p2Avg > 0 ? p2Avg : null,
+      seriesTitle: '${widget.title} · BO${p.bestOf}',
+      myLegs: p.player1LegsWon,
+      opponentLegs: p.player2LegsWon,
+      caption: dsSentence(l10n.legNumber(p.legNumber)),
+    );
+  }
+
+  /// "VOLÉE DE X … TOTAL 60" over the three darts of the visit in progress.
   Widget _buildVisitTicker(SpectatorProvider p, AppLocalizations l10n) {
-    final throwerIsPlayer1 =
-        p.currentPlayerId != null && p.currentPlayerId == p.player1?.id;
+    final throwerIsPlayer1 = _throwerIsPlayer1(p);
     final throwerName = throwerIsPlayer1
         ? p.player1?.username
         : p.currentPlayerId == p.player2?.id
             ? p.player2?.username
             : null;
-    final throwerColor =
-        throwerIsPlayer1 ? AppTheme.playerBlue : AppTheme.opponentPink;
+    final color = _throwerColor(p);
     final throws = p.currentRoundThrows;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppTheme.gamePanelEmpty,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: AppTheme.surfaceLight.withValues(alpha: 0.5), width: 1),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              throwerName != null
-                  ? l10n.spectateVisitOf(throwerName.toUpperCase())
-                  : '…',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ),
-          for (var i = 0; i < 3; i++) ...[
-            _visitChip(
-              i < throws.length ? throws[i] : null,
-              highlighted: i == throws.length - 1,
-              color: throwerColor,
-            ),
-            const SizedBox(width: 8),
-          ],
-          const SizedBox(width: 4),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${p.currentVisitTotal}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                  color: throwerColor,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  throwerName != null
+                      ? l10n.spectateVisitOf(throwerName)
+                      : '…',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.labelSmall,
                 ),
               ),
-              const Text(
-                'TOTAL',
-                style: TextStyle(
-                  fontSize: 7,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                  color: AppTheme.textSecondary,
+            ),
+            VisitTotal(total: p.currentVisitTotal, color: color),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(
+                child: _visitChip(
+                  i < throws.length ? throws[i] : null,
+                  highlighted: i == throws.length - 1,
+                  color: color,
                 ),
               ),
             ],
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
-  Widget _visitChip(String? notation, {required bool highlighted, required Color color}) {
+  Widget _visitChip(
+    String? notation, {
+    required bool highlighted,
+    required Color color,
+  }) {
     final filled = notation != null;
     return Container(
-      width: 38,
-      height: 28,
+      height: 34,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: filled
-            ? AppTheme.gamePanel.withValues(alpha: 0.9)
-            : AppTheme.gamePanelEmpty,
-        borderRadius: BorderRadius.circular(8),
-        border: filled && highlighted
-            ? Border.all(color: color, width: 1.5)
-            : Border.all(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-                width: 1.5,
-              ),
+        color: filled ? AppTheme.surface : AppTheme.gamePanelEmpty,
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(
+          color: filled && highlighted ? color : AppTheme.border,
+          width: filled && highlighted ? 1.5 : 1,
+        ),
       ),
       child: filled
           ? Text(
               _displayNotation(notation),
               style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                height: 1,
                 color: AppTheme.textPrimary,
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
             )
           : Container(
               width: 14,
-              height: 3,
+              height: 2,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceLight,
                 borderRadius: BorderRadius.circular(2),
@@ -388,102 +416,26 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     return notation;
   }
 
-  Widget _buildStatsRow(SpectatorProvider p, AppLocalizations l10n) {
-    final avgLabel = l10n.trainingAverage.toUpperCase();
-    String avg(bool isPlayer1) {
-      final value = p.averageOf(isPlayer1);
-      return value <= 0 ? '–' : value.toStringAsFixed(1);
-    }
-
-    Widget tile(String label, String value, Color valueColor) {
-      return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            color: AppTheme.gamePanel,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: valueColor,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        tile(
-          '$avgLabel ${(p.player1?.username ?? '').toUpperCase()}',
-          avg(true),
-          AppTheme.playerBlue,
-        ),
-        const SizedBox(width: 10),
-        tile(
-          l10n.legNumber(p.legNumber).toUpperCase(),
-          'BO${p.bestOf}',
-          AppTheme.textPrimary,
-        ),
-        const SizedBox(width: 10),
-        tile(
-          '$avgLabel ${(p.player2?.username ?? '').toUpperCase()}',
-          avg(false),
-          AppTheme.opponentPink,
-        ),
-      ],
-    );
-  }
-
   Widget _buildLastVisits(SpectatorProvider p, AppLocalizations l10n) {
     final visits = p.lastVisits.take(3).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          l10n.spectateLastVisits,
-          style: const TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: AppTheme.textSecondary,
-          ),
+          l10n.spectateLastVisits.toUpperCase(),
+          style: AppTheme.labelSmall,
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 8),
         if (visits.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            decoration: BoxDecoration(
-              color: AppTheme.gamePanelEmpty,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Text(
-              '—',
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-            ),
+          DsCard(
+            radius: AppTheme.radiusControl,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text('—', style: AppTheme.caption),
           ),
         for (final visit in visits) ...[
           _visitRow(p, visit),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
         ],
       ],
     );
@@ -492,24 +444,23 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
   Widget _visitRow(SpectatorProvider p, SpectatedVisit visit) {
     final isPlayer1 = visit.playerId == p.player1?.id;
     final name = (isPlayer1 ? p.player1?.username : p.player2?.username) ?? '?';
-    final color = isPlayer1 ? AppTheme.playerBlue : AppTheme.opponentPink;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppTheme.gamePanelEmpty,
-        borderRadius: BorderRadius.circular(10),
-      ),
+    final color =
+        isPlayer1 ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright;
+    return DsCard(
+      radius: AppTheme.radiusControl,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
           SizedBox(
-            width: 64,
+            width: 72,
             child: Text(
-              name.toUpperCase(),
+              name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1,
                 color: color,
               ),
             ),
@@ -517,49 +468,27 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
           Expanded(
             child: Text(
               visit.throws.map(_displayNotation).join(' · '),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary.withValues(alpha: 0.85),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.caption.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
               ),
             ),
           ),
+          const SizedBox(width: 10),
           Text(
             '${visit.total}',
             style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1,
               color: AppTheme.textPrimary,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildLeaveButton(AppLocalizations l10n) {
-    return InkWell(
-      onTap: () => Navigator.of(context).maybePop(),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 13),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppTheme.accent.withValues(alpha: 0.9),
-            width: 1.5,
-          ),
-        ),
-        child: Text(
-          l10n.spectateLeave,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-            color: AppTheme.accent,
-          ),
-        ),
       ),
     );
   }

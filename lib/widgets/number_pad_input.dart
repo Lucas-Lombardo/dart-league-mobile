@@ -4,9 +4,14 @@ import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../utils/dart_sound_service.dart';
 import '../l10n/app_localizations.dart';
+import 'design_system.dart';
 
 /// Number pad for dart score input, replacing the interactive dartboard.
 /// Much easier to use on small phones.
+///
+/// System D: a segmented S / D / T control, then quiet 56 px surface keys
+/// (20 / 700 digits, r14) — no coloured keys. The two action keys are the
+/// miss (quiet, secondary icon) and the bull (the one primary key).
 class NumberPadInput extends StatefulWidget {
   final Function(int score, ScoreMultiplier multiplier) onDartThrow;
   final ScoreMultiplier initialMultiplier;
@@ -24,6 +29,12 @@ class NumberPadInput extends StatefulWidget {
 class _NumberPadInputState extends State<NumberPadInput> {
   late ScoreMultiplier _selectedMultiplier = widget.initialMultiplier;
 
+  void _select(ScoreMultiplier m) {
+    if (m == _selectedMultiplier) return;
+    HapticService.lightImpact();
+    setState(() => _selectedMultiplier = m);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -33,33 +44,15 @@ class _NumberPadInputState extends State<NumberPadInput> {
           children: [
             // Multiplier selector
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-              child: Row(
-                children: [
-                  _MultiplierButton(
-                    label: l10n.singleUpper,
-                    shortLabel: l10n.singleShort,
-                    isSelected: _selectedMultiplier == ScoreMultiplier.single,
-                    color: AppTheme.textSecondary,
-                    onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.single),
-                  ),
-                  const SizedBox(width: 6),
-                  _MultiplierButton(
-                    label: l10n.doubleUpper,
-                    shortLabel: l10n.doubleShort,
-                    isSelected: _selectedMultiplier == ScoreMultiplier.double,
-                    color: AppTheme.success,
-                    onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.double),
-                  ),
-                  const SizedBox(width: 6),
-                  _MultiplierButton(
-                    label: l10n.tripleUpper,
-                    shortLabel: l10n.tripleShort,
-                    isSelected: _selectedMultiplier == ScoreMultiplier.triple,
-                    color: AppTheme.error,
-                    onTap: () => setState(() => _selectedMultiplier = ScoreMultiplier.triple),
-                  ),
+              padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+              child: _Segmented(
+                options: [
+                  (ScoreMultiplier.single, dsSentence(l10n.singleUpper)),
+                  (ScoreMultiplier.double, dsSentence(l10n.doubleUpper)),
+                  (ScoreMultiplier.triple, dsSentence(l10n.tripleUpper)),
                 ],
+                value: _selectedMultiplier,
+                onChanged: _select,
               ),
             ),
             // Number grid
@@ -98,25 +91,28 @@ class _NumberPadInputState extends State<NumberPadInput> {
             )).toList(),
           ),
         )),
-        // Bottom row: BULL + MISS
+        // Bottom row: BULL (the one primary key) + MISS (quiet)
         Expanded(
           child: Row(
             children: [
               Expanded(
                 flex: 3,
-                child: _SpecialButton(
-                  label: _selectedMultiplier == ScoreMultiplier.double ? l10n.bull50 : l10n.bull25,
-                  color: _selectedMultiplier == ScoreMultiplier.double ? AppTheme.success : AppTheme.accent,
-                  onTap: () => _submitBull(),
+                child: _ActionKey(
+                  label: dsSentence(
+                    _selectedMultiplier == ScoreMultiplier.double
+                        ? l10n.bull50
+                        : l10n.bull25,
+                  ),
+                  primary: true,
+                  onTap: _submitBull,
                 ),
               ),
-              const SizedBox(width: 4),
               Expanded(
                 flex: 2,
-                child: _SpecialButton(
-                  label: l10n.missButton,
-                  color: AppTheme.surfaceLight,
-                  onTap: () => _submitMiss(),
+                child: _ActionKey(
+                  label: dsSentence(l10n.missButton),
+                  icon: Icons.close_rounded,
+                  onTap: _submitMiss,
                 ),
               ),
             ],
@@ -151,52 +147,53 @@ class _NumberPadInputState extends State<NumberPadInput> {
   }
 }
 
-class _MultiplierButton extends StatelessWidget {
-  final String label;
-  final String shortLabel;
-  final bool isSelected;
-  final Color color;
-  final VoidCallback onTap;
+/// Surface track with a hairline; the active option sits on surfaceLight.
+class _Segmented extends StatelessWidget {
+  final List<(ScoreMultiplier, String)> options;
+  final ScoreMultiplier value;
+  final ValueChanged<ScoreMultiplier> onChanged;
 
-  const _MultiplierButton({
-    required this.label,
-    required this.shortLabel,
-    required this.isSelected,
-    required this.color,
-    required this.onTap,
+  const _Segmented({
+    required this.options,
+    required this.value,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected ? color.withValues(alpha: 0.2) : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isSelected ? color : AppTheme.surfaceLight,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? color : AppTheme.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          for (final (mode, label) in options)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onChanged(mode),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: value == mode ? AppTheme.surfaceLight : Colors.transparent,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: value == mode ? AppTheme.textPrimary : AppTheme.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -227,46 +224,37 @@ class _NumberButton extends StatelessWidget {
     };
 
     return Padding(
-      padding: const EdgeInsets.all(2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+      padding: const EdgeInsets.all(3),
+      child: DsCard(
+        radius: AppTheme.radiusControl,
+        padding: EdgeInsets.zero,
+        onTap: onTap,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$prefix$number',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
               ),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$prefix$number',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+              if (multiplier != ScoreMultiplier.single) ...[
+                const SizedBox(height: 3),
+                Text(
+                  '= $displayScore',
+                  style: AppTheme.caption.copyWith(
+                    fontSize: 10,
+                    height: 1,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                  if (multiplier != ScoreMultiplier.single)
-                    Text(
-                      '=$displayScore',
-                      style: TextStyle(
-                        color: multiplier == ScoreMultiplier.double
-                            ? AppTheme.success.withValues(alpha: 0.7)
-                            : AppTheme.error.withValues(alpha: 0.7),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                ],
-              ),
-            ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -274,44 +262,53 @@ class _NumberButton extends StatelessWidget {
   }
 }
 
-class _SpecialButton extends StatelessWidget {
+/// Bull (primary filled) or miss (quiet surface key with a secondary icon).
+class _ActionKey extends StatelessWidget {
   final String label;
-  final Color color;
+  final IconData? icon;
+  final bool primary;
   final VoidCallback onTap;
 
-  const _SpecialButton({
+  const _ActionKey({
     required this.label,
-    required this.color,
+    this.icon,
+    this.primary = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final fg = primary ? Colors.white : AppTheme.textSecondary;
+    final text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: fg,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        height: 1,
+      ),
+    );
     return Padding(
-      padding: const EdgeInsets.all(2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color.withValues(alpha: 0.5)),
-            ),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: color == AppTheme.surfaceLight ? AppTheme.textSecondary : color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
+      padding: const EdgeInsets.all(3),
+      child: DsCard(
+        radius: AppTheme.radiusControl,
+        padding: EdgeInsets.zero,
+        color: primary ? AppTheme.primary : AppTheme.surface,
+        side: primary ? BorderSide.none : null,
+        onTap: onTap,
+        child: Center(
+          child: icon == null
+              ? text
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 18, color: fg),
+                    const SizedBox(width: 6),
+                    Flexible(child: text),
+                  ],
                 ),
-              ),
-            ),
-          ),
         ),
       ),
     );

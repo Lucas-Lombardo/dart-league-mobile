@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
+import '../../widgets/game_turn_ui.dart';
 
 /// Between-legs view shared by ranked BO3 and tournament BO3: leg result +
 /// series score + a "next leg" spinner. No buttons — the server's next-leg
 /// event flips the provider back to a live leg and the caller's build returns
 /// the board. Leaving here would forfeit the series, exactly like leaving
 /// mid-leg, hence the guarded PopScope.
+///
+/// Flat background, one column: a tinted result disc, the sentence-case
+/// title, the two-coloured legs score, the "first to N" caption and the
+/// countdown under a small primary spinner.
 class LegEndView extends StatelessWidget {
   final bool wonLeg;
   final int myLegsWon;
@@ -25,7 +31,7 @@ class LegEndView extends StatelessWidget {
 
   /// Seconds still owed to this screen before the next leg may replace it
   /// (see BaseGameScreenState.legEndMinDwell). 0 means the next leg is simply
-  /// not ready yet — the spinner keeps its open-ended "NEXT LEG" wording.
+  /// not ready yet — the spinner keeps its open-ended "next leg" wording.
   final int secondsLeft;
 
   const LegEndView({
@@ -39,12 +45,18 @@ class LegEndView extends StatelessWidget {
     this.secondsLeft = 0,
   });
 
+  /// The countdown label mixes caps and a unit ("MANCHE SUIVANTE DANS 6 s"),
+  /// which [dsSentence] leaves alone; this one always sentence-cases.
+  static String _sentence(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final accent = wonLeg ? AppTheme.success : AppTheme.error;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final discSize = isLandscape ? 72.0 : 96.0;
 
     return PopScope(
       canPop: false,
@@ -55,69 +67,83 @@ class LegEndView extends StatelessWidget {
         }
       },
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-          child: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (banner != null) banner!,
-                    Container(
-                      padding: EdgeInsets.all(isLandscape ? 16 : 24),
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: accent, width: 3),
-                      ),
-                      child: Icon(
-                        wonLeg ? Icons.check_circle_outline : Icons.close,
-                        color: accent,
-                        size: isLandscape ? 40 : 56,
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ?banner,
+                  Container(
+                    width: discSize,
+                    height: discSize,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.6),
+                        width: 2,
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      wonLeg
-                          ? l10n.legWon.toUpperCase()
-                          : l10n.legLost.toUpperCase(),
-                      style: AppTheme.displayLarge.copyWith(
-                          color: accent, fontSize: isLandscape ? 28 : 36),
-                      textAlign: TextAlign.center,
+                    child: Icon(
+                      wonLeg ? Icons.check_rounded : Icons.close_rounded,
+                      color: accent,
+                      size: isLandscape ? 32 : 40,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '$myLegsWon – $opponentLegsWon',
-                      style: AppTheme.displayLarge.copyWith(
-                          color: Colors.white,
-                          fontSize: isLandscape ? 32 : 44),
+                  ),
+                  SizedBox(height: isLandscape ? 18 : 26),
+                  Text(
+                    dsSentence(wonLeg ? l10n.legWon : l10n.legLost),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: isLandscape ? 26 : 30,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      height: 1,
+                      color: AppTheme.textPrimary,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.firstToNLegs(legsNeeded),
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 13),
-                      textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: isLandscape ? 16 : 22),
+                  SeriesLegsScore(
+                    myLegs: myLegsWon,
+                    opponentLegs: opponentLegsWon,
+                    fontSize: isLandscape ? 40 : 48,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    l10n.firstToNLegs(legsNeeded),
+                    textAlign: TextAlign.center,
+                    style: AppTheme.caption.copyWith(fontSize: 13),
+                  ),
+                  SizedBox(height: isLandscape ? 28 : 44),
+                  const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primary,
+                      strokeWidth: 2,
                     ),
-                    const SizedBox(height: 32),
-                    const CircularProgressIndicator(color: AppTheme.primary),
-                    const SizedBox(height: 12),
-                    Text(
-                      // Counting down while the screen is held open: without
-                      // the number, a screen that stays put for six seconds
-                      // reads as a freeze rather than as time being offered.
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    // Counting down while the screen is held open: without
+                    // the number, a screen that stays put for six seconds
+                    // reads as a freeze rather than as time being offered.
+                    _sentence(
                       secondsLeft > 0
                           ? l10n.nextLegIn(secondsLeft)
                           : l10n.nextLeg,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
-                          letterSpacing: 1),
                     ),
-                  ],
-                ),
+                    textAlign: TextAlign.center,
+                    style: AppTheme.caption.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

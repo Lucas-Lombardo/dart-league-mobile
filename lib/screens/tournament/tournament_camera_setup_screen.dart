@@ -145,9 +145,9 @@ class TournamentCameraSetupScreen extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return CameraSetupScreen(
       matchInfo: CameraSetupMatchInfo(
-        pill: localizedRoundName(roundName, l10n).toUpperCase(),
+        pill: localizedRoundName(roundName, l10n),
         title: tournamentName,
-        subtitle: 'vs $opponentUsername • ${l10n.bestOf} $bestOf',
+        subtitle: '${l10n.vs} $opponentUsername · ${l10n.bestOf} $bestOf',
       ),
       actionLabel: l10n.ready,
       onValidate: _validateSocket,

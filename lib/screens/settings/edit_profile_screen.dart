@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 
 /// Username / email editing, moved out of SettingsScreen when its profile
 /// section became the read-only player-card hero.
@@ -17,94 +18,81 @@ class EditProfileScreen extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.editProfile),
-        backgroundColor: AppTheme.surface,
-      ),
+      appBar: AppBar(title: Text(l10n.editProfile)),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.all(16),
         children: [
-          _buildEditableRow(
-            icon: Icons.person_outline,
-            label: l10n.username,
-            value: user?.username ?? l10n.accountInfoDefaultUsername,
-            onTap: user == null
-                ? null
-                : () => _showEditUsernameDialog(context, user.username),
-          ),
-          _buildEditableRow(
-            icon: Icons.mail_outline,
-            label: l10n.email,
-            value: user?.email ?? l10n.accountInfoDefaultEmail,
-            onTap: user == null
-                ? null
-                : () => _showEditEmailDialog(context, user.email),
+          DsCard(
+            radius: AppTheme.radiusRow,
+            padding: EdgeInsets.zero,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildEditableRow(
+                  icon: Icons.person_outline_rounded,
+                  label: l10n.username,
+                  value: user?.username ?? l10n.accountInfoDefaultUsername,
+                  onTap: user == null
+                      ? null
+                      : () => _showEditUsernameDialog(context, user.username),
+                ),
+                const Divider(),
+                _buildEditableRow(
+                  icon: Icons.mail_outline_rounded,
+                  label: l10n.email,
+                  value: user?.email ?? l10n.accountInfoDefaultEmail,
+                  onTap: user == null
+                      ? null
+                      : () => _showEditEmailDialog(context, user.email),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  /// Caption label over the current value, a pencil on the right.
   Widget _buildEditableRow({
     required IconData icon,
     required String label,
     required String value,
     required VoidCallback? onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.3)),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap == null
-            ? null
-            : () {
-                HapticService.lightImpact();
-                onTap();
-              },
+    return InkWell(
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticService.lightImpact();
+              onTap();
+            },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 60),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: AppTheme.primary),
-              ),
-              const SizedBox(width: 16),
+              Icon(icon, size: 20, color: const Color(0xFFCBD5E1)),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
+                    Text(label, style: AppTheme.caption),
+                    const SizedBox(height: 2),
                     Text(
                       value,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: AppTheme.rowTitle,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.edit, color: AppTheme.textSecondary, size: 18),
+              const SizedBox(width: 10),
+              const Icon(Icons.edit_outlined,
+                  size: 18, color: AppTheme.textTertiary),
             ],
           ),
         ),
@@ -156,39 +144,22 @@ class EditProfileScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          backgroundColor: AppTheme.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text(title, style: const TextStyle(color: Colors.white)),
+          title: Text(title),
           content: TextField(
             controller: controller,
             autofocus: true,
             keyboardType: keyboardType,
             autocorrect: autocorrect,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.primary),
-              ),
-            ),
+            style: AppTheme.rowTitle,
           ),
           actions: [
             TextButton(
               onPressed: isSubmitting
                   ? null
                   : () => Navigator.pop(dialogContext),
-              child: Text(
-                l10n.cancel,
-                style: const TextStyle(color: AppTheme.textSecondary),
-              ),
+              style:
+                  TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+              child: Text(l10n.cancel),
             ),
             ElevatedButton(
               onPressed: isSubmitting
@@ -228,13 +199,6 @@ class EditProfileScreen extends StatelessWidget {
                         );
                       }
                     },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
               child: isSubmitting
                   ? const SizedBox(
                       height: 20,
@@ -244,7 +208,7 @@ class EditProfileScreen extends StatelessWidget {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : Text(l10n.save),
+                  : Text(dsSentence(l10n.save)),
             ),
           ],
         ),

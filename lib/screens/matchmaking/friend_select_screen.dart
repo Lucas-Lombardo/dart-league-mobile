@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../providers/friends_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/friendly_match_launcher.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/premium_badge.dart';
 import '../../widgets/rank_badge.dart';
 
@@ -57,15 +58,12 @@ class _FriendSelectScreenState extends State<FriendSelectScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   l10n.selectFriendSubtitle,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 14,
-                  ),
+                  style: AppTheme.bodyMedium,
                 ),
               ),
             ),
@@ -85,22 +83,29 @@ class _FriendSelectScreenState extends State<FriendSelectScreen> {
 
     if (provider.error != null && provider.friends.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              provider.error!.replaceAll('Exception: ', ''),
-              style: const TextStyle(color: AppTheme.error),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => provider.loadFriends(),
-              child: Text(l10n.retry),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                color: AppTheme.error,
+                size: 40,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                provider.error!.replaceAll('Exception: ', ''),
+                style: AppTheme.caption.copyWith(height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: () => provider.loadFriends(),
+                child: Text(dsSentence(l10n.retry)),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -112,22 +117,21 @@ class _FriendSelectScreenState extends State<FriendSelectScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.people_outline,
-                  size: 64,
-                  color: AppTheme.textSecondary.withValues(alpha: 0.5)),
-              const SizedBox(height: 16),
+              const Icon(
+                Icons.people_outline_rounded,
+                size: 40,
+                color: AppTheme.textTertiary,
+              ),
+              const SizedBox(height: 14),
               Text(
                 l10n.noFriendsYet,
-                style: AppTheme.titleLarge.copyWith(
-                  color: AppTheme.textSecondary,
-                ),
+                style: AppTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 l10n.addFriendsHint,
-                style: const TextStyle(
-                    fontSize: 14, color: AppTheme.textSecondary),
+                style: AppTheme.caption.copyWith(height: 1.4),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -140,9 +144,9 @@ class _FriendSelectScreenState extends State<FriendSelectScreen> {
       onRefresh: () => provider.loadFriends(),
       color: AppTheme.primary,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         itemCount: provider.friends.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        separatorBuilder: (context, index) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final friend = provider.friends[index];
           return _FriendInviteTile(
@@ -156,6 +160,8 @@ class _FriendSelectScreenState extends State<FriendSelectScreen> {
   }
 }
 
+/// 64 px row: rank badge (with the online dot), name + premium badge, the
+/// ELO / record caption, chevron. The whole row invites.
 class _FriendInviteTile extends StatelessWidget {
   final User friend;
   final bool isOnline;
@@ -170,63 +176,75 @@ class _FriendInviteTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
-      child: ListTile(
+    return SizedBox(
+      height: 64,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         onTap: onTap,
-        leading: Stack(
-          clipBehavior: Clip.none,
+        child: Row(
           children: [
-            RankBadge(rank: friend.rank, size: 40, showLabel: false),
-            if (isOnline)
-              Positioned(
-                right: -1,
-                bottom: -1,
-                child: Semantics(
-                  label: l10n.online,
-                  child: Container(
-                    width: 13,
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: AppTheme.success,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.surface, width: 2),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                RankBadge(rank: friend.rank, size: 36, showLabel: false),
+                if (isOnline)
+                  Positioned(
+                    right: -1,
+                    bottom: -1,
+                    child: Semantics(
+                      label: l10n.online,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: AppTheme.success,
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: AppTheme.surface, width: 2),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                friend.username,
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          friend.username,
+                          style: AppTheme.sectionTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      PremiumBadge(isPremium: friend.isPremiumActive, size: 14),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${friend.elo} ${l10n.eloLabel} · '
+                    '${friend.wins}W - ${friend.losses}L',
+                    style: AppTheme.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-            PremiumBadge(isPremium: friend.isPremiumActive, size: 14),
+            const SizedBox(width: 10),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: AppTheme.textTertiary,
+            ),
           ],
-        ),
-        subtitle: Text(
-          'ELO: ${friend.elo} • ${friend.wins}W - ${friend.losses}L',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-        ),
-        trailing: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.sports_esports,
-              color: AppTheme.primary, size: 20),
         ),
       ),
     );

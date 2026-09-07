@@ -3,10 +3,17 @@ import 'package:provider/provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/rank_translation.dart';
+import '../../utils/rank_utils.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import 'placement_camera_setup_screen.dart';
 import 'placement_result_screen.dart';
 
+/// The placement run: an unranked player card carrying the "2 / 4" progress,
+/// the four bot slots as list rows (result square, "à jouer" or a lock), the
+/// single primary button that starts (or resumes) the next match, and the
+/// rules of the run as a quiet caption card.
 class PlacementHubScreen extends StatefulWidget {
   const PlacementHubScreen({super.key});
 
@@ -49,11 +56,13 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     }
   }
 
-  static const List<Map<String, dynamic>> _botConfigs = [
-    {'name': 'Bot Bronze', 'avg': 20, 'color': Color(0xFFCD7F32), 'icon': Icons.shield_outlined},
-    {'name': 'Bot Silver', 'avg': 30, 'color': Color(0xFFC0C0C0), 'icon': Icons.shield},
-    {'name': 'Bot Gold', 'avg': 40, 'color': Color(0xFFFFD700), 'icon': Icons.shield},
-    {'name': 'Bot Platinum', 'avg': 55, 'color': Color(0xFF00CED1), 'icon': Icons.shield},
+  /// The four opponents of the run, in order: rank key (for the localized
+  /// name) and the three-dart average the bot throws.
+  static const List<({String rank, int avg})> _botConfigs = [
+    (rank: 'bronze', avg: 20),
+    (rank: 'silver', avg: 30),
+    (rank: 'gold', avg: 40),
+    (rank: 'platinum', avg: 55),
   ];
 
   Future<void> _startNextMatch() async {
@@ -100,13 +109,10 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    
+
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.placementMatches),
-        backgroundColor: Colors.transparent,
-      ),
+      appBar: AppBar(title: Text(l10n.placementMatches)),
       body: Consumer<PlacementProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading && provider.status == null) {
@@ -117,149 +123,120 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
 
           if (provider.error != null && provider.status == null) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, color: AppTheme.error, size: 48),
-                  const SizedBox(height: 16),
-                  Text(provider.error!, style: const TextStyle(color: AppTheme.textSecondary)),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => provider.loadStatus(),
-                    child: Text(l10n.retry),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: DsCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          color: AppTheme.error, size: 28),
+                      const SizedBox(height: 12),
+                      Text(
+                        provider.error!,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.caption,
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => provider.loadStatus(),
+                          child: Text(dsSentence(l10n.retry)),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             );
           }
 
           final status = provider.status;
           if (status == null) {
-            return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primary),
+            );
           }
 
           return Column(
             children: [
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                   child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.surfaceGradient,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(Icons.emoji_events, size: 48, color: AppTheme.accent),
-                      const SizedBox(height: 12),
-                      Text(l10n.placementMatches, style: AppTheme.displayMedium),
-                      const SizedBox(height: 8),
-                      Text(
-                        l10n.placementDescription,
-                        textAlign: TextAlign.center,
-                        style: AppTheme.bodyLarge,
+                      _buildProgressCard(status, l10n),
+                      const SizedBox(height: 28),
+                      DsSectionHeader(title: l10n.placementMatches),
+                      const SizedBox(height: 10),
+                      ...List.generate(4, (index) {
+                        final matchNumber = index + 1;
+                        final config = _botConfigs[index];
+                        final result = status.results.length > index
+                            ? status.results[index]
+                            : null;
+                        final isNext =
+                            matchNumber == (status.nextMatchNumber ?? 5);
+                        final isLocked =
+                            matchNumber > (status.nextMatchNumber ?? 5);
+
+                        return Padding(
+                          padding: EdgeInsets.only(top: index == 0 ? 0 : 10),
+                          child: _buildBotRow(
+                            config: config,
+                            matchNumber: matchNumber,
+                            result: result,
+                            isNext: isNext,
+                            isLocked: isLocked,
+                            l10n: l10n,
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 14),
+                      // How the run works — a quiet caption block, never a
+                      // second filled panel.
+                      DsCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          l10n.placementDescription,
+                          style: AppTheme.caption.copyWith(height: 1.5),
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      // Progress indicator
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '${status.matchesPlayed}/4',
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: AppTheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            l10n.matchesCompleted,
-                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                      if (status.wins > 0) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '${status.wins} ${status.wins == 1 ? l10n.winSingular : l10n.winsPlural}',
-                          style: const TextStyle(
-                            color: AppTheme.success,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                // Bot cards
-                ...List.generate(4, (index) {
-                  final matchNumber = index + 1;
-                  final config = _botConfigs[index];
-                  final result = status.results.length > index ? status.results[index] : null;
-                  final isNext = matchNumber == (status.nextMatchNumber ?? 5);
-                  final isLocked = matchNumber > (status.nextMatchNumber ?? 5);
-                  final isCompleted = result != null;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildBotCard(
-                      config: config,
-                      matchNumber: matchNumber,
-                      result: result,
-                      isNext: isNext,
-                      isLocked: isLocked,
-                      isCompleted: isCompleted,
-                      l10n: l10n,
-                    ),
-                  );
-                }),
-
-                const SizedBox(height: 20),
-              ],
-            ),
-                ),
               ),
-              // Sticky start / resume button
+              // The one filled block of the screen: start or resume.
               if (!status.isComplete && status.nextMatchNumber != null)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  decoration: BoxDecoration(
-                    color: AppTheme.background,
-                    border: Border(top: BorderSide(color: AppTheme.surfaceLight.withValues(alpha: 0.3))),
-                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: SizedBox(
                     height: 56,
                     child: ElevatedButton(
                       onPressed: provider.isLoading
                           ? null
-                          : (provider.activeMatch != null ? _resumeActiveMatch : _startNextMatch),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: provider.activeMatch != null ? AppTheme.accent : AppTheme.primary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
+                          : (provider.activeMatch != null
+                              ? _resumeActiveMatch
+                              : _startNextMatch),
                       child: provider.isLoading
                           ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2.5),
                             )
                           : Text(
                               provider.activeMatch != null
-                                  ? 'Reprendre vs ${provider.activeMatch!.botName}'
-                                  : '${l10n.startMatch} vs ${status.nextBotName}',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ? l10n.placementHubResumeMatch(
+                                      provider.activeMatch!.botName)
+                                  : l10n.placementHubPlayMatch(
+                                      status.nextMatchNumber!),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                     ),
                   ),
@@ -271,112 +248,156 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     );
   }
 
-  Widget _buildBotCard({
-    required Map<String, dynamic> config,
+  /// The player card of the run: the unranked badge, "Non classé", the
+  /// "2 / 4" hero number and the 3 px progress hairline.
+  Widget _buildProgressCard(PlacementStatus status, AppLocalizations l10n) {
+    return DsCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              RankUtils.getRankBadge('unranked', size: 72),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.unranked,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.titleLarge.copyWith(height: 1.1),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      status.wins > 0
+                          ? '${status.wins} ${status.wins == 1 ? l10n.winSingular : l10n.winsPlural}'
+                          : l10n.completePlacementToUnlock,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.caption.copyWith(
+                        color: status.wins > 0
+                            ? AppTheme.success
+                            : AppTheme.textSecondary,
+                        fontWeight:
+                            status.wins > 0 ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('${status.matchesPlayed} / 4',
+                      style: AppTheme.displayLarge),
+                  const SizedBox(height: 3),
+                  Text(
+                    l10n.matchesCompleted.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.3,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          DsProgressBar(value: status.matchesPlayed / 4),
+        ],
+      ),
+    );
+  }
+
+  /// One slot of the run, 56 px: the match number, the bot and its average,
+  /// then the verdict — result square, "à jouer", or a lock.
+  Widget _buildBotRow({
+    required ({String rank, int avg}) config,
     required int matchNumber,
     PlacementResult? result,
     required bool isNext,
     required bool isLocked,
-    required bool isCompleted,
     required AppLocalizations l10n,
   }) {
-    final color = config['color'] as Color;
-    final botName = config['name'] as String;
-    final avg = config['avg'] as int;
+    final botName =
+        l10n.placementHubBotName(RankTranslation.translate(l10n, config.rank));
+    final muted = isLocked ? AppTheme.textTertiary : AppTheme.textPrimary;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isLocked ? AppTheme.surface.withValues(alpha: 0.5) : AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+    return SizedBox(
+      height: 56,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        side: BorderSide(
           color: isNext
-              ? AppTheme.primary
-              : isCompleted
-                  ? (result!.won ? AppTheme.success : AppTheme.error)
-                  : AppTheme.surfaceLight.withValues(alpha: 0.3),
-          width: isNext ? 2 : 1,
+              ? AppTheme.primaryLight.withValues(alpha: 0.45)
+              : AppTheme.border,
         ),
-      ),
-      child: Row(
-        children: [
-          // Bot avatar
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: isLocked ? Colors.grey.withValues(alpha: 0.2) : color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isLocked ? Icons.lock : (config['icon'] as IconData),
-              color: isLocked ? Colors.grey : color,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 16),
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  botName,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isLocked ? AppTheme.textSecondary : AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Avg: $avg ${l10n.avgPerRound}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isLocked ? AppTheme.textSecondary.withValues(alpha: 0.5) : AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Status
-          if (isCompleted)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: result!.won
-                    ? AppTheme.success.withValues(alpha: 0.15)
-                    : AppTheme.error.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
               child: Text(
-                result.won ? l10n.win.toUpperCase() : l10n.loss.toUpperCase(),
-                style: TextStyle(
-                  color: result.won ? AppTheme.success : AppTheme.error,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            )
-          else if (isNext)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                l10n.next,
+                '$matchNumber',
+                textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontWeight: FontWeight.bold,
                   fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textTertiary,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
-            )
-          else if (isLocked)
-            const Icon(Icons.lock_outline, color: Colors.grey, size: 20),
-        ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    botName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.rowTitle.copyWith(color: muted),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.placementHubBotAverage(config.avg),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (result != null)
+              DsResultSquare(
+                won: result.won,
+                letter: result.won ? l10n.formWinLetter : l10n.formLossLetter,
+                size: 28,
+              )
+            else if (isNext)
+              Text(
+                l10n.placementHubToPlay,
+                style: AppTheme.caption.copyWith(
+                  color: AppTheme.primaryLight,
+                  fontWeight: FontWeight.w700,
+                ),
+              )
+            else
+              const Icon(Icons.lock_outline_rounded,
+                  size: 18, color: AppTheme.textTertiary),
+          ],
+        ),
       ),
     );
   }

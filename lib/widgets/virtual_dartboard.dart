@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 
 /// A rendered dartboard with impact markers for the current visit — the
-/// spectator's "camera substitute". Realistic board look (deep black/cream
-/// beds, dark red/green rings, dark spider, muted numbers) matching the
-/// design mockup; deliberately NOT the bright interactive training board.
+/// spectator's "camera substitute". Real board colours (black/cream beds,
+/// red/green rings — they are the dartboard, not decor) with the system's
+/// glass wires and white numbers; deliberately NOT the bright interactive
+/// training board.
 /// Markers are placed at the CENTER of the segment each backend notation
 /// ('T20', 'S5', 'D25', …) designates: the per-dart protocol only carries
 /// the segment, not the exact impact point.
@@ -114,12 +115,14 @@ class SpectatorDartboardPainter extends CustomPainter {
   static const double numbersRadius = 0.885;
 
   static const Color _boardDark = Color(0xFF14181D);
-  static const Color _wire = Color(0xFF0A0C0F);
+  /// Spider and outline: white at 12 %, the hairline drawn over every
+  /// in-match surface.
+  static const Color _wire = Color(0x1FFFFFFF);
   static const Color _bedDark = Color(0xFF22262B);
   static const Color _bedCream = Color(0xFFE8DCC6);
   static const Color _red = Color(0xFFC8373F);
   static const Color _green = Color(0xFF2F9E57);
-  static const Color _numberColor = Color(0xFFCBD5E1);
+  static const Color _numberColor = AppTheme.textPrimary;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -187,9 +190,10 @@ class SpectatorDartboardPainter extends CustomPainter {
       textPainter.text = TextSpan(
         text: '${numbers[i]}',
         style: TextStyle(
+          fontFamily: AppTheme.fontFamily,
           color: _numberColor,
           fontSize: r * 0.085,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
       );
       textPainter.layout();
@@ -225,11 +229,13 @@ class _ImpactMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The latest dart in primaryLight, the earlier ones in white — no gold
+    // (accent is the premium crown), no glow.
     final dot = Container(
       width: isLatest ? 13 : 11,
       height: isLatest ? 13 : 11,
       decoration: BoxDecoration(
-        color: AppTheme.accent,
+        color: isLatest ? AppTheme.primaryLight : AppTheme.textPrimary,
         shape: BoxShape.circle,
         border: Border.all(color: AppTheme.gameBackground, width: 2),
       ),
@@ -242,7 +248,7 @@ class _ImpactMarker extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-            color: AppTheme.accent.withValues(alpha: 0.5), width: 2),
+            color: AppTheme.primaryLight.withValues(alpha: 0.45), width: 2),
       ),
       child: dot,
     );

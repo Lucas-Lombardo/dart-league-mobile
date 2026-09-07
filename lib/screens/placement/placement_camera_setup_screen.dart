@@ -3,6 +3,7 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
+import '../../widgets/design_system.dart';
 import '../shared/camera_setup_mixin.dart';
 import 'placement_game_screen.dart';
 
@@ -112,42 +113,20 @@ class _PlacementCameraSetupScreenState
     );
   }
 
+  /// Context strip: the "Placement" pill next to the one-line instruction —
+  /// flat, like every other camera screen; the preview below is the point.
   Widget _buildMatchInfoBar(AppLocalizations l10n) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.accent.withValues(alpha: 0.1),
-        border: Border(
-            bottom:
-                BorderSide(color: AppTheme.accent.withValues(alpha: 0.3))),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.accent.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.smart_toy, color: AppTheme.accent, size: 13),
-                const SizedBox(width: 4),
-                Text(l10n.placementBadge,
-                    style: const TextStyle(
-                        color: AppTheme.accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
+          DsPill(label: dsSentence(l10n.placementBadge)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               l10n.positionPhoneInstruction,
-              style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 13),
+              style: AppTheme.caption,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -160,41 +139,20 @@ class _PlacementCameraSetupScreenState
 
   Widget _buildBottomSection() {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-            top: BorderSide(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5))),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
         children: [
           // One compact line — the camera panel above is the point of this
           // screen, the chrome stays out of its way.
-          buildInfoRow(Icons.videocam, l10n.cameraNeededForAiInfo),
-          const SizedBox(height: 12),
+          buildInfoRow(Icons.videocam_outlined, l10n.cameraNeededForAiInfo),
+          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
+            height: 56,
             child: ElevatedButton(
               onPressed: canPlay ? _onPlayPressed : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    canPlay ? AppTheme.primary : AppTheme.surfaceLight,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: canPlay ? 4 : 0,
-              ),
-              child: Text(
-                getPlayButtonLabel(l10n),
-                style: TextStyle(
-                  color: canPlay ? Colors.white : AppTheme.textSecondary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              child: Text(dsSentence(getPlayButtonLabel(l10n))),
             ),
           ),
         ],

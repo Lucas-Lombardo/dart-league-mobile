@@ -4,6 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/turn_report_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 
 /// Step 1 of 2 at the end of a match: the visits flagged during play, waiting
 /// for a reason. Step 2 is the existing result screen (accept / refuse) — the
@@ -16,6 +17,11 @@ import '../../utils/haptic_service.dart';
 /// Each row opens the report dialog the app already has — same reasons, same
 /// comment field — titled by the visit it concerns. Nothing new to learn, and
 /// the dialog stays the single place where a reason is chosen.
+///
+/// System D: a 24 / 800 sentence-case title with the "1 / 2" step, one
+/// caption, 64 px card rows ("Sa volée à 140" + a status pill + chevron, or a
+/// close button once the reason is set), then ONE primary button and a quiet
+/// "Passer".
 class TurnReportsView extends StatefulWidget {
   /// Opens the reason/comment dialog for one report and resolves once closed.
   final Future<void> Function(PendingTurnReport report) onEdit;
@@ -61,6 +67,11 @@ class _TurnReportsViewState extends State<TurnReportsView> {
         : l10n.turnReportTurnOnly(turn);
   }
 
+  void _continue() {
+    HapticService.mediumImpact();
+    widget.onContinue();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -69,101 +80,67 @@ class _TurnReportsViewState extends State<TurnReportsView> {
     final blank = reports.length - ready;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.flag, color: AppTheme.opponentPink, size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        l10n.turnReportsTitle,
-                        style: const TextStyle(
-                          color: AppTheme.opponentPink,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
+      backgroundColor: AppTheme.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Text(
+                      dsSentence(l10n.turnReportsTitle),
+                      style: AppTheme.displayMedium,
                     ),
-                    Text(
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(
                       '1 / 2',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary.withValues(alpha: 0.8),
-                        fontSize: 12,
+                      style: AppTheme.caption.copyWith(
                         fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  l10n.turnReportsIntro(reports.length),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 13.5,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: reports.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) =>
-                        _row(l10n, reports[index]),
-                  ),
-                ),
-                if (blank > 0) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.turnReportDropWarning(blank),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppTheme.accent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
-                const SizedBox(height: 14),
-                SizedBox(
-                  height: 54,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      HapticService.mediumImpact();
-                      widget.onContinue();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          ready > 0 ? AppTheme.opponentPink : AppTheme.surface,
-                      foregroundColor: ready > 0
-                          ? Colors.white
-                          : AppTheme.textSecondary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      ready > 0
-                          ? l10n.turnReportSubmit(ready)
-                          : l10n.turnReportSkip,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(l10n.turnReportsIntro(reports.length), style: AppTheme.bodyMedium),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: reports.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) => _row(l10n, reports[index]),
+                ),
+              ),
+              if (blank > 0) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.turnReportDropWarning(blank),
+                  textAlign: TextAlign.center,
+                  style: AppTheme.caption,
                 ),
               ],
-            ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: ready > 0 ? _continue : null,
+                  child: Text(dsSentence(l10n.turnReportSubmit(ready))),
+                ),
+              ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: _continue,
+                style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+                child: Text(dsSentence(l10n.turnReportSkip)),
+              ),
+            ],
           ),
         ),
       ),
@@ -172,92 +149,57 @@ class _TurnReportsViewState extends State<TurnReportsView> {
 
   Widget _row(AppLocalizations l10n, PendingTurnReport report) {
     final done = report.isComplete;
-    return InkWell(
-      onTap: () => _edit(report),
-      borderRadius: BorderRadius.circular(14),
-      // Two boxes, on purpose: a Border whose sides have DIFFERENT colours is
-      // illegal with a borderRadius. It threw on EVERY paint of the row — the
-      // exception is caught per render object, so in debug the row painted its
-      // background and then nothing else (device test 2026-08-13), and in
-      // release the corners came out square. The rounded outline lives on the
-      // outer box, the accent bar on the inner one, whose own decoration has no
-      // radius; the clip rounds it back.
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AppTheme.surfaceLight.withValues(alpha: 0.4),
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(13),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-            decoration: BoxDecoration(
-              color: AppTheme.gamePanelEmpty,
-              border: Border(
-                left: BorderSide(
-                  color: report.isWinningVolley
-                      ? AppTheme.accent
-                      : AppTheme.opponentPink,
-                  width: 2.5,
-                ),
+    return SizedBox(
+      height: 64,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
+        onTap: () => _edit(report),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    report.volleyScore != null
+                        ? l10n.turnReportVisitScore(report.volleyScore!)
+                        : dsSentence(l10n.turnReportDialogTitle),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.rowTitle,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    done ? report.reason! : _label(l10n, report),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _label(l10n, report),
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        report.volleyScore != null
-                            ? l10n.turnReportVisitScore(report.volleyScore!)
-                            : l10n.turnReportDialogTitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        done
-                            ? '✓ ${report.reason}'
-                            : '◷ ${l10n.turnReportTodo}',
-                        style: TextStyle(
-                          color: done ? AppTheme.success : AppTheme.accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (done)
-                  IconButton(
-                    onPressed: () => _remove(report),
-                    icon: const Icon(Icons.close, size: 18),
-                    color: AppTheme.textSecondary,
-                    tooltip: l10n.turnReportRemove,
-                  )
-                else
-                  const Icon(Icons.chevron_right,
-                      color: AppTheme.textSecondary),
-              ],
+            const SizedBox(width: 10),
+            DsPill(
+              label: dsSentence(done ? l10n.turnReportReady : l10n.turnReportTodo),
+              color: done ? AppTheme.success : AppTheme.textSecondary,
             ),
-          ),
+            const SizedBox(width: 8),
+            if (done)
+              DsIconButton(
+                icon: Icons.close_rounded,
+                size: 32,
+                tooltip: dsSentence(l10n.turnReportRemove),
+                onTap: () => _remove(report),
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppTheme.textTertiary,
+              ),
+          ],
         ),
       ),
     );

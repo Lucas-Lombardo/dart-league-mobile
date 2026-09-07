@@ -104,8 +104,10 @@ void main() {
         // The action label wraps instead of being clipped, as it used to be
         // when the button sized itself intrinsically. The test font is far
         // wider than the real one, so passing here means real margin.
+        // Sentence case since the 2026-09 restyle — the theme no longer
+        // upper-cases button labels.
         final label = tester.renderObject<RenderParagraph>(
-          find.text(l10n.trainingEndRoundEarly.toUpperCase()),
+          find.text(l10n.trainingEndRoundEarly),
         );
         expect(label.didExceedMaxLines, isFalse);
       });

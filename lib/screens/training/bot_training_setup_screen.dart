@@ -14,19 +14,10 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/storage_service.dart';
 import '../../widgets/cricket_variant_segment.dart';
+import '../../widgets/design_system.dart';
 import '../placement/placement_camera_setup_screen.dart';
 import '../placement/cricket_bot_game_screen.dart';
-
-/// Colors of the rank chips — same hexes the old rank picker sheet used.
-const Map<BotRank, Color> kBotRankColors = {
-  BotRank.bronze: Color(0xFFCD7F32),
-  BotRank.silver: Color(0xFFC0C0C0),
-  BotRank.gold: Color(0xFFFFD700),
-  BotRank.platinum: Color(0xFF9CB6C6),
-  BotRank.diamond: Color(0xFF63D6F2),
-  BotRank.pro: Color(0xFF7C3AED),
-  BotRank.master: AppTheme.error,
-};
+import 'training_select_screen.dart';
 
 String botRankLabel(AppLocalizations l10n, BotRank rank) {
   switch (rank) {
@@ -95,8 +86,9 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
     }
   }
 
+  /// Every selectable here (cards, segments, chips) fires its own light
+  /// haptic on tap, so the state update stays silent.
   void _update(BotMatchConfig config) {
-    HapticService.lightImpact();
     setState(() => _config = config);
   }
 
@@ -119,57 +111,74 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
     );
   }
 
+  void _showRules(AppLocalizations l10n) {
+    showTrainingRulesSheet(
+      context,
+      title: l10n.trainingBotTraining,
+      body: l10n.trainingRulesBotTraining,
+      icon: Icons.smart_toy_outlined,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.botSetupTitle)),
+      appBar: AppBar(
+        title: Text(l10n.botSetupTitle),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: DsIconButton(
+              icon: Icons.info_outline_rounded,
+              tooltip: l10n.trainingRules,
+              onTap: () => _showRules(l10n),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                 children: [
-                  _sectionHeader(l10n.botSetupModeSection),
-                  const SizedBox(height: 12),
+                  _groupLabel(l10n.botSetupModeSection),
+                  const SizedBox(height: 10),
                   _modeCards(l10n),
                   if (_config.isCricket) ...[
                     const SizedBox(height: 10),
                     CricketVariantSegment(
                       value: _config.cricketScoreMode,
-                      onChanged: (mode) =>
-                          _update(_config.copyWith(cricketScoreMode: mode)),
+                      onChanged: (mode) {
+                        HapticService.lightImpact();
+                        _update(_config.copyWith(cricketScoreMode: mode));
+                      },
                       scoreHint: l10n.cricketScoreHint,
                     ),
                   ],
                   _modeStatsLine(l10n),
-                  const SizedBox(height: 22),
-                  _sectionHeader(l10n.botSetupFormatSection),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 28),
+                  _groupLabel(l10n.botSetupFormatSection),
+                  const SizedBox(height: 10),
                   _formatSegment(),
                   const SizedBox(height: 8),
                   Text(
                     '${l10n.firstToNLegs(_config.legsToWin)} · '
                     '${l10n.starterAlternates}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: AppTheme.caption,
                   ),
-                  const SizedBox(height: 22),
-                  _sectionHeader(l10n.botSetupOpponentSection),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 28),
+                  _groupLabel(l10n.botSetupOpponentSection),
+                  const SizedBox(height: 10),
                   _rankChips(l10n),
                   const SizedBox(height: 8),
                   Text(
                     l10n.trainingBotAvg(_config.rank.targetAverage),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: AppTheme.caption,
                   ),
                 ],
               ),
@@ -181,110 +190,40 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
     );
   }
 
-  Widget _sectionHeader(String title) {
+  /// 11 / 700 spaced group label ("MODE DE JEU").
+  Widget _groupLabel(String title) {
+    return Text(title.toUpperCase(), style: AppTheme.labelSmall);
+  }
+
+  Widget _modeCards(AppLocalizations l10n) {
     return Row(
       children: [
-        Text(
-          title.toUpperCase(),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.6,
+        Expanded(
+          child: _OptionCard(
+            label: '501',
+            hint: l10n.trainingBotGameTypeHint501,
+            selected: _config.gameMode == BotGameMode.x501,
+            onTap: () => _update(_config.copyWith(gameMode: BotGameMode.x501)),
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Container(
-            height: 1,
-            color: AppTheme.surfaceLight.withValues(alpha: 0.65),
+          child: _OptionCard(
+            label: '301',
+            hint: l10n.trainingBotGameTypeHint301,
+            selected: _config.gameMode == BotGameMode.x301,
+            onTap: () => _update(_config.copyWith(gameMode: BotGameMode.x301)),
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _modeCards(AppLocalizations l10n) {
-    Widget card({
-      required String label,
-      required String hint,
-      required Color color,
-      required bool selected,
-      required VoidCallback onTap,
-    }) {
-      return Expanded(
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-              decoration: BoxDecoration(
-                color: selected
-                    ? color.withValues(alpha: 0.15)
-                    : AppTheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: selected
-                      ? color
-                      : AppTheme.surfaceLight.withValues(alpha: 0.8),
-                  width: selected ? 1.8 : 1,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: selected ? color : Colors.white,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    hint,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 9.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _OptionCard(
+            label: l10n.cricketLabel,
+            hint: l10n.cricketSetupHint,
+            selected: _config.isCricket,
+            onTap: () =>
+                _update(_config.copyWith(gameMode: BotGameMode.cricket)),
           ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        card(
-          label: '501',
-          hint: l10n.trainingBotGameTypeHint501,
-          color: AppTheme.primary,
-          selected: _config.gameMode == BotGameMode.x501,
-          onTap: () => _update(_config.copyWith(gameMode: BotGameMode.x501)),
-        ),
-        const SizedBox(width: 10),
-        card(
-          label: '301',
-          hint: l10n.trainingBotGameTypeHint301,
-          color: AppTheme.accent,
-          selected: _config.gameMode == BotGameMode.x301,
-          onTap: () => _update(_config.copyWith(gameMode: BotGameMode.x301)),
-        ),
-        const SizedBox(width: 10),
-        card(
-          label: l10n.cricketLabel,
-          hint: l10n.cricketSetupHint,
-          color: AppTheme.success,
-          selected: _config.isCricket,
-          onTap: () => _update(_config.copyWith(gameMode: BotGameMode.cricket)),
         ),
       ],
     );
@@ -314,54 +253,28 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
       child: Text(
         l10n.botModeStatsSummary(forMode.sessions, winPct, avgText ?? '—'),
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: AppTheme.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+        style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
       ),
     );
   }
 
   Widget _formatSegment() {
     return Container(
-      padding: const EdgeInsets.all(5),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         children: [
           for (final f in _formats) ...[
-            if (f != _formats.first) const SizedBox(width: 6),
+            if (f != _formats.first) const SizedBox(width: 4),
             Expanded(
-              child: GestureDetector(
+              child: _Segment(
+                label: 'BO$f',
+                selected: _config.bestOf == f,
                 onTap: () => _update(_config.copyWith(bestOf: f)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  decoration: BoxDecoration(
-                    color: _config.bestOf == f
-                        ? AppTheme.primary.withValues(alpha: 0.2)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: _config.bestOf == f
-                        ? Border.all(
-                            color: AppTheme.primary.withValues(alpha: 0.5),
-                          )
-                        : null,
-                  ),
-                  child: Text(
-                    'BO$f',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _config.bestOf == f
-                          ? AppTheme.primary
-                          : AppTheme.textSecondary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
               ),
             ),
           ],
@@ -377,47 +290,10 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
       alignment: WrapAlignment.center,
       children: [
         for (final rank in BotRank.values)
-          GestureDetector(
+          _Chip(
+            label: botRankLabel(l10n, rank),
+            selected: _config.rank == rank,
             onTap: () => _update(_config.copyWith(rank: rank)),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-              decoration: BoxDecoration(
-                color: _config.rank == rank
-                    ? kBotRankColors[rank]!.withValues(alpha: 0.15)
-                    : AppTheme.surface,
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(
-                  color: _config.rank == rank
-                      ? kBotRankColors[rank]!
-                      : AppTheme.surfaceLight.withValues(alpha: 0.8),
-                  width: _config.rank == rank ? 1.6 : 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      color: kBotRankColors[rank],
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    botRankLabel(l10n, rank),
-                    style: TextStyle(
-                      color: _config.rank == rank
-                          ? Colors.white
-                          : AppTheme.textSecondary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
       ],
     );
@@ -427,52 +303,166 @@ class _BotTrainingSetupScreenState extends State<BotTrainingSetupScreen> {
     final modeLabel = _config.isCricket
         ? '${l10n.cricketLabel} · ${_config.cricketScoreMode == CricketScoreMode.noScore ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}'
         : (_config.gameMode == BotGameMode.x301 ? '301' : '501');
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             '$modeLabel · BO${_config.bestOf} · '
             '${botRankLabel(l10n, _config.rank)}',
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
+            style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
+            height: 52,
             child: ElevatedButton(
               onPressed: _play,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: Text(
-                l10n.play.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              child: Text(l10n.play),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Active-state vocabulary shared by the three selectables below: primary at
+/// 14 % with a primaryLight hairline and primaryLight text.
+const Color _kActiveFill = Color(0x240EA5E9);
+
+/// Game-mode card: big label over a two-line hint.
+class _OptionCard extends StatelessWidget {
+  final String label;
+  final String hint;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _OptionCard({
+    required this.label,
+    required this.hint,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+      color: selected ? _kActiveFill : null,
+      side: selected ? const BorderSide(color: AppTheme.primaryLight) : null,
+      onTap: onTap,
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppTheme.primaryLight : AppTheme.textPrimary,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            hint,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.caption.copyWith(fontSize: 11, height: 1.2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One cell of the best-of segmented control.
+class _Segment extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _Segment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? _kActiveFill : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: selected
+            ? const BorderSide(color: AppTheme.primaryLight)
+            : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppTheme.primaryLight : AppTheme.textSecondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 34 px rank chip.
+class _Chip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? _kActiveFill : AppTheme.surface,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected ? AppTheme.primaryLight : AppTheme.border,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticService.lightImpact();
+          onTap();
+        },
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppTheme.primaryLight : AppTheme.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
       ),
     );
   }

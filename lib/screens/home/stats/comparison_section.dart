@@ -6,6 +6,7 @@ import '../../../models/player_percentiles.dart';
 import '../../../services/stats_service.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/rank_translation.dart';
+import '../../../widgets/design_system.dart';
 import 'stats_widgets.dart';
 
 /// Where the player stands among comparable players — the top of the Stats
@@ -56,10 +57,22 @@ class _ComparisonSectionState extends State<ComparisonSection> {
   Widget build(BuildContext context) {
     final data = _data;
     if (_failed || data == null) return const SizedBox.shrink();
+    return ComparisonCards(data: data);
+  }
+}
 
+/// The comparison's cards, laid out from an already-loaded standing. Split
+/// from the loader so the cards can be rendered without the network.
+class ComparisonCards extends StatelessWidget {
+  final PlayerPercentiles data;
+
+  const ComparisonCards({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
     // No trailing spacer: the page this sits in already separates its children,
     // and one on the last block would double the gap under the section.
-    final blocks = _blocks(data);
+    final blocks = _blocks();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -71,9 +84,9 @@ class _ComparisonSectionState extends State<ComparisonSection> {
     );
   }
 
-  /// The comparison's cards, in order. Built as a list so a card with nothing
-  /// to say leaves no gap where it would have been.
-  List<Widget> _blocks(PlayerPercentiles data) {
+  /// The cards, in order. Built as a list so a card with nothing to say leaves
+  /// no gap where it would have been.
+  List<Widget> _blocks() {
     if (!data.eligible) return [_NotEnoughLegsCard(data: data)];
     return [
       _HeadlineCard(data: data),
@@ -123,6 +136,7 @@ String cohortLine(AppLocalizations l10n, PercentileCohort cohort) {
   return l10n.comparisonCohortAll(cohort.size);
 }
 
+/// "Top 12 %" · the cohort · the window it was measured over.
 class _HeadlineCard extends StatelessWidget {
   final PlayerPercentiles data;
 
@@ -133,26 +147,10 @@ class _HeadlineCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final top = data.topPercent;
 
-    return Container(
+    return DsCard(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
-      ),
       child: Row(
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.accent.withValues(alpha: 0.1),
-              border: Border.all(color: AppTheme.accent, width: 3),
-            ),
-            child: const Icon(Icons.workspace_premium, color: AppTheme.accent, size: 28),
-          ),
-          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,25 +160,22 @@ class _HeadlineCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     top != null ? l10n.comparisonTopPercent(top) : '—',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -1,
-                      height: 1.1,
-                    ),
+                    style: AppTheme.displayLarge,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  cohortLine(l10n, data.cohort),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
+                const SizedBox(height: 4),
+                Text(cohortLine(l10n, data.cohort), style: AppTheme.caption),
               ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // The window is fixed server-side; this only names it.
+          Text(
+            l10n.statsWindowDays(data.cohort.windowDays),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primaryLight,
             ),
           ),
         ],
@@ -197,33 +192,67 @@ class _ProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return StatsCard(
-      label: l10n.comparisonProfile,
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(l10n.comparisonProfile, style: AppTheme.sectionTitle)),
+              _LegendItem(label: l10n.statsLegendYou),
+              const SizedBox(width: 14),
+              _LegendItem(label: l10n.statsLegendMedian, dashed: true),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Full card width: the side labels need the room the padding would
+          // otherwise take.
+          SizedBox(
+            height: 230,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _RadarPainter(
+                metrics: data.metrics,
+                labels: {
+                  for (final metric in data.metrics)
+                    metric.key: _axisLabel(l10n, metric.key),
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 14 × 2 line swatch + 11 / 600 label.
+class _LegendItem extends StatelessWidget {
+  final String label;
+  final bool dashed;
+
+  const _LegendItem({required this.label, this.dashed = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            _LegendDot(color: AppTheme.primary, label: l10n.comparisonTitle),
-            const SizedBox(width: 14),
-            _LegendDot(
-              color: AppTheme.textSecondary,
-              label: l10n.comparisonMedianMarker,
-              dashed: true,
-            ),
-          ],
+        SizedBox(
+          width: 14,
+          height: 2,
+          child: dashed
+              ? const CustomPaint(painter: _DashLinePainter())
+              : const ColoredBox(color: AppTheme.primary),
         ),
-        const SizedBox(height: 8),
-        AspectRatio(
-          aspectRatio: 1.16,
-          child: CustomPaint(
-            painter: _RadarPainter(
-              metrics: data.metrics,
-              labels: {
-                for (final metric in data.metrics)
-                  metric.key: _axisLabel(l10n, metric.key),
-              },
-            ),
-            size: Size.infinite,
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textSecondary,
           ),
         ),
       ],
@@ -231,40 +260,22 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  final bool dashed;
-
-  const _LegendDot({required this.color, required this.label, this.dashed = false});
+class _DashLinePainter extends CustomPainter {
+  const _DashLinePainter();
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 14,
-          height: 3,
-          decoration: BoxDecoration(
-            color: dashed ? null : color,
-            borderRadius: BorderRadius.circular(2),
-            border: dashed ? Border.all(color: color, width: 1.4) : null,
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.6,
-          ),
-        ),
-      ],
-    );
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppTheme.textTertiary
+      ..strokeWidth = size.height;
+    final y = size.height / 2;
+    for (double x = 0; x < size.width; x += 5) {
+      canvas.drawLine(Offset(x, y), Offset(math.min(x + 3, size.width), y), paint);
+    }
   }
+
+  @override
+  bool shouldRepaint(_DashLinePainter old) => false;
 }
 
 /// The five axes as one shape.
@@ -283,55 +294,60 @@ class _RadarPainter extends CustomPainter {
 
   static const _minRadiusFactor = 0.12;
 
+  /// Horizontal room kept on each side for the side labels, and the vertical
+  /// room above/below the shape for the top and bottom ones.
+  static const _sideReserve = 72.0;
+  static const _topReserve = 26.0;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (metrics.length < 3) return;
 
-    // Room for the labels sitting outside the outer ring.
-    final radius = math.min(size.width, size.height) / 2 - 34;
+    final radius = math.min(size.width / 2 - _sideReserve, (size.height - 2 * _topReserve) / 2);
     if (radius <= 0) return;
-    final center = Offset(size.width / 2, size.height / 2 - 4);
+    final center = Offset(size.width / 2, _topReserve + radius);
     final count = metrics.length;
 
+    double angleOf(int index) => -math.pi / 2 + (2 * math.pi * index) / count;
+
     Offset pointAt(int index, double fraction) {
-      final angle = -math.pi / 2 + (2 * math.pi * index) / count;
+      final angle = angleOf(index);
       final r = radius * (_minRadiusFactor + (1 - _minRadiusFactor) * fraction);
       return center + Offset(math.cos(angle) * r, math.sin(angle) * r);
     }
 
-    final web = Paint()
-      ..color = AppTheme.surfaceLight
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    // Three rings at 33/66/100 % of the cohort.
-    for (final ring in [1.0, 0.66, 0.33]) {
+    Path ringAt(double fraction) {
       final path = Path();
       for (var i = 0; i < count; i++) {
-        final point = pointAt(i, ring);
+        final point = pointAt(i, fraction);
         i == 0 ? path.moveTo(point.dx, point.dy) : path.lineTo(point.dx, point.dy);
       }
-      path.close();
-      canvas.drawPath(path, web);
+      return path..close();
+    }
+
+    // Three rings at 33/66/100 % of the cohort.
+    final ring = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    for (final fraction in [1.0, 0.66, 0.33]) {
+      canvas.drawPath(ringAt(fraction), ring);
     }
 
     // Spokes.
+    final spoke = Paint()
+      ..color = Colors.white.withValues(alpha: 0.06)
+      ..strokeWidth = 1;
     for (var i = 0; i < count; i++) {
-      canvas.drawLine(center, pointAt(i, 1), web);
+      canvas.drawLine(center, pointAt(i, 1), spoke);
     }
 
     // The median ring: the cohort's middle, by definition the 50th percentile.
-    final medianPath = Path();
-    for (var i = 0; i < count; i++) {
-      final point = pointAt(i, 0.5);
-      i == 0 ? medianPath.moveTo(point.dx, point.dy) : medianPath.lineTo(point.dx, point.dy);
-    }
-    medianPath.close();
     canvas.drawPath(
-      _dashed(medianPath),
+      _dashed(ringAt(0.5)),
       Paint()
-        ..color = AppTheme.textSecondary
-        ..strokeWidth = 1.6
+        ..color = AppTheme.textTertiary
+        ..strokeWidth = 1.2
         ..style = PaintingStyle.stroke,
     );
 
@@ -342,71 +358,81 @@ class _RadarPainter extends CustomPainter {
       i == 0 ? minePath.moveTo(point.dx, point.dy) : minePath.lineTo(point.dx, point.dy);
     }
     minePath.close();
-    canvas.drawPath(
-      minePath,
-      Paint()..color = AppTheme.primary.withValues(alpha: 0.22),
-    );
+    canvas.drawPath(minePath, Paint()..color = AppTheme.primary.withValues(alpha: 0.22));
     canvas.drawPath(
       minePath,
       Paint()
         ..color = AppTheme.primary
-        ..strokeWidth = 2.4
+        ..strokeWidth = 2.2
         ..style = PaintingStyle.stroke
         ..strokeJoin = StrokeJoin.round,
     );
+    final dot = Paint()..color = AppTheme.primary;
     for (var i = 0; i < count; i++) {
-      canvas.drawCircle(
-        pointAt(i, (metrics[i].percentile / 100).clamp(0.0, 1.0)),
-        4,
-        Paint()..color = AppTheme.primary,
-      );
+      canvas.drawCircle(pointAt(i, (metrics[i].percentile / 100).clamp(0.0, 1.0)), 3.5, dot);
     }
 
-    _paintLabels(canvas, size, center, radius, count, pointAt);
+    _paintLabels(canvas, size, center, radius, angleOf);
   }
 
+  /// Labels sit just outside the outer ring, anchored away from the shape:
+  /// right-hand labels start at their point, left-hand ones end at it, the
+  /// top one is centred. Then clamped so nothing leaves the canvas.
   void _paintLabels(
     Canvas canvas,
     Size size,
     Offset center,
     double radius,
-    int count,
-    Offset Function(int, double) pointAt,
+    double Function(int) angleOf,
   ) {
-    for (var i = 0; i < count; i++) {
+    for (var i = 0; i < metrics.length; i++) {
       final text = labels[metrics[i].key];
       if (text == null) continue;
 
+      // A TextPainter sits outside the widget tree, so it inherits nothing
+      // from the theme: the AppTheme style carries the app font.
       final painter = TextPainter(
         text: TextSpan(
           text: text,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.3,
-          ),
+          style: AppTheme.labelSmall.copyWith(fontSize: 10, letterSpacing: 0.3),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
 
-      final anchor = pointAt(i, 1);
-      final direction = anchor - center;
-      // Push the label clear of the outer ring, then keep it inside the canvas:
-      // the left- and right-most labels are the ones that would otherwise be
-      // clipped by the artboard edge.
-      final offset = Offset(
-        (anchor.dx + direction.dx * 0.16 - painter.width / 2)
-            .clamp(0.0, math.max(0.0, size.width - painter.width)),
-        (anchor.dy + direction.dy * 0.16 - painter.height / 2)
-            .clamp(0.0, math.max(0.0, size.height - painter.height)),
+      final angle = angleOf(i);
+      final cos = math.cos(angle);
+      final sin = math.sin(angle);
+      final anchor = center + Offset(cos, sin) * (radius + 12);
+
+      double dx;
+      if (cos > 0.15) {
+        dx = anchor.dx;
+      } else if (cos < -0.15) {
+        dx = anchor.dx - painter.width;
+      } else {
+        dx = anchor.dx - painter.width / 2;
+      }
+      double dy;
+      if (sin < -0.5) {
+        dy = anchor.dy - painter.height;
+      } else if (sin > 0.5) {
+        dy = anchor.dy;
+      } else {
+        dy = anchor.dy - painter.height / 2;
+      }
+
+      painter.paint(
+        canvas,
+        Offset(
+          dx.clamp(0.0, math.max(0.0, size.width - painter.width)),
+          dy.clamp(0.0, math.max(0.0, size.height - painter.height)),
+        ),
       );
-      painter.paint(canvas, offset);
     }
   }
 
   /// Dashes a closed path by walking its metrics — Flutter has no dash effect.
-  Path _dashed(Path source, {double on = 5, double off = 4}) {
+  Path _dashed(Path source, {double on = 3, double off = 3}) {
     final result = Path();
     for (final metric in source.computeMetrics()) {
       var distance = 0.0;
@@ -432,12 +458,22 @@ class _StandingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return StatsCard(
-      label: l10n.comparisonWhereYouStand,
-      children: [
-        for (final metric in data.metrics)
-          _PercentileRow(entry: metric, label: metricLabel(l10n, metric.key)),
-      ],
+    return DsCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l10n.comparisonWhereYouStand, style: AppTheme.sectionTitle),
+          const SizedBox(height: 14),
+          for (var i = 0; i < data.metrics.length; i++) ...[
+            if (i > 0) const SizedBox(height: 14),
+            _PercentileRow(
+              entry: data.metrics[i],
+              label: metricLabel(l10n, data.metrics[i].key),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -455,82 +491,73 @@ class _PercentileRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final fraction = (entry.percentile / 100).clamp(0.0, 1.0);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                formatMetric(entry.key, entry.value),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                l10n.comparisonBeatsPercent(entry.percentile.round()),
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 12,
-            child: LayoutBuilder(
-              builder: (context, constraints) => Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    top: 2,
-                    left: 0,
-                    right: 0,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: Stack(
-                        children: [
-                          Container(
-                            height: 8,
-                            color: AppTheme.surfaceLight.withValues(alpha: 0.45),
-                          ),
-                          FractionallySizedBox(
-                            widthFactor: fraction,
-                            child: Container(
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // The median marker, always at the middle of the bar.
-                  Positioned(
-                    left: constraints.maxWidth / 2 - 1,
-                    top: 0,
-                    child: Container(width: 2, height: 12, color: AppTheme.textSecondary),
-                  ),
-                ],
               ),
             ),
+            const SizedBox(width: 8),
+            Text(
+              formatMetric(entry.key, entry.value),
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              l10n.comparisonBeatsPercent(entry.percentile.round()),
+              style: AppTheme.caption.copyWith(fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        SizedBox(
+          height: 12,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  top: 3,
+                  left: 0,
+                  right: 0,
+                  child: DsProgressBar(value: fraction, height: 6),
+                ),
+                // The median marker, always at the middle of the bar.
+                Positioned(
+                  left: constraints.maxWidth / 2 - 1,
+                  top: 0,
+                  child: Container(
+                    width: 2,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: AppTheme.textTertiary,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -555,7 +582,7 @@ class _VerdictCard extends StatelessWidget {
       spans.add(
         TextSpan(
           text: '$heading : ',
-          style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700),
         ),
       );
       spans.add(
@@ -573,17 +600,17 @@ class _VerdictCard extends StatelessWidget {
     if (weakest != null && weakest != strongest) add(l10n.comparisonWeakness, weakest);
     if (spans.isEmpty) return const SizedBox.shrink();
 
-    return StatsCard(
-      children: [
-        Text.rich(
-          TextSpan(children: spans),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            height: 1.5,
-          ),
+    return DsCard(
+      padding: const EdgeInsets.all(18),
+      child: Text.rich(
+        TextSpan(children: spans),
+        style: const TextStyle(
+          color: AppTheme.textSecondary,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          height: 1.5,
         ),
-      ],
+      ),
     );
   }
 }
@@ -596,10 +623,13 @@ class _Footnote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Text(
-      l10n.comparisonFootnote(cohort.windowDays, cohort.minLegs),
-      textAlign: TextAlign.center,
-      style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, height: 1.5),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text(
+        l10n.comparisonFootnote(cohort.windowDays, cohort.minLegs),
+        textAlign: TextAlign.center,
+        style: AppTheme.caption.copyWith(color: AppTheme.textTertiary, height: 1.5),
+      ),
     );
   }
 }
@@ -629,31 +659,13 @@ class _NotEnoughLegsCard extends StatelessWidget {
           waitingOnCohort
               ? l10n.comparisonLegsToGo(0)
               : l10n.comparisonNotEnoughLegs,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            height: 1.45,
-          ),
+          style: AppTheme.bodyMedium.copyWith(fontSize: 13),
         ),
         if (!waitingOnCohort) ...[
           const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(5),
-            child: Stack(
-              children: [
-                Container(height: 8, color: AppTheme.surfaceLight.withValues(alpha: 0.45)),
-                FractionallySizedBox(
-                  widthFactor: progress,
-                  child: Container(height: 8, color: AppTheme.primary),
-                ),
-              ],
-            ),
-          ),
+          DsProgressBar(value: progress, height: 6),
           const SizedBox(height: 8),
-          Text(
-            l10n.comparisonLegsToGo(remaining),
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
-          ),
+          Text(l10n.comparisonLegsToGo(remaining), style: AppTheme.caption),
         ],
       ],
     );

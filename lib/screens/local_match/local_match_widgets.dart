@@ -3,10 +3,25 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/local_match_config.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
+import '../../widgets/game_turn_ui.dart';
+import '../game/match_end_view.dart';
 
 // Chrome shared by the local (hot-seat) X01 and cricket screens: the AI
 // loading placeholder, the transient turn banner, the leave confirmation and
 // the end-of-match view. Purely presentational — the screens own the state.
+//
+// System D (2026-09): flat surfaces, hairline borders, sentence case, and the
+// in-match identity convention — player 1 is blue, player 2 is rose, on every
+// screen of a local match.
+
+/// Player 1 (left / blue) or player 2 (right / rose) identity colour.
+Color localPlayerColor(int player) =>
+    player == 0 ? AppTheme.playerBlue : AppTheme.opponentPink;
+
+/// The brighter variant used for text on dark surfaces.
+Color localPlayerTextColor(int player) =>
+    player == 0 ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright;
 
 /// Full-screen placeholder while the camera and the AI model come up.
 class LocalMatchLoadingView extends StatelessWidget {
@@ -20,11 +35,19 @@ class LocalMatchLoadingView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: AppTheme.primary),
-            const SizedBox(height: 16),
-            Text(AppLocalizations.of(context).loadingAutoScoring,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 14)),
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                color: AppTheme.primary,
+                strokeWidth: 2,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              dsSentence(AppLocalizations.of(context).loadingAutoScoring),
+              style: AppTheme.caption.copyWith(fontSize: 13),
+            ),
           ],
         ),
       ),
@@ -34,11 +57,22 @@ class LocalMatchLoadingView extends StatelessWidget {
 
 /// Transient "it's X's turn" pill shown top-center right after a hands-free
 /// turn switch. Positioned — goes straight into the game screen's Stack.
+///
+/// Same glass hint pill as the camera guidance ones (background at 85 %,
+/// hairline), with the thrower's identity dot and name — no gradient, no glow.
 class LocalTurnBanner extends StatelessWidget {
   final String name;
   final double safeTop;
 
-  const LocalTurnBanner({super.key, required this.name, required this.safeTop});
+  /// 0 = player 1 (blue), 1 = player 2 (rose).
+  final int player;
+
+  const LocalTurnBanner({
+    super.key,
+    required this.name,
+    required this.safeTop,
+    this.player = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -55,35 +89,35 @@ class LocalTurnBanner extends StatelessWidget {
             curve: Curves.easeOut,
             builder: (context, t, child) => Opacity(
               opacity: t,
-              child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
+              child: Transform.scale(scale: 0.96 + 0.04 * t, child: child),
             ),
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.5),
-                    blurRadius: 18,
-                    spreadRadius: 1,
-                  ),
-                ],
+                color: AppTheme.background.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.sports_esports,
-                      color: Colors.white, size: 20),
-                  const SizedBox(width: 10),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: localPlayerColor(player),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Text(
-                    l10n.turnOf(name).toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
+                    dsSentence(l10n.turnOf(name)),
+                    style: TextStyle(
+                      color: localPlayerTextColor(player),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
                     ),
                   ),
                 ],
@@ -97,45 +131,34 @@ class LocalTurnBanner extends StatelessWidget {
 }
 
 /// Leave-match confirmation of the local screens. Resolves to true when the
-/// player chose to leave.
+/// player chose to leave. Same frame as every other in-match dialog.
 Future<bool> showLeaveLocalMatchDialog(BuildContext context) async {
   final l10n = AppLocalizations.of(context);
-  final shouldLeave = await showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppTheme.error, width: 2),
+  final shouldLeave = await showGameDialog<bool>(
+    context,
+    accent: AppTheme.error,
+    icon: Icons.logout_rounded,
+    title: l10n.leaveMatch,
+    content: Text(l10n.leaveMatchWarning, style: AppTheme.bodyMedium),
+    actionsBuilder: (ctx) => [
+      OutlinedButton(
+        onPressed: () => Navigator.pop(ctx, false),
+        child: Text(dsSentence(l10n.stay)),
       ),
-      title: Row(children: [
-        const Icon(Icons.warning, color: AppTheme.error, size: 32),
-        const SizedBox(width: 12),
-        Text(l10n.leaveMatch,
-            style: AppTheme.titleLarge
-                .copyWith(color: AppTheme.error, fontWeight: FontWeight.bold)),
-      ]),
-      content: Text(l10n.leaveMatchWarning,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: Text(l10n.stay),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-          child: Text(l10n.leave),
-        ),
-      ],
-    ),
+      ElevatedButton(
+        onPressed: () => Navigator.pop(ctx, true),
+        style: gameFilledButtonStyle(AppTheme.error),
+        child: Text(dsSentence(l10n.leave)),
+      ),
+    ],
   );
   return shouldLeave ?? false;
 }
 
-/// End of a local match: winner, legs line, optional stat rows (the cricket
-/// screen adds each player's MPR), then rematch / back.
+/// End of a local match, on the shared [MatchEndView]: result disc, sentence-
+/// case title, the two-coloured legs tile (player 1 blue – player 2 rose),
+/// the optional per-player stat rows and ONE primary action (rematch) over a
+/// quiet "back home" outline.
 class LocalMatchEndView extends StatelessWidget {
   final LocalMatchConfig config;
   final int winner;
@@ -159,98 +182,65 @@ class LocalMatchEndView extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final winnerName = config.nameOf(winner);
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+    final panel = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: onRematch,
+            icon: const Icon(Icons.replay_rounded, size: 20),
+            label: Text(dsSentence(l10n.rematchButton)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton(
+            onPressed: onBack,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              textStyle: gameButtonTextStyle.copyWith(fontSize: 14),
+            ),
+            child: Text(dsSentence(l10n.backToHome)),
+          ),
+        ),
+      ],
+    );
+
+    return MatchEndView(
+      // Hot seat: somebody in the room won, so the screen always wears the
+      // winning colours; the subtitle names them.
+      didWin: true,
+      title: l10n.victory,
+      subtitle: l10n.localMatchWinner(winnerName),
+      // "2 – 1" reads player 1 (blue) – player 2 (rose), the same identity
+      // the header used all match long; the caption names the two sides.
+      scoreLine: '${legsWon[0]} – ${legsWon[1]}',
+      scoreCaption: '${config.nameOf(0)} – ${config.nameOf(1)}',
+      preCard: stats.isEmpty
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 14),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.success, width: 4),
-                    ),
-                    child: const Icon(Icons.emoji_events,
-                        color: AppTheme.success, size: 80),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    '${l10n.victory.toUpperCase()}!',
-                    style: AppTheme.displayLarge
-                        .copyWith(color: AppTheme.success, fontSize: 44),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.localMatchWinner(winnerName),
-                    style: AppTheme.bodyLarge.copyWith(color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${config.nameOf(0)}  ${legsWon[0]} — ${legsWon[1]}  ${config.nameOf(1)}',
-                    style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (stats.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    for (int i = 0; i < stats.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 10),
-                      stats[i],
-                    ],
+                  for (int i = 0; i < stats.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    stats[i],
                   ],
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: onRematch,
-                      icon: const Icon(Icons.replay),
-                      label: Text(l10n.rematchButton),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: onBack,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: BorderSide(
-                            color: AppTheme.surfaceLight.withValues(alpha: 0.8)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text(l10n.backToHome),
-                    ),
-                  ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
+      panel: panel,
     );
   }
 }
 
-/// One stat pill of [LocalMatchEndView] (icon · label · value).
+/// One stat row of [LocalMatchEndView] (outlined icon · label · value): a flat
+/// surface card with a hairline, the value in the owner's identity colour.
 class LocalMatchStatRow extends StatelessWidget {
   final String label;
   final String value;
@@ -267,36 +257,29 @@ class LocalMatchStatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
-      ),
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 24),
+          Icon(icon, color: AppTheme.textSecondary, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppTheme.rowTitle,
             ),
           ),
           Text(
             value,
             style: TextStyle(
               color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],

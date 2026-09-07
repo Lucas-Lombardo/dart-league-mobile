@@ -14,6 +14,7 @@ import '../../services/dart_detection_service_stub.dart'
 import '../../services/native_inference.dart';
 import '../../widgets/board_placement_guide.dart';
 import '../../widgets/board_safe_video.dart';
+import '../../widgets/design_system.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
@@ -95,11 +96,13 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// guide's pill narrates what to do — mirroring the hint here turned the
   /// CTA into a broken two-line banner.
   String getPlayButtonLabel(AppLocalizations l10n) {
-    if (!permissionsGranted || !cameraReady) return l10n.cameraRequiredButton;
-    if (cameraSetupConfig.enableAiDetection && !kIsWeb && !aiModelLoaded) {
-      return l10n.loadingAi.toUpperCase();
+    if (!permissionsGranted || !cameraReady) {
+      return dsSentence(l10n.cameraRequiredButton);
     }
-    return l10n.play.toUpperCase();
+    if (cameraSetupConfig.enableAiDetection && !kIsWeb && !aiModelLoaded) {
+      return l10n.loadingAi;
+    }
+    return l10n.play;
   }
 
   /// Call from initState to start camera and optional AI detection.
@@ -664,15 +667,15 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primary, width: 2),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: AppTheme.primary, width: 1.5),
       ),
       child: GestureDetector(
         onScaleStart: cameraSetupConfig.enableGestureZoom ? onScaleStart : null,
         onScaleUpdate:
             cameraSetupConfig.enableGestureZoom ? onScaleUpdate : null,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppTheme.radiusCard - 1.5),
           child: Stack(
             children: [
               // Not cover: this screen's whole job is "is the board fully in
@@ -722,19 +725,42 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
   /// (via [canFlipCamera]) when the device actually has both lenses.
   Widget buildCameraFlipButton() {
     final isFront = cameraLensDirection == CameraLensDirection.front;
-    return GestureDetector(
+    return _glassButton(
+      icon: Icons.cameraswitch_outlined,
       onTap: toggleCameraLens,
+      active: isFront,
+    );
+  }
+
+  /// 40 px "glass" control laid over the live preview: translucent white
+  /// disc and hairline, light icon. [active] tints it primary (the front
+  /// lens being selected).
+  Widget _glassButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool active = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
-        width: 44,
-        height: 44,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          color: isFront
-              ? AppTheme.primary.withValues(alpha: 0.85)
-              : Colors.black.withValues(alpha: 0.6),
+          color: active
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.08),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+          border: Border.all(
+            color: active
+                ? AppTheme.primaryLight
+                : Colors.white.withValues(alpha: 0.10),
+          ),
         ),
-        child: const Icon(Icons.cameraswitch, color: Colors.white, size: 22),
+        child: Icon(
+          icon,
+          color: active ? AppTheme.primaryLight : const Color(0xFFE2E8F0),
+          size: 20,
+        ),
       ),
     );
   }
@@ -744,15 +770,18 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(
-            color: AppTheme.primary,
-            strokeWidth: 3,
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: AppTheme.primary,
+              strokeWidth: 2.5,
+            ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           Text(
             AppLocalizations.of(context).initializingCamera,
-            style:
-                AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
+            style: AppTheme.caption.copyWith(fontSize: 13),
           ),
         ],
       ),
@@ -763,63 +792,39 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.error, width: 2),
-              ),
-              child: const Icon(
-                Icons.videocam_off,
+        padding: const EdgeInsets.all(16),
+        child: DsCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.videocam_off_outlined,
                 color: AppTheme.error,
-                size: 80,
+                size: 40,
               ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              l10n.cameraRequired,
-              style: AppTheme.displayMedium.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 14),
+              Text(
+                dsSentence(l10n.cameraRequired),
+                style: AppTheme.titleLarge,
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              errorMessage ?? l10n.unknownError,
-              style: AppTheme.bodyLarge
-                  .copyWith(color: AppTheme.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: initializeCamera,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  l10n.tryAgain,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                errorMessage ?? l10n.unknownError,
+                style: AppTheme.caption.copyWith(height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: initializeCamera,
+                  child: Text(dsSentence(l10n.tryAgain)),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -829,77 +834,61 @@ mixin CameraSetupMixin<T extends StatefulWidget> on State<T> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        buildZoomButton(Icons.add, zoomIn),
+        buildZoomButton(Icons.add_rounded, zoomIn),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
-            '${currentZoom.toStringAsFixed(1)}x',
+            '${currentZoom.toStringAsFixed(1)}×',
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textPrimary,
               fontSize: 12,
-              fontWeight: FontWeight.bold,
-              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+              fontWeight: FontWeight.w700,
+              fontFeatures: [FontFeature.tabularFigures()],
+              // Legibility over a bright live frame — not decoration.
+              shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
             ),
           ),
         ),
-        buildZoomButton(Icons.remove, zoomOut),
+        buildZoomButton(Icons.remove_rounded, zoomOut),
       ],
     );
   }
 
   Widget buildZoomButton(IconData icon, VoidCallback onPressed) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-        ),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
+    return _glassButton(icon: icon, onTap: onPressed);
   }
 
+  /// Centered 13 / 500 caption with a 16 px leading icon (the "camera
+  /// required for AI scoring" line under the preview).
   Widget buildInfoRow(IconData icon, String text) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, color: AppTheme.textSecondary, size: 20),
-        const SizedBox(width: 12),
-        Expanded(
+        Icon(icon, color: AppTheme.textSecondary, size: 16),
+        const SizedBox(width: 8),
+        Flexible(
           child: Text(
             text,
-            style: AppTheme.bodyLarge
-                .copyWith(color: AppTheme.textSecondary, fontSize: 14),
+            textAlign: TextAlign.center,
+            style: AppTheme.caption.copyWith(fontSize: 13),
           ),
         ),
       ],
     );
   }
 
+  /// Flat, left-aligned 22 / 800 title (the theme's AppBar) in sentence case
+  /// — legacy ALL-CAPS titles pass through [dsSentence].
   PreferredSizeWidget buildCameraAppBar(String title) {
     return AppBar(
-      backgroundColor: AppTheme.surface,
-      elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
         onPressed: () {
           HapticService.lightImpact();
           Navigator.of(context).pop();
         },
       ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1,
-        ),
-      ),
-      centerTitle: true,
+      title: Text(dsSentence(title)),
     );
   }
 

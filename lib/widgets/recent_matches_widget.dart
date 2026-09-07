@@ -5,8 +5,11 @@ import '../screens/profile/match_detail_screen.dart';
 import '../utils/app_navigator.dart';
 import '../utils/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import 'design_system.dart';
 import 'premium_badge.dart';
 
+/// The home "Matchs récents" list: one [MatchRowTile] per match (or per BO3
+/// series), 10 px apart, capped at four.
 class RecentMatchesWidget extends StatelessWidget {
   final List<Match> matches;
   final String userId;
@@ -20,27 +23,30 @@ class RecentMatchesWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (matches.isEmpty) {
-      return Container(
+      return DsCard(
         padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        ),
         child: Center(
           child: Text(
             AppLocalizations.of(context).noRecentMatches,
-            style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
+            style: AppTheme.bodyLarge,
           ),
         ),
       );
     }
 
+    final entries = _collapseSeriesLegs(matches).take(4).toList();
     return Column(
-      children: _collapseSeriesLegs(matches)
-          .take(3)
-          .map((entry) => _buildMatchItem(context, entry))
-          .toList(),
+      children: [
+        for (var i = 0; i < entries.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          MatchRowTile(
+            match: entries[i].match,
+            userId: userId,
+            seriesP1Legs: entries[i].seriesP1Legs,
+            seriesP2Legs: entries[i].seriesP2Legs,
+          ),
+        ],
+      ],
     );
   }
 
@@ -74,10 +80,84 @@ class RecentMatchesWidget extends StatelessWidget {
     entries.sort((a, b) => b.match.createdAt.compareTo(a.match.createdAt));
     return entries;
   }
+}
 
-  Widget _buildMatchItem(BuildContext context, _RecentEntry entry) {
-    final match = entry.match;
+/// The match row of the system, 60 px: result square, "vs Name" + premium
+/// crown, "Classé · date, heure", score 16 / 700 tabular, ELO delta 12 / 700.
+///
+/// A BO3 series is passed as its newest leg plus the legs tally
+/// ([seriesP1Legs] / [seriesP2Legs]) and shows legs won instead of the 501
+/// remainders. A match still in progress swaps the square for a play glyph
+/// and the score for an "En cours" pill. Tapping opens the match detail
+/// unless [onTap] says otherwise.
+class MatchRowTile extends StatelessWidget {
+  final Match match;
+  final String userId;
+  final int? seriesP1Legs;
+  final int? seriesP2Legs;
+  final VoidCallback? onTap;
+
+  const MatchRowTile({
+    super.key,
+    required this.match,
+    required this.userId,
+    this.seriesP1Legs,
+    this.seriesP2Legs,
+    this.onTap,
+  });
+
+  bool get isSeries => seriesP1Legs != null && seriesP2Legs != null;
+
+  /// "Classé" / "Amical" / "Tournoi" / "Bot" / "Placement". Unknown kinds
+  /// read as ranked, which they are.
+  static String kindLabel(AppLocalizations l10n, Match match) {
+    switch (match.matchType) {
+      case 'placement':
+        return l10n.placementCapitalized;
+      case 'friendly':
+        return l10n.statsModeFriendly;
+      case 'tournament':
+        return l10n.statsModeTournament;
+      case 'bot':
+        return l10n.statsModeBot;
+      default:
+        return l10n.statsModeRanked;
+    }
+  }
+
+  /// "Aujourd’hui, 09:12" / "Hier, 18:40" / "ven. 4 sept., 12:02".
+  static String relativeDate(BuildContext context, DateTime when) {
     final l10n = AppLocalizations.of(context);
+    final at = when.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(at.year, at.month, at.day);
+    final time = DateFormat('HH:mm').format(at);
+    String label;
+    if (day == today) {
+      label = l10n.todayLabel;
+    } else if (day == today.subtract(const Duration(days: 1))) {
+      label = l10n.yesterdayLabel;
+    } else {
+      try {
+        label = DateFormat('EEE d MMM', Localizations.localeOf(context).languageCode).format(at);
+      } catch (_) {
+        label = DateFormat('MMM d').format(at);
+      }
+    }
+    return '$label, $time';
+  }
+
+  /// "Classé · Aujourd’hui, 09:12" — the match kind and a short date.
+  static String contextLine(BuildContext context, Match match) {
+    final l10n = AppLocalizations.of(context);
+    return '${kindLabel(l10n, match)} · ${relativeDate(context, match.createdAt)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final inProgress = match.isInProgress;
     final isWin = match.isWinner(userId);
     final eloChange = match.getEloChange(userId);
     final isPlacement = match.isPlacement;
@@ -85,177 +165,112 @@ class RecentMatchesWidget extends StatelessWidget {
         ? l10n.botWithAvg((match.botDifficulty ?? 1) * 10)
         : match.getOpponentUsername(userId);
     final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
-    // BO3 series entry: show legs won instead of 501 remainders.
     final iAmPlayer1 = userId == match.player1Id;
-    final myScore = entry.isSeries
-        ? (iAmPlayer1 ? entry.seriesP1Legs! : entry.seriesP2Legs!)
+    final myScore = isSeries
+        ? (iAmPlayer1 ? seriesP1Legs! : seriesP2Legs!)
         : match.getMyScore(userId);
-    final opponentScore = entry.isSeries
-        ? (iAmPlayer1 ? entry.seriesP2Legs! : entry.seriesP1Legs!)
+    final opponentScore = isSeries
+        ? (iAmPlayer1 ? seriesP2Legs! : seriesP1Legs!)
         : match.getOpponentScore(userId);
-    final dateFormat = DateFormat('MMM d');
+    // Friendly and bot matches never move the ELO; "+0" on every one of them
+    // would read as noise.
+    final showDelta = !isPlacement && (eloChange != 0 || match.matchType == 'ranked');
+    final deltaColor = eloChange >= 0 ? AppTheme.success : AppTheme.error;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isWin 
-              ? AppTheme.success.withValues(alpha: 0.3) 
-              : AppTheme.error.withValues(alpha: 0.3),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id));
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: isWin ? AppTheme.success : AppTheme.error,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return SizedBox(
+      height: 60,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        onTap: onTap ??
+            () => AppNavigator.toScreen(context, MatchDetailScreen(matchId: match.id)),
+        child: Row(
+          children: [
+            if (inProgress)
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(9),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                child: const Icon(Icons.play_arrow_rounded, size: 18, color: AppTheme.primaryLight),
+              )
+            else
+              DsResultSquare(
+                won: isWin,
+                letter: isWin ? l10n.formWinLetter : l10n.formLossLetter,
+              ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isWin ? AppTheme.success : AppTheme.error,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              isWin ? l10n.winUpper : l10n.lossUpper,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          if (isPlacement) ...[
-                            const SizedBox(width: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppTheme.accent.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                l10n.placementUpper,
-                                style: const TextStyle(
-                                  color: AppTheme.accent,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    '${l10n.vs} $opponentUsername',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                PremiumBadge(isPremium: opponentIsPremium, size: 14),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dateFormat.format(match.createdAt),
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
+                      Flexible(
+                        child: Text(
+                          '${l10n.vs} $opponentUsername',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.rowTitle,
                         ),
+                      ),
+                      PremiumBadge(
+                        isPremium: opponentIsPremium,
+                        size: 12,
+                        color: AppTheme.accent,
                       ),
                     ],
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    contextLine(context, match),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (inProgress)
+              DsPill(
+                label: dsSentence(l10n.matchStatusInProgress),
+                color: AppTheme.primaryLight,
+              )
+            else ...[
+              Text(
+                '$myScore–$opponentScore',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      entry.isSeries
-                          ? '$myScore - $opponentScore ${l10n.legsShort}'
-                          : '$myScore - $opponentScore',
-                      style: const TextStyle(
-                        color: AppTheme.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (isPlacement)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          l10n.placementCapitalized,
-                          style: const TextStyle(
-                            color: AppTheme.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+              ),
+              const SizedBox(width: 10),
+              // Fixed column so the scores of a list line up even when a row
+              // has no delta to show.
+              SizedBox(
+                width: 34,
+                child: showDelta
+                    ? Text(
+                        '${eloChange >= 0 ? '+' : ''}$eloChange',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: deltaColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: (eloChange >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${eloChange >= 0 ? '+' : ''}$eloChange',
-                          style: TextStyle(
-                            color: eloChange >= 0 ? AppTheme.success : AppTheme.error,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -270,6 +285,4 @@ class _RecentEntry {
   final int? seriesP2Legs;
 
   _RecentEntry(this.match, {this.seriesP1Legs, this.seriesP2Legs});
-
-  bool get isSeries => seriesP1Legs != null && seriesP2Legs != null;
 }

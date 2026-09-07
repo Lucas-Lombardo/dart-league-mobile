@@ -8,6 +8,7 @@ import '../../services/tournament_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/trophy_image.dart';
 import '../../l10n/app_localizations.dart';
 
@@ -38,7 +39,6 @@ class TournamentEndScreen extends StatefulWidget {
 class _TournamentEndScreenState extends State<TournamentEndScreen>
     with TickerProviderStateMixin {
   late final AnimationController _mainCtrl;
-  late final AnimationController _glowCtrl;
   late final AnimationController _confettiCtrl;
 
   late final Animation<double> _medalScale;
@@ -63,8 +63,6 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     _placement = _calcPlacement(widget.roundName, widget.didWin);
 
     _mainCtrl = AnimationController(duration: const Duration(milliseconds: 2500), vsync: this);
-    _glowCtrl = AnimationController(duration: const Duration(milliseconds: 1800), vsync: this)
-      ..repeat(reverse: true);
     _confettiCtrl = AnimationController(duration: const Duration(milliseconds: 4000), vsync: this);
 
     _medalScale = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -127,16 +125,16 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
       _reducedMotionApplied = true;
       _mainCtrl.stop();
       _mainCtrl.value = 1.0;
-      _glowCtrl.stop();
       _confettiCtrl.stop();
     }
   }
 
   Future<void> _loadBracket() async {
+    // Read the provider BEFORE the await: this runs from initState and the
+    // context must not be touched once the request has been in flight.
+    final myId = context.read<AuthProvider>().currentUser?.id;
     try {
       final matches = await TournamentService.getBracket(widget.tournamentId);
-      final auth = context.read<AuthProvider>();
-      final myId = auth.currentUser?.id;
       if (myId != null) {
         final myMatches = matches
             .where((m) => m.isCompleted && (m.player1Id == myId || m.player2Id == myId))
@@ -167,7 +165,6 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
   @override
   void dispose() {
     _mainCtrl.dispose();
-    _glowCtrl.dispose();
     _confettiCtrl.dispose();
     super.dispose();
   }
@@ -180,9 +177,9 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
   }
 
   IconData get _medalIcon {
-    if (_placement <= 3) return Icons.emoji_events;
-    if (_placement <= 5) return Icons.military_tech;
-    return Icons.sentiment_dissatisfied;
+    if (_placement <= 3) return Icons.emoji_events_outlined;
+    if (_placement <= 5) return Icons.military_tech_outlined;
+    return Icons.sentiment_dissatisfied_outlined;
   }
 
   String _placementOrdinal(AppLocalizations l10n) {
@@ -202,23 +199,18 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     return l10n.tournamentParticipant;
   }
 
+  /// The result disc of the system: the medal colour at 12 % behind a 2 px
+  /// ring, 88 px — no glow, no halo.
   Widget _medalCircle() {
     return Container(
-      width: 120,
-      height: 120,
+      width: 88,
+      height: 88,
       decoration: BoxDecoration(
         color: _medalColor.withValues(alpha: 0.12),
         shape: BoxShape.circle,
-        border: Border.all(color: _medalColor, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: _medalColor.withValues(alpha: 0.25 + 0.25 * _glowCtrl.value),
-            blurRadius: 24 + 20 * _glowCtrl.value,
-            spreadRadius: 4 + 8 * _glowCtrl.value,
-          ),
-        ],
+        border: Border.all(color: _medalColor.withValues(alpha: 0.6), width: 2),
       ),
-      child: Icon(_medalIcon, color: _medalColor, size: 60),
+      child: Icon(_medalIcon, color: _medalColor, size: 38),
     );
   }
 
@@ -231,189 +223,151 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
     return PopScope(
       canPop: false,
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-          child: Stack(
-            children: [
-              if (_placement == 1 && !MediaQuery.of(context).disableAnimations)
-                AnimatedBuilder(
-                  animation: _confettiCtrl,
-                  builder: (_, __) => CustomPaint(
-                    painter: _ConfettiPainter(_confettiCtrl.value),
-                    size: Size.infinite,
-                  ),
-                ),
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 32),
-
-                      // Medal — or, for a champion whose tournament awards a
-                      // physical trophy, the render of the trophy itself.
-                      FadeTransition(
-                        opacity: _medalFade,
-                        child: ScaleTransition(
-                          scale: _medalScale,
-                          child: AnimatedBuilder(
-                            animation: _glowCtrl,
-                            builder: (_, __) => _trophyImageUrl != null
-                                ? Container(
-                                    width: 150,
-                                    height: 150,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _medalColor.withValues(alpha: 0.25 + 0.25 * _glowCtrl.value),
-                                          blurRadius: 30 + 20 * _glowCtrl.value,
-                                          spreadRadius: 6 + 8 * _glowCtrl.value,
-                                        ),
-                                      ],
-                                    ),
-                                    child: TrophyImage(
-                                      url: _trophyImageUrl!,
-                                      size: 150,
-                                      fallback: _medalCircle(),
-                                    ),
-                                  )
-                                : _medalCircle(),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Ordinal + title
-                      SlideTransition(
-                        position: _titleSlide,
-                        child: FadeTransition(
-                          opacity: _titleFade,
-                          child: Column(
-                            children: [
-                              Text(
-                                _placementOrdinal(l10n).toUpperCase(),
-                                style: TextStyle(
-                                  color: _medalColor,
-                                  fontSize: 38,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 3,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _placementTitle(l10n),
-                                style: TextStyle(
-                                  color: _medalColor.withValues(alpha: 0.8),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 1.5,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Tournament name badge
-                      FadeTransition(
-                        opacity: _subtitleFade,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
-                          ),
-                          child: Text(
-                            widget.tournamentName,
-                            style: const TextStyle(
-                              color: AppTheme.primary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Journey label
-                      FadeTransition(
-                        opacity: _subtitleFade,
-                        child: Text(
-                          l10n.yourTournamentJourney.toUpperCase(),
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Match history (scrollable, flexible)
-                      Flexible(
-                        child: _loading
-                            ? const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
-                                ),
-                              )
-                            : SingleChildScrollView(
-                                child: Column(
-                                  children: _buildMatchCards(myId, l10n),
-                                ),
-                              ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Return home button
-                      FadeTransition(
-                        opacity: _buttonFade,
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              HapticService.mediumImpact();
-                              final provider = context.read<TournamentGameProvider>();
-                              AppNavigator.toHomeClearing(context);
-                              try { provider.reset(); } catch (_) {}
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _placement == 1 ? _medalColor : AppTheme.primary,
-                              foregroundColor: _placement == 1 ? Colors.black : Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: Text(
-                              l10n.returnHome.toUpperCase(),
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
+        backgroundColor: AppTheme.background,
+        body: Stack(
+          children: [
+            if (_placement == 1 && !MediaQuery.of(context).disableAnimations)
+              AnimatedBuilder(
+                animation: _confettiCtrl,
+                builder: (context, child) => CustomPaint(
+                  painter: _ConfettiPainter(_confettiCtrl.value),
+                  size: Size.infinite,
                 ),
               ),
-            ],
-          ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 28),
+
+                    // Tournament name pill above the result, like every other
+                    // end-of-match screen.
+                    FadeTransition(
+                      opacity: _medalFade,
+                      child: DsPill(label: widget.tournamentName),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // The medal disc — or, for a champion whose tournament
+                    // awards a physical trophy, the render of the trophy.
+                    FadeTransition(
+                      opacity: _medalFade,
+                      child: ScaleTransition(
+                        scale: _medalScale,
+                        child: _trophyImageUrl != null
+                            ? TrophyImage(
+                                url: _trophyImageUrl!,
+                                size: 120,
+                                fallback: _medalCircle(),
+                              )
+                            : _medalCircle(),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Title + ordinal
+                    SlideTransition(
+                      position: _titleSlide,
+                      child: FadeTransition(
+                        opacity: _titleFade,
+                        child: Column(
+                          children: [
+                            Text(
+                              dsSentence(_placementTitle(l10n)),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.7,
+                                height: 1.05,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              dsSentence(_placementOrdinal(l10n)),
+                              textAlign: TextAlign.center,
+                              style: AppTheme.caption.copyWith(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _placement <= 4
+                                    ? _medalColor
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // Journey label
+                    FadeTransition(
+                      opacity: _subtitleFade,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          l10n.yourTournamentJourney.toUpperCase(),
+                          style: AppTheme.labelSmall,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Match history (scrollable, flexible)
+                    Flexible(
+                      child: _loading
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(
+                                    color: AppTheme.primary, strokeWidth: 2),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              child: Column(
+                                children: _buildMatchCards(myId, l10n),
+                              ),
+                            ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // The one filled block of the screen.
+                    FadeTransition(
+                      opacity: _buttonFade,
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            HapticService.mediumImpact();
+                            final provider = context.read<TournamentGameProvider>();
+                            AppNavigator.toHomeClearing(context);
+                            try {
+                              provider.reset();
+                            } catch (_) {}
+                          },
+                          child: Text(dsSentence(l10n.returnHome)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  /// One 56 px row per match of the run: the round, "vs Name", the legs and
+  /// the V / D square — the same row the match history uses.
   List<Widget> _buildMatchCards(String? myId, AppLocalizations l10n) {
     final matches = _myMatches.isNotEmpty
         ? _myMatches
@@ -431,7 +385,6 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
       final i = entry.key;
       final m = entry.value;
 
-      String roundDisplay;
       String rName;
       String oppName;
       int myScore;
@@ -454,8 +407,6 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
         didWin = fb.didWin;
       }
 
-      roundDisplay = _roundDisplay(rName, l10n);
-
       final startFrac = math.min(0.65 + i * 0.06, 0.92);
       final endFrac = math.min(startFrac + 0.20, 1.0);
 
@@ -466,57 +417,59 @@ class _TournamentEndScreenState extends State<TournamentEndScreen>
         CurvedAnimation(parent: _mainCtrl, curve: Interval(startFrac, endFrac, curve: Curves.easeOut)),
       );
 
-      final winColor = didWin ? AppTheme.success : AppTheme.error;
-
       return FadeTransition(
         opacity: fadeFrac,
         child: SlideTransition(
           position: slideFrac,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: winColor.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    roundDisplay,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+          child: Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 10),
+            child: SizedBox(
+              height: 56,
+              child: DsCard(
+                radius: AppTheme.radiusRow,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  children: [
+                    DsResultSquare(
+                      won: didWin,
+                      letter: didWin ? l10n.formWinLetter : l10n.formLossLetter,
+                      size: 28,
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${l10n.vs} $oppName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.rowTitle.copyWith(fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _roundDisplay(rName, l10n),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '$myScore–$oppScore',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Text(
-                    '${l10n.vs} $oppName',
-                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(
-                  '$myScore - $oppScore',
-                  style: TextStyle(color: winColor, fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: winColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    didWin ? 'W' : 'L',
-                    style: TextStyle(color: winColor, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -600,8 +553,7 @@ class _ConfettiParticle {
           Color(0xFFF43F5E),
           Colors.white,
           Color(0xFFEAB308),
-          Color(0xFFA855F7),
-        ][rng.nextInt(7)];
+        ][rng.nextInt(6)];
 
   void draw(Canvas canvas, Size size, double progress) {
     final y = _yStart + progress * _speed;

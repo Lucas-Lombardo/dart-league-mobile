@@ -8,11 +8,15 @@ import '../../providers/friends_provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
+import '../../widgets/loading_widget.dart';
+import '../../widgets/premium_badge.dart';
 import 'chat_thread_screen.dart';
 
-/// The read-only inbox behind the AppBar 💬 icon: every conversation with
-/// received messages, unread first. Tapping a row opens the thread. Writing a
-/// NEW message goes through the Friends tab (💬 button on each friend row).
+/// The inbox behind the header's messages icon: every conversation with
+/// received messages, unread first, as 64 px surface rows. Tapping a row
+/// opens the thread. Writing a NEW message goes through the Friends tab
+/// (the message button on each friend row).
 class ReceivedMessagesScreen extends StatefulWidget {
   const ReceivedMessagesScreen({super.key});
 
@@ -34,84 +38,49 @@ class _ReceivedMessagesScreenState extends State<ReceivedMessagesScreen> {
     final l10n = AppLocalizations.of(context);
     final chat = context.watch<ChatProvider>();
     final friends = context.watch<FriendsProvider>();
-    final unread =
-        chat.conversations.where((c) => c.unreadCount > 0).toList();
-    final earlier =
-        chat.conversations.where((c) => c.unreadCount == 0).toList();
+    final unread = chat.conversations.where((c) => c.unreadCount > 0).toList();
+    final earlier = chat.conversations.where((c) => c.unreadCount == 0).toList();
+
+    final Widget body;
+    if (chat.isLoading && chat.conversations.isEmpty) {
+      body = const LoadingWidget();
+    } else if (chat.conversations.isEmpty) {
+      body = ListView(
+        padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
+        children: const [ConversationsEmpty()],
+      );
+    } else {
+      body = ConversationList(
+        unread: unread,
+        earlier: earlier,
+        isOnline: (c) => !c.isSupport && friends.isOnline(c.conversationId),
+        isPremium: (c) => !c.isSupport &&
+            (friends.friends
+                    .where((f) => f.id == c.conversationId)
+                    .firstOrNull
+                    ?.isPremiumActive ??
+                false),
+        onOpen: _openThread,
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.receivedMessagesTitle)),
-      body: RefreshIndicator(
-        onRefresh: () => chat.loadConversations(),
-        child: chat.isLoading && chat.conversations.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : chat.conversations.isEmpty
-                ? ListView(
-                    children: [
-                      const SizedBox(height: 120),
-                      const Center(
-                          child: Text('💬', style: TextStyle(fontSize: 40))),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: Text(
-                          l10n.noReceivedMessages,
-                          style: const TextStyle(color: AppTheme.textSecondary),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      _writeHint(l10n),
-                    ],
-                  )
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    children: [
-                      if (unread.isNotEmpty) ...[
-                        _sectionLabel('${l10n.unreadSection.toUpperCase()} — ${unread.length}'),
-                        ...unread.map((c) => _ConversationRow(
-                            conversation: c,
-                            online: !c.isSupport &&
-                                friends.isOnline(c.conversationId),
-                            onTap: () => _openThread(c))),
-                      ],
-                      if (earlier.isNotEmpty) ...[
-                        _sectionLabel(l10n.earlierSection.toUpperCase()),
-                        ...earlier.map((c) => _ConversationRow(
-                            conversation: c,
-                            online: !c.isSupport &&
-                                friends.isOnline(c.conversationId),
-                            onTap: () => _openThread(c))),
-                      ],
-                      const SizedBox(height: 16),
-                      _writeHint(l10n),
-                    ],
-                  ),
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.2,
-          color: AppTheme.textSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _writeHint(AppLocalizations l10n) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Text(
-          l10n.writeViaFriendsHint,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: DsScreenHeader(title: l10n.receivedMessagesTitle, showBack: true),
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                color: AppTheme.primary,
+                backgroundColor: AppTheme.surface,
+                onRefresh: () => chat.loadConversations(),
+                child: body,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -129,14 +98,143 @@ class _ReceivedMessagesScreenState extends State<ReceivedMessagesScreen> {
   }
 }
 
-class _ConversationRow extends StatelessWidget {
+/// The scrollable inbox: "NON LUS — 2" and "PLUS TÔT" groups of
+/// [ConversationRow]s, 10 px apart, and the "write via Friends" hint.
+/// Presentation only (the screen wires the providers) so it can be rendered
+/// on its own.
+class ConversationList extends StatelessWidget {
+  final List<ChatConversation> unread;
+  final List<ChatConversation> earlier;
+  final bool Function(ChatConversation) isOnline;
+  final bool Function(ChatConversation) isPremium;
+  final ValueChanged<ChatConversation> onOpen;
+
+  const ConversationList({
+    super.key,
+    required this.unread,
+    required this.earlier,
+    required this.isOnline,
+    required this.isPremium,
+    required this.onOpen,
+  });
+
+  List<Widget> _rows(List<ChatConversation> conversations) {
+    final out = <Widget>[];
+    for (var i = 0; i < conversations.length; i++) {
+      if (i > 0) out.add(const SizedBox(height: 10));
+      final c = conversations[i];
+      out.add(ConversationRow(
+        conversation: c,
+        online: isOnline(c),
+        premium: isPremium(c),
+        onTap: () => onOpen(c),
+      ));
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      children: [
+        if (unread.isNotEmpty) ...[
+          _SectionLabel('${l10n.unreadSection.toUpperCase()} — ${unread.length}'),
+          const SizedBox(height: 10),
+          ..._rows(unread),
+        ],
+        if (earlier.isNotEmpty) ...[
+          if (unread.isNotEmpty) const SizedBox(height: 20),
+          _SectionLabel(l10n.earlierSection.toUpperCase()),
+          const SizedBox(height: 10),
+          ..._rows(earlier),
+        ],
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            l10n.writeViaFriendsHint,
+            textAlign: TextAlign.center,
+            style: AppTheme.caption.copyWith(color: AppTheme.textTertiary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Empty inbox: one card with the outlined bubble, the title and the hint.
+class ConversationsEmpty extends StatelessWidget {
+  const ConversationsEmpty({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return DsCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: 32,
+            color: AppTheme.textSecondary,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            l10n.noReceivedMessages,
+            textAlign: TextAlign.center,
+            style: AppTheme.rowTitle,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            l10n.writeViaFriendsHint,
+            textAlign: TextAlign.center,
+            style: AppTheme.caption,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "NON LUS — 2 ————————" group label with a hairline.
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(text, style: AppTheme.labelSmall),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: AppTheme.surfaceLight.withValues(alpha: 0.6),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 64 px conversation row: 40 px initial disc (the team = primary disc with
+/// the shield) with the presence dot, name + premium crown, the last message
+/// on one line, the time on the right and the unread counter.
+class ConversationRow extends StatelessWidget {
   final ChatConversation conversation;
   final bool online;
+  final bool premium;
   final VoidCallback onTap;
 
-  const _ConversationRow({
+  const ConversationRow({
+    super.key,
     required this.conversation,
     required this.online,
+    this.premium = false,
     required this.onTap,
   });
 
@@ -145,157 +243,74 @@ class _ConversationRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final hasUnread = conversation.unreadCount > 0;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: hasUnread
-              ? AppTheme.primary.withValues(alpha: 0.06)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: hasUnread
-              ? Border.all(color: AppTheme.primary.withValues(alpha: 0.25))
-              : const Border(
-                  bottom: BorderSide(color: Color(0x66334155), width: 1)),
-        ),
+    return SizedBox(
+      height: 64,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(14, 0, 12, 0),
+        onTap: onTap,
         child: Row(
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: conversation.isSupport
-                        ? const LinearGradient(
-                            colors: [AppTheme.primary, AppTheme.primaryDark])
-                        : null,
-                    color:
-                        conversation.isSupport ? null : AppTheme.surfaceLight,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    conversation.isSupport
-                        ? '🎯'
-                        : (conversation.username.isEmpty
-                            ? '?'
-                            : conversation.username[0].toUpperCase()),
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                if (online)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 11,
-                      height: 11,
-                      decoration: BoxDecoration(
-                        color: AppTheme.success,
-                        shape: BoxShape.circle,
-                        border:
-                            Border.all(color: AppTheme.background, width: 2),
-                      ),
-                    ),
-                  ),
-              ],
+            ChatAvatar(
+              isSupport: conversation.isSupport,
+              username: conversation.username,
+              online: online,
+              size: 40,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Flexible(
                         child: Text(
-                          conversation.isSupport
-                              ? l10n.teamDartRivals
-                              : conversation.username,
+                          conversation.isSupport ? l10n.teamDartRivals : conversation.username,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w700),
+                          style: AppTheme.sectionTitle,
                         ),
                       ),
-                      if (conversation.isSupport) ...[
-                        const SizedBox(width: 6),
-                        _teamBadge(l10n),
-                      ],
+                      PremiumBadge(isPremium: premium, size: 12, color: AppTheme.accent),
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     conversation.lastContent,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: hasUnread
-                          ? AppTheme.textPrimary
-                          : AppTheme.textSecondary,
-                      fontWeight:
-                          hasUnread ? FontWeight.w600 : FontWeight.w400,
+                    style: AppTheme.caption.copyWith(
+                      color: hasUnread ? AppTheme.textPrimary : AppTheme.textSecondary,
+                      fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   _timeLabel(conversation.lastAt, l10n),
                   style: const TextStyle(
-                      fontSize: 10, color: AppTheme.textSecondary),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textTertiary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
-                const SizedBox(height: 4),
-                if (hasUnread)
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 18),
-                    height: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${conversation.unreadCount}',
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white),
-                    ),
-                  )
-                else
-                  const Icon(Icons.chevron_right,
-                      size: 16, color: AppTheme.textSecondary),
+                if (hasUnread) ...[
+                  const SizedBox(height: 4),
+                  DsBadge(count: conversation.unreadCount),
+                ],
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _teamBadge(AppLocalizations l10n) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: AppTheme.accent.withValues(alpha: 0.15),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        l10n.teamBadge,
-        style: const TextStyle(
-            fontSize: 8, fontWeight: FontWeight.w800, color: AppTheme.accent),
       ),
     );
   }

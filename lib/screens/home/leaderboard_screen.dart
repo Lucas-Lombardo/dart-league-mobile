@@ -8,6 +8,7 @@ import '../../services/friends_service.dart';
 import '../../services/seasons_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/rank_badge.dart';
 import '../../widgets/premium_badge.dart';
 import '../../widgets/season_card.dart';
@@ -17,6 +18,19 @@ import '../../utils/haptic_service.dart';
 import '../../utils/rank_translation.dart';
 import '../profile/player_stats_screen.dart';
 import 'seasons_screen.dart';
+
+/// Every figure on this screen (positions, ELO, W/L) is tabular.
+const _tabular = [FontFeature.tabularFigures()];
+
+/// Slate 200 — the quiet white of list-row figures.
+const _figure = Color(0xFFE2E8F0);
+
+/// Hairline between two list rows.
+const _rowHairline = Color(0x59334155);
+
+/// "Ta position" → "ta position" after a "·" mid-line.
+String _lowerFirst(String s) =>
+    s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -166,6 +180,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _loadLeaderboard();
   }
 
+  /// The header's people button: Friends ⇄ the selected season's ladder.
+  void _setFriendsOnly(bool friendsOnly) {
+    if (friendsOnly == _showFriendsOnly) return;
+    setState(() => _showFriendsOnly = friendsOnly);
+    _loadLeaderboard();
+  }
+
   Future<void> _openSeasons(Season displayed) async {
     HapticService.lightImpact();
     final picked = await AppNavigator.toScreen<int>(
@@ -178,12 +199,32 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = context.watch<AuthProvider>().currentUser;
     final l10n = AppLocalizations.of(context);
-    final seasonProvider = context.watch<SeasonProvider>();
-    final season = _displayedSeason(seasonProvider);
-    final isArchived = season != null && season.isClosed && !_showFriendsOnly;
 
+    return Column(
+      children: [
+        // The shell draws no header for this tab; the people button is the
+        // friends-scope toggle (lit while the friends ladder is shown).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: DsScreenHeader(
+            title: l10n.rankings,
+            actions: [
+              DsIconButton(
+                icon: Icons.people_outline_rounded,
+                tooltip: l10n.friends,
+                iconColor: _showFriendsOnly ? AppTheme.primaryLight : null,
+                onTap: _isLoading ? null : () => _setFriendsOnly(!_showFriendsOnly),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: _buildBody(context, l10n)),
+      ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AppLocalizations l10n) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.primary),
@@ -191,58 +232,48 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
 
     if (_errorMessage != null) {
-      return RefreshIndicator(
-        onRefresh: _loadLeaderboard,
-        color: AppTheme.primary,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: AppTheme.error),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadLeaderboard,
-                child: Text(l10n.retry),
-              ),
-            ],
-          ),
-        ),
+      return _ErrorState(
+        message: _errorMessage!,
+        retryLabel: l10n.retry,
+        onRetry: _loadLeaderboard,
       );
     }
+
+    final currentUser = context.watch<AuthProvider>().currentUser;
+    final seasonProvider = context.watch<SeasonProvider>();
+    final season = _displayedSeason(seasonProvider);
+    final isArchived = season != null && season.isClosed && !_showFriendsOnly;
 
     final podium = _entries.take(3).toList();
     final rest = _entries.length > 3 ? _entries.sublist(3) : <LeaderboardEntry>[];
     final myPosition = _myPosition(currentUser?.id);
-
     final myStanding = _showFriendsOnly ? null : _myStanding;
+
     final list = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       children: [
-        if (myStanding != null && currentUser != null)
-          _MyCard(
-            username: currentUser.username,
-            standing: myStanding,
+        if (myStanding != null && currentUser != null) ...[
+          LeaderboardMyCard(username: currentUser.username, standing: myStanding),
+          const SizedBox(height: 14),
+        ],
+        if (isArchived) ...[
+          _FinalStandingsBanner(label: l10n.seasonFinalStandings),
+          const SizedBox(height: 10),
+        ],
+        if (podium.length >= 3) ...[
+          LeaderboardPodium(entries: podium, onTap: _openPlayer),
+          const SizedBox(height: 6),
+        ] else
+          ...podium.map(
+            (entry) => LeaderboardRow(
+              entry: entry,
+              isCurrentUser: entry.user.id == currentUser?.id,
+              onTap: () => _openPlayer(entry),
+            ),
           ),
-        if (isArchived) _FinalStandingsBanner(label: l10n.seasonFinalStandings),
-        if (podium.length >= 3)
-          _Podium(entries: podium, onTap: _openPlayer)
-        else
-          ...podium.asMap().entries.map(
-                (e) => _LeaderboardRow(
-                  entry: e.value,
-                  isCurrentUser: e.value.user.id == currentUser?.id,
-                  onTap: () => _openPlayer(e.value),
-                ),
-              ),
         ...rest.map(
-          (entry) => _LeaderboardRow(
+          (entry) => LeaderboardRow(
             entry: entry,
             isCurrentUser: entry.user.id == currentUser?.id,
             onTap: () => _openPlayer(entry),
@@ -254,38 +285,40 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Column(
       children: [
         if (season != null) ...[
-          // The season card replaces the title: what is being played and
-          // when it ends. Tap → the posters.
-          if (seasonProvider.activeSeason != null)
-            SeasonCard(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: SeasonChips(
+              seasons: seasonProvider.seasons.isNotEmpty
+                  ? seasonProvider.seasons
+                  : [seasonProvider.activeSeason!],
+              selectedNumber: season.number,
+              friendsOnly: _showFriendsOnly,
+              onSeasonSelected: (number) {
+                HapticService.lightImpact();
+                _selectSeason(number);
+              },
+              onSeeAll: () => _openSeasons(season),
+            ),
+          ),
+          // What is being played and when it ends. Tap → the posters.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: SeasonCard(
               season: seasonProvider.activeSeason!,
               timeLeft: seasonProvider.timeLeft,
               onTap: () => _openSeasons(season),
             ),
-          SeasonChips(
-            seasons: seasonProvider.seasons.isNotEmpty
-                ? seasonProvider.seasons
-                : [seasonProvider.activeSeason!],
-            selectedNumber: season.number,
-            friendsOnly: _showFriendsOnly,
-            onSeasonSelected: (number) {
-              HapticService.lightImpact();
-              _selectSeason(number);
-            },
-            onFriendsSelected: () {
-              HapticService.lightImpact();
-              setState(() => _showFriendsOnly = true);
-              _loadLeaderboard();
-            },
           ),
         ] else
-          _ScopeToggle(
-            showFriendsOnly: _showFriendsOnly,
-            onChanged: (friendsOnly) {
-              HapticService.lightImpact();
-              setState(() => _showFriendsOnly = friendsOnly);
-              _loadLeaderboard();
-            },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: _ScopeToggle(
+              showFriendsOnly: _showFriendsOnly,
+              onChanged: (friendsOnly) {
+                HapticService.lightImpact();
+                _setFriendsOnly(friendsOnly);
+              },
+            ),
           ),
         Expanded(
           child: _entries.isEmpty
@@ -303,7 +336,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                             ),
                     ),
                     if (myPosition != null && currentUser != null)
-                      _PinnedPositionRow(
+                      LeaderboardPinnedRow(
                         position: myPosition,
                         username: currentUser.username,
                         rank: myStanding?.rank ?? currentUser.rank,
@@ -317,91 +350,89 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 }
 
-/// "Your card" under the chips: rank badge, name · rank, season W/L, your
-/// position and ELO in the displayed season.
-class _MyCard extends StatelessWidget {
+/// "Your card" under the season card: badge, name · rank, season W/L, your
+/// position and ELO in the displayed season. Public for the preview harness.
+@visibleForTesting
+class LeaderboardMyCard extends StatelessWidget {
   final String username;
   final SeasonStanding standing;
 
-  const _MyCard({required this.username, required this.standing});
+  const LeaderboardMyCard({
+    super.key,
+    required this.username,
+    required this.standing,
+  });
+
+  static const _figureStyle = TextStyle(
+    fontSize: 17,
+    fontWeight: FontWeight.w800,
+    color: AppTheme.textPrimary,
+    height: 1,
+    fontFeatures: _tabular,
+  );
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          RankBadge(rank: standing.rank, size: 40, showLabel: false),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    text: username,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: ' · ${RankTranslation.translate(l10n, standing.rank)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.textSecondary,
+    return SizedBox(
+      height: 60,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          children: [
+            RankBadge(rank: standing.rank, size: 36, showLabel: false),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      text: username,
+                      style: AppTheme.rowTitle,
+                      children: [
+                        TextSpan(
+                          text: ' · ${RankTranslation.translate(l10n, standing.rank)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  l10n.seasonWinsLosses(standing.wins, standing.losses),
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.seasonWinsLosses(standing.wins, standing.losses),
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
             ),
-          ),
-          Text(
-            '#${standing.position}',
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.primary,
+            const SizedBox(width: 10),
+            Text(
+              '#${standing.position}',
+              style: _figureStyle.copyWith(color: AppTheme.primaryLight),
             ),
-          ),
-          Container(
-            width: 1,
-            height: 34,
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            color: AppTheme.surfaceLight.withValues(alpha: 0.8),
-          ),
-          Text(
-            '${standing.elo}',
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
+            Container(
+              width: 1,
+              height: 28,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              color: AppTheme.border,
             ),
-          ),
-        ],
+            Text('${standing.elo}', style: _figureStyle),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Thin banner above an archived ladder.
+/// Thin group label above an archived ladder.
 class _FinalStandingsBanner extends StatelessWidget {
   final String label;
 
@@ -409,28 +440,17 @@ class _FinalStandingsBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 13, color: AppTheme.textSecondary),
-          const SizedBox(width: 6),
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        const Icon(Icons.lock_outline_rounded, size: 13, color: AppTheme.textSecondary),
+        const SizedBox(width: 6),
+        Text(label.toUpperCase(), style: AppTheme.labelSmall),
+      ],
     );
   }
 }
 
-/// Compact Mondial | Amis segmented control — replaces the old title card.
+/// Legacy (no seasons backend) Global | Friends segmented control.
 class _ScopeToggle extends StatelessWidget {
   final bool showFriendsOnly;
   final ValueChanged<bool> onChanged;
@@ -442,39 +462,28 @@ class _ScopeToggle extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     Widget segment(String label, IconData icon, bool selected, VoidCallback onTap) {
+      final color = selected ? AppTheme.textPrimary : AppTheme.textSecondary;
       return Expanded(
         child: GestureDetector(
           onTap: onTap,
+          behavior: HitTestBehavior.opaque,
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            height: 32,
             decoration: BoxDecoration(
-              color: selected ? AppTheme.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.primary.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
+              color: selected ? AppTheme.surfaceLight : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  size: 16,
-                  color: selected ? Colors.white : AppTheme.textSecondary,
-                ),
+                Icon(icon, size: 16, color: color),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : AppTheme.textSecondary,
+                    color: color,
                   ),
                 ),
               ],
@@ -485,18 +494,17 @@ class _ScopeToggle extends StatelessWidget {
     }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         children: [
-          segment(l10n.global, Icons.public, !showFriendsOnly,
+          segment(l10n.global, Icons.public_rounded, !showFriendsOnly,
               () => onChanged(false)),
-          segment(l10n.friends, Icons.people, showFriendsOnly,
+          segment(l10n.friends, Icons.people_outline_rounded, showFriendsOnly,
               () => onChanged(true)),
         ],
       ),
@@ -504,59 +512,58 @@ class _ScopeToggle extends StatelessWidget {
   }
 }
 
-/// Top 3 staged on gold/silver/bronze pedestals, winner raised in the middle.
-class _Podium extends StatelessWidget {
+/// Top 3 staged on gold / silver / bronze pedestals, winner raised in the
+/// middle. Public for the preview harness.
+@visibleForTesting
+class LeaderboardPodium extends StatelessWidget {
+  /// The first three entries, in rank order.
   final List<LeaderboardEntry> entries;
   final void Function(LeaderboardEntry) onTap;
 
-  const _Podium({required this.entries, required this.onTap});
-
-  static const _gold = Color(0xFFFFD700);
-  static const _silver = Color(0xFFC0C0C0);
-  static const _bronze = Color(0xFFCD7F32);
+  const LeaderboardPodium({
+    super.key,
+    required this.entries,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: _PodiumSpot(
-              entry: entries[1],
-              place: 2,
-              color: _silver,
-              badgeSize: 44,
-              baseHeight: 34,
-              onTap: () => onTap(entries[1]),
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: _PodiumSpot(
+            entry: entries[1],
+            place: 2,
+            metal: AppTheme.silver,
+            badgeSize: 44,
+            baseHeight: 40,
+            onTap: () => onTap(entries[1]),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _PodiumSpot(
-              entry: entries[0],
-              place: 1,
-              color: _gold,
-              badgeSize: 60,
-              baseHeight: 50,
-              crowned: true,
-              onTap: () => onTap(entries[0]),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _PodiumSpot(
+            entry: entries[0],
+            place: 1,
+            metal: AppTheme.gold,
+            badgeSize: 60,
+            baseHeight: 58,
+            onTap: () => onTap(entries[0]),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _PodiumSpot(
-              entry: entries[2],
-              place: 3,
-              color: _bronze,
-              badgeSize: 40,
-              baseHeight: 26,
-              onTap: () => onTap(entries[2]),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _PodiumSpot(
+            entry: entries[2],
+            place: 3,
+            metal: AppTheme.bronze,
+            badgeSize: 40,
+            baseHeight: 30,
+            onTap: () => onTap(entries[2]),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -564,19 +571,17 @@ class _Podium extends StatelessWidget {
 class _PodiumSpot extends StatelessWidget {
   final LeaderboardEntry entry;
   final int place;
-  final Color color;
+  final Color metal;
   final double badgeSize;
   final double baseHeight;
-  final bool crowned;
   final VoidCallback onTap;
 
   const _PodiumSpot({
     required this.entry,
     required this.place,
-    required this.color,
+    required this.metal,
     required this.badgeSize,
     required this.baseHeight,
-    this.crowned = false,
     required this.onTap,
   });
 
@@ -584,30 +589,12 @@ class _PodiumSpot extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (crowned)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 2),
-              child: Text('👑', style: TextStyle(fontSize: 14)),
-            ),
-          Container(
-            decoration: crowned
-                ? BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.45),
-                        blurRadius: 18,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  )
-                : null,
-            child: RankBadge(rank: entry.user.rank, size: badgeSize, showLabel: false),
-          ),
-          const SizedBox(height: 4),
+          RankBadge(rank: entry.user.rank, size: badgeSize, showLabel: false),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -619,44 +606,52 @@ class _PodiumSpot extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: AppTheme.textPrimary,
                   ),
                 ),
               ),
-              PremiumBadge(isPremium: entry.user.isPremiumActive, size: 11),
+              PremiumBadge(
+                isPremium: entry.user.isPremiumActive,
+                size: 11,
+                color: AppTheme.accent,
+              ),
             ],
           ),
+          const SizedBox(height: 6),
           Text(
             '${entry.user.elo}',
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: place == 1 ? color : AppTheme.textPrimary,
+              fontWeight: FontWeight.w700,
+              color: place == 1 ? AppTheme.gold : _figure,
+              height: 1,
+              fontFeatures: _tabular,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Container(
             height: baseHeight,
             width: double.infinity,
+            alignment: Alignment.topCenter,
+            padding: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  color.withValues(alpha: 0.35),
-                  color.withValues(alpha: 0.07),
+                  metal.withValues(alpha: 0.19),
+                  metal.withValues(alpha: 0.04),
                 ],
               ),
             ),
-            child: Center(
-              child: Text(
-                '$place',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: color,
-                ),
+            child: Text(
+              '$place',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: metal,
+                height: 1,
               ),
             ),
           ),
@@ -666,13 +661,16 @@ class _PodiumSpot extends StatelessWidget {
   }
 }
 
-/// Dense list row from 4th place on.
-class _LeaderboardRow extends StatelessWidget {
+/// Dense 46 px list row from 4th place on, hairline below. My own row is
+/// tinted primary. Public for the preview harness.
+@visibleForTesting
+class LeaderboardRow extends StatelessWidget {
   final LeaderboardEntry entry;
   final bool isCurrentUser;
   final VoidCallback onTap;
 
-  const _LeaderboardRow({
+  const LeaderboardRow({
+    super.key,
     required this.entry,
     required this.isCurrentUser,
     required this.onTap,
@@ -681,99 +679,122 @@ class _LeaderboardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final nameColor = isCurrentUser ? AppTheme.primaryLight : AppTheme.textPrimary;
+    final figureColor = isCurrentUser ? AppTheme.primaryLight : _figure;
+    final positionColor = isCurrentUser ? AppTheme.primaryLight : AppTheme.textSecondary;
+    final captionColor = isCurrentUser ? AppTheme.primaryLight : AppTheme.textTertiary;
 
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isCurrentUser ? AppTheme.primary.withValues(alpha: 0.1) : null,
-          border: Border(
-            left: BorderSide(
-              color: isCurrentUser ? AppTheme.primary : Colors.transparent,
-              width: 3,
-            ),
-            bottom: BorderSide(
-              color: AppTheme.surfaceLight.withValues(alpha: 0.35),
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 30,
-              // scaleDown keeps 3+ digit ranks ("100") on a single line.
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  '${entry.rank}',
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: isCurrentUser ? AppTheme.primary : AppTheme.textSecondary,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            RankBadge(rank: entry.user.rank, size: 24, showLabel: false),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
+    return Column(
+      children: [
+        Material(
+          color: isCurrentUser
+              ? AppTheme.primary.withValues(alpha: 0.10)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              height: 46,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      // scaleDown keeps 3+ digit positions ("100") on one line.
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
                         child: Text(
-                          entry.user.username,
+                          '${entry.rank}',
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: isCurrentUser ? AppTheme.primary : Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: positionColor,
+                            fontFeatures: _tabular,
                           ),
                         ),
                       ),
-                      PremiumBadge(
-                          isPremium: entry.user.isPremiumActive, size: 12),
-                    ],
-                  ),
-                  Text(
-                    '${entry.wins}${l10n.formWinLetter} - ${entry.losses}${l10n.formLossLetter}',
-                    style: const TextStyle(
-                      fontSize: 10.5,
-                      color: AppTheme.textSecondary,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    RankBadge(rank: entry.user.rank, size: 24, showLabel: false),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  entry.user.username,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: nameColor,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                              PremiumBadge(
+                                isPremium: entry.user.isPremiumActive,
+                                size: 11,
+                                color: AppTheme.accent,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            l10n.seasonWinsLosses(entry.wins, entry.losses),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: captionColor,
+                              height: 1.1,
+                              fontFeatures: _tabular,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${entry.user.elo}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: figureColor,
+                        fontFeatures: _tabular,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Text(
-              '${entry.user.elo}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: isCurrentUser ? AppTheme.primary : AppTheme.textPrimary,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        const SizedBox(height: 1, width: double.infinity, child: ColoredBox(color: _rowHairline)),
+      ],
     );
   }
 }
 
-/// Always-visible "your position" row docked under the list.
-class _PinnedPositionRow extends StatelessWidget {
+/// Always-visible "your position" row docked under the list, above the
+/// bottom bar. Public for the preview harness.
+@visibleForTesting
+class LeaderboardPinnedRow extends StatelessWidget {
   final int position;
   final String username;
   final String rank;
   final int elo;
 
-  const _PinnedPositionRow({
+  const LeaderboardPinnedRow({
+    super.key,
     required this.position,
     required this.username,
     required this.rank,
@@ -785,11 +806,12 @@ class _PinnedPositionRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: const Color(0xFF12233B),
         border: Border(
-          top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
+          top: BorderSide(color: AppTheme.primaryLight.withValues(alpha: 0.4)),
         ),
       ),
       child: Row(
@@ -797,32 +819,46 @@ class _PinnedPositionRow extends StatelessWidget {
           Text(
             l10n.positionOrdinal(position),
             style: const TextStyle(
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: FontWeight.w800,
-              color: AppTheme.primary,
+              color: AppTheme.primaryLight,
+              fontFeatures: _tabular,
             ),
           ),
-          const SizedBox(width: 10),
-          RankBadge(rank: rank, size: 24, showLabel: false),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
+          RankBadge(rank: rank, size: 26, showLabel: false),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              '$username — ${l10n.yourPosition}',
+            child: Text.rich(
+              TextSpan(
+                text: username,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+                children: [
+                  TextSpan(
+                    text: ' · ${_lowerFirst(l10n.yourPosition)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
             ),
           ),
+          const SizedBox(width: 12),
           Text(
             '$elo',
             style: const TextStyle(
               fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.primary,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.primaryLight,
+              fontFeatures: _tabular,
             ),
           ),
         ],
@@ -831,6 +867,7 @@ class _PinnedPositionRow extends StatelessWidget {
   }
 }
 
+/// Quiet card: icon, one line, optional hint.
 class _EmptyState extends StatelessWidget {
   final bool showFriendsOnly;
   final AppLocalizations l10n;
@@ -839,27 +876,82 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: DsCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                showFriendsOnly
+                    ? Icons.people_outline_rounded
+                    : Icons.leaderboard_outlined,
+                size: 32,
+                color: AppTheme.textTertiary,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                showFriendsOnly ? l10n.noFriendsYetHint : l10n.noLeaderboardData,
+                textAlign: TextAlign.center,
+                style: AppTheme.rowTitle,
+              ),
+              if (showFriendsOnly) ...[
+                const SizedBox(height: 4),
+                Text(
+                  l10n.addFriendsToSeeRankings,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.caption,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Load failure: the message and a retry button; pull-to-refresh also works.
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final String retryLabel;
+  final Future<void> Function() onRetry;
+
+  const _ErrorState({
+    required this.message,
+    required this.retryLabel,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRetry,
+      color: AppTheme.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
         children: [
-          Icon(
-            showFriendsOnly ? Icons.people_outline : Icons.leaderboard_outlined,
-            size: 64,
-            color: AppTheme.textSecondary.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            showFriendsOnly ? 'No friends yet' : 'No leaderboard data available',
-            style: AppTheme.titleLarge.copyWith(color: AppTheme.textSecondary),
-          ),
-          if (showFriendsOnly) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Add friends to see their rankings!',
-              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 32, color: AppTheme.error),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(onPressed: onRetry, child: Text(retryLabel)),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );

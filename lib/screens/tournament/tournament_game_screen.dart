@@ -7,6 +7,7 @@ import '../../utils/app_navigator.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/game_turn_ui.dart';
 import '../game/base_game_screen_state.dart';
 import '../game/leg_end_view.dart';
@@ -60,15 +61,14 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   String? get matchIdForLeave => _storedMatchId;
 
   @override
-  @override
   String get leaveWarningText =>
       AppLocalizations.of(context).forfeitTournamentWarning;
 
   @override
   Widget buildAppBarTitle() => Row(children: [
-    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.error, shape: BoxShape.circle)),
+    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.secondary, shape: BoxShape.circle)),
     const SizedBox(width: 8),
-    Text(AppLocalizations.of(context).tournamentAppBarTitle, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
+    Text(dsSentence(AppLocalizations.of(context).tournamentAppBarTitle), style: AppTheme.sectionTitle),
   ]);
 
   @override
@@ -183,34 +183,26 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   // until an admin picks the winner — leave the game flow entirely.
   void _showResultUnderReviewAndExit() {
     final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: Text(
-          l10n.resultUnderReviewTitle,
-          style: const TextStyle(color: Colors.white),
+    showGameDialog<void>(
+      context,
+      accent: AppTheme.primary,
+      icon: Icons.gavel_rounded,
+      title: l10n.resultUnderReviewTitle,
+      content: Text(l10n.resultUnderReviewBody, style: AppTheme.bodyMedium),
+      actionsBuilder: (ctx) => [
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(ctx).pop();
+            if (!mounted) return;
+            final provider = context.read<TournamentGameProvider>();
+            AppNavigator.toHomeClearing(context);
+            try {
+              provider.reset();
+            } catch (_) {}
+          },
+          child: Text(dsSentence(l10n.ok)),
         ),
-        content: Text(
-          l10n.resultUnderReviewBody,
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              if (!mounted) return;
-              final provider = context.read<TournamentGameProvider>();
-              AppNavigator.toHomeClearing(context);
-              try {
-                provider.reset();
-              } catch (_) {}
-            },
-            child: Text(l10n.ok),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -233,12 +225,11 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
     showGameDialog(
       context,
       accent: isWinner ? AppTheme.success : AppTheme.opponentPink,
-      icon: isWinner ? Icons.emoji_events : Icons.exit_to_app,
+      icon: isWinner ? Icons.emoji_events_outlined : Icons.logout_rounded,
       title: isWinner ? l10n.youAdvance : l10n.eliminated,
       content: Text(
         isWinner ? l10n.opponentLeftForfeitAdvance : l10n.youLeftEliminated,
-        style: AppTheme.bodyLarge.copyWith(fontSize: 16),
-        textAlign: TextAlign.center,
+        style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary),
       ),
       actionsBuilder: (dialogCtx) => [
         ElevatedButton(
@@ -249,18 +240,18 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             parentNav.pushNamedAndRemoveUntil('/home', (route) => false);
           },
           style: gameFilledButtonStyle(isWinner ? AppTheme.success : AppTheme.playerBlue),
-          child: Text(l10n.returnToHome),
+          child: Text(dsSentence(l10n.returnToHome)),
         ),
       ],
     ).then((_) => forfeitDialogShowing = false);
   }
 
   @override
-  @override
   String? get replayFormatLabel => widget.tournamentName.isNotEmpty
       ? widget.tournamentName.toUpperCase()
       : 'TOURNAMENT';
 
+  @override
   Widget buildEndScreen(dynamic game, AuthProvider auth) {
     if (_resultAccepted) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
@@ -281,29 +272,29 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
       );
     }
 
+    // One filled block (accept) over a quiet outlined refusal — the hero and
+    // the tournament pill above already frame the result, so no card here.
     final panel = Column(mainAxisSize: MainAxisSize.min, children: [
       Text(
-        isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg),
-        style: AppTheme.titleLarge.copyWith(color: AppTheme.primary, fontWeight: FontWeight.bold),
+        dsSentence(isSeriesOver ? l10n.matchResult : l10n.legResultSubtitle(tGame.currentLeg)),
+        style: AppTheme.sectionTitle,
         textAlign: TextAlign.center,
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: 6),
       Text(
         isSeriesOver ? l10n.pleaseConfirmMatchResult : l10n.confirmNextLeg,
-        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+        style: AppTheme.caption,
         textAlign: TextAlign.center,
       ),
-      const SizedBox(height: 20),
-      SizedBox(width: double.infinity, height: 56, child: ElevatedButton.icon(
+      const SizedBox(height: 16),
+      SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
         onPressed: () { HapticService.mediumImpact(); _acceptTournamentResult(); },
-        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-        icon: const Icon(Icons.check_circle_outline),
-        label: Text(l10n.acceptResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+        child: Text(dsSentence(l10n.acceptResult)),
       )),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       // Tournament matches get "refuse the result" (a dispute with a reason,
       // reviewed by an admin), not the ranked "report player" wording.
-      SizedBox(width: double.infinity, height: 56, child: OutlinedButton.icon(
+      SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(
         onPressed: () {
           HapticService.lightImpact();
           showReportDialog(
@@ -329,9 +320,9 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             onComplete: () {},
           );
         },
-        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-        icon: const Icon(Icons.cancel_outlined),
-        label: Text(l10n.refuseResult, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+        style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, textStyle: gameButtonTextStyle.copyWith(fontSize: 14)),
+        icon: const Icon(Icons.cancel_outlined, size: 16),
+        label: Text(dsSentence(l10n.refuseResult)),
       )),
     ]);
 

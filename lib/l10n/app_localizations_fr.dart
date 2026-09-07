@@ -994,10 +994,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get addFriendsToSeeRankings =>
-      'Ajoutez des amis pour voir leurs classements !';
+      'Ajoutez des amis pour voir leur classement';
 
   @override
-  String get noLeaderboardData => 'Aucune donnée de classement disponible';
+  String get noLeaderboardData => 'Aucun classement disponible';
 
   // Stats
   @override
@@ -1591,6 +1591,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainingPlayCardTitle => 'Entraînement';
 
   @override
+  String get homeCompetitiveSubtitle => 'Match classé';
+
+  @override
   String get trainingPlayCardSubtitle =>
       'Exercices en solo — around the clock, checkouts, Bob\'s 27 et plus';
 
@@ -1984,7 +1987,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noReceivedMessages => 'Aucun message reçu pour le moment';
   @override
   String get writeViaFriendsHint =>
-      'Pour démarrer une discussion, utilise le bouton 💬 sur un ami dans l\'onglet Amis.';
+      'Pour démarrer une discussion, utilise le bouton « Message » sur un ami dans l\'onglet Amis.';
   @override
   String get teamDartRivals => 'Équipe Dart Rivals';
   @override
@@ -1999,7 +2002,7 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get chatRetentionNotice => 'Les messages sont conservés 30 jours';
   @override
-  String get chatEmpty => 'Aucun message — dis bonjour ! 🎯';
+  String get chatEmpty => 'Aucun message — dis bonjour !';
   @override
   String get chatMessageAction => 'Message';
   @override
@@ -3458,5 +3461,70 @@ class AppLocalizationsFr extends AppLocalizations {
   String get bracketQualifiedShort => 'Qualifié';
   @override
   String bracketSpectators(int n) => n == 1 ? '1 spectateur' : '$n spectateurs';
+
+  @override
+  String get premiumContinueYearly => 'Continuer avec Annuel';
+  @override
+  String get premiumContinueMonthly => 'Continuer avec Mensuel';
+  @override
+  String get settingsEditShort => 'Modifier';
+  @override
+  String get friendsOffline => 'Hors ligne';
+
+  // Leaderboard (system D)
+  @override
+  String get leaderboardAllSeasons => 'Toutes';
+
+  // Matchmaking queue + training hub (system D)
+  @override
+  String queueAxisHour(int hour) => '$hour h';
+  @override
+  String get trainingBotRowSubtitle => '501, 301 ou Cricket · du Bronze au Maître';
+  @override
+  String get trainingNoCameraShort => 'sans caméra';
+
+  @override
+  String get statsLegendYou => 'Toi';
+  @override
+  String get statsLegendMedian => 'Médiane';
+  @override
+  String statsWindowDays(int days) => '$days j';
+  @override
+  String historyPlacementOrdinal(int place) => place == 1 ? '1er' : '${place}e';
+  @override
+  String placementHubPlayMatch(int n) => 'Jouer le match $n';
+  @override
+  String placementHubResumeMatch(String bot) => 'Reprendre contre $bot';
+  @override
+  String get placementHubToPlay => 'À jouer';
+  @override
+  String placementHubBotAverage(int avg) => 'Moy. $avg par tour';
+  @override
+  String placementHubBotName(String rank) => 'Bot $rank';
+  @override
+  String placementResultStartsIn(String rank) => 'Tu commences en $rank';
+  @override
+  String get spectateHubEmptyHint =>
+      'Reviens pendant un tournoi ou une partie classée.';
+
+
+  @override
+  String get trainingQuizQuestionLabel => 'Questions';
+
+  @override
+  String get trainingQuizCorrectLabel => 'Bonnes réponses';
+
+  @override
+  String get replaysEmptyTitle => 'Aucun clip pour l\'instant';
+
+  @override
+  String get replaysEmptyHint =>
+      'Enregistre un moment pendant un match, il arrive ici.';
+
+  @override
+  String trainingProgressLastSession(String when) => 'dernière séance $when';
+
+  @override
+  String get trainingProgressEmptyTitle => 'Aucune séance enregistrée';
 
 }

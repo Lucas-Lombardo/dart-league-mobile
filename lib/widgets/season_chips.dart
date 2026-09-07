@@ -3,18 +3,21 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models/season.dart';
 import '../utils/app_theme.dart';
+import '../utils/haptic_service.dart';
 
-/// `S0 · S1 EN COURS · S2 🔒` + the Friends icon on the right — replaces
-/// the old Global | Friends toggle on the Rankings tab. Closed seasons open
-/// their frozen ladder, the active one its live ladder; the scheduled one
-/// is locked until it starts.
+/// "Saison 1 · En cours" · "Saison 0" · "🔒 Saison 2" text chips, with an
+/// "All ›" link at the right end. Closed seasons open their frozen ladder,
+/// the active one its live ladder; the scheduled one is locked until it
+/// starts. The friends scope lives in the screen header: the row only knows
+/// it through [friendsOnly] (no chip is highlighted while it is on).
 class SeasonChips extends StatelessWidget {
   final List<Season> seasons;
   /// The season whose ladder is shown (ignored while [friendsOnly]).
   final int? selectedNumber;
   final bool friendsOnly;
   final ValueChanged<int> onSeasonSelected;
-  final VoidCallback onFriendsSelected;
+  /// "All ›" — opens the seasons screen. The link is hidden when null.
+  final VoidCallback? onSeeAll;
 
   const SeasonChips({
     super.key,
@@ -22,204 +25,164 @@ class SeasonChips extends StatelessWidget {
     required this.selectedNumber,
     required this.friendsOnly,
     required this.onSeasonSelected,
-    required this.onFriendsSelected,
+    this.onSeeAll,
   });
+
+  /// The live season first, then the archive newest first, the upcoming
+  /// (locked) one last.
+  static List<Season> _ordered(List<Season> seasons) {
+    int weight(Season s) => s.isActive ? 0 : (s.isClosed ? 1 : 2);
+    final list = [...seasons];
+    list.sort((a, b) {
+      final w = weight(a).compareTo(weight(b));
+      return w != 0 ? w : b.number.compareTo(a.number);
+    });
+    return list;
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final ordered = [...seasons]..sort((a, b) => a.number.compareTo(b.number));
+    final ordered = _ordered(seasons);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+    return SizedBox(
+      height: 32,
       child: Row(
         children: [
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              reverse: true,
               child: Row(
                 children: [
-                  for (final season in ordered) ...[
+                  for (var i = 0; i < ordered.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
                     _SeasonChip(
-                      season: season,
-                      selected: !friendsOnly && season.number == selectedNumber,
-                      label: l10n.seasonShort(season.number),
-                      inProgressLabel: l10n.seasonInProgressCaps,
-                      onTap: season.isScheduled
+                      season: ordered[i],
+                      selected: !friendsOnly && ordered[i].number == selectedNumber,
+                      label: ordered[i].isActive
+                          ? '${l10n.seasonN(ordered[i].number)} · ${l10n.seasonInProgress}'
+                          : l10n.seasonN(ordered[i].number),
+                      onTap: ordered[i].isScheduled
                           ? null
-                          : () => onSeasonSelected(season.number),
+                          : () => onSeasonSelected(ordered[i].number),
                     ),
-                    const SizedBox(width: 8),
                   ],
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          _IconChip(
-            icon: Icons.people_outline,
-            selected: friendsOnly,
-            tooltip: l10n.friends,
-            onTap: onFriendsSelected,
-          ),
+          if (onSeeAll != null) ...[
+            const SizedBox(width: 10),
+            _SeeAllLink(label: l10n.leaderboardAllSeasons, onTap: onSeeAll!),
+          ],
         ],
       ),
     );
   }
 }
 
+/// 32 px pill. Active: tinted primary + primaryLight hairline and text;
+/// inactive: surface + hairline; scheduled: locked, tertiary, not tappable.
 class _SeasonChip extends StatelessWidget {
   final Season season;
   final bool selected;
   final String label;
-  final String inProgressLabel;
   final VoidCallback? onTap;
 
   const _SeasonChip({
     required this.season,
     required this.selected,
     required this.label,
-    required this.inProgressLabel,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-      color: selected ? Colors.white : AppTheme.textSecondary,
-    );
+    final locked = season.isScheduled;
+    final fg = selected
+        ? AppTheme.primaryLight
+        : (locked ? AppTheme.textTertiary : AppTheme.textSecondary);
+    final background =
+        selected ? AppTheme.primary.withValues(alpha: 0.14) : AppTheme.surface;
+    final border =
+        selected ? AppTheme.primaryLight.withValues(alpha: 0.4) : AppTheme.border;
 
-    Widget child = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (season.isClosed) ...[
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 14,
-            color: selected ? Colors.white : AppTheme.textSecondary,
-          ),
-          const SizedBox(width: 6),
-        ],
-        Text(label, style: textStyle),
-        if (season.isActive) ...[
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-            decoration: BoxDecoration(
-              color: selected
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : AppTheme.primary.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              inProgressLabel,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppTheme.primary,
-              ),
+    final content = Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (season.isClosed) ...[
+            Icon(Icons.inventory_2_outlined, size: 14, color: fg),
+            const SizedBox(width: 6),
+          ],
+          if (locked) ...[
+            Icon(Icons.lock_outline_rounded, size: 14, color: fg),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: fg,
+              height: 1,
             ),
           ),
         ],
-        if (season.isScheduled) ...[
-          const SizedBox(width: 6),
-          const Icon(Icons.lock_outline, size: 13, color: AppTheme.textSecondary),
-        ],
-      ],
+      ),
     );
-
-    final padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 7);
-    if (season.isScheduled) {
-      // Dashed outline, not tappable: it has not started yet.
-      child = CustomPaint(
-        painter: _DashedRRectPainter(
-          color: AppTheme.textSecondary.withValues(alpha: 0.5),
-          radius: 10,
-        ),
-        child: Padding(padding: padding, child: child),
-      );
-      return Semantics(button: false, child: child);
-    }
 
     return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Ink(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: selected ? AppTheme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: selected
-                ? null
-                : Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.8)),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
-          child: child,
-        ),
-      ),
+      color: background,
+      shape: StadiumBorder(side: BorderSide(color: border)),
+      clipBehavior: Clip.antiAlias,
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              child: content,
+            ),
     );
   }
 }
 
-class _IconChip extends StatelessWidget {
-  final IconData icon;
-  final bool selected;
-  final String tooltip;
+/// "Toutes ›" — 12 / 600 primaryLight link with a chevron.
+class _SeeAllLink extends StatelessWidget {
+  final String label;
   final VoidCallback onTap;
 
-  const _IconChip({
-    required this.icon,
-    required this.selected,
-    required this.tooltip,
-    required this.onTap,
-  });
+  const _SeeAllLink({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: selected ? AppTheme.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              border: selected
-                  ? null
-                  : Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.8)),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.primary.withValues(alpha: 0.4),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        HapticService.lightImpact();
+        onTap();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryLight,
+              ),
             ),
-            child: Icon(
-              icon,
-              size: 17,
-              color: selected ? Colors.white : AppTheme.textSecondary,
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 14,
+              color: AppTheme.primaryLight,
             ),
-          ),
+          ],
         ),
       ),
     );

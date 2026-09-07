@@ -4,10 +4,10 @@ import '../l10n/app_localizations.dart';
 import '../screens/spectate/spectate_hub_screen.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
+import 'design_system.dart';
 
-/// The activity pill's live twin: shown on the home screen while spectatable
-/// matches are running, opens the "En direct" hub. Same silhouette as
-/// ActivityPill, but keyed on the live (pink) identity.
+/// Home row shown while spectatable matches are running: a pulsing live dot,
+/// "3 matchs en direct", and "Regarder ›". Opens the "En direct" hub.
 class LiveMatchesPill extends StatefulWidget {
   final int count;
 
@@ -39,84 +39,77 @@ class _LiveMatchesPillState extends State<LiveMatchesPill>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Center(
-      child: InkWell(
+    return SizedBox(
+      height: 52,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         onTap: () {
           HapticService.lightImpact();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (context) => const SpectateHubScreen()),
           );
         },
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: AppTheme.opponentPink.withValues(alpha: 0.45),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RepaintBoundary(
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, _) {
-                      final t = _controller.value;
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 7 + 9 * t,
-                            height: 7 + 9 * t,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.opponentPink
-                                  .withValues(alpha: (1 - t) * 0.35),
-                            ),
+        child: Row(
+          children: [
+            RepaintBoundary(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) {
+                    final t = _controller.value;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 8 + 8 * t,
+                          height: 8 + 8 * t,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.secondary
+                                .withValues(alpha: (1 - t) * 0.3),
                           ),
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.opponentPink,
-                            ),
+                        ),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.secondary,
                           ),
-                        ],
-                      );
-                    },
-                  ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
-              const SizedBox(width: 9),
-              Text(
-                '${widget.count}',
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${widget.count} ${l10n.spectateMatchesLive(widget.count)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: AppTheme.textPrimary,
                 ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                l10n.spectateMatchesLive(widget.count),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                ),
+            ),
+            Text(
+              l10n.spectateWatch,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryLight,
               ),
-              const SizedBox(width: 6),
-              const Icon(Icons.chevron_right,
-                  size: 16, color: AppTheme.textSecondary),
-            ],
-          ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 18, color: AppTheme.primaryLight),
+          ],
         ),
       ),
     );

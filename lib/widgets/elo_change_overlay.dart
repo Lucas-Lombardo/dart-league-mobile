@@ -1,9 +1,19 @@
-import 'dart:math';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
-import '../l10n/app_localizations.dart';
+import '../utils/rank_translation.dart';
+import '../utils/rank_utils.dart';
+import 'design_system.dart';
 
+/// Full-screen "your ELO moved" overlay after a ranked result is accepted:
+/// result disc, sentence-case title, one surface card with the counting ELO
+/// number, the delta pill, the rank-band progress bar and the "next rank in
+/// N pts" caption, and the primary "Continuer à jouer" button pinned at the
+/// bottom. The staggered entrance and the 1.5 s count-up are kept; the glow,
+/// the particles and the second colour are gone.
 class EloChangeOverlay extends StatefulWidget {
   final int oldElo;
   final int newElo;
@@ -26,19 +36,15 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
     with TickerProviderStateMixin {
   late final AnimationController _entranceController;
   late final AnimationController _barController;
-  late final AnimationController _pulseController;
-  late final AnimationController _particleController;
 
   late final Animation<double> _backgroundFade;
   late final Animation<double> _iconScale;
   late final Animation<double> _iconFade;
   late final Animation<double> _titleFade;
-  late final Animation<double> _barFade;
-  late final Animation<double> _barProgress;
+  late final Animation<double> _cardFade;
   late final Animation<double> _numberFade;
-  late final Animation<double> _messageFade;
+  late final Animation<double> _barProgress;
   late final Animation<double> _buttonFade;
-  late final Animation<double> _glowPulse;
 
   @override
   void initState() {
@@ -50,108 +56,50 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
       duration: const Duration(milliseconds: 2000),
     );
 
-    // Bar fill animation: 1.5s, starts after entrance
+    // Count-up animation: 1.5s, starts after entrance
     _barController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
 
-    // Glow pulse
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
+    Animation<double> step(double from, double to, {Curve curve = Curves.easeOut}) =>
+        Tween<double>(begin: 0, end: 1).animate(
+          CurvedAnimation(
+            parent: _entranceController,
+            curve: Interval(from, to, curve: curve),
+          ),
+        );
 
-    // Particles (win only)
-    _particleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3000),
-    );
-
-    // Staggered entrance
-    _backgroundFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0, 0.15, curve: Curves.easeOut),
-      ),
-    );
-
+    _backgroundFade = step(0, 0.15);
     _iconScale = Tween<double>(begin: 0.3, end: 1).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.1, 0.35, curve: Curves.elasticOut),
       ),
     );
-
-    _iconFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.1, 0.25, curve: Curves.easeOut),
-      ),
-    );
-
-    _titleFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.25, 0.4, curve: Curves.easeOut),
-      ),
-    );
-
-    _barFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.35, 0.5, curve: Curves.easeOut),
-      ),
-    );
-
-    _numberFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.45, 0.6, curve: Curves.easeOut),
-      ),
-    );
-
-    _messageFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.7, 0.85, curve: Curves.easeOut),
-      ),
-    );
-
-    _buttonFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.85, 1.0, curve: Curves.easeOut),
-      ),
-    );
+    _iconFade = step(0.1, 0.25);
+    _titleFade = step(0.25, 0.4);
+    _cardFade = step(0.35, 0.5);
+    _numberFade = step(0.45, 0.6);
+    _buttonFade = step(0.85, 1.0);
 
     _barProgress = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _barController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    _glowPulse = Tween<double>(begin: 0.4, end: 1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _barController, curve: Curves.easeInOut),
     );
 
     _entranceController.forward();
 
-    // Start bar animation after the bar fades in
+    // Start the count-up after the card fades in
     Future.delayed(const Duration(milliseconds: 1000), () {
       if (mounted) _barController.forward();
     });
 
-    _pulseController.repeat(reverse: true);
-    if (widget.isWin) _particleController.repeat();
-
-    // Haptic when bar starts filling
+    // Haptic when the count-up starts
     Future.delayed(const Duration(milliseconds: 1000), () {
       if (mounted) HapticService.mediumImpact();
     });
 
-    // Haptic when bar finishes
+    // Haptic when it lands
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) HapticService.heavyImpact();
     });
@@ -161,8 +109,6 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
   void dispose() {
     _entranceController.dispose();
     _barController.dispose();
-    _pulseController.dispose();
-    _particleController.dispose();
     super.dispose();
   }
 
@@ -173,12 +119,7 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
     final l10n = AppLocalizations.of(context);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _entranceController,
-        _barController,
-        _pulseController,
-        _particleController,
-      ]),
+      animation: Listenable.merge([_entranceController, _barController]),
       builder: (context, _) {
         final currentElo =
             (widget.oldElo + (eloChange * _barProgress.value)).round();
@@ -187,225 +128,94 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
           color: Colors.transparent,
           child: Stack(
             children: [
-              // Background
               Opacity(
                 opacity: _backgroundFade.value,
                 child: Container(
                   color: AppTheme.background.withValues(alpha: 0.97),
                 ),
               ),
-
-              // Particles (win only)
-              if (widget.isWin) ..._buildParticles(color),
-
-              // Main content
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Icon
-                      Opacity(
-                        opacity: _iconFade.value,
-                        child: Transform.scale(
-                          scale: _iconScale.value,
-                          child: Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: color.withValues(
-                                      alpha: _glowPulse.value * 0.3),
-                                  blurRadius: 40,
-                                  spreadRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              widget.isWin
-                                  ? Icons.emoji_events
-                                  : Icons.trending_down,
-                              color: color,
-                              size: 56,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Title
-                      FadeTransition(
-                        opacity: _titleFade,
-                        child: Text(
-                          widget.isWin
-                              ? l10n.victory.toUpperCase()
-                              : l10n.defeat.toUpperCase(),
-                          style: AppTheme.displayLarge.copyWith(
-                            color: color,
-                            fontSize: 36,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 40),
-
-                      // ELO progress bar section
-                      FadeTransition(
-                        opacity: _barFade,
-                        child: Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: color.withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
+              SafeArea(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 16),
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              // ELO label
-                              Text(
-                                l10n.eloChange.toUpperCase(),
-                                style: TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 3,
+                              Opacity(
+                                opacity: _iconFade.value,
+                                child: Transform.scale(
+                                  scale: _iconScale.value,
+                                  child: Container(
+                                    width: 88,
+                                    height: 88,
+                                    decoration: BoxDecoration(
+                                      color: color.withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: color.withValues(alpha: 0.6),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      widget.isWin
+                                          ? Icons.emoji_events_outlined
+                                          : Icons.trending_down_rounded,
+                                      color: color,
+                                      size: 38,
+                                    ),
+                                  ),
                                 ),
                               ),
-
-                              const SizedBox(height: 16),
-
-                              // Animated ELO number
+                              const SizedBox(height: 18),
                               FadeTransition(
-                                opacity: _numberFade,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '$currentElo',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 48,
-                                        fontWeight: FontWeight.w900,
-                                        fontFeatures: const [
-                                          FontFeature.tabularFigures()
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: color.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        '${eloChange >= 0 ? '+' : ''}$eloChange',
-                                        style: TextStyle(
-                                          color: color,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                opacity: _titleFade,
+                                child: Text(
+                                  dsSentence(
+                                      widget.isWin ? l10n.victory : l10n.defeat),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.7,
+                                    height: 1,
+                                  ),
                                 ),
                               ),
-
-                              const SizedBox(height: 20),
-
-                              // Progress bar
-                              _buildProgressBar(color),
-
-                              const SizedBox(height: 8),
-
-                              // Old -> New labels
+                              const SizedBox(height: 36),
                               FadeTransition(
-                                opacity: _numberFade,
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      '${widget.oldElo}',
-                                      style: TextStyle(
-                                        color: AppTheme.textSecondary,
-                                        fontSize: 13,
-                                        fontFeatures: const [
-                                          FontFeature.tabularFigures()
-                                        ],
-                                      ),
-                                    ),
-                                    Text(
-                                      '${widget.newElo}',
-                                      style: TextStyle(
-                                        color: color,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        fontFeatures: const [
-                                          FontFeature.tabularFigures()
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                opacity: _cardFade,
+                                child: _buildEloCard(
+                                  l10n,
+                                  color: color,
+                                  currentElo: currentElo,
+                                  eloChange: eloChange,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 24),
-
-                      // Motivational message
-                      FadeTransition(
-                        opacity: _messageFade,
-                        child: Text(
-                          widget.isWin ? l10n.provenLegend : l10n.trainingPath,
-                          style: AppTheme.bodyLarge.copyWith(fontSize: 15),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Continue button
-                      FadeTransition(
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: FadeTransition(
                         opacity: _buttonFade,
-                        child: ElevatedButton(
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
                             onPressed: widget.onDismiss,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  widget.isWin ? color : AppTheme.primary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 40,
-                                vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Text(
-                              l10n.continuePlaying,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 1,
-                              ),
-                            ),
+                            child: Text(l10n.continuePlaying),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -415,85 +225,129 @@ class _EloChangeOverlayState extends State<EloChangeOverlay>
     );
   }
 
-  Widget _buildProgressBar(Color color) {
-    // Bar shows movement from old elo position to new elo position
-    // We use a range around the old elo to make the bar visually meaningful
-    final eloChange = widget.newElo - widget.oldElo;
-    final range = (eloChange.abs() * 4).clamp(100, 500);
-    final barMin = widget.oldElo - (widget.isWin ? range ~/ 4 : range * 3 ~/ 4);
-    final barMax = barMin + range;
+  /// The surface card: "ELO" label, counting number + delta pill, the rank
+  /// band progress (floor of the current rank → floor of the next), and the
+  /// "1601 → 1619 · Diamant dans 381 pts" caption. Thresholds come from
+  /// rank_utils so this never disagrees with the home card.
+  Widget _buildEloCard(
+    AppLocalizations l10n, {
+    required Color color,
+    required int currentElo,
+    required int eloChange,
+  }) {
+    // The band follows the counting number, so the bar visibly crosses a
+    // rank floor when the match did.
+    final rank = rankFromElo(currentElo) == 'unranked'
+        ? 'bronze'
+        : rankFromElo(currentElo);
+    final isMax = rank == 'master';
+    final finalRank = rankFromElo(widget.newElo) == 'unranked'
+        ? 'bronze'
+        : rankFromElo(widget.newElo);
+    final needed = math.max(eloNeededForNextRank(finalRank, widget.newElo), 0);
+    final nextLabel = RankTranslation.translate(l10n, nextRank(finalRank));
 
-    final oldFraction =
-        ((widget.oldElo - barMin) / (barMax - barMin)).clamp(0.0, 1.0);
-    final newFraction =
-        ((widget.newElo - barMin) / (barMax - barMin)).clamp(0.0, 1.0);
-
-    final currentFraction =
-        oldFraction + (newFraction - oldFraction) * _barProgress.value;
-
-    return SizedBox(
-      height: 12,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: Stack(
-          children: [
-            // Track
-            Container(
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-            // Fill
-            FractionallySizedBox(
-              widthFactor: currentFraction,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: widget.isWin
-                        ? [color.withValues(alpha: 0.6), color]
-                        : [color, color.withValues(alpha: 0.6)],
+    return DsCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Text(
+            l10n.eloLabel,
+            style: AppTheme.labelSmall.copyWith(letterSpacing: 1.3),
+          ),
+          const SizedBox(height: 10),
+          FadeTransition(
+            opacity: _numberFade,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  '$currentElo',
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 56,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.7,
+                    height: 1,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: _glowPulse.value * 0.5),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildParticles(Color color) {
-    final random = Random(42);
-    return List.generate(15, (i) {
-      final startX = random.nextDouble() * 300 - 150;
-      final startY = random.nextDouble() * 200 + 80;
-      final size = random.nextDouble() * 5 + 2;
-      final speed = random.nextDouble() * 0.5 + 0.5;
-
-      return Positioned(
-        left: MediaQuery.of(context).size.width / 2 + startX,
-        bottom: _particleController.value * startY * speed,
-        child: Opacity(
-          opacity: (1 - _particleController.value).clamp(0, 1),
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.7),
-              shape: BoxShape.circle,
+                const SizedBox(width: 14),
+                Container(
+                  height: 34,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${eloChange >= 0 ? '+' : ''}$eloChange',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      );
-    });
+          const SizedBox(height: 18),
+          DsProgressBar(
+            value: isMax ? 1 : rankProgress(rank, currentElo),
+            height: 4,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${RankTranslation.translate(l10n, rank)} · ${kRankThresholds[rank]}',
+                style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                isMax
+                    ? l10n.maxRankReached
+                    : '${RankTranslation.translate(l10n, nextRank(rank))} · ${kRankThresholds[nextRank(rank)]}',
+                style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FadeTransition(
+            opacity: _numberFade,
+            child: Text.rich(
+              TextSpan(
+                style: AppTheme.caption.copyWith(fontSize: 13),
+                children: [
+                  TextSpan(text: '${widget.oldElo} '),
+                  const TextSpan(
+                    text: '→',
+                    style: TextStyle(color: AppTheme.textTertiary),
+                  ),
+                  TextSpan(
+                    text: ' ${widget.newElo}',
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(
+                    text: finalRank == 'master'
+                        ? ' · ${l10n.maxRankReached}'
+                        : ' · $nextLabel ${l10n.nextRankConnector} $needed pts',
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

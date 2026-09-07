@@ -9,7 +9,7 @@ import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/season_provider.dart';
 import '../../widgets/recent_matches_widget.dart';
-import '../../widgets/activity_pill.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/live_matches_pill.dart';
 import '../../services/presence_service.dart';
 import '../../services/socket_service.dart';
@@ -31,7 +31,8 @@ import 'seasons_screen.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../matchmaking/friend_select_screen.dart';
 import '../local_match/local_match_setup_screen.dart';
-import 'play_mode_sheet.dart';
+import '../../models/user.dart';
+import '../../widgets/player_card.dart';
 import '../placement/placement_hub_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
@@ -47,9 +48,7 @@ class PlayScreen extends StatefulWidget {
 }
 
 
-class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
   List<Match> _recentMatches = [];
   bool _loadingMatches = false;
   Map<String, dynamic>? _activeMatch;
@@ -65,18 +64,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeInOut,
-      ),
-    );
-    
     _loadRecentMatches();
     _checkActiveMatch();
     _checkPendingTournamentMatch();
@@ -163,44 +150,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
   Future<void> _refreshSubscription() async {
     if (!mounted) return;
     await context.read<SubscriptionProvider>().refresh();
-  }
-
-  /// Opens the play-mode selector, then routes to the ranked queue or the
-  /// friend picker depending on the choice.
-  Future<void> _onPlayTapped() async {
-    HapticService.mediumImpact();
-    final mode = await showPlayModeSheet(context);
-    if (mode == null || !mounted) return;
-    switch (mode) {
-      case PlayMode.competitive:
-        // Free users who've already used their daily ranked match are nudged
-        // to Premium instead of entering the queue.
-        if (context.read<SubscriptionProvider>().hasReachedDailyLimit) {
-          _showDailyLimitDialog();
-          return;
-        }
-        _startCompetitive();
-        break;
-      case PlayMode.friend:
-        // Friendly matches are premium-gated inside FriendlyMatchLauncher,
-        // which shows the upgrade popup for non-premium users on invite.
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const FriendSelectScreen(),
-          ),
-        ).then((_) {
-          if (mounted) _refreshSubscription();
-        });
-        break;
-      case PlayMode.local:
-        // Hot-seat 1v1 — fully local, no stats, no backend. Free for everyone.
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const LocalMatchSetupScreen(),
-          ),
-        );
-        break;
-    }
   }
 
   /// Ranked path — unchanged from before: camera gate, then matchmaking queue.
@@ -393,246 +342,205 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     }
   }
 
-  Widget _buildFreeTierHint(SubscriptionProvider subscription) {
-    final l10n = AppLocalizations.of(context);
-    final remaining = subscription.matchesRemainingToday ?? 0;
-    final mainLine = remaining > 0 ? l10n.freeTierMatchAvailable : l10n.freeTierMatchUsed;
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        HapticService.lightImpact();
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-        ).then((_) => _refreshSubscription());
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAB308).withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: const Color(0xFFEAB308).withValues(alpha: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.workspace_premium, color: Color(0xFFEAB308), size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    mainLine,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+  /// Quiet hint row (free tier, free play, unranked): icon, up to two lines,
+  /// optional secondary line, chevron when tappable.
+  Widget _hintRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    VoidCallback? onTap,
+  }) {
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: iconColor),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                    height: 1.3,
                   ),
+                ),
+                if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    l10n.tapToUpgradeForUnlimited,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 11,
-                    ),
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
                   ),
                 ],
-              ),
+              ],
             ),
-            const Icon(Icons.chevron_right, color: Color(0xFFEAB308)),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded,
+                size: 20, color: AppTheme.textTertiary),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  /// Celebratory banner shown while the weekly Free Play window is live
-  /// (Sat 20:00–00:00 Europe/Paris): unlimited ranked + free friend matches.
+  void _openPremium() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const SubscriptionScreen()))
+        .then((_) {
+      if (mounted) _refreshSubscription();
+    });
+  }
+
+  /// Free tier: one ranked match a day. Gold is the premium color, the one
+  /// place it is allowed outside the crown.
+  Widget _buildFreeTierHint(SubscriptionProvider subscription) {
+    final l10n = AppLocalizations.of(context);
+    final remaining = subscription.matchesRemainingToday ?? 0;
+    return _hintRow(
+      icon: Icons.workspace_premium_rounded,
+      iconColor: AppTheme.accent,
+      title: remaining > 0 ? l10n.freeTierMatchAvailable : l10n.freeTierMatchUsed,
+      subtitle: l10n.tapToUpgradeForUnlimited,
+      onTap: _openPremium,
+    );
+  }
+
   Widget _buildFreePlayBanner() {
     final l10n = AppLocalizations.of(context);
-    const green = Color(0xFF22C55E);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: green.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: green.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.celebration, color: green, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.freePlayBannerTitle,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  l10n.freePlayBannerSubtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return _hintRow(
+      icon: Icons.celebration_outlined,
+      iconColor: AppTheme.success,
+      title: l10n.freePlayBannerTitle,
+      subtitle: l10n.freePlayBannerSubtitle,
     );
   }
 
   Widget _buildUnrankedFreeTierHint() {
     final l10n = AppLocalizations.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        HapticService.lightImpact();
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-        ).then((_) => _refreshSubscription());
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAB308).withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: const Color(0xFFEAB308).withValues(alpha: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Color(0xFFEAB308), size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.unrankedFreeTierHint,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    l10n.tapToLearnAboutPremium,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Color(0xFFEAB308)),
-          ],
-        ),
-      ),
+    return _hintRow(
+      icon: Icons.info_outline_rounded,
+      iconColor: AppTheme.textSecondary,
+      title: l10n.unrankedFreeTierHint,
+      subtitle: l10n.tapToLearnAboutPremium,
+      onTap: _openPremium,
     );
   }
 
-  /// Full-width CTA bar with the exact geometry and typography of the "Jouer"
-  /// bar (B2 redesign). Every state that takes the Play button's slot renders
-  /// through this so they all keep its size and design; [hint] is a small
-  /// centered line under the bar carrying the context the old tall cards
-  /// showed (opponent, tournament name, round).
-  Widget _playSlotBar({
-    required Gradient gradient,
+  /// The one filled block of the screen. Every state that takes the play slot
+  /// renders through this so they all keep the same geometry.
+  Widget _primarySlot({
     required IconData icon,
-    required String label,
-    Color? glowColor,
+    required String title,
+    String? subtitle,
     VoidCallback? onTap,
-    String? hint,
-    Color textColor = Colors.white,
-    Color? iconColor,
-    BoxBorder? border,
-    bool pulse = true,
+    bool muted = false,
   }) {
-    Widget bar = Container(
-      padding: const EdgeInsets.symmetric(vertical: 17),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(16),
-        border: border,
-        boxShadow: glowColor == null
-            ? null
-            : [
-                BoxShadow(
-                  color: glowColor.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 22, color: iconColor ?? textColor),
-          const SizedBox(width: 10),
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (pulse) bar = ScaleTransition(scale: _pulseAnimation, child: bar);
-    if (onTap != null) bar = GestureDetector(onTap: onTap, child: bar);
-    if (hint == null) return bar;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        bar,
-        const SizedBox(height: 8),
-        Text(
-          hint,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
-        ),
-      ],
+    return DsPrimaryRow(
+      icon: icon,
+      title: dsSentence(title),
+      subtitle: subtitle,
+      onTap: onTap,
+      muted: muted,
     );
   }
 
-  /// Play-slot bar when a friend invite is pending; tapping it asks the
-  /// player to accept or decline.
+  /// Compétitif: free users who've already used their daily ranked match are
+  /// nudged to Premium instead of entering the queue.
+  void _onCompetitiveTapped() {
+    if (context.read<SubscriptionProvider>().hasReachedDailyLimit) {
+      _showDailyLimitDialog();
+      return;
+    }
+    _startCompetitive();
+  }
+
+  /// Friendly matches are premium-gated inside FriendlyMatchLauncher, which
+  /// shows the upgrade popup for non-premium users on invite.
+  void _openFriendMatch() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const FriendSelectScreen()))
+        .then((_) {
+      if (mounted) _refreshSubscription();
+    });
+  }
+
+  /// Hot-seat 1v1 — fully local, no stats, no backend. Free for everyone.
+  void _openLocalMatch() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LocalMatchSetupScreen()),
+    );
+  }
+
+  void _openTraining() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TrainingSelectScreen()),
+    );
+  }
+
+  void _openPlacement() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const PlacementHubScreen()))
+        .then((_) {
+      if (!mounted) return;
+      // Reload matches and user data after returning
+      _loadRecentMatches();
+      context.read<AuthProvider>().checkAuthStatus();
+      context.read<PlacementProvider>().loadStatus();
+    });
+  }
+
+  /// Join a pending tournament match: camera gate first, then the game.
+  void _joinTournamentMatch(TournamentMatch match) {
+    final auth = context.read<AuthProvider>();
+    final currentUserId = auth.currentUser?.id;
+    final isPlayer1 = currentUserId == match.player1Id;
+    final opponentUsername = isPlayer1
+        ? (match.player2Username ?? 'Opponent')
+        : (match.player1Username ?? 'Opponent');
+    final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TournamentCameraSetupScreen(
+          matchId: match.id,
+          tournamentId: match.tournamentId,
+          tournamentName: match.tournamentName ?? 'Tournament',
+          roundName: match.roundName,
+          opponentUsername: opponentUsername,
+          opponentId: opponentId,
+          player1Id: match.player1Id ?? '',
+          player2Id: match.player2Id ?? '',
+          bestOf: match.bestOf,
+          inviteSentAt: match.inviteSentAt,
+        ),
+      ),
+    );
+  }
+
+  /// Play slot when a friend invite is pending; tapping it asks the player to
+  /// accept or decline.
   Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
     final hint = l10n.invitedYouToMatch
         .replaceAll('{username}', invite.inviterUsername);
-    return _playSlotBar(
-      gradient: const LinearGradient(
-        colors: [Color(0xFF10B981), Color(0xFF059669)],
-      ),
-      glowColor: const Color(0xFF10B981),
-      icon: Icons.sports_esports,
-      label: l10n.joinMatch,
+    return _primarySlot(
+      icon: Icons.sports_esports_outlined,
+      title: l10n.joinMatch,
+      subtitle: invite.isCricket ? '$hint · ${l10n.cricketLabel}' : hint,
       onTap: () => _onFriendInviteTapped(invite),
-      hint: invite.isCricket ? '$hint · ${l10n.cricketLabel}' : hint,
     );
   }
 
@@ -725,172 +633,201 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     // choice == null (dismissed) → leave the invite pending; the button stays.
   }
 
+
   @override
   void dispose() {
     widget.refreshNotifier?.removeListener(_onRefresh);
     _tournamentProvider?.removeListener(_syncFromTournamentProvider);
     WidgetsBinding.instance.removeObserver(this);
-    _pulseController.dispose();
     super.dispose();
   }
 
-  /// The ring for a ranked player. With a season selected in the past, the
-  /// ring becomes that season's frozen line for this player: final badge,
-  /// full ring, final ELO, "Final standings ›".
-  Widget _buildRankedHero({
+  /// The player card: badge, name, rank · position, ELO, progress to the next
+  /// rank and the season selector. With a past season selected it freezes to
+  /// that season's line for this player: final badge, final ELO, standing,
+  /// "Classement final ›".
+  Widget _buildPlayerCard({
     required AppLocalizations l10n,
     required SeasonProvider seasonProvider,
-    required String rank,
-    required int elo,
-    required String nextRankLabel,
-    required int eloNeeded,
-    required double progress,
+    required User user,
+    required bool isPremium,
   }) {
     final hasSeason = seasonProvider.hasSeason;
     final selected = seasonProvider.selectedSeason;
-    final pill = hasSeason && selected != null
-        ? _SeasonPill(
-            label: l10n.seasonN(selected.number).toUpperCase(),
-            onTap: _openSeasonPicker,
-          )
-        : null;
 
     if (hasSeason && selected != null && !seasonProvider.isActiveSelected) {
       final standing = seasonProvider.selectedStanding;
       final loading = seasonProvider.loadingSelected;
       final total = selected.playersCount ?? 0;
-      return _RankRingHero(
-        pill: pill,
-        rank: standing?.rank ?? rank,
-        elo: standing?.elo,
-        eloSuffix: l10n.seasonEloFinal,
-        progress: 1.0,
-        lines: [
-          if (loading)
-            const SizedBox(
-              height: 14,
-              width: 14,
+      final Widget subline = loading
+          ? const SizedBox(
+              height: 12,
+              width: 12,
               child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
             )
-          else if (standing != null)
-            Text.rich(
-              TextSpan(
-                style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
-                children: [
-                  TextSpan(text: '${l10n.seasonEndedLabel} · ${l10n.seasonFinalRank.toLowerCase()} '),
-                  TextSpan(
-                    text: RankTranslation.translate(l10n, standing.rank),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                  ),
-                  const TextSpan(text: ' · '),
-                  TextSpan(
-                    text: '#${standing.position}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                  ),
-                  TextSpan(text: ' ${l10n.seasonOf(total)}'),
-                ],
-              ),
-              textAlign: TextAlign.center,
-            )
-          else
-            Text(
-              '${l10n.seasonEndedLabel} · ${l10n.seasonNotRanked}',
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          InkWell(
-            onTap: () {
-              HapticService.lightImpact();
-              seasonProvider.requestStandings(selected.number);
-            },
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    l10n.seasonFinalStandings,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, size: 13, color: AppTheme.primary),
-                ],
-              ),
-            ),
-          ),
-        ],
+          : Text(
+              standing != null
+                  ? '${l10n.seasonEndedLabel} · ${l10n.seasonFinalRank} '
+                      '${RankTranslation.translate(l10n, standing.rank)} · '
+                      '#${standing.position} ${l10n.seasonOf(total)}'
+                  : '${l10n.seasonEndedLabel} · ${l10n.seasonNotRanked}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.caption.copyWith(fontSize: 13),
+            );
+      return PlayerCard(
+        rank: standing?.rank ?? user.rank,
+        username: user.username,
+        isPremium: isPremium,
+        subline: subline,
+        value: standing?.elo == null ? '—' : '${standing!.elo}',
+        valueLabel: l10n.seasonEloFinal,
+        progress: 1.0,
+        footerLeft: _link(
+          l10n.seasonFinalStandings,
+          () => seasonProvider.requestStandings(selected.number),
+        ),
+        footerRight: _seasonSelector(l10n, seasonProvider, showCountdown: false),
       );
     }
 
     final me = seasonProvider.current?.me;
+    final rank = user.rank;
     final isMaxRank = rank.toLowerCase() == 'master';
-    final percent = (progress * 100).round();
-    return _RankRingHero(
-      pill: pill,
+    // Thresholds live in rank_utils (mirrors the backend's 800/1200/1600/
+    // 2000/2400).
+    final eloNeeded = eloNeededForNextRank(rank, user.elo);
+    final nextLabel = RankTranslation.translate(l10n, nextRank(rank));
+    final position = hasSeason && me != null ? ' · #${me.position}' : '';
+    return PlayerCard(
       rank: rank,
-      elo: elo,
-      eloSuffix: 'ELO',
-      progress: isMaxRank ? 1.0 : progress,
-      lines: [
-        if (isMaxRank)
-          Text(
-            l10n.maxRankReached,
-            style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
-          )
-        else
-          Text.rich(
-            TextSpan(
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
-              children: [
-                TextSpan(text: '$nextRankLabel ${l10n.nextRankConnector} '),
-                TextSpan(
-                  text: '+${math.max(eloNeeded, 0)} pts',
-                  style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700),
-                ),
-                TextSpan(text: ' · $percent %'),
-              ],
+      username: user.username,
+      isPremium: isPremium,
+      subline: Text(
+        '${RankTranslation.translate(l10n, rank)}$position',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTheme.caption.copyWith(fontSize: 13),
+      ),
+      value: '${user.elo}',
+      valueLabel: l10n.eloLabel,
+      progress: isMaxRank ? 1.0 : rankProgress(rank, user.elo),
+      footerLeft: isMaxRank
+          ? Text(
+              l10n.maxRankReached,
+              style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
+            )
+          : Text.rich(
+              TextSpan(
+                style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
+                children: [
+                  TextSpan(text: '$nextLabel ${l10n.nextRankConnector} '),
+                  TextSpan(
+                    text: '+${math.max(eloNeeded, 0)} pts',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        if (hasSeason && me != null)
-          Text.rich(
-            TextSpan(
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
-              children: [
-                TextSpan(
-                  text: '#${me.position}',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-                const TextSpan(text: ' · '),
-                if (seasonProvider.activeSeason?.endAt != null)
-                  ..._endsInSpans(l10n, seasonProvider.timeLeft)
-                else
-                  TextSpan(text: l10n.seasonEndToBeAnnounced),
-              ],
-            ),
-            textAlign: TextAlign.center,
-          ),
-      ],
+      footerRight: hasSeason
+          ? _seasonSelector(l10n, seasonProvider, showCountdown: true)
+          : null,
     );
   }
 
-  /// "ends in **9 d 14 h**" — the duration in white, the rest muted.
-  List<InlineSpan> _endsInSpans(AppLocalizations l10n, Duration? left) {
-    final duration = formatSeasonCountdown(l10n, left);
-    final sentence = l10n.seasonEndsIn(duration);
-    final i = sentence.indexOf(duration);
-    if (i < 0) return [TextSpan(text: sentence)];
-    return [
-      TextSpan(text: sentence.substring(0, i)),
-      TextSpan(
-        text: duration,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+  /// Unranked: the same card with the placement progress as its number.
+  Widget _buildPlacementCard({
+    required AppLocalizations l10n,
+    required User user,
+    required bool isPremium,
+    required int matchesPlayed,
+  }) {
+    // Mirrors the backend's TOTAL_PLACEMENT_MATCHES (and the 4 hardcoded in
+    // PlacementHubScreen).
+    const total = 4;
+    final played = matchesPlayed.clamp(0, total);
+    return PlayerCard(
+      rank: 'unranked',
+      username: user.username,
+      isPremium: isPremium,
+      subline: Text(l10n.unranked, style: AppTheme.caption.copyWith(fontSize: 13)),
+      value: '$played / $total',
+      valueLabel: l10n.placementUpper,
+      progress: played / total,
+      footerLeft: Text(
+        l10n.completePlacementToUnlock,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
       ),
-      TextSpan(text: sentence.substring(i + duration.length)),
-    ];
+    );
+  }
+
+  Widget _link(String label, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () {
+        HapticService.lightImpact();
+        onTap();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryLight,
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 14, color: AppTheme.primaryLight),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "Saison 1 · 84 j ▾" — opens the season picker.
+  Widget _seasonSelector(
+    AppLocalizations l10n,
+    SeasonProvider seasonProvider, {
+    required bool showCountdown,
+  }) {
+    final selected = seasonProvider.selectedSeason;
+    if (selected == null) return const SizedBox.shrink();
+    var label = l10n.seasonN(selected.number);
+    if (showCountdown && seasonProvider.activeSeason?.endAt != null) {
+      label = '$label · ${formatSeasonCountdown(l10n, seasonProvider.timeLeft)}';
+    }
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: _openSeasonPicker,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryLight,
+              ),
+            ),
+            const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.primaryLight),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openSeasonPicker() async {
@@ -912,78 +849,6 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     await provider.select(result);
   }
 
-  /// Last five results as win/loss chips (oldest → newest) plus the current
-  /// win streak when there is one.
-  Widget _buildFormRow(String userId, AppLocalizations l10n) {
-    final dots = _recentMatches.take(5).toList().reversed.toList();
-    var streak = 0;
-    for (final match in _recentMatches) {
-      if (match.isWinner(userId)) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.surfaceLight.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            l10n.formLabel,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          ...dots.map((match) {
-            final won = match.isWinner(userId);
-            return Container(
-              width: 22,
-              height: 22,
-              margin: const EdgeInsets.only(right: 6),
-              decoration: BoxDecoration(
-                color: (won ? AppTheme.success : AppTheme.error).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Center(
-                child: Text(
-                  won ? l10n.formWinLetter : l10n.formLossLetter,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: won ? AppTheme.success : AppTheme.error,
-                  ),
-                ),
-              ),
-            );
-          }),
-          if (streak >= 2)
-            Expanded(
-              child: Text(
-                l10n.winStreak(streak),
-                textAlign: TextAlign.right,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.success,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -993,20 +858,12 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
     final l10n = AppLocalizations.of(context);
 
     if (user == null) {
-      return Center(
-        child: Text(l10n.userNotFound),
-      );
+      return Center(child: Text(l10n.userNotFound));
     }
-
-    // Thresholds live in rank_utils (mirrors the backend's 800/1200/1600/
-    // 2000/2400) — the old local copy still carried the pre-2026-08 ladder.
-    final eloNeeded = eloNeededForNextRank(user.rank, user.elo);
-    final currentRank = user.rank;
-    final nextRankKey = nextRank(user.rank);
-    final progress = rankProgress(user.rank, user.elo);
 
     final isUnranked = user.rank.toLowerCase() == 'unranked';
     final seasonProvider = context.watch<SeasonProvider>();
+    final isPremium = subscription.isPremiumActive;
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -1021,654 +878,202 @@ class _PlayScreenState extends State<PlayScreen> with SingleTickerProviderStateM
         ]);
       },
       child: SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (isUnranked)
-            // Unranked: the unranked badge inside a gold placement-progress
-            // ring — same hero language as the ranked ELO ring (B2 redesign).
-            _PlacementRingHero(
-              matchesPlayed:
-                  context.watch<PlacementProvider>().status?.matchesPlayed ?? 0,
-            )
-          else
-            // Ranked: the rank badge inside an ELO progress ring (B2 redesign),
-            // topped by the season pill and followed by the season line.
-            _buildRankedHero(
-              l10n: l10n,
-              seasonProvider: seasonProvider,
-              rank: currentRank,
-              elo: user.elo,
-              nextRankLabel: RankTranslation.translate(l10n, nextRankKey),
-              eloNeeded: eloNeeded,
-              progress: progress,
-            ),
-          const SizedBox(height: 20),
-          // While spectatable matches are running, the activity pill hands
-          // its slot to the live pill (entry point of the "En direct" hub).
-          if (_liveCount > 0) ...[
-            LiveMatchesPill(count: _liveCount),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (isUnranked)
+              _buildPlacementCard(
+                l10n: l10n,
+                user: user,
+                isPremium: isPremium,
+                matchesPlayed:
+                    context.watch<PlacementProvider>().status?.matchesPlayed ?? 0,
+              )
+            else
+              _buildPlayerCard(
+                l10n: l10n,
+                seasonProvider: seasonProvider,
+                user: user,
+                isPremium: isPremium,
+              ),
             const SizedBox(height: 14),
-          ] else if (_activity != null) ...[
-            ActivityPill(snapshot: _activity!),
-            const SizedBox(height: 14),
-          ],
-          // CTA priority: tournament match (live leg, then pending join) →
-          // friend invite → placement → play.
-          if (_activeTournamentLeg?.lastGameId != null)
-            // A tournament leg is LIVE for this player (app was killed
-            // mid-match) — resuming outranks everything: the disconnect grace
-            // timer is running server-side.
-            _playSlotBar(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-              ),
-              glowColor: const Color(0xFF7C3AED),
-              icon: Icons.replay_rounded,
-              label: l10n.resumeTournamentMatch,
-              onTap: _resumeTournamentLeg,
-              hint:
-                  '${_activeTournamentLeg!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _activeTournamentLeg!)}',
-            )
-          else if (_pendingTournamentMatch != null)
-            // Join Tournament Match button — a tournament commitment outranks
-            // friend invites and placement.
-            _playSlotBar(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-              ),
-              glowColor: const Color(0xFF7C3AED),
-              icon: Icons.emoji_events,
-              label: l10n.joinMatch,
-              hint:
-                  '${_pendingTournamentMatch!.tournamentName ?? 'Tournament'} — ${localizedRoundLabel(AppLocalizations.of(context), _pendingTournamentMatch!)}',
-              onTap: () {
-                HapticService.mediumImpact();
-                final match = _pendingTournamentMatch!;
-                final auth = context.read<AuthProvider>();
-                final currentUserId = auth.currentUser?.id;
-                final isPlayer1 = currentUserId == match.player1Id;
-                final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
-                final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
-
-                if (context.mounted) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => TournamentCameraSetupScreen(
-                        matchId: match.id,
-                        tournamentId: match.tournamentId,
-                        tournamentName: match.tournamentName ?? 'Tournament',
-                        roundName: match.roundName,
-                        opponentUsername: opponentUsername,
-                        opponentId: opponentId,
-                        player1Id: match.player1Id ?? '',
-                        player2Id: match.player2Id ?? '',
-                        bestOf: match.bestOf,
-                        inviteSentAt: match.inviteSentAt,
-                      ),
-                    ),
-                  );
-                }
-              },
-            )
-          else if (matchInvite.incoming != null)
-            // Friend invite — the whole Play button becomes "Join the match".
-            // The inviter is actively waiting and the invite is short-lived.
-            // (The backend refuses to invite a busy player, so this can't
-            // collide with an active-match rejoin.)
-            _buildFriendInviteButton(matchInvite.incoming!, l10n)
-          else if (isUnranked) ...[
-            // Placement bar — same CTA language as the ranked play bar, in
-            // gold (B2 redesign). The explanation lives in the hero above.
-            _playSlotBar(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFEAB308), Color(0xFFF59E0B)],
-              ),
-              glowColor: const Color(0xFFEAB308),
-              icon: Icons.emoji_events,
-              label: l10n.placementMatches,
-              onTap: () {
-                HapticService.mediumImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const PlacementHubScreen(),
-                  ),
-                ).then((_) {
-                  if (!mounted) return;
-                  // Reload matches and user data after returning
-                  _loadRecentMatches();
-                  context.read<AuthProvider>().checkAuthStatus();
-                  context.read<PlacementProvider>().loadStatus();
-                });
-              },
-            ),
-            if (!subscription.isPremiumActive) ...[
-              const SizedBox(height: 12),
-              _buildUnrankedFreeTierHint(),
-            ],
-          ]
-          else if (_activeMatch != null)
-            // Rejoin active ranked match
-            _playSlotBar(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF6B00), Color(0xFFFF9500)],
-              ),
-              glowColor: const Color(0xFFFF6B00),
-              icon: Icons.arrow_forward_rounded,
-              label: l10n.play,
-              onTap: _rejoinMatch,
-              hint: '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
-            )
-          else if (_inActiveTournament)
-            // Blocked: In active tournament — same bar geometry, muted and
-            // not tappable.
-            _playSlotBar(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.surfaceLight.withValues(alpha: 0.8),
-                  AppTheme.surface,
-                ],
-              ),
-              border: Border.all(color: AppTheme.surfaceLight),
-              icon: Icons.emoji_events,
-              iconColor: AppTheme.accent,
-              textColor: AppTheme.textSecondary,
-              label: l10n.rankedLocked,
-              pulse: false,
-              hint: '${l10n.activeTournament}: ${_activeTournamentName ?? l10n.tournament}',
-            )
-          else ...[
-            // The play button is always shown for free users now; the
-            // daily-match hint stays visible (it reads "match used" once the
-            // free match is spent) and tapping Play surfaces the upgrade popup.
-            // During Free Play, the upsell hint is replaced by a celebratory
-            // "it's free tonight" banner.
-            if (subscription.freePlayActive) ...[
-              _buildFreePlayBanner(),
-              const SizedBox(height: 12),
-            ] else if (!subscription.isPremiumActive &&
-                subscription.matchesRemainingToday != null) ...[
-              _buildFreeTierHint(subscription),
-              const SizedBox(height: 12),
-            ],
-            // Play bar — full-width CTA; mode choice stays in the sheet
-            // opened by _onPlayTapped (B2 redesign).
-            _playSlotBar(
-              gradient: AppTheme.primaryGradient,
-              glowColor: AppTheme.primary,
-              icon: Icons.track_changes,
-              label: l10n.play,
-              onTap: _onPlayTapped,
-            ),
-          ],
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: () {
-              HapticService.mediumImpact();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const TrainingSelectScreen(),
-                ),
-              );
-            },
-            child: Container(
-              height: 84,
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.6),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 16),
-                  Container(
-                    padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.fitness_center,
-                      color: AppTheme.accent,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          l10n.trainingPlayCardTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          l10n.trainingPlayCardSubtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-                  const SizedBox(width: 12),
-                ],
-              ),
-            ),
-          ),
-          if (_recentMatches.isNotEmpty && user.rank.toLowerCase() != 'unranked') ...[
-            const SizedBox(height: 12),
-            _buildFormRow(user.id, l10n),
-          ],
-          const SizedBox(height: 28),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                l10n.recentMatches,
-                style: AppTheme.titleLarge,
-              ),
-              if (!_loadingMatches)
-                TextButton(
-                  onPressed: () {
-                    HapticService.lightImpact();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const MatchHistoryScreen(),
-                      ),
-                    );
-                  },
-                  child: Text(l10n.viewAll),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_loadingMatches)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32.0),
-                child: CircularProgressIndicator(color: AppTheme.primary),
-              ),
-            )
-          else if (_recentMatches.isNotEmpty)
-            RecentMatchesWidget(
-              matches: _recentMatches,
-              userId: user.id,
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.surfaceLight),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.history, size: 48, color: AppTheme.textSecondary),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.noMatchesYet,
-                    style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    l10n.playFirstGameToSeeHistory,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-              ),
-            ),
-            child: Row(
+            ..._buildPrimarySlot(l10n, subscription, matchInvite, isUnranked),
+            const SizedBox(height: 10),
+            Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.tips_and_updates_outlined, color: AppTheme.primary),
-                ),
-                const SizedBox(width: 16),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.proTipLabel,
-                        style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        l10n.proTips[DateTime.now().weekday % l10n.proTips.length],
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+                  child: DsTile(
+                    icon: Icons.people_outline_rounded,
+                    label: l10n.friendModeTitle,
+                    onTap: _openFriendMatch,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DsTile(
+                    icon: Icons.smartphone_outlined,
+                    label: l10n.localModeTitle,
+                    onTap: _openLocalMatch,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DsTile(
+                    icon: Icons.fitness_center_rounded,
+                    label: l10n.trainingPlayCardTitle,
+                    onTap: _openTraining,
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            if (_liveCount > 0) ...[
+              const SizedBox(height: 14),
+              LiveMatchesPill(count: _liveCount),
+            ],
+            const SizedBox(height: 28),
+            DsSectionHeader(
+              title: l10n.recentMatches,
+              actionLabel: _loadingMatches ? null : l10n.viewAll,
+              onAction: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MatchHistoryScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_loadingMatches)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+              )
+            else if (_recentMatches.isNotEmpty)
+              RecentMatchesWidget(matches: _recentMatches, userId: user.id)
+            else
+              DsCard(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Icon(Icons.history_rounded, size: 32, color: AppTheme.textTertiary),
+                    const SizedBox(height: 10),
+                    Text(l10n.noMatchesYet, textAlign: TextAlign.center, style: AppTheme.rowTitle),
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.playFirstGameToSeeHistory,
+                      textAlign: TextAlign.center,
+                      style: AppTheme.caption,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
     );
   }
-}
 
-/// Rank badge inside a circular ELO progress ring, with the points needed for
-/// the next rank underneath (home B2 redesign).
-class _RankRingHero extends StatelessWidget {
-  /// The season selector, rendered 10 px above the ring (never overlapping).
-  final Widget? pill;
-  final String rank;
-  /// Null renders "—" (a past season the player was not ranked in).
-  final int? elo;
-  final String eloSuffix;
-  final double progress;
-  /// Text lines under the ELO, 3 px apart.
-  final List<Widget> lines;
-
-  const _RankRingHero({
-    this.pill,
-    required this.rank,
-    required this.elo,
-    required this.eloSuffix,
-    required this.progress,
-    required this.lines,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        if (pill != null) ...[
-          pill!,
+  /// CTA priority, unchanged: live tournament leg → pending tournament join →
+  /// friend invite → placement → active match rejoin → tournament lock →
+  /// Compétitif (with the free-tier hint above it).
+  List<Widget> _buildPrimarySlot(
+    AppLocalizations l10n,
+    SubscriptionProvider subscription,
+    MatchInviteProvider matchInvite,
+    bool isUnranked,
+  ) {
+    final liveLeg = _activeTournamentLeg;
+    if (liveLeg?.lastGameId != null) {
+      // A tournament leg is LIVE for this player (app was killed mid-match) —
+      // resuming outranks everything: the disconnect grace timer is running
+      // server-side.
+      return [
+        _primarySlot(
+          icon: Icons.replay_rounded,
+          title: l10n.resumeTournamentMatch,
+          subtitle: '${liveLeg!.tournamentName ?? l10n.tournament} · '
+              '${localizedRoundLabel(l10n, liveLeg)}',
+          onTap: _resumeTournamentLeg,
+        ),
+      ];
+    }
+    final pending = _pendingTournamentMatch;
+    if (pending != null) {
+      // A tournament commitment outranks friend invites and placement.
+      return [
+        _primarySlot(
+          icon: Icons.emoji_events_outlined,
+          title: l10n.joinMatch,
+          subtitle: '${pending.tournamentName ?? l10n.tournament} · '
+              '${localizedRoundLabel(l10n, pending)}',
+          onTap: () => _joinTournamentMatch(pending),
+        ),
+      ];
+    }
+    if (matchInvite.incoming != null) {
+      // The inviter is actively waiting and the invite is short-lived. (The
+      // backend refuses to invite a busy player, so this can't collide with
+      // an active-match rejoin.)
+      return [_buildFriendInviteButton(matchInvite.incoming!, l10n)];
+    }
+    if (isUnranked) {
+      return [
+        _primarySlot(
+          icon: Icons.flag_outlined,
+          title: l10n.placementMatches,
+          subtitle: l10n.completePlacementToUnlock,
+          onTap: _openPlacement,
+        ),
+        if (!subscription.isPremiumActive) ...[
           const SizedBox(height: 10),
+          _buildUnrankedFreeTierHint(),
         ],
-        SizedBox(
-          width: 176,
-          height: 176,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 176,
-                height: 176,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppTheme.accent.withValues(alpha: 0.12),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.78],
-                  ),
-                ),
-              ),
-              CustomPaint(
-                size: const Size(152, 152),
-                painter: _EloRingPainter(progress),
-              ),
-              RankUtils.getRankBadge(rank, size: 92),
-            ],
-          ),
+      ];
+    }
+    if (_activeMatch != null) {
+      return [
+        _primarySlot(
+          icon: Icons.play_arrow_rounded,
+          title: l10n.play,
+          subtitle: '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
+          onTap: _rejoinMatch,
         ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              elo == null ? '—' : '$elo',
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              eloSuffix,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ],
+      ];
+    }
+    if (_inActiveTournament) {
+      return [
+        _primarySlot(
+          icon: Icons.lock_outline_rounded,
+          title: l10n.rankedLocked,
+          subtitle: '${l10n.activeTournament} · ${_activeTournamentName ?? l10n.tournament}',
+          muted: true,
         ),
-        for (final line in lines) ...[
-          const SizedBox(height: 3),
-          line,
-        ],
+      ];
+    }
+    final activity = _activity;
+    final subtitle = activity == null
+        ? l10n.homeCompetitiveSubtitle
+        : '${l10n.homeCompetitiveSubtitle} · ${activity.matches} '
+            '${l10n.activityMatchesLabel(activity.windowHours).toLowerCase()}';
+    return [
+      // The play row is always shown for free users; the daily-match hint
+      // stays visible (it reads "match used" once the free match is spent)
+      // and tapping Compétitif surfaces the upgrade popup. During Free Play
+      // the upsell hint is replaced by the "it's free tonight" line.
+      if (subscription.freePlayActive) ...[
+        _buildFreePlayBanner(),
+        const SizedBox(height: 10),
+      ] else if (!subscription.isPremiumActive &&
+          subscription.matchesRemainingToday != null) ...[
+        _buildFreeTierHint(subscription),
+        const SizedBox(height: 10),
       ],
-    );
-  }
-}
-
-/// "SEASON 1 ⌄" — the season selector above the ring. Opens the picker
-/// sheet; absent while the player is in placement.
-class _SeasonPill extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _SeasonPill({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: AppTheme.primary.withValues(alpha: 0.7),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.68,
-                  color: Color(0xFF38BDF8),
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.keyboard_arrow_down,
-                size: 14,
-                color: Color(0xFF38BDF8),
-              ),
-            ],
-          ),
-        ),
+      _primarySlot(
+        icon: Icons.military_tech_outlined,
+        title: l10n.competitiveModeTitle,
+        subtitle: subtitle,
+        onTap: _onCompetitiveTapped,
       ),
-    );
-  }
-}
-
-class _EloRingPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-
-  const _EloRingPainter(this.progress, {this.color = AppTheme.primary});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = (size.width - 10) / 2;
-
-    final track = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 7
-      ..color = const Color(0xFF233046);
-    canvas.drawCircle(center, radius, track);
-
-    final clamped = progress.clamp(0.0, 1.0);
-    if (clamped <= 0) return;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final sweep = 2 * math.pi * clamped;
-
-    final glow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 9
-      ..strokeCap = StrokeCap.round
-      ..color = color.withValues(alpha: 0.35)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawArc(rect, -math.pi / 2, sweep, false, glow);
-
-    final arc = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 7
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-    canvas.drawArc(rect, -math.pi / 2, sweep, false, arc);
-  }
-
-  @override
-  bool shouldRepaint(_EloRingPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.color != color;
-}
-
-/// Unranked twin of [_RankRingHero]: the unranked badge inside a gold ring
-/// tracking placement progress (X of 4 matches played).
-class _PlacementRingHero extends StatelessWidget {
-  final int matchesPlayed;
-
-  /// Mirrors the backend's TOTAL_PLACEMENT_MATCHES (and the 4 hardcoded in
-  /// PlacementHubScreen).
-  static const int _totalMatches = 4;
-
-  const _PlacementRingHero({required this.matchesPlayed});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final played = matchesPlayed.clamp(0, _totalMatches);
-
-    return Column(
-      children: [
-        SizedBox(
-          width: 176,
-          height: 176,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 176,
-                height: 176,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppTheme.accent.withValues(alpha: 0.12),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.78],
-                  ),
-                ),
-              ),
-              CustomPaint(
-                size: const Size(152, 152),
-                painter: _EloRingPainter(
-                  played / _totalMatches,
-                  color: AppTheme.accent,
-                ),
-              ),
-              RankUtils.getRankBadge('unranked', size: 92),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              '$played / $_totalMatches',
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              l10n.placementMatches.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Text(
-            l10n.completePlacementToUnlock,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12.5,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-        ),
-      ],
-    );
+    ];
   }
 }

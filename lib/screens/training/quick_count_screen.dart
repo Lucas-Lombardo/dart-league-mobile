@@ -10,6 +10,7 @@ import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/virtual_dartboard.dart';
 import 'logic/quick_count_questions.dart';
 import 'logic/training_strategy.dart';
@@ -32,6 +33,7 @@ class _QuickCountScreenState extends State<QuickCountScreen>
     with SingleTickerProviderStateMixin {
   static const int kQuestions = 10;
   static const Duration kAnswerTime = Duration(seconds: 30);
+
   /// Beat between the score announcement, each landing dart and the prompt.
   static const Duration kDartInterval = Duration(seconds: 2);
   static const Duration kFeedbackTime = Duration(milliseconds: 1100);
@@ -224,6 +226,10 @@ class _QuickCountScreenState extends State<QuickCountScreen>
 
   String _formatSeconds(int ms) => '${(ms / 1000).toStringAsFixed(1)} s';
 
+  /// "0:12" — whole seconds left on the answer clock.
+  String _clock(int seconds) =>
+      '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+
   // --- Notation helpers ----------------------------------------------------
 
   /// [VirtualDartboard] parses spectator notations ('S25'/'D25' for bull),
@@ -247,19 +253,6 @@ class _QuickCountScreenState extends State<QuickCountScreen>
         return 'D${d.baseScore}';
       case ScoreMultiplier.triple:
         return 'T${d.baseScore}';
-    }
-  }
-
-  Color _chipColor(TrainingDart d) {
-    if (d.baseScore == 0) return AppTheme.textSecondary;
-    if (d.baseScore == 25) return AppTheme.accent;
-    switch (d.multiplier) {
-      case ScoreMultiplier.single:
-        return AppTheme.textPrimary;
-      case ScoreMultiplier.double:
-        return AppTheme.success;
-      case ScoreMultiplier.triple:
-        return AppTheme.error;
     }
   }
 
@@ -288,400 +281,464 @@ class _QuickCountScreenState extends State<QuickCountScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text(l10n.trainingQuickCount),
-        actions: [if (_streak > 1) _streakChip()],
-      ),
+      appBar: AppBar(title: Text(l10n.trainingQuickCount)),
       body: SafeArea(
-        child: Column(
-          children: [
-            Text(
-              l10n.trainingQuizQuestionProgress(_questionNumber, kQuestions),
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 12,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _QuizStatsRow(
+                items: [
+                  (
+                    l10n.trainingQuizQuestionLabel,
+                    '$_questionNumber / $kQuestions',
+                  ),
+                  (l10n.trainingQuizCorrectLabel, '$_correct'),
+                  (l10n.trainingQuizStreakLabel, '$_streak'),
+                ],
               ),
-            ),
-            Expanded(
-              child: _phase == _QuizPhase.landing
-                  ? _buildLanding(l10n)
-                  : _buildAnswering(l10n),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Expanded(
+                child: _phase == _QuizPhase.landing
+                    ? _buildLanding(l10n)
+                    : _buildAnswering(l10n),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _streakChip() {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppTheme.accent.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.local_fire_department,
-              size: 15,
-              color: AppTheme.accent,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '$_streak',
-              style: const TextStyle(
-                color: AppTheme.accent,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
+  /// The question card: "TU ES À" over the hero start score, plus either the
+  /// landing hint or the visit that was just thrown.
+  Widget _questionCard(AppLocalizations l10n, {required Widget footer}) {
+    return DsCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Text(
+            l10n.trainingQuizYouAreOn.toUpperCase(),
+            style: AppTheme.labelSmall,
+          ),
+          const SizedBox(height: 8),
+          Text('${_question.startScore}', style: _kHeroStyle),
+          const SizedBox(height: 10),
+          footer,
+        ],
       ),
     );
   }
 
   Widget _buildLanding(AppLocalizations l10n) {
-    final boardSize = min(MediaQuery.of(context).size.width - 80, 300.0);
     final visible = _question.visit.take(_dartsShown).toList();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 8),
-        Text(
-          l10n.trainingQuizYouAreOn.toUpperCase(),
-          style: AppTheme.labelLarge.copyWith(color: AppTheme.textSecondary),
-        ),
-        Text(
-          '${_question.startScore}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 52,
-            fontWeight: FontWeight.w800,
+        _questionCard(
+          l10n,
+          footer: Text(
+            l10n.trainingQuickCountWatch,
+            textAlign: TextAlign.center,
+            style: AppTheme.caption.copyWith(fontSize: 13),
           ),
         ),
-        const SizedBox(height: 8),
-        VirtualDartboard(
-          throws: visible.map(_boardNotation).toList(),
-          size: boardSize,
+        const SizedBox(height: 14),
+        // The board takes whatever is left: full size on a tall phone, and
+        // it simply shrinks on a short one instead of overflowing.
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final size = min(
+                constraints.maxHeight,
+                min(constraints.maxWidth, 280.0),
+              );
+              if (size < 40) return const SizedBox.shrink();
+              return Center(
+                child: VirtualDartboard(
+                  throws: visible.map(_boardNotation).toList(),
+                  size: size,
+                ),
+              );
+            },
+          ),
         ),
         const SizedBox(height: 14),
         SizedBox(
-          height: 40,
+          height: 36,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              for (final d in visible) ...[
-                _dartChip(d),
-                const SizedBox(width: 8),
+              for (var i = 0; i < visible.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                _DartChip(label: _chipLabel(visible[i])),
               ],
             ],
           ),
         ),
-        const Spacer(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Text(
-            l10n.trainingQuickCountWatch,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _dartChip(TrainingDart d, {bool compact = false}) {
-    final color = _chipColor(d);
-    final neutral = color == AppTheme.textPrimary;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 10 : 14,
-        vertical: compact ? 5 : 8,
-      ),
-      decoration: BoxDecoration(
-        color: neutral
-            ? Colors.white.withValues(alpha: 0.06)
-            : color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: neutral
-              ? AppTheme.surfaceLight.withValues(alpha: 0.8)
-              : color.withValues(alpha: 0.5),
-          width: 1.5,
-        ),
-      ),
-      child: Text(
-        _chipLabel(d),
-        style: TextStyle(
-          color: neutral ? AppTheme.textPrimary : color,
-          fontSize: compact ? 14 : 17,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
     );
   }
 
   Widget _buildAnswering(AppLocalizations l10n) {
     final feedback = _phase == _QuizPhase.feedback;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 6),
-        _timerRing(),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${_question.startScore}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
+        // Centred in whatever the keypad leaves, and scrollable only on a
+        // phone too short for card + clock + input; the keypad itself stays
+        // pinned at the bottom, under the thumb.
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _questionCard(
+                    l10n,
+                    footer: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.remove_rounded,
+                          size: 16,
+                          color: AppTheme.textTertiary,
+                        ),
+                        const SizedBox(width: 8),
+                        for (var i = 0; i < _question.visit.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 6),
+                          _DartChip(
+                            label: _chipLabel(_question.visit[i]),
+                            compact: true,
+                            onSurface: true,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _timerBar(),
+                  if (!feedback) ...[
+                    const SizedBox(height: 14),
+                    _inputDisplay(l10n),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            const Icon(Icons.remove, size: 18, color: AppTheme.textSecondary),
-            const SizedBox(width: 10),
-            for (final d in _question.visit) ...[
-              _dartChip(d, compact: true),
-              const SizedBox(width: 6),
-            ],
-          ],
+          ),
         ),
-        const SizedBox(height: 10),
         if (feedback)
           Expanded(child: _buildFeedback(l10n))
         else ...[
-          Text(
-            l10n.trainingQuizScorePrompt.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 30,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 40),
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppTheme.gamePanelEmpty,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primary.withValues(alpha: 0.5),
-                width: 1.5,
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _input.isEmpty ? ' ' : _input,
-              style: const TextStyle(
-                color: AppTheme.primary,
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const Spacer(),
-          _keypad(),
+          const SizedBox(height: 14),
+          _keypad(l10n),
         ],
       ],
     );
   }
 
-  Widget _timerRing() {
+  /// 4 px clock hairline: primary, turning error under 20 %, with the
+  /// seconds left as a caption.
+  Widget _timerBar() {
     return AnimatedBuilder(
       animation: _timerController,
       builder: (context, _) {
         final remaining = 1 - _timerController.value;
-        final Color color;
-        if (remaining > 0.4) {
-          color = AppTheme.primary;
-        } else if (remaining > 0.15) {
-          color = AppTheme.accent;
-        } else {
-          color = AppTheme.error;
-        }
-        final secondsLeft =
-            kAnswerTime.inMilliseconds * remaining / 1000;
-        return SizedBox(
-          width: 104,
-          height: 104,
-          child: CustomPaint(
-            painter: _TimerRingPainter(remaining: remaining, color: color),
-            child: Center(
-              child: Text(
-                secondsLeft.toStringAsFixed(1),
-                style: TextStyle(
-                  color: _phase == _QuizPhase.feedback
-                      ? AppTheme.textSecondary
-                      : Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                ),
+        final urgent = remaining < 0.2;
+        final secondsLeft = (kAnswerTime.inMilliseconds * remaining / 1000)
+            .ceil();
+        return Row(
+          children: [
+            Expanded(
+              child: DsProgressBar(
+                value: remaining,
+                color: urgent ? AppTheme.error : AppTheme.primary,
+                height: 4,
               ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Text(
+              _clock(secondsLeft),
+              style: AppTheme.caption.copyWith(
+                fontWeight: FontWeight.w700,
+                color: urgent ? AppTheme.error : AppTheme.textSecondary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildFeedback(AppLocalizations l10n) {
-    final color = _lastCorrect ? AppTheme.success : AppTheme.error;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          _lastCorrect ? Icons.check_circle_outline : Icons.cancel_outlined,
-          size: 64,
-          color: color,
+  /// The answer being typed: a surface field whose border lights up once a
+  /// digit is in (the one place a coloured border expresses a state).
+  Widget _inputDisplay(AppLocalizations l10n) {
+    final empty = _input.isEmpty;
+    return Container(
+      height: 56,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(
+          color: empty ? AppTheme.border : AppTheme.primaryLight,
+          width: empty ? 1 : 1.5,
         ),
-        const SizedBox(height: 12),
-        if (_lastTimedOut) ...[
-          Text(
-            l10n.trainingQuizTimeUp,
-            style: TextStyle(
-              color: color,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
-        Text(
-          _lastCorrect
-              ? '${_question.answer}'
-              : l10n.trainingQuizItWas(_question.answer),
-          style: TextStyle(
-            color: color,
-            fontSize: _lastCorrect ? 44 : 24,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _keypad() {
-    final keys = [
-      '1', '2', '3',
-      '4', '5', '6',
-      '7', '8', '9',
-      'back', '0', 'ok',
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: GridView.count(
-        crossAxisCount: 3,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.85,
-        children: [for (final k in keys) _keypadButton(k)],
+      ),
+      child: Text(
+        empty ? l10n.trainingQuizScorePrompt : _input,
+        style: empty
+            ? const TextStyle(
+                color: AppTheme.textTertiary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              )
+            : const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                height: 1,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
       ),
     );
   }
 
-  Widget _keypadButton(String key) {
-    final isBack = key == 'back';
-    final isOk = key == 'ok';
-    final Color bg;
-    final Color border;
-    if (isOk) {
-      bg = AppTheme.primary;
-      border = AppTheme.primary;
-    } else if (isBack) {
-      bg = AppTheme.error.withValues(alpha: 0.12);
-      border = AppTheme.error.withValues(alpha: 0.4);
-    } else {
-      bg = AppTheme.surface;
-      border = AppTheme.surfaceLight.withValues(alpha: 0.5);
-    }
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          HapticService.lightImpact();
-          if (isBack) {
-            if (_input.isNotEmpty) {
-              setState(
-                () => _input = _input.substring(0, _input.length - 1),
-              );
-            }
-          } else if (isOk) {
-            _validate();
-          } else if (_input.length < 3) {
-            setState(() => _input += key);
-          }
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
+  Widget _buildFeedback(AppLocalizations l10n) {
+    final color = _lastCorrect ? AppTheme.success : AppTheme.error;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.12),
+              border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
+            ),
+            child: Icon(
+              _lastCorrect ? Icons.check_rounded : Icons.close_rounded,
+              size: 28,
+              color: color,
+            ),
           ),
-          alignment: Alignment.center,
-          child: isBack
-              ? const Icon(
-                  Icons.backspace_outlined,
-                  color: AppTheme.error,
-                  size: 24,
-                )
-              : isOk
-              ? const Icon(Icons.check, color: Colors.white, size: 26)
-              : Text(
-                  key,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+          const SizedBox(height: 14),
+          if (_lastTimedOut) ...[
+            Text(
+              l10n.trainingQuizTimeUp,
+              style: AppTheme.rowTitle.copyWith(color: color),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Text(
+            _lastCorrect
+                ? '${_question.answer}'
+                : l10n.trainingQuizItWas(_question.answer),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color,
+              fontSize: _lastCorrect ? 44 : 22,
+              fontWeight: FontWeight.w800,
+              height: 1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _keypad(AppLocalizations l10n) {
+    const keys = [
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      'back',
+      '0',
+      'ok',
+    ];
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 2.0,
+      children: [for (final k in keys) _keypadKey(l10n, k)],
+    );
+  }
+
+  Widget _keypadKey(AppLocalizations l10n, String key) {
+    if (key == 'ok') {
+      // The one filled primary block of the screen.
+      return ElevatedButton(
+        onPressed: _input.isEmpty
+            ? null
+            : () {
+                HapticService.lightImpact();
+                _validate();
+              },
+        style: const ButtonStyle(
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          ),
+        ),
+        child: Text(l10n.submit, maxLines: 1, overflow: TextOverflow.ellipsis),
+      );
+    }
+    final isBack = key == 'back';
+    return _PadKey(
+      onTap: () {
+        HapticService.lightImpact();
+        if (isBack) {
+          if (_input.isNotEmpty) {
+            setState(() => _input = _input.substring(0, _input.length - 1));
+          }
+        } else if (_input.length < 3) {
+          setState(() => _input += key);
+        }
+      },
+      child: isBack
+          ? const Icon(
+              Icons.backspace_outlined,
+              color: AppTheme.textSecondary,
+              size: 22,
+            )
+          : Text(
+              key,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+    );
+  }
+}
+
+/// 56 / 800 tabular hero number of the question card.
+const TextStyle _kHeroStyle = TextStyle(
+  color: AppTheme.textPrimary,
+  fontSize: 56,
+  fontWeight: FontWeight.w800,
+  letterSpacing: -1.5,
+  height: 1,
+  fontFeatures: [FontFeature.tabularFigures()],
+);
+
+/// Three columns of "LABEL / value": question progress, correct answers,
+/// current streak.
+class _QuizStatsRow extends StatelessWidget {
+  final List<(String, String)> items;
+
+  const _QuizStatsRow({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final (label, value) in items)
+          Expanded(
+            child: Column(
+              children: [
+                // "Bonnes réponses" is wider than a third of a narrow
+                // phone: shrink it rather than clip it.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label.toUpperCase(),
+                    maxLines: 1,
+                    style: AppTheme.labelSmall,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One dart of the visit ("T20", "D16", "Bull"): quiet chip, 15 / 700. On a
+/// surface card it drops to the page background so it still reads as a chip.
+class _DartChip extends StatelessWidget {
+  final String label;
+  final bool compact;
+  final bool onSurface;
+
+  const _DartChip({
+    required this.label,
+    this.compact = false,
+    this.onSurface = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 14,
+        vertical: compact ? 6 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: onSurface ? AppTheme.background : AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: AppTheme.textPrimary,
+          fontSize: compact ? 13 : 15,
+          fontWeight: FontWeight.w700,
+          height: 1.2,
         ),
       ),
     );
   }
 }
 
-class _TimerRingPainter extends CustomPainter {
-  final double remaining;
-  final Color color;
+/// Numeric pad key: surface, hairline, centred child.
+class _PadKey extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
 
-  _TimerRingPainter({required this.remaining, required this.color});
+  const _PadKey({required this.child, required this.onTap});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 5;
-    final track = Paint()
-      ..color = AppTheme.surface
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 9;
-    canvas.drawCircle(center, radius, track);
-    if (remaining <= 0) return;
-    final arc = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 9
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * remaining,
-      false,
-      arc,
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        side: const BorderSide(color: AppTheme.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Center(child: child),
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(_TimerRingPainter oldDelegate) =>
-      oldDelegate.remaining != remaining || oldDelegate.color != color;
 }

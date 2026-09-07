@@ -8,6 +8,7 @@ import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import '../shared/camera_setup_mixin.dart';
 import 'matchmaking_screen.dart';
 import '../game/game_screen.dart';
@@ -241,33 +242,16 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     );
   }
 
+  /// Tournament context: a quiet pill (the round) next to the tournament name
+  /// and the opponent line. Flat — the preview below is the point of the
+  /// screen.
   Widget _buildMatchInfoBar() {
     final info = widget.matchInfo!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.1),
-        border: Border(
-          bottom: BorderSide(color: AppTheme.primary.withValues(alpha: 0.3)),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              info.pill,
-              style: const TextStyle(
-                color: AppTheme.primary,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          DsPill(label: dsSentence(info.pill)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -275,19 +259,16 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
               children: [
                 Text(
                   info.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppTheme.rowTitle,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 2),
                 Text(
                   info.subtitle,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
+                  style: AppTheme.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -304,36 +285,22 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     // The caller's action label only once the gate is fully open — until then
     // the progressive status ("loading AI", "scanning…") tells the user what
     // the screen is waiting for, identically in every mode.
-    final label =
-        canPlay ? (widget.actionLabel ?? getPlayButtonLabel(l10n)) : getPlayButtonLabel(l10n);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          top: BorderSide(
-              color: AppTheme.surfaceLight.withValues(alpha: 0.5)),
-        ),
-      ),
+    final label = canPlay
+        ? (widget.actionLabel ?? getPlayButtonLabel(l10n))
+        : getPlayButtonLabel(l10n);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
         children: [
           // One compact line — the camera panel above is the point of this
           // screen, the chrome stays out of its way.
-          buildInfoRow(Icons.videocam, l10n.cameraNeededForAiInfo),
-          const SizedBox(height: 12),
+          buildInfoRow(Icons.videocam_outlined, l10n.cameraNeededForAiInfo),
+          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
+            height: 56,
             child: ElevatedButton(
               onPressed: canPlay && !_busy ? _onActionPressed : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    canPlay ? AppTheme.primary : AppTheme.surfaceLight,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: canPlay ? 4 : 0,
-              ),
               child: _busy
                   ? const SizedBox(
                       height: 22,
@@ -343,15 +310,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
                         strokeWidth: 2.5,
                       ),
                     )
-                  : Text(
-                      label,
-                      style: TextStyle(
-                        color: canPlay ? Colors.white : AppTheme.textSecondary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
+                  : Text(dsSentence(label)),
             ),
           ),
         ],

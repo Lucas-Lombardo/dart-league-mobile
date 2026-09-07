@@ -7,6 +7,7 @@ import '../../providers/subscription_provider.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../settings/redeem_referral_screen.dart';
 
 /// The main route into the referral program: shown once, right after signup,
@@ -40,7 +41,6 @@ class ReferralOnboardingScreen extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppTheme.background,
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -58,31 +58,22 @@ class ReferralOnboardingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  l10n.referralOnboardingTitle,
+                  dsSentence(l10n.referralOnboardingTitle),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                  style: AppTheme.displayMedium,
                 ),
                 const SizedBox(height: 12),
                 Text(
                   l10n.referralOnboardingBody(days),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.55,
-                    color: AppTheme.textSecondary,
-                  ),
+                  style: AppTheme.bodyLarge,
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
-                  height: 56,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: () => _openRedeem(context),
-                    style: AppTheme.primaryButtonStyle,
-                    child: Text(l10n.referralOnboardingAction),
+                    child: Text(dsSentence(l10n.referralOnboardingAction)),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -91,14 +82,10 @@ class ReferralOnboardingScreen extends StatelessWidget {
                     HapticService.lightImpact();
                     _continue(context);
                   },
-                  child: Text(
-                    l10n.referralOnboardingSkip,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary,
-                    ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary,
                   ),
+                  child: Text(dsSentence(l10n.referralOnboardingSkip)),
                 ),
               ],
             ),

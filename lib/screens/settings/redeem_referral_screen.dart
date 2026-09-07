@@ -8,6 +8,7 @@ import '../../providers/subscription_provider.dart';
 import '../../services/referral_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 
 /// Where a referee enters their friend's code. Reached from four places: the
 /// post-signup step, Settings, the Premium screen and the daily-limit dialog.
@@ -87,12 +88,11 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(l10n.referralRedeemTitle),
-        backgroundColor: AppTheme.surface,
+        // Custom back so the caller learns whether a code was accepted.
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const BackButtonIcon(),
           onPressed: () => Navigator.of(context).pop(_result != null),
         ),
       ),
@@ -106,23 +106,22 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
     final isMutating = context.watch<ReferralProvider>().isMutating;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 12),
           Center(
             child: Container(
-              width: 84,
-              height: 84,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.primary.withValues(alpha: 0.12),
+                color: AppTheme.primary.withValues(alpha: 0.14),
               ),
               child: const Icon(
-                Icons.card_giftcard,
-                size: 42,
-                color: AppTheme.primary,
+                Icons.card_giftcard_outlined,
+                size: 34,
+                color: AppTheme.primaryLight,
               ),
             ),
           ),
@@ -130,21 +129,13 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
           Text(
             l10n.referralRedeemHeadline,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
+            style: AppTheme.displayMedium,
           ),
           const SizedBox(height: 8),
           Text(
             l10n.referralRedeemBody(_trialDays),
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14.5,
-              height: 1.5,
-              color: AppTheme.textSecondary,
-            ),
+            style: AppTheme.bodyLarge,
           ),
           const SizedBox(height: 28),
           TextField(
@@ -152,6 +143,7 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
             autofocus: true,
             textCapitalization: TextCapitalization.characters,
             textInputAction: TextInputAction.done,
+            textAlign: TextAlign.center,
             onSubmitted: (_) => _submit(),
             onChanged: (_) => setState(() {}),
             inputFormatters: [
@@ -161,22 +153,18 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
                 (_, next) => next.copyWith(text: next.text.toUpperCase()),
               ),
             ],
-            style: const TextStyle(
-              color: Colors.white,
+            style: AppTheme.displayMedium.copyWith(
               fontSize: 22,
-              fontWeight: FontWeight.w800,
               letterSpacing: 2,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
             decoration: InputDecoration(
               hintText: l10n.referralRedeemHint,
-              hintStyle: TextStyle(
-                color: AppTheme.textSecondary.withValues(alpha: 0.6),
+              hintStyle: AppTheme.displayMedium.copyWith(
                 fontSize: 22,
-                fontWeight: FontWeight.w800,
                 letterSpacing: 2,
+                color: AppTheme.textTertiary,
               ),
-              filled: true,
-              fillColor: AppTheme.surface,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 20,
                 vertical: 18,
@@ -185,7 +173,8 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
                   ? null
                   : IconButton(
                       icon: const Icon(
-                        Icons.clear,
+                        Icons.close_rounded,
+                        size: 20,
                         color: AppTheme.textSecondary,
                       ),
                       onPressed: () {
@@ -193,50 +182,37 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
                         setState(() {});
                       },
                     ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.6),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           SizedBox(
-            height: 58,
+            height: 52,
             child: ElevatedButton(
               onPressed: isMutating || _controller.text.trim().isEmpty
                   ? null
                   : _submit,
-              style: AppTheme.primaryButtonStyle,
               child: isMutating
                   ? const SizedBox(
-                      width: 22,
-                      height: 22,
+                      width: 20,
+                      height: 20,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
+                        strokeWidth: 2,
                         color: Colors.white,
                       ),
                     )
-                  : Text(l10n.referralRedeemAction(_trialDays)),
+                  : Text(dsSentence(l10n.referralRedeemAction(_trialDays))),
             ),
           ),
-          const SizedBox(height: 28),
-          Text(
-            l10n.referralRedeemFootnote,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12.5,
-              height: 1.5,
-              color: AppTheme.textSecondary,
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              l10n.referralRedeemFootnote,
+              textAlign: TextAlign.center,
+              style: AppTheme.caption.copyWith(
+                color: AppTheme.textTertiary,
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -244,6 +220,8 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
     );
   }
 
+  /// The crown on its gold disc: this is the premium moment, the one place
+  /// gold is allowed.
   Widget _buildSuccess(AppLocalizations l10n) {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -253,61 +231,40 @@ class _RedeemReferralScreenState extends State<RedeemReferralScreen> {
         children: [
           Center(
             child: Container(
-              width: 116,
-              height: 116,
+              width: 96,
+              height: 96,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFFC107), Color(0xFFEAB308)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEAB308).withValues(alpha: 0.45),
-                    blurRadius: 36,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
+                color: AppTheme.accent.withValues(alpha: 0.14),
               ),
               child: const Icon(
-                Icons.workspace_premium,
-                size: 58,
-                color: Colors.white,
+                Icons.workspace_premium_rounded,
+                size: 44,
+                color: AppTheme.accent,
               ),
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            l10n.referralRedeemSuccessTitle(_trialDays),
+            dsSentence(l10n.referralRedeemSuccessTitle(_trialDays)),
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-              color: Color(0xFFEAB308),
-            ),
+            style: AppTheme.displayMedium,
           ),
           const SizedBox(height: 12),
           Text(
             l10n.referralRedeemSuccessBody(_result!.referrerUsername),
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 15.5,
-              height: 1.5,
-              color: AppTheme.textSecondary,
-            ),
+            style: AppTheme.bodyLarge,
           ),
           const SizedBox(height: 32),
           SizedBox(
-            height: 58,
+            height: 52,
             child: ElevatedButton(
               onPressed: () {
                 HapticService.mediumImpact();
                 Navigator.of(context).pop(true);
               },
-              style: AppTheme.primaryButtonStyle,
-              child: Text(l10n.referralRedeemSuccessAction),
+              child: Text(dsSentence(l10n.referralRedeemSuccessAction)),
             ),
           ),
         ],

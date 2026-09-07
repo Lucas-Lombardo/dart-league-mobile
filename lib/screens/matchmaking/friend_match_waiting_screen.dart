@@ -8,14 +8,14 @@ import '../../models/user.dart';
 import '../../providers/match_invite_provider.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/premium_badge.dart';
 import '../../widgets/rank_badge.dart';
 
 /// Full-screen "waiting room" shown to the inviter after they send a friendly
-/// match invite. Reuses the app's matchmaking radar/pulse language but centred
-/// on the invited friend. Resolves to declined / expired states; the global
-/// FriendMatchGate navigates into the game when the friend accepts (which pops
-/// this screen via pushAndRemoveUntil).
+/// match invite, centred on the invited friend. Resolves to declined /
+/// expired states; the global FriendMatchGate navigates into the game when
+/// the friend accepts (which pops this screen via pushAndRemoveUntil).
 class FriendMatchWaitingScreen extends StatefulWidget {
   final User opponent;
 
@@ -26,10 +26,7 @@ class FriendMatchWaitingScreen extends StatefulWidget {
       _FriendMatchWaitingScreenState();
 }
 
-class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
-    with TickerProviderStateMixin {
-  late final AnimationController _pulse;
-  late final AnimationController _ripple;
+class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen> {
   Timer? _timeout;
   bool _expired = false;
   bool _leaving = false;
@@ -37,14 +34,6 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-    _ripple = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
     _armTimeout();
   }
 
@@ -75,8 +64,6 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
   @override
   void dispose() {
     _timeout?.cancel();
-    _pulse.dispose();
-    _ripple.dispose();
     super.dispose();
   }
 
@@ -131,6 +118,8 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
     final p = context.watch<MatchInviteProvider>();
     final resolved =
         _expired || p.outgoingResolved != null || p.lastError != null;
+    final needsUpdate = _needsUpdate(p) && !_expired;
+    final isCricket = p.outgoingGameMode.startsWith('cricket');
 
     return PopScope(
       canPop: true,
@@ -140,261 +129,120 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen>
         }
       },
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          l10n.friendlyMatchLabel.toUpperCase(),
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                            letterSpacing: 2,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (p.outgoingGameMode.startsWith('cricket')) ...[
-                          const SizedBox(width: 9),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 3),
-                            decoration: BoxDecoration(
-                              color:
-                                  AppTheme.success.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(99),
-                              border: Border.all(
-                                color:
-                                    AppTheme.success.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: Text(
-                              '${l10n.cricketLabel} · ${p.outgoingGameMode == 'cricket_noscore' ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}'
-                                  .toUpperCase(),
-                              style: const TextStyle(
-                                color: AppTheme.success,
-                                fontSize: 9,
-                                letterSpacing: 1.2,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildAvatarWithRings(resolved),
-                          const SizedBox(height: 32),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  widget.opponent.username,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              PremiumBadge(
-                                isPremium: widget.opponent.isPremiumActive,
-                                size: 16,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _statusText(l10n, p),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: resolved
-                                  ? AppTheme.textSecondary
-                                  : Colors.white,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: DsScreenHeader(
+                  title: l10n.friendlyMatchLabel,
+                  showBack: true,
+                  onBack: resolved ? _back : _cancelAndLeave,
+                  actions: [
+                    if (isCricket)
+                      DsPill(
+                        label:
+                            '${l10n.cricketLabel} · ${p.outgoingGameMode == 'cricket_noscore' ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}',
+                        color: AppTheme.success,
                       ),
-                    ),
-                  ),
-                  if (resolved && _needsUpdate(p) && !_expired) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _retryAsX01,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: Text(
-                          l10n.proposeX01Instead.toUpperCase(),
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: resolved
-                        ? (_needsUpdate(p) && !_expired
-                            ? OutlinedButton(
-                                onPressed: _back,
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.textSecondary,
-                                  side: BorderSide(
-                                      color: AppTheme.textSecondary
-                                          .withValues(alpha: 0.4),
-                                      width: 2),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(16)),
-                                ),
-                                child: Text(
-                                  l10n.close,
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1),
-                                ),
-                              )
-                            : ElevatedButton(
-                                onPressed: _back,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.primary,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(16)),
-                                ),
-                                child: Text(
-                                  l10n.close,
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1),
-                                ),
-                              ))
-                        : OutlinedButton(
-                            onPressed: _cancelAndLeave,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppTheme.error,
-                              side: BorderSide(
-                                  color:
-                                      AppTheme.error.withValues(alpha: 0.5),
-                                  width: 2),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: Text(
-                              l10n.cancel,
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1),
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAvatarWithRings(bool resolved) {
-    final accent = resolved ? AppTheme.textSecondary : AppTheme.primary;
-    return SizedBox(
-      width: 240,
-      height: 240,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Expanding ripples (only while actively waiting).
-          if (!resolved)
-            AnimatedBuilder(
-              animation: _ripple,
-              builder: (context, _) {
-                return Stack(
-                  alignment: Alignment.center,
-                  children: List.generate(3, (i) {
-                    final phase = (_ripple.value + i / 3) % 1.0;
-                    final size = 120 + phase * 120;
-                    return Opacity(
-                      opacity: (1 - phase) * 0.5,
-                      child: Container(
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: AppTheme.primary.withValues(alpha: 0.6),
-                              width: 2),
-                        ),
-                      ),
-                    );
-                  }),
-                );
-              },
-            ),
-          // Steady glowing ring behind the avatar.
-          ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1.06).animate(
-              CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
-            ),
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    accent.withValues(alpha: 0.18),
-                    accent.withValues(alpha: 0.04),
-                    Colors.transparent,
                   ],
                 ),
-                border: Border.all(color: accent, width: 2),
-                boxShadow: resolved
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: accent.withValues(alpha: 0.3),
-                          blurRadius: 24,
-                          spreadRadius: 2,
-                        ),
-                      ],
               ),
-            ),
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RankBadge(
+                          rank: widget.opponent.rank,
+                          size: 80,
+                          showLabel: false,
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.opponent.username,
+                                style: AppTheme.titleLarge,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            PremiumBadge(
+                              isPremium: widget.opponent.isPremiumActive,
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _statusText(l10n, p),
+                          textAlign: TextAlign.center,
+                          style: AppTheme.bodyMedium,
+                        ),
+                        if (!resolved) ...[
+                          const SizedBox(height: 22),
+                          const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: AppTheme.primary,
+                              strokeWidth: 2.5,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(
+                  children: [
+                    if (resolved && needsUpdate) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: _retryAsX01,
+                          child: Text(dsSentence(l10n.proposeX01Instead)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: resolved
+                          ? (needsUpdate
+                              ? OutlinedButton(
+                                  onPressed: _back,
+                                  child: Text(dsSentence(l10n.close)),
+                                )
+                              : ElevatedButton(
+                                  onPressed: _back,
+                                  child: Text(dsSentence(l10n.close)),
+                                ))
+                          : OutlinedButton(
+                              onPressed: _cancelAndLeave,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.error,
+                              ),
+                              child: Text(dsSentence(l10n.cancel)),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          // Opponent avatar (rank badge).
-          RankBadge(rank: widget.opponent.rank, size: 96, showLabel: false),
-        ],
+        ),
       ),
     );
   }

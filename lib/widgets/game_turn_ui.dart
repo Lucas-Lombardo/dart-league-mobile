@@ -6,11 +6,21 @@ import '../utils/app_theme.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'board_safe_video.dart';
+import 'design_system.dart';
 import 'logo_watermark.dart';
 
-/// Shared building blocks for the in-match maquette UI (July 2026 redesign).
-/// Both turn layouts — AutoScoreGameView (your turn) and the opponent-turn
-/// screen — compose these widgets so the two states stay visually consistent.
+/// Shared building blocks of the in-match UI (system D, 2026-09): the flat
+/// slate surfaces, hairline borders and Manrope scale of the rest of the app,
+/// plus the one thing only the match screens have — a blue (me) vs rose
+/// (opponent) identity. Both turn layouts — AutoScoreGameView (your turn) and
+/// the opponent-turn screen — compose these widgets so the two states stay
+/// visually consistent.
+
+/// Icon tint of a quiet camera control.
+const Color _controlIcon = Color(0xFFE2E8F0);
+
+/// Hairline drawn over video (controls, pills, docked bars).
+const Color _glassBorder = Color(0x1AFFFFFF);
 
 /// Height of the camera panel in portrait, IDENTICAL on your turn and the
 /// opponent's turn so the video feed never resizes when the turn flips.
@@ -47,7 +57,8 @@ int notationPoints(String notation) {
   }
 }
 
-/// Small outlined pill chip ("VOUS", "TOUR 26").
+/// Small group-label pill over video ("VOUS", "TOUR 26"): 11 / 700 spaced
+/// label on a translucent background with a glass hairline.
 class GameChip extends StatelessWidget {
   final String text;
   final Color color;
@@ -57,35 +68,36 @@ class GameChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        border: Border.all(color: color.withValues(alpha: 0.8), width: 1.2),
-        borderRadius: BorderRadius.circular(20),
+        color: AppTheme.gameBackground.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _glassBorder),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.2,
-        ),
+        style: AppTheme.labelSmall.copyWith(color: color, height: 1),
       ),
     );
   }
 }
 
-/// "EN DIRECT" pill shown on the opponent's live camera feed.
+/// "EN DIRECT" pill shown on a live camera feed (spectator screens): the
+/// rose live dot on a quiet tinted pill.
 class LiveBadge extends StatelessWidget {
   const LiveBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: AppTheme.opponentPink,
-        borderRadius: BorderRadius.circular(20),
+        color: AppTheme.gameBackground.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _glassBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -94,18 +106,16 @@ class LiveBadge extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.secondary,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 6),
           Text(
             AppLocalizations.of(context).liveBadge,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
+            style: AppTheme.labelSmall.copyWith(
+              color: AppTheme.textPrimary,
+              height: 1,
             ),
           ),
         ],
@@ -114,17 +124,23 @@ class LiveBadge extends StatelessWidget {
   }
 }
 
-/// Rounded-square outlined camera control (mic mute, camera flip).
+/// 40 px "glass" circle over the camera feed (back, mic, camera flip, AI):
+/// white at 8 % with a hairline, a 19 px icon in [color] (light slate by
+/// default — pass a warning tint such as [AppTheme.opponentPink] for a muted
+/// mic). [active] is the live state (mic open): primary tint, primaryLight
+/// icon.
 class GameControlButton extends StatelessWidget {
   final IconData icon;
   final Color color;
   final VoidCallback? onTap;
+  final bool active;
 
   const GameControlButton({
     super.key,
     required this.icon,
-    required this.color,
+    this.color = _controlIcon,
     this.onTap,
+    this.active = false,
   });
 
   @override
@@ -135,17 +151,28 @@ class GameControlButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AppTheme.gameBackground.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.9), width: 1.4),
+          color: active
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.08),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: active
+                ? AppTheme.primaryLight.withValues(alpha: 0.5)
+                : _glassBorder,
+          ),
         ),
-        child: Icon(icon, color: color, size: 18),
+        child: Icon(
+          icon,
+          color: active ? AppTheme.primaryLight : color,
+          size: 19,
+        ),
       ),
     );
   }
 }
 
-/// "− 1,9× +" zoom pill anchored to the bottom of the local camera feed.
+/// "− 1,9× +" zoom pill anchored to the bottom of the local camera feed:
+/// 34 px, translucent background, glass hairline, 13 / 700 value.
 class ZoomPill extends StatelessWidget {
   final double zoom;
   final double minZoom;
@@ -164,35 +191,49 @@ class ZoomPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget btn(IconData icon, VoidCallback? onTap) => GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Icon(
-          icon,
-          size: 18,
-          color: onTap != null ? Colors.white : Colors.white30,
-        ),
-      ),
-    );
+    Widget btn(IconData icon, VoidCallback? onTap, Color color) =>
+        GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Icon(
+              icon,
+              size: 14,
+              color: onTap != null ? color : AppTheme.textTertiary,
+            ),
+          ),
+        );
     return Container(
+      height: 34,
       decoration: BoxDecoration(
-        color: AppTheme.gameBackground.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(24),
+        color: AppTheme.gameBackground.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _glassBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          btn(Icons.remove, zoom > minZoom ? onZoomOut : null),
+          btn(
+            Icons.remove_rounded,
+            zoom > minZoom ? onZoomOut : null,
+            AppTheme.textSecondary,
+          ),
           Text(
             '${zoom.toStringAsFixed(1)}×',
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
+              height: 1,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
-          btn(Icons.add, zoom < maxZoom ? onZoomIn : null),
+          btn(
+            Icons.add_rounded,
+            zoom < maxZoom ? onZoomIn : null,
+            AppTheme.textPrimary,
+          ),
         ],
       ),
     );
@@ -256,16 +297,17 @@ class GameCameraPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: AppTheme.gameBackground.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.accent.withValues(alpha: 0.6),
-          width: 1.2,
-        ),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.camera_alt, color: AppTheme.accent, size: 15),
+          const Icon(
+            Icons.photo_camera_outlined,
+            color: AppTheme.textSecondary,
+            size: 15,
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -276,9 +318,9 @@ class GameCameraPanel extends StatelessWidget {
                 ZoomHint.zoomOut => l10n.zoomOutBoardTooClose,
               },
               style: const TextStyle(
-                color: AppTheme.accent,
+                color: AppTheme.textPrimary,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -294,28 +336,31 @@ class GameCameraPanel extends StatelessWidget {
     // Flutter widgets earlier in the tree, so every control has to live inside
     // this Stack (after the video Container) to be visible.
     return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       child: Stack(
         fit: StackFit.expand,
         children: [
           Container(
-            color: Colors.black,
+            color: videoView == null ? AppTheme.gamePanelEmpty : Colors.black,
             child:
                 videoView ??
                 const Center(
                   child: Icon(
-                    Icons.videocam_off,
-                    color: Colors.white24,
-                    size: 48,
+                    Icons.videocam_off_outlined,
+                    color: AppTheme.textSecondary,
+                    size: 40,
                   ),
                 ),
           ),
 
-          // ── Colored border (whose turn / which mode) ──
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: borderColor, width: 2),
-              borderRadius: BorderRadius.circular(22),
+          // ── Identity border: blue on my turn, rose on the opponent's. This
+          // 1.5 px line IS the turn cue; nothing else on the panel changes.
+          IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: borderColor, width: 1.5),
+                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              ),
             ),
           ),
 
@@ -341,8 +386,7 @@ class GameCameraPanel extends StatelessWidget {
               top: 10,
               left: 10,
               child: GameControlButton(
-                icon: Icons.arrow_back_ios_new,
-                color: AppTheme.textSecondary,
+                icon: Icons.arrow_back_ios_new_rounded,
                 onTap: onBack,
               ),
             ),
@@ -378,6 +422,8 @@ class GameCameraPanel extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Gold on purpose: this is the one warning the
+                        // player must act on before throwing.
                         if (showRemoveDartsHint)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -385,22 +431,15 @@ class GameCameraPanel extends StatelessWidget {
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: AppTheme.accent.withValues(alpha: 0.95),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                              color: AppTheme.accent,
+                              borderRadius: BorderRadius.circular(999),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Icon(
                                   Icons.warning_amber_rounded,
-                                  color: Colors.black87,
+                                  color: AppTheme.background,
                                   size: 16,
                                 ),
                                 const SizedBox(width: 8),
@@ -408,7 +447,7 @@ class GameCameraPanel extends StatelessWidget {
                                   child: Text(
                                     l10n.removeDartsFromBoardHint,
                                     style: const TextStyle(
-                                      color: Colors.black87,
+                                      color: AppTheme.background,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -507,21 +546,13 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final saved = _state == _CaptureState.saved;
-    final gradient = saved
-        ? const LinearGradient(
-            colors: [AppTheme.success, Color(0xFF15803D)])
-        : AppTheme.primaryGradient;
-    const foreground = Colors.white;
+    final foreground = saved ? AppTheme.success : AppTheme.primaryLight;
     return GestureDetector(
       onTap: _tap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(gradient: gradient),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_state == _CaptureState.saving)
-              SizedBox(
+      child: DockedBar(
+        color: foreground,
+        leading: _state == _CaptureState.saving
+            ? SizedBox(
                 width: 15,
                 height: 15,
                 child: CircularProgressIndicator(
@@ -529,24 +560,65 @@ class _ReplayCaptureButtonState extends State<ReplayCaptureButton> {
                   color: foreground,
                 ),
               )
-            else
-              Icon(
-                saved ? Icons.check_circle : Icons.movie_outlined,
-                size: 17,
+            : Icon(
+                saved
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.movie_outlined,
+                size: 16,
                 color: foreground,
               ),
-            const SizedBox(width: 8),
-            Text(
-              saved ? l10n.replaySaved : l10n.replayCapture,
+        label: dsSentence(saved ? l10n.replaySaved : l10n.replayCapture),
+      ),
+    );
+  }
+}
+
+/// The 46 px bar docked to the bottom edge of the camera panel (replay
+/// capture, visit report): translucent background, top hairline, a 16 px
+/// icon and a 13 / 700 label centred in [color]. No fill, no gradient — the
+/// colour of the text alone says which of the two bars this is.
+class DockedBar extends StatelessWidget {
+  final Widget leading;
+  final String label;
+  final Color color;
+
+  const DockedBar({
+    super.key,
+    required this.leading,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.gameBackground.withValues(alpha: 0.86),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          leading,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: foreground,
+                color: color,
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.1,
+                fontWeight: FontWeight.w700,
+                height: 1,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -654,60 +726,32 @@ class _TurnFlagButtonState extends State<TurnFlagButton> {
       label = l10n.flagVisit;
     }
 
-    final decoration = done
-        ? BoxDecoration(
-            color: AppTheme.opponentPink.withValues(alpha: 0.22),
-            border: Border(
-              top: BorderSide(
-                color: AppTheme.opponentPink.withValues(alpha: 0.5),
-              ),
-            ),
-          )
-        : BoxDecoration(
-            gradient: LinearGradient(
-              colors: counting
-                  ? const [Color(0xFFA83A44), Color(0xFF7C2A32)]
-                  : const [AppTheme.opponentPink, Color(0xFFA83A44)],
-            ),
-          );
+    // Rose = armed / counting (the undo window dims it a notch), green +
+    // check once the flag is posted.
+    final color = done
+        ? AppTheme.success
+        : counting
+        ? AppTheme.opponentPinkBright
+        : AppTheme.opponentPink;
 
     return GestureDetector(
       onTap: _tap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: decoration,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              done ? Icons.flag : Icons.flag_outlined,
-              size: 17,
-              color: done ? AppTheme.opponentPinkBright : Colors.white,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: done ? AppTheme.opponentPinkBright : Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ),
-          ],
+      child: DockedBar(
+        color: color,
+        leading: Icon(
+          done ? Icons.check_circle_outline_rounded : Icons.flag_outlined,
+          size: 16,
+          color: color,
         ),
+        label: dsSentence(label),
       ),
     );
   }
 }
 
-/// Center block of the turn header that alternates between "VOTRE MOY." and
-/// "MOY. ADV." every couple of seconds, tinting the value with the owner's
-/// color. Shows just the available one when the other is still null.
+/// Center line of the turn header that alternates between "Votre moy. 62,4"
+/// and "Moy. adv. 55,1" every couple of seconds — one caption, the value in
+/// bold white. Shows just the available one when the other is still null.
 class AlternatingAverage extends StatefulWidget {
   final double? myAverage;
   final double? opponentAverage;
@@ -750,38 +794,42 @@ class _AlternatingAverageState extends State<AlternatingAverage> {
     if (value == null) return const SizedBox.shrink();
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
-      child: Column(
+      child: Text.rich(
         // Keying on the side makes AnimatedSwitcher cross-fade on each flip.
         key: ValueKey(mine),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            mine ? l10n.yourAvgLabel : l10n.opponentAvgLabel,
-            style: TextStyle(
-              color: AppTheme.textSecondary.withValues(alpha: 0.7),
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
+        TextSpan(
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            height: 1,
           ),
-          Text(
-            value.toStringAsFixed(1),
-            style: TextStyle(
-              color: mine
-                  ? AppTheme.playerBlueBright
-                  : AppTheme.opponentPinkBright,
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
+          children: [
+            TextSpan(
+              text:
+                  '${dsSentence(mine ? l10n.yourAvgLabel : l10n.opponentAvgLabel)} ',
             ),
-          ),
-        ],
+            TextSpan(
+              text: value.toStringAsFixed(1),
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+        maxLines: 1,
       ),
     );
   }
 }
 
-/// Opponent-turn header: my identity (blue, left) vs opponent (pink, right)
-/// with the round chip + alternating averages in the middle.
+/// The score header above the camera, shared by both turns: my identity
+/// (blue, left) vs the opponent (rose, right), names in the identity colour,
+/// scores in plain white, and the series context in the middle (group label,
+/// two-coloured legs, alternating average). A 6 px identity dot next to the
+/// name says whose turn it is.
 class TurnScoreHeader extends StatelessWidget {
   final String myName;
   final String opponentName;
@@ -803,6 +851,10 @@ class TurnScoreHeader extends StatelessWidget {
   /// names + scores here (2026-08-18 redesign).
   final bool showBadges;
 
+  /// Whose turn it is: true puts the identity dot next to my name, false next
+  /// to the opponent's, null (callers that don't track it) draws no dot.
+  final bool? myTurn;
+
   const TurnScoreHeader({
     super.key,
     required this.myName,
@@ -817,17 +869,59 @@ class TurnScoreHeader extends StatelessWidget {
     this.myLegs = 0,
     this.opponentLegs = 0,
     this.showBadges = true,
+    this.myTurn,
   });
+
+  static const _scoreStyle = TextStyle(
+    fontSize: 42,
+    fontWeight: FontWeight.w800,
+    height: 1,
+    letterSpacing: -1.2,
+    color: AppTheme.textPrimary,
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  Widget _dot(Color color) => Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+
+  Widget _nameRow({required bool mine}) {
+    final name = mine ? myName : opponentName;
+    final color = mine ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright;
+    final dotColor = mine ? AppTheme.playerBlue : AppTheme.opponentPink;
+    final showDot = myTurn == mine;
+    final text = Flexible(
+      child: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
+      ),
+    );
+    return SizedBox(
+      height: 13,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: mine ? MainAxisAlignment.start : MainAxisAlignment.end,
+        children: [
+          if (mine && showDot) ...[_dot(dotColor), const SizedBox(width: 6)],
+          text,
+          if (!mine && showDot) ...[const SizedBox(width: 6), _dot(dotColor)],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    const scoreStyle = TextStyle(
-      fontSize: 40,
-      fontWeight: FontWeight.w800,
-      height: 1.05,
-      letterSpacing: -1,
-    );
     // Every column stacks: badge row (fixed height so the back button can't
     // push the left column down) → name → score. Fixed heights keep the two
     // names and the two scores on exactly the same lines.
@@ -870,66 +964,52 @@ class TurnScoreHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                 ],
-                Text(
-                  myName.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.playerBlue,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                Text(
-                  '$myScore',
-                  style: scoreStyle.copyWith(color: AppTheme.playerBlueBright),
-                ),
+                _nameRow(mine: true),
+                const SizedBox(height: 6),
+                Text('$myScore', style: _scoreStyle),
               ],
             ),
           ),
-          Column(
-            children: [
-              if (showBadges)
-                SizedBox(
-                  height: badgeRowHeight,
-                  child: Center(
-                    child: seriesTitle == null && roundNumber != null
-                        ? GameChip(
-                            text: l10n.roundChip(roundNumber!),
-                            color: AppTheme.textSecondary,
-                          )
-                        : const SizedBox.shrink(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              children: [
+                if (showBadges)
+                  SizedBox(
+                    height: badgeRowHeight,
+                    child: Center(
+                      child: seriesTitle == null && roundNumber != null
+                          ? GameChip(
+                              text: l10n.roundChip(roundNumber!),
+                              color: AppTheme.textSecondary,
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                   ),
-                ),
-              // Series mode: title sits on the names line, legs score on the
-              // scores line (mirrors the two side columns).
-              if (seriesTitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  seriesTitle!.toUpperCase(),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
+                // Series mode: group label on the names line, two-coloured
+                // legs on the scores line (mirrors the two side columns).
+                if (seriesTitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    seriesTitle!.toUpperCase(),
+                    style: AppTheme.labelSmall.copyWith(height: 1),
                   ),
-                ),
-                const SizedBox(height: 6),
-                SeriesLegsScore(
-                  myLegs: myLegs,
-                  opponentLegs: opponentLegs,
-                  fontSize: 26,
-                ),
+                  const SizedBox(height: 8),
+                  SeriesLegsScore(
+                    myLegs: myLegs,
+                    opponentLegs: opponentLegs,
+                    fontSize: 24,
+                  ),
+                ],
+                if (myAverage != null || opponentAverage != null) ...[
+                  SizedBox(height: seriesTitle != null ? 8 : 6),
+                  AlternatingAverage(
+                    myAverage: myAverage,
+                    opponentAverage: opponentAverage,
+                  ),
+                ],
               ],
-              if (myAverage != null || opponentAverage != null) ...[
-                const SizedBox(height: 4),
-                AlternatingAverage(
-                  myAverage: myAverage,
-                  opponentAverage: opponentAverage,
-                ),
-              ],
-            ],
+            ),
           ),
           Expanded(
             child: Column(
@@ -944,22 +1024,13 @@ class TurnScoreHeader extends StatelessWidget {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.opponentPink,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
+                          _dot(AppTheme.opponentPink),
+                          const SizedBox(width: 6),
                           Text(
-                            AppLocalizations.of(context).playingBadge,
-                            style: const TextStyle(
+                            l10n.playingBadge,
+                            style: AppTheme.labelSmall.copyWith(
                               color: AppTheme.opponentPinkBright,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.2,
+                              height: 1,
                             ),
                           ),
                         ],
@@ -968,23 +1039,9 @@ class TurnScoreHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                 ],
-                Text(
-                  opponentName.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.opponentPinkBright,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                Text(
-                  '$opponentScore',
-                  style: scoreStyle.copyWith(
-                    color: AppTheme.opponentPinkBright,
-                  ),
-                ),
+                _nameRow(mine: false),
+                const SizedBox(height: 6),
+                Text('$opponentScore', style: _scoreStyle),
               ],
             ),
           ),
@@ -994,8 +1051,9 @@ class TurnScoreHeader extends StatelessWidget {
   }
 }
 
-/// Colored BO3 legs score ("1 – 0"): my legs in blue, opponent's in red,
-/// gray dash between. Shared by the turn header and the your-turn score bar.
+/// Two-coloured legs score ("1 – 0"): my legs in bright blue, the opponent's
+/// in bright rose, a smaller tertiary dash between. Shared by the turn
+/// header, the cricket table and the end-of-leg / end-of-match screens.
 class SeriesLegsScore extends StatelessWidget {
   final int myLegs;
   final int opponentLegs;
@@ -1013,25 +1071,28 @@ class SeriesLegsScore extends StatelessWidget {
     final style = TextStyle(
       fontSize: fontSize,
       fontWeight: FontWeight.w800,
-      height: 1.05,
+      height: 1,
+      fontFeatures: const [FontFeature.tabularFigures()],
     );
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
       children: [
-        Text('$myLegs', style: style.copyWith(color: AppTheme.playerBlue)),
+        Text('$myLegs', style: style.copyWith(color: AppTheme.playerBlueBright)),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.22),
+          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.25),
           child: Text(
             '–',
             style: style.copyWith(
-              color: AppTheme.textSecondary.withValues(alpha: 0.6),
-              fontSize: fontSize * 0.72,
+              color: AppTheme.textTertiary,
+              fontSize: fontSize * 0.75,
             ),
           ),
         ),
         Text(
           '$opponentLegs',
-          style: style.copyWith(color: AppTheme.opponentPink),
+          style: style.copyWith(color: AppTheme.opponentPinkBright),
         ),
       ],
     );
@@ -1077,17 +1138,18 @@ class DartVisitChip extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final filled = notation != null && notation!.isNotEmpty;
 
+    final radius = compact ? 12.0 : 14.0;
     Widget chip;
     if (filled) {
       chip = Container(
         decoration: BoxDecoration(
           color: AppTheme.gamePanel,
-          borderRadius: BorderRadius.circular(compact ? 12 : 14),
+          borderRadius: BorderRadius.circular(radius),
+          // The identity colour IS the border: blue on my chips, rose on the
+          // opponent's last dart, surfaceLight on their earlier ones.
           border: Border.all(
-            color: highlighted
-                ? AppTheme.opponentPink
-                : accent.withValues(alpha: 0.75),
-            width: highlighted ? 1.8 : 1.4,
+            color: highlighted ? AppTheme.opponentPink : accent,
+            width: 1.4,
           ),
         ),
         child: Column(
@@ -1096,37 +1158,41 @@ class DartVisitChip extends StatelessWidget {
             Text(
               notation!,
               style: TextStyle(
-                color: Colors.white,
+                color: AppTheme.textPrimary,
                 fontSize: compact ? 18 : 24,
                 fontWeight: FontWeight.w800,
-                height: 1.1,
+                height: 1,
               ),
             ),
+            SizedBox(height: compact ? 2 : 3),
             Text(
               subtitle ?? l10n.ptsLabel(notationPoints(notation!)),
               style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: compact ? 9.5 : 11,
                 fontWeight: FontWeight.w600,
+                height: 1,
               ),
             ),
             if (showEditLabel && !compact) ...[
               const SizedBox(height: 5),
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                padding: const EdgeInsets.only(top: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.only(top: 5),
                 decoration: BoxDecoration(
                   border: Border(
                     top: BorderSide(color: accent.withValues(alpha: 0.3)),
                   ),
                 ),
                 child: Text(
-                  l10n.editShort,
+                  dsSentence(l10n.editShort),
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: accent,
                     fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    height: 1,
                   ),
                 ),
               ),
@@ -1137,13 +1203,13 @@ class DartVisitChip extends StatelessWidget {
     } else {
       chip = CustomPaint(
         painter: _DashedRRectPainter(
-          color: AppTheme.surfaceLight.withValues(alpha: 0.8),
-          radius: compact ? 12 : 14,
+          color: AppTheme.surfaceLight.withValues(alpha: 0.9),
+          radius: radius,
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: AppTheme.gamePanelEmpty,
-            borderRadius: BorderRadius.circular(compact ? 12 : 14),
+            color: AppTheme.gameBackground,
+            borderRadius: BorderRadius.circular(radius),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1152,16 +1218,16 @@ class DartVisitChip extends StatelessWidget {
                   ? SizedBox(
                       width: compact ? 14 : 18,
                       height: compact ? 14 : 18,
-                      child: CircularProgressIndicator(
+                      child: const CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.textSecondary.withValues(alpha: 0.4),
+                        color: AppTheme.surfaceLight,
                       ),
                     )
                   : Container(
                       width: compact ? 18 : 22,
                       height: 3,
                       decoration: BoxDecoration(
-                        color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                        color: AppTheme.surfaceLight,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1169,8 +1235,10 @@ class DartVisitChip extends StatelessWidget {
               Text(
                 l10n.upcomingDart,
                 style: TextStyle(
-                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                  color: AppTheme.textTertiary,
                   fontSize: compact ? 9.5 : 11,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
                 ),
               ),
             ],
@@ -1193,13 +1261,18 @@ class DartVisitChip extends StatelessWidget {
               child: GestureDetector(
                 onTap: onRemove,
                 child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: const BoxDecoration(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
                     color: AppTheme.opponentPink,
                     shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.background, width: 2),
                   ),
-                  child: const Icon(Icons.close, size: 15, color: Colors.white),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 12,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -1259,25 +1332,56 @@ class VisitTotal extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text(
-          AppLocalizations.of(context).totalLabel,
-          style: TextStyle(
-            color: AppTheme.textSecondary.withValues(alpha: 0.8),
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-          ),
-        ),
+        Text(AppLocalizations.of(context).totalLabel, style: AppTheme.labelSmall),
         const SizedBox(width: 8),
         Text(
           text ?? '$total',
           style: TextStyle(
             color: color,
-            fontSize: 26,
+            fontSize: 28,
             fontWeight: FontWeight.w800,
             height: 1,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// The "VOTRE VOLÉE · TOUR 7 …… TOTAL 60" row above the visit chips: a group
+/// label on the left, [VisitTotal] on the right.
+class VisitLabelRow extends StatelessWidget {
+  final String label;
+  final int total;
+  final Color color;
+  final String? totalText;
+
+  const VisitLabelRow({
+    super.key,
+    required this.label,
+    required this.total,
+    required this.color,
+    this.totalText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.labelSmall,
+            ),
+          ),
+        ),
+        VisitTotal(total: total, color: color, text: totalText),
       ],
     );
   }
@@ -1486,23 +1590,12 @@ class _OpponentDartFlashState extends State<OpponentDartFlash>
                       children: [
                         Text(
                           notation,
-                          style: TextStyle(
-                            color: Colors.white,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
                             fontSize: 40,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.8,
                             height: 1,
-                            shadows: [
-                              Shadow(
-                                color:
-                                    AppTheme.opponentPink.withValues(alpha: 0.9),
-                                blurRadius: 18,
-                              ),
-                              Shadow(
-                                color:
-                                    AppTheme.opponentPink.withValues(alpha: 0.5),
-                                blurRadius: 40,
-                              ),
-                            ],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1531,25 +1624,11 @@ class _OpponentDartFlashState extends State<OpponentDartFlash>
                                 ),
                                 if (_manual) ...[
                                   const SizedBox(width: 10),
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: AppTheme.accent
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      l10n.manualDartTag,
-                                      style: const TextStyle(
-                                        color: AppTheme.accent,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.2,
-                                      ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 2),
+                                    child: DsPill(
+                                      label: l10n.manualDartTag,
+                                      color: AppTheme.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -1569,13 +1648,7 @@ class _OpponentDartFlashState extends State<OpponentDartFlash>
                               maxLines: 1,
                               softWrap: false,
                               overflow: TextOverflow.fade,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 2,
-                                height: 1,
-                              ),
+                              style: AppTheme.labelSmall.copyWith(height: 1),
                             ),
                           ),
                         ),
@@ -1589,10 +1662,9 @@ class _OpponentDartFlashState extends State<OpponentDartFlash>
   }
 }
 
-/// "NE LANCEZ PAS VOS FLÉCHETTES" bottom banner for the opponent's turn.
-/// Pulses ("breathes") like in the maquette video: icon, title and border
-/// glow from dim to full pink and back on a ~2.2s cycle; the background
-/// stays constant.
+/// "Ne lancez pas vos fléchettes" bottom banner for the opponent's turn: a
+/// rose-tinted card whose border alone "breathes" (dim to half rose and
+/// back on a ~2.2 s cycle); icon, texts and background stay constant.
 class OpponentWarningBanner extends StatefulWidget {
   const OpponentWarningBanner({super.key});
 
@@ -1628,50 +1700,47 @@ class _OpponentWarningBannerState extends State<OpponentWarningBanner>
       animation: _pulse,
       builder: (context, _) {
         final t = _pulse.value;
-        final titleColor = AppTheme.opponentPinkBright.withValues(
-          alpha: 0.45 + 0.55 * t,
-        );
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints: const BoxConstraints(minHeight: 60),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: AppTheme.warnBannerBg,
-            borderRadius: BorderRadius.circular(16),
+            color: AppTheme.secondary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(AppTheme.radiusRow),
             border: Border.all(
-              color: AppTheme.opponentPink.withValues(alpha: 0.25 + 0.5 * t),
-              width: 1.4,
+              color: AppTheme.opponentPink.withValues(alpha: 0.2 + 0.4 * t),
             ),
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: AppTheme.opponentPink.withValues(alpha: 0.45 + 0.55 * t),
+              const Icon(
+                Icons.info_outline_rounded,
+                color: AppTheme.opponentPinkBright,
                 size: 20,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.doNotThrowTitle,
-                      style: TextStyle(
-                        color: titleColor,
+                      dsSentence(l10n.doNotThrowTitle),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppTheme.opponentPinkBright,
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 3),
                     Text(
                       l10n.opponentTurnWait,
-                      style: TextStyle(
-                        color: AppTheme.opponentPinkBright.withValues(
-                          alpha: 0.35 + 0.3 * t,
-                        ),
-                        fontSize: 11,
-                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.caption.copyWith(fontSize: 11, height: 1.1),
                     ),
                   ],
                 ),
@@ -1712,7 +1781,7 @@ class CameraScoreBand extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     Widget side({required bool mine}) {
-      final name = (mine ? myName : opponentName).toUpperCase();
+      final name = mine ? myName : opponentName;
       final score = mine ? myScore : opponentScore;
       return Column(
         crossAxisAlignment: mine
@@ -1725,24 +1794,26 @@ class CameraScoreBand extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: mine ? AppTheme.playerBlue : AppTheme.opponentPink,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
+              color: mine
+                  ? AppTheme.playerBlueBright
+                  : AppTheme.opponentPinkBright,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              height: 1,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
               '$score',
-              style: TextStyle(
-                color: mine
-                    ? AppTheme.playerBlueBright
-                    : AppTheme.opponentPinkBright,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
                 fontSize: 32,
                 fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
                 height: 1,
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -1754,10 +1825,8 @@ class CameraScoreBand extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: AppTheme.gameBackground.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-        ),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: _glassBorder),
       ),
       child: Row(
         children: [
@@ -1768,14 +1837,9 @@ class CameraScoreBand extends StatelessWidget {
                   children: [
                     Text(
                       seriesTitle!.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                      ),
+                      style: AppTheme.labelSmall.copyWith(fontSize: 9, height: 1),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     SeriesLegsScore(
                       myLegs: myLegs,
                       opponentLegs: opponentLegs,
@@ -1785,11 +1849,9 @@ class CameraScoreBand extends StatelessWidget {
                 )
               : Text(
                   l10n.vsLabel,
-                  style: TextStyle(
-                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
+                  style: AppTheme.labelSmall.copyWith(
+                    color: AppTheme.textTertiary,
+                    height: 1,
                   ),
                 ),
           Expanded(child: Align(alignment: Alignment.centerRight, child: side(mine: false))),
@@ -1842,10 +1904,8 @@ class VisitTicker extends StatelessWidget {
           color: AppTheme.gamePanel.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isLast
-                ? AppTheme.opponentPink
-                : AppTheme.surfaceLight.withValues(alpha: 0.5),
-            width: 1.5,
+            color: isLast ? AppTheme.opponentPink : AppTheme.surfaceLight,
+            width: 1.4,
           ),
         ),
         child: FittedBox(
@@ -1854,10 +1914,8 @@ class VisitTicker extends StatelessWidget {
             notation ?? '—',
             style: TextStyle(
               color: notation == null
-                  ? AppTheme.textSecondary.withValues(alpha: 0.5)
-                  : isLast
-                  ? AppTheme.opponentPinkBright
-                  : Colors.white,
+                  ? AppTheme.textTertiary
+                  : AppTheme.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w800,
               height: 1,
@@ -1871,10 +1929,8 @@ class VisitTicker extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: AppTheme.gameBackground.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-        ),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: _glassBorder),
       ),
       child: Row(
         children: [
@@ -1887,14 +1943,9 @@ class VisitTicker extends StatelessWidget {
                   labelTop,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
-                  ),
+                  style: AppTheme.labelSmall.copyWith(fontSize: 9, height: 1),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   labelBottom,
                   maxLines: 1,
@@ -1902,8 +1953,8 @@ class VisitTicker extends StatelessWidget {
                   style: const TextStyle(
                     color: AppTheme.opponentPinkBright,
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
                   ),
                 ),
               ],
@@ -1926,17 +1977,13 @@ class VisitTicker extends StatelessWidget {
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   height: 1,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 totalLabel,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
+                style: AppTheme.labelSmall.copyWith(fontSize: 8, height: 1),
               ),
             ],
           ),
@@ -1946,36 +1993,46 @@ class VisitTicker extends StatelessWidget {
   }
 }
 
-/// Pill button styles matching the maquette ("CONFIRMER" & dialog actions).
+/// Label style of the in-match buttons. A ButtonStyle's textStyle replaces
+/// the ambient DefaultTextStyle instead of merging with it, so the family
+/// has to be spelled out here exactly as the theme's button styles do.
+const TextStyle gameButtonTextStyle = TextStyle(
+  fontFamily: AppTheme.fontFamily,
+  fontSize: 15,
+  fontWeight: FontWeight.w700,
+);
+
+/// Button styles of the in-match actions (the CONFIRM button, dialog
+/// actions): the theme's 15 / 700 sentence-case buttons at the 16 px row
+/// radius, tinted with [accent] (blue for me, success for a checkout…).
 ButtonStyle gameOutlineButtonStyle(Color accent) => OutlinedButton.styleFrom(
   foregroundColor: accent,
-  side: BorderSide(color: accent.withValues(alpha: 0.9), width: 1.5),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-  textStyle: const TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w800,
-    letterSpacing: 1.5,
+  side: BorderSide(color: accent, width: 1.5),
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(AppTheme.radiusRow),
   ),
+  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  textStyle: gameButtonTextStyle,
 );
 
 ButtonStyle gameFilledButtonStyle(Color accent) => ElevatedButton.styleFrom(
   backgroundColor: accent,
   foregroundColor: Colors.white,
+  disabledBackgroundColor: AppTheme.surfaceLight,
+  disabledForegroundColor: AppTheme.textSecondary,
   elevation: 0,
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-  textStyle: const TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w800,
-    letterSpacing: 1.5,
+  shadowColor: Colors.transparent,
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(AppTheme.radiusRow),
   ),
+  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  textStyle: gameButtonTextStyle,
 );
 
-/// Maquette-styled dialog shell shared by every in-match popup (win, bust,
-/// leave, forfeit, report): deep navy panel, accent border, uppercase
-/// letterspaced title. [actionsBuilder] receives the dialog's own context so
-/// actions can Navigator.pop the dialog route.
+/// The dialog shell shared by every in-match popup (win, bust, leave,
+/// forfeit, report): the theme's flat surface dialog, a 17 / 700 sentence-
+/// case title with a 22 px icon in [accent]. [actionsBuilder] receives the
+/// dialog's own context so actions can Navigator.pop the dialog route.
 Future<T?> showGameDialog<T>(
   BuildContext context, {
   required Color accent,
@@ -2018,28 +2075,19 @@ Widget gameDialogFrame({
 }) {
   final titleRow = Row(
     children: [
-      Icon(icon, color: accent, size: 26),
+      Icon(icon, color: accent, size: 22),
       const SizedBox(width: 10),
-      Expanded(
-        child: Text(
-          title.toUpperCase(),
-          style: TextStyle(
-            color: accent,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-          ),
-        ),
-      ),
+      Expanded(child: Text(dsSentence(title), style: AppTheme.titleLarge)),
     ],
   );
   final shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(22),
-    side: BorderSide(color: accent.withValues(alpha: 0.7), width: 1.5),
+    borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+    side: const BorderSide(color: AppTheme.border),
   );
   if (bottomBar == null) {
     return AlertDialog(
-      backgroundColor: AppTheme.gamePanelEmpty,
+      backgroundColor: AppTheme.surface,
+      surfaceTintColor: Colors.transparent,
       shape: shape,
       title: titleRow,
       content: content,
@@ -2053,7 +2101,8 @@ Widget gameDialogFrame({
   // border. Paddings mirror the AlertDialog ones above; the width cap keeps
   // the bar's unbounded Row from stretching the dialog in landscape.
   return Dialog(
-    backgroundColor: AppTheme.gamePanelEmpty,
+    backgroundColor: AppTheme.surface,
+    surfaceTintColor: Colors.transparent,
     shape: shape,
     clipBehavior: Clip.antiAlias,
     child: ConstrainedBox(
@@ -2090,8 +2139,8 @@ Widget gameDialogFrame({
   );
 }
 
-/// Pulsing amber ring shown over the camera panel while the board framing is
-/// out of the reliable zone (or the auto-framing servo is correcting it).
+/// Pulsing primary ring shown over the camera panel while the board framing
+/// is out of the reliable zone (or the auto-framing servo is correcting it).
 class PulsingFrameBorder extends StatefulWidget {
   const PulsingFrameBorder({super.key});
 
@@ -2117,21 +2166,14 @@ class _PulsingFrameBorderState extends State<PulsingFrameBorder>
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {
-        final t = 0.35 + 0.65 * _ctrl.value;
+        final t = 0.2 + 0.4 * _ctrl.value;
         return Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             border: Border.all(
-              color: AppTheme.accent.withValues(alpha: t),
+              color: AppTheme.primary.withValues(alpha: t),
               width: 3,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.accent.withValues(alpha: 0.25 * t),
-                blurRadius: 18,
-                spreadRadius: -4,
-              ),
-            ],
           ),
         );
       },

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import '../utils/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/app_theme.dart';
+import 'design_system.dart';
 
+/// Inline error state: one surface card with the 32 px error icon,
+/// "Oups !", the message as a caption and an outlined "Réessayer".
 class CustomErrorWidget extends StatelessWidget {
   final String message;
   final VoidCallback? onRetry;
@@ -11,67 +14,45 @@ class CustomErrorWidget extends StatelessWidget {
     super.key,
     required this.message,
     this.onRetry,
-    this.icon = Icons.error_outline,
+    this.icon = Icons.error_outline_rounded,
   });
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 80,
-              color: AppTheme.error,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              AppLocalizations.of(context).oops,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+        padding: const EdgeInsets.all(16),
+        child: DsCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 32, color: AppTheme.error),
+              const SizedBox(height: 12),
+              Text(
+                l10n.oops,
+                textAlign: TextAlign.center,
+                style: AppTheme.rowTitle,
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 16,
+              const SizedBox(height: 6),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: AppTheme.caption,
               ),
-              textAlign: TextAlign.center,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 32),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+              if (onRetry != null) ...[
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 44,
+                  child: OutlinedButton(
+                    onPressed: onRetry,
+                    child: Text(dsSentence(l10n.tryAgainUpper)),
                   ),
                 ),
-                icon: const Icon(Icons.refresh),
-                label: Text(
-                  AppLocalizations.of(context).tryAgainUpper,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -87,7 +68,7 @@ class NetworkErrorWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomErrorWidget(
       message: AppLocalizations.of(context).unableToConnectMessage,
-      icon: Icons.wifi_off,
+      icon: Icons.wifi_off_rounded,
       onRetry: onRetry,
     );
   }

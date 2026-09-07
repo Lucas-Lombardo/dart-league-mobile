@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../models/training.dart';
 import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
 import 'logic/important_doubles_strategy.dart';
-import 'training_select_screen.dart' show kImportantDoublesColor;
 
 /// One 60-dart block, as replayed from a stored session.
 class _Block {
@@ -33,7 +34,6 @@ class _DoubleProgress {
 
   int get sessions => blocks.length;
   int get totalDarts => blocks.fold(0, (a, b) => a + b.darts);
-  int get best => blocks.map((b) => b.hitRate).reduce((a, b) => a > b ? a : b);
   int get last => blocks.last.hitRate;
   DateTime get lastAt => blocks.last.at;
 
@@ -48,6 +48,11 @@ class _DoubleProgress {
 
   List<int> get series => blocks.map((b) => b.hitRate).toList();
 }
+
+/// Where a double sits in the list: the strongest one reads success, the
+/// weakest error, everything in between the neutral primary. Semantic only —
+/// no per-drill colour.
+enum _Tone { best, worst, neutral }
 
 /// Per-double progression across Important Doubles sessions. Everything is
 /// derived client-side from the stored session details — the drill writes one
@@ -133,10 +138,25 @@ class _ImportantDoublesProgressScreenState
     return result;
   }
 
+  /// The strongest and the weakest double of the list, so the two rows that
+  /// matter can be read at a glance. Null while there is nothing to compare.
+  (int?, int?) get _extremes {
+    if (_progress.length < 2) return (null, null);
+    var best = _progress.first;
+    var worst = _progress.first;
+    for (final p in _progress) {
+      if (p.average > best.average) best = p;
+      if (p.average < worst.average) worst = p;
+    }
+    if (best.average == worst.average) return (null, null);
+    return (best.target, worst.target);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(title: Text(l10n.trainingProgressTitle)),
       body: _buildBody(l10n),
     );
@@ -145,138 +165,180 @@ class _ImportantDoublesProgressScreenState
   Widget _buildBody(AppLocalizations l10n) {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: kImportantDoublesColor),
-      );
-    }
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: AppTheme.error, size: 48),
-            const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: AppTheme.error)),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: _load, child: Text(l10n.retry)),
-          ],
-        ),
-      );
-    }
-    if (_progress.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.my_location,
-                size: 48,
-                color: AppTheme.textSecondary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                l10n.trainingProgressEmpty,
-                style: AppTheme.bodyLarge,
-                textAlign: TextAlign.center,
-              ),
-            ],
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: AppTheme.primary,
           ),
         ),
       );
     }
+    if (_error != null) {
+      return _centeredCard(
+        icon: Icons.error_outline_rounded,
+        title: _error!,
+        action: ElevatedButton(onPressed: _load, child: Text(l10n.retry)),
+      );
+    }
+    if (_progress.isEmpty) {
+      return _centeredCard(
+        icon: Icons.my_location_outlined,
+        title: l10n.trainingProgressEmptyTitle,
+        subtitle: l10n.trainingProgressEmpty,
+      );
+    }
+    final (bestTarget, worstTarget) = _extremes;
     return RefreshIndicator(
       onRefresh: _load,
-      color: kImportantDoublesColor,
+      color: AppTheme.primary,
+      backgroundColor: AppTheme.surface,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
         itemCount: _progress.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _DoubleCard(progress: _progress[i]),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (_, i) {
+          final p = _progress[i];
+          return _DoubleCard(
+            progress: p,
+            tone: p.target == bestTarget
+                ? _Tone.best
+                : p.target == worstTarget
+                ? _Tone.worst
+                : _Tone.neutral,
+          );
+        },
+      ),
+    );
+  }
+
+  /// Empty / error state: one card, a quiet 32 px icon, a row title and an
+  /// optional caption.
+  Widget _centeredCard({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? action,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: DsCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 32, color: AppTheme.textTertiary),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: AppTheme.rowTitle,
+                textAlign: TextAlign.center,
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: AppTheme.caption,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              if (action != null) ...[
+                const SizedBox(height: 20),
+                SizedBox(width: double.infinity, height: 48, child: action),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
+/// One double: its name, its hit rate, the bar, the volume caption and — once
+/// there are two sessions — the session-by-session sparkline.
 class _DoubleCard extends StatelessWidget {
   final _DoubleProgress progress;
+  final _Tone tone;
 
-  const _DoubleCard({required this.progress});
+  const _DoubleCard({required this.progress, required this.tone});
+
+  Color get _color => switch (tone) {
+    _Tone.best => AppTheme.success,
+    _Tone.worst => AppTheme.error,
+    _Tone.neutral => AppTheme.primary,
+  };
+
+  /// "hier" / "aujourd’hui" / "4 sept." — lower-cased so it reads inside the
+  /// caption sentence.
+  String _lastSessionDay(BuildContext context, AppLocalizations l10n) {
+    final at = progress.lastAt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(at.year, at.month, at.day);
+    if (day == today) return l10n.todayLabel.toLowerCase();
+    if (day == today.subtract(const Duration(days: 1))) {
+      return l10n.yesterdayLabel.toLowerCase();
+    }
+    try {
+      return DateFormat(
+        'd MMM',
+        Localizations.localeOf(context).languageCode,
+      ).format(at);
+    } catch (_) {
+      return DateFormat('MMM d').format(at);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final delta = progress.delta;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: kImportantDoublesColor.withValues(alpha: 0.4),
-        ),
-      ),
+    return DsCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                'D${progress.target}',
-                style: const TextStyle(
-                  color: kImportantDoublesColor,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  l10n.trainingProgressSessionsDarts(
-                    progress.sessions,
-                    progress.totalDarts,
-                  ),
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
+                child: Text('D${progress.target}', style: AppTheme.sectionTitle),
+              ),
+              if (delta != null) ...[
+                _DeltaTag(delta: delta),
+                const SizedBox(width: 12),
+              ],
+              Text(
+                '${progress.average} %',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
-              if (delta != null) _DeltaPill(delta: delta),
             ],
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _metric(
-                  label: l10n.trainingBest,
-                  value: '${progress.best} %',
-                  color: AppTheme.success,
-                ),
-              ),
-              _divider(),
-              Expanded(
-                child: _metric(
-                  label: l10n.trainingAverage,
-                  value: '${progress.average} %',
-                  color: AppTheme.primary,
-                ),
-              ),
-              _divider(),
-              Expanded(
-                child: _metric(
-                  label: l10n.trainingLast,
-                  value: '${progress.last} %',
-                  color: AppTheme.accent,
-                ),
-              ),
-            ],
+          const SizedBox(height: 12),
+          DsProgressBar(
+            value: progress.average / 100,
+            color: _color,
+            height: 6,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${l10n.trainingProgressSessionsDarts(progress.sessions, progress.totalDarts)}'
+            ' · ${l10n.trainingProgressLastSession(_lastSessionDay(context, l10n))}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.caption,
           ),
           if (progress.series.length > 1) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             SizedBox(
               height: 44,
               child: CustomPaint(
@@ -289,33 +351,46 @@ class _DoubleCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _divider() =>
-      Container(width: 1, height: 36, color: AppTheme.surfaceLight);
+/// Change since the previous session on this double: up is success, down is
+/// error, flat is quiet. No pill — the colour of the number says it.
+class _DeltaTag extends StatelessWidget {
+  final int delta;
 
-  Widget _metric({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Column(
+  const _DeltaTag({required this.delta});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final flat = delta == 0;
+    final up = delta > 0;
+    final color = flat
+        ? AppTheme.textTertiary
+        : up
+        ? AppTheme.success
+        : AppTheme.error;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.6,
-          ),
+        Icon(
+          flat
+              ? Icons.remove_rounded
+              : up
+              ? Icons.arrow_upward_rounded
+              : Icons.arrow_downward_rounded,
+          color: color,
+          size: 14,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(width: 3),
         Text(
-          value,
+          l10n.ptsLabel(delta.abs()),
           style: TextStyle(
             color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            height: 1,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ],
@@ -323,56 +398,10 @@ class _DoubleCard extends StatelessWidget {
   }
 }
 
-class _DeltaPill extends StatelessWidget {
-  final int delta;
-
-  const _DeltaPill({required this.delta});
-
-  @override
-  Widget build(BuildContext context) {
-    final flat = delta == 0;
-    final up = delta > 0;
-    final color = flat
-        ? AppTheme.textSecondary
-        : up
-        ? AppTheme.success
-        : AppTheme.error;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            flat
-                ? Icons.remove
-                : up
-                ? Icons.arrow_upward
-                : Icons.arrow_downward,
-            color: color,
-            size: 13,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '${delta.abs()} pts',
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Hit rate session after session. Scaled from 0 to the best score of the
-/// series (floored at 10) so the line shows absolute level, not a zoomed-in
-/// wiggle that makes a 1-point change look like a breakthrough.
+/// Hit rate session after session, in the accent of the system: a primary
+/// line over a quiet baseline. Scaled from 0 to the best score of the series
+/// (floored at 10) so the line shows absolute level, not a zoomed-in wiggle
+/// that makes a 1-point change look like a breakthrough.
 class _SparklinePainter extends CustomPainter {
   final List<int> values;
 
@@ -384,6 +413,15 @@ class _SparklinePainter extends CustomPainter {
     final max = values.reduce((a, b) => a > b ? a : b).clamp(10, 100);
     final dx = size.width / (values.length - 1);
     double yFor(int v) => size.height - (v / max) * size.height;
+
+    // The axis the line is read against.
+    canvas.drawLine(
+      Offset(0, size.height - 0.5),
+      Offset(size.width, size.height - 0.5),
+      Paint()
+        ..color = AppTheme.textTertiary.withValues(alpha: 0.4)
+        ..strokeWidth = 1,
+    );
 
     final points = <Offset>[
       for (var i = 0; i < values.length; i++) Offset(i * dx, yFor(values[i])),
@@ -397,7 +435,7 @@ class _SparklinePainter extends CustomPainter {
     fill.close();
     canvas.drawPath(
       fill,
-      Paint()..color = kImportantDoublesColor.withValues(alpha: 0.14),
+      Paint()..color = AppTheme.primary.withValues(alpha: 0.14),
     );
 
     final line = Path()..moveTo(points.first.dx, points.first.dy);
@@ -407,18 +445,14 @@ class _SparklinePainter extends CustomPainter {
     canvas.drawPath(
       line,
       Paint()
-        ..color = kImportantDoublesColor
+        ..color = AppTheme.primary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
 
-    canvas.drawCircle(
-      points.last,
-      3.5,
-      Paint()..color = kImportantDoublesColor,
-    );
+    canvas.drawCircle(points.last, 3.5, Paint()..color = AppTheme.primary);
   }
 
   @override

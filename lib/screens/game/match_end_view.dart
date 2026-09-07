@@ -3,21 +3,23 @@ import '../../l10n/app_localizations.dart';
 import '../../services/replay_clips_store.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/match_stats_card.dart';
 import '../profile/replay_library_screen.dart';
 
-/// Redesigned end-of-match screen shared by ranked, friendly and tournament
-/// matches: animated hero + headline, optional series score and tournament
-/// badge, and an action panel supplied by the calling screen (accept/refuse,
-/// accept/report or rematch). Both orientations keep every region inside a
-/// scroll view so the screen can never overflow on short devices or with a
-/// large system font scale.
+/// End-of-match screen shared by ranked, friendly and tournament matches:
+/// animated hero + headline, the two-coloured legs tile, the stats card, a
+/// replays link, and the action panel supplied by the calling screen
+/// (accept/refuse, accept/report or rematch) laid flat at the bottom. Both
+/// orientations keep every region inside a scroll view so the screen can
+/// never overflow on short devices or with a large system font scale.
 class MatchEndView extends StatefulWidget {
   final bool didWin;
   final String title;
   final String subtitle;
 
-  /// "2 – 1" for a BO3 series; null hides the score tile.
+  /// "2 – 1" for a BO3 series; null hides the score tile. A "my – theirs"
+  /// line is drawn two-coloured (blue / rose); anything else in plain white.
   final String? scoreLine;
 
   /// "Best of 3" caption under [scoreLine].
@@ -26,8 +28,8 @@ class MatchEndView extends StatefulWidget {
   /// Tournament name pill above the title; null hides it.
   final String? badgeText;
 
-  /// Action card content (title/buttons). The card chrome (surface, border,
-  /// glow) is applied here so every match type gets the same panel look.
+  /// Action content (buttons). Laid out as-is at the bottom of the screen —
+  /// no card around it, the system keeps one filled block per screen.
   final Widget panel;
 
   /// The replay clips captured during this match/series — sharing lives
@@ -67,9 +69,8 @@ class MatchEndView extends StatefulWidget {
 }
 
 class _MatchEndViewState extends State<MatchEndView>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _mainCtrl;
-  late final AnimationController _glowCtrl;
 
   late final Animation<double> _heroScale;
   late final Animation<double> _heroFade;
@@ -86,9 +87,6 @@ class _MatchEndViewState extends State<MatchEndView>
     super.initState();
     _mainCtrl = AnimationController(
         duration: const Duration(milliseconds: 1400), vsync: this);
-    _glowCtrl = AnimationController(
-        duration: const Duration(milliseconds: 1800), vsync: this)
-      ..repeat(reverse: true);
 
     _heroScale = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(
         parent: _mainCtrl,
@@ -121,19 +119,17 @@ class _MatchEndViewState extends State<MatchEndView>
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Respect the OS "reduce motion" setting: jump straight to the final
-    // state and stop the looping glow.
+    // state.
     if (!_reducedMotionApplied && MediaQuery.of(context).disableAnimations) {
       _reducedMotionApplied = true;
       _mainCtrl.stop();
       _mainCtrl.value = 1.0;
-      _glowCtrl.stop();
     }
   }
 
   @override
   void dispose() {
     _mainCtrl.dispose();
-    _glowCtrl.dispose();
     super.dispose();
   }
 
@@ -145,61 +141,58 @@ class _MatchEndViewState extends State<MatchEndView>
         MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: isLandscape
-              ? Row(children: [
-                  Expanded(child: _scrollCentered(_buildHeadline(compact: true))),
-                  Expanded(
-                    child: _scrollCentered(Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (widget.statsMatchId != null) ...[
-                            _buildStatsCard(compact: true),
-                            const SizedBox(height: 14),
+      backgroundColor: AppTheme.background,
+      body: SafeArea(
+        child: isLandscape
+            ? Row(children: [
+                Expanded(child: _scrollCentered(_buildHeadline(compact: true))),
+                Expanded(
+                  child: _scrollCentered(Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ..._details(compact: true),
+                        if (widget.preCard != null) widget.preCard!,
+                        _buildPanel(),
+                      ],
+                    ),
+                  )),
+                ),
+              ])
+            : LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: constraints.maxHeight - 64),
+                    // Two groups: everything about the result at the top, the
+                    // actions pinned to the bottom (spaceBetween on the
+                    // min-height column), still one scroll view for short
+                    // phones and large font scales.
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          children: [
+                            _buildHeadline(compact: false),
+                            const SizedBox(height: 16),
+                            ..._details(compact: false),
                           ],
-                          if (widget.replayClips.isNotEmpty) ...[
-                            _buildMomentsCard(),
-                            const SizedBox(height: 14),
+                        ),
+                        Column(
+                          children: [
+                            const SizedBox(height: 24),
+                            if (widget.preCard != null) widget.preCard!,
+                            _buildPanel(),
                           ],
-                          if (widget.preCard != null) widget.preCard!,
-                          _buildPanelCard(),
-                        ],
-                      ),
-                    )),
-                  ),
-                ])
-              : LayoutBuilder(
-                  builder: (context, constraints) => SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                    child: ConstrainedBox(
-                      constraints:
-                          BoxConstraints(minHeight: constraints.maxHeight - 40),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildHeadline(compact: false),
-                          const SizedBox(height: 24),
-                          if (widget.statsMatchId != null) ...[
-                            _buildStatsCard(compact: false),
-                            const SizedBox(height: 14),
-                          ],
-                          if (widget.replayClips.isNotEmpty) ...[
-                            _buildMomentsCard(),
-                            const SizedBox(height: 14),
-                          ],
-                          if (widget.preCard != null) widget.preCard!,
-                          _buildPanelCard(),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-        ),
+              ),
       ),
     );
   }
@@ -211,8 +204,20 @@ class _MatchEndViewState extends State<MatchEndView>
         ),
       );
 
+  /// Stats card + replays link, in that order, each followed by its gap.
+  List<Widget> _details({required bool compact}) => [
+        if (widget.statsMatchId != null) ...[
+          _buildStatsCard(compact: compact),
+          const SizedBox(height: 12),
+        ],
+        if (widget.replayClips.isNotEmpty) ...[
+          _buildReplaysLink(),
+          const SizedBox(height: 12),
+        ],
+      ];
+
   Widget _buildHeadline({required bool compact}) {
-    final heroSize = compact ? 88.0 : 116.0;
+    final heroSize = compact ? 72.0 : 88.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -220,75 +225,50 @@ class _MatchEndViewState extends State<MatchEndView>
         if (widget.badgeText != null) ...[
           FadeTransition(
             opacity: _detailsFade,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-                border:
-                    Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
-              ),
-              child: Text(
-                widget.badgeText!,
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
+            child: DsPill(label: widget.badgeText!),
           ),
-          SizedBox(height: compact ? 14 : 20),
+          SizedBox(height: compact ? 12 : 16),
         ],
         FadeTransition(
           opacity: _heroFade,
           child: ScaleTransition(
             scale: _heroScale,
-            child: AnimatedBuilder(
-              animation: _glowCtrl,
-              builder: (_, _) => Container(
-                width: heroSize,
-                height: heroSize,
-                decoration: BoxDecoration(
-                  color: _accent.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _accent, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _accent
-                          .withValues(alpha: 0.22 + 0.22 * _glowCtrl.value),
-                      blurRadius: 22 + 16 * _glowCtrl.value,
-                      spreadRadius: 2 + 6 * _glowCtrl.value,
-                    ),
-                  ],
+            child: Container(
+              width: heroSize,
+              height: heroSize,
+              decoration: BoxDecoration(
+                color: _accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _accent.withValues(alpha: 0.6),
+                  width: 2,
                 ),
-                child: Icon(
-                  widget.didWin
-                      ? Icons.emoji_events
-                      : Icons.sentiment_dissatisfied,
-                  color: _accent,
-                  size: heroSize * 0.5,
-                ),
+              ),
+              child: Icon(
+                widget.didWin
+                    ? Icons.emoji_events_outlined
+                    : Icons.sentiment_dissatisfied_outlined,
+                color: _accent,
+                size: compact ? 30 : 38,
               ),
             ),
           ),
         ),
-        SizedBox(height: compact ? 16 : 24),
+        SizedBox(height: compact ? 14 : 18),
         SlideTransition(
           position: _titleSlide,
           child: FadeTransition(
             opacity: _titleFade,
             child: Text(
-              widget.title.toUpperCase(),
-              style: TextStyle(
-                color: _accent,
-                fontSize: compact ? 28 : 34,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2.5,
-              ),
+              dsSentence(widget.title),
               textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: compact ? 28 : 34,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.7,
+                height: 1,
+              ),
             ),
           ),
         ),
@@ -297,80 +277,107 @@ class _MatchEndViewState extends State<MatchEndView>
           opacity: _detailsFade,
           child: Text(
             widget.subtitle,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
             textAlign: TextAlign.center,
+            style: AppTheme.caption.copyWith(fontSize: 14),
           ),
         ),
         if (widget.scoreLine != null) ...[
-          SizedBox(height: compact ? 14 : 20),
+          SizedBox(height: compact ? 14 : 18),
           FadeTransition(
             opacity: _detailsFade,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.background,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: AppTheme.surfaceLight.withValues(alpha: 0.6)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    widget.scoreLine!,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: compact ? 24 : 30,
-                      fontWeight: FontWeight.w800,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  if (widget.scoreCaption != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.scoreCaption!.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            child: _buildLegsTile(compact: compact),
           ),
         ],
       ],
     );
   }
 
-  /// One compact line when clips were captured this match — the end screen
+  /// "2 – 1" over "AU MEILLEUR DE 3" on a 64 px surface tile. A line the
+  /// callers built as "mine – theirs" gets the identity colours.
+  Widget _buildLegsTile({required bool compact}) {
+    final fontSize = compact ? 24.0 : 28.0;
+    final base = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w800,
+      height: 1,
+      color: AppTheme.textPrimary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final parts = widget.scoreLine!.split(' – ');
+    final Widget score = parts.length == 2
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(parts[0],
+                  style: base.copyWith(color: AppTheme.playerBlueBright)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  '–',
+                  style: base.copyWith(
+                    color: AppTheme.textTertiary,
+                    fontSize: fontSize * 0.72,
+                  ),
+                ),
+              ),
+              Text(parts[1],
+                  style: base.copyWith(color: AppTheme.opponentPinkBright)),
+            ],
+          )
+        : Text(widget.scoreLine!, style: base);
+
+    return SizedBox(
+      height: 64,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            score,
+            if (widget.scoreCaption != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                widget.scoreCaption!.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTheme.labelSmall.copyWith(fontSize: 10, height: 1),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One quiet link when clips were captured this match — the end screen
   /// must stay scroll-free down to the confirm/report panel, so the list
   /// itself lives in « Mes replays » (2026-08-03 feedback: the inline rows
   /// pushed the actions below the fold).
-  Widget _buildMomentsCard() {
+  Widget _buildReplaysLink() {
     final l10n = AppLocalizations.of(context);
     return SlideTransition(
       position: _panelSlide,
       child: FadeTransition(
         opacity: _panelFade,
-        child: OutlinedButton.icon(
+        child: TextButton.icon(
           onPressed: () =>
               AppNavigator.toScreen(context, const ReplayLibraryScreen()),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppTheme.accent,
-            side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.5)),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14)),
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.primaryLight,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            // Spelled-out family: a ButtonStyle textStyle does not inherit it.
+            textStyle: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          icon: const Icon(Icons.movie_outlined, size: 18),
-          label: Text(
-            '${l10n.replayViewMine} (${widget.replayClips.length})',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-          ),
+          icon: const Icon(Icons.movie_outlined, size: 15),
+          label: Text('${l10n.replayViewMine} (${widget.replayClips.length})'),
         ),
       ),
     );
@@ -386,29 +393,10 @@ class _MatchEndViewState extends State<MatchEndView>
     );
   }
 
-  Widget _buildPanelCard() {
+  Widget _buildPanel() {
     return SlideTransition(
       position: _panelSlide,
-      child: FadeTransition(
-        opacity: _panelFade,
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.18),
-                blurRadius: 26,
-                spreadRadius: -12,
-              ),
-            ],
-          ),
-          child: widget.panel,
-        ),
-      ),
+      child: FadeTransition(opacity: _panelFade, child: widget.panel),
     );
   }
 }

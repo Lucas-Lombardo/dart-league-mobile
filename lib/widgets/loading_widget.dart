@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 
+/// The system's loading state: a 22 px primary ring and an optional caption.
 class LoadingWidget extends StatelessWidget {
   final String? message;
   final double size;
@@ -8,7 +9,7 @@ class LoadingWidget extends StatelessWidget {
   const LoadingWidget({
     super.key,
     this.message,
-    this.size = 48,
+    this.size = 22,
   });
 
   @override
@@ -16,24 +17,21 @@ class LoadingWidget extends StatelessWidget {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
             width: size,
             height: size,
             child: const CircularProgressIndicator(
               color: AppTheme.primary,
-              strokeWidth: 4,
+              strokeWidth: 2.5,
             ),
           ),
           if (message != null) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
             Text(
               message!,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTheme.caption,
               textAlign: TextAlign.center,
             ),
           ],
@@ -43,6 +41,7 @@ class LoadingWidget extends StatelessWidget {
   }
 }
 
+/// Full-surface scrim with the spinner, for a blocking wait.
 class LoadingOverlay extends StatelessWidget {
   final String? message;
 
@@ -51,7 +50,7 @@ class LoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black87,
+      color: AppTheme.background.withValues(alpha: 0.92),
       child: LoadingWidget(message: message),
     );
   }

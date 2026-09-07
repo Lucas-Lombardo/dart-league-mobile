@@ -4,6 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/training.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import 'bot_training_setup_screen.dart';
 import 'logic/atc_mode.dart';
 import 'logic/atc_strategy.dart';
@@ -19,8 +20,8 @@ import 'quick_count_screen.dart';
 import 'training_ai_screen.dart';
 
 /// Accent of the Important Doubles drill — the green the key doubles are
-/// charted in, so the drill, its tile and its progress screen all read as one
-/// thing.
+/// charted in on the progress screen and the stats tab. The hub itself is
+/// neutral (system D): no family colors on tiles or rows.
 const Color kImportantDoublesColor = Color(0xFF199E70);
 
 /// Accent of the Checkouts family — the purple the Checkout 81/121 drill was
@@ -28,8 +29,11 @@ const Color kImportantDoublesColor = Color(0xFF199E70);
 const Color kCheckoutsColor = Color(0xFF7C3AED);
 
 /// The training families the hub groups the drills into, below the
-/// always-visible bot hero card.
+/// always-visible bot primary row.
 enum TrainingCategory { doubles, checkouts, scoring, games, calcul }
+
+/// Light icon on a quiet 38 px disc — the leading of every tile and row here.
+const Color _kIconColor = Color(0xFFE2E8F0);
 
 class TrainingSelectScreen extends StatelessWidget {
   const TrainingSelectScreen({super.key});
@@ -40,143 +44,80 @@ class TrainingSelectScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.trainingSelectTitle)),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
-          _TrainingTile(
-            title: l10n.trainingBotTraining,
-            description: l10n.trainingBotTrainingDescription,
-            icon: Icons.smart_toy,
-            color: AppTheme.accent,
-            onTap: () => openBotTrainingPicker(context),
-            onInfo: () => showTrainingRulesSheet(
-              context,
-              title: l10n.trainingBotTraining,
-              body: l10n.trainingRulesBotTraining,
-              color: AppTheme.accent,
-              icon: Icons.smart_toy,
-            ),
+          // THE filled block of the screen: the bot match. Its rules live
+          // behind the (i) of the configurator it opens.
+          DsPrimaryRow(
+            icon: Icons.smart_toy_outlined,
+            title: l10n.botSetupTitle,
+            subtitle: l10n.trainingBotRowSubtitle,
+            onTap: () => _pushBotSetup(context),
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Text(
-                l10n.trainingCategoriesLabel.toUpperCase(),
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.6,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  height: 1,
-                  color: AppTheme.surfaceLight.withValues(alpha: 0.65),
-                ),
-              ),
-            ],
-          ),
+          const SizedBox(height: 28),
+          DsSectionHeader(title: l10n.trainingCategoriesLabel),
           const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _CategoryTile(
-                    title: l10n.trainingCategoryDoubles,
-                    gameCount: 3,
-                    icon: Icons.my_location,
-                    color: kImportantDoublesColor,
-                    gameIcons: const [
-                      Icons.my_location,
-                      Icons.gps_fixed,
-                      Icons.schedule,
-                    ],
-                    onTap: () =>
-                        _openCategory(context, TrainingCategory.doubles),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _CategoryTile(
-                    title: l10n.trainingCategoryCheckouts,
-                    gameCount: 2,
-                    icon: Icons.flag_outlined,
-                    color: kCheckoutsColor,
-                    gameIcons: const [
-                      Icons.center_focus_strong,
-                      Icons.flag_outlined,
-                    ],
-                    onTap: () =>
-                        _openCategory(context, TrainingCategory.checkouts),
-                  ),
-                ),
-              ],
+          _grid([
+            _CategoryTile(
+              title: l10n.trainingCategoryDoubles,
+              caption: l10n.trainingCategoryGameCount(3),
+              icon: Icons.my_location_outlined,
+              onTap: () => _openCategory(context, TrainingCategory.doubles),
             ),
-          ),
-          const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _CategoryTile(
-                    title: l10n.trainingCategoryScoring,
-                    gameCount: 2,
-                    icon: Icons.local_fire_department,
-                    color: AppTheme.error,
-                    gameIcons: const [
-                      Icons.local_fire_department,
-                      Icons.schedule,
-                    ],
-                    onTap: () =>
-                        _openCategory(context, TrainingCategory.scoring),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _CategoryTile(
-                    title: l10n.trainingCategoryGames,
-                    gameCount: 1,
-                    icon: Icons.emoji_events,
-                    color: AppTheme.secondary,
-                    gameIcons: const [Icons.emoji_events],
-                    onTap: () => _openCategory(context, TrainingCategory.games),
-                  ),
-                ),
-              ],
+            _CategoryTile(
+              title: l10n.trainingCategoryCheckouts,
+              caption: l10n.trainingCategoryGameCount(2),
+              icon: Icons.flag_outlined,
+              onTap: () => _openCategory(context, TrainingCategory.checkouts),
             ),
-          ),
-          const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _CategoryTile(
-                    title: l10n.trainingCategoryCalcul,
-                    gameCount: 2,
-                    icon: Icons.psychology,
-                    color: AppTheme.primary,
-                    gameIcons: const [Icons.calculate, Icons.track_changes],
-                    onTap: () =>
-                        _openCategory(context, TrainingCategory.calcul),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(child: SizedBox()),
-              ],
+            _CategoryTile(
+              title: l10n.trainingCategoryScoring,
+              caption: l10n.trainingCategoryGameCount(2),
+              icon: Icons.local_fire_department_outlined,
+              onTap: () => _openCategory(context, TrainingCategory.scoring),
             ),
-          ),
+            _CategoryTile(
+              title: l10n.trainingCategoryGames,
+              caption: l10n.trainingCategoryGameCount(1),
+              icon: Icons.emoji_events_outlined,
+              onTap: () => _openCategory(context, TrainingCategory.games),
+            ),
+            _CategoryTile(
+              title: l10n.trainingCategoryCalcul,
+              caption:
+                  '${l10n.trainingCategoryGameCount(2)} · ${l10n.trainingNoCameraShort}',
+              icon: Icons.calculate_outlined,
+              onTap: () => _openCategory(context, TrainingCategory.calcul),
+            ),
+          ]),
         ],
       ),
     );
   }
+
+  /// Two columns, 10 px gaps; an odd last tile keeps its half width.
+  Widget _grid(List<Widget> tiles) {
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: 10));
+      rows.add(
+        Row(
+          children: [
+            Expanded(child: tiles[i]),
+            const SizedBox(width: 10),
+            Expanded(
+              child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox(),
+            ),
+          ],
+        ),
+      );
+    }
+    return Column(children: rows);
+  }
 }
 
 /// One training family: the games behind the hub tile the player tapped, as
-/// the full cards (description + rules) the flat list used to show.
+/// rows (description + rules) — the flat list the hub used to be.
 class TrainingCategoryScreen extends StatelessWidget {
   final TrainingCategory category;
 
@@ -185,11 +126,14 @@ class TrainingCategoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final tiles = _tiles(context, l10n);
     return Scaffold(
       appBar: AppBar(title: Text(_title(l10n))),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: _tiles(context, l10n),
+      body: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        itemCount: tiles.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (_, i) => tiles[i],
       ),
     );
   }
@@ -216,46 +160,38 @@ class TrainingCategoryScreen extends StatelessWidget {
           _TrainingTile(
             title: l10n.trainingImportantDoubles,
             description: l10n.trainingImportantDoublesDescription,
-            icon: Icons.my_location,
-            color: kImportantDoublesColor,
+            icon: Icons.my_location_outlined,
             onTap: () => openImportantDoublesPicker(context),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingImportantDoubles,
               body: l10n.trainingRulesImportantDoubles,
-              color: kImportantDoublesColor,
-              icon: Icons.my_location,
+              icon: Icons.my_location_outlined,
             ),
           ),
-          const SizedBox(height: 12),
           _TrainingTile(
             title: l10n.trainingBobs27,
             description: l10n.trainingBobs27Description,
-            icon: Icons.gps_fixed,
-            color: AppTheme.accent,
+            icon: Icons.adjust_outlined,
             onTap: () => _startWithStrategy(context, Bobs27Strategy()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingBobs27,
               body: l10n.trainingRulesBobs27,
-              color: AppTheme.accent,
-              icon: Icons.gps_fixed,
+              icon: Icons.adjust_outlined,
             ),
           ),
-          const SizedBox(height: 12),
           _TrainingTile(
             title: l10n.trainingAroundTheClockDouble,
             description: l10n.trainingAroundTheClockDoublesDescription,
-            icon: Icons.schedule,
-            color: AppTheme.primary,
+            icon: Icons.schedule_outlined,
             onTap: () =>
                 _startWithStrategy(context, AtcStrategy(mode: AtcMode.double)),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingAroundTheClockDouble,
               body: l10n.trainingRulesAroundTheClock,
-              color: AppTheme.primary,
-              icon: Icons.schedule,
+              icon: Icons.schedule_outlined,
             ),
           ),
         ];
@@ -264,29 +200,24 @@ class TrainingCategoryScreen extends StatelessWidget {
           _TrainingTile(
             title: l10n.trainingCheckout50,
             description: l10n.trainingCheckout50Description,
-            icon: Icons.center_focus_strong,
-            color: AppTheme.success,
+            icon: Icons.center_focus_strong_outlined,
             onTap: () => _startWithStrategy(context, Checkout50Strategy()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingCheckout50,
               body: l10n.trainingRulesCheckout50,
-              color: AppTheme.success,
-              icon: Icons.center_focus_strong,
+              icon: Icons.center_focus_strong_outlined,
             ),
           ),
-          const SizedBox(height: 12),
           _TrainingTile(
             title: l10n.trainingCheckout81_121,
             description: l10n.trainingCheckout81_121Description,
             icon: Icons.flag_outlined,
-            color: kCheckoutsColor,
             onTap: () => _openCheckoutPicker(context),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingCheckout81_121,
               body: l10n.trainingRulesCheckout81_121,
-              color: kCheckoutsColor,
               icon: Icons.flag_outlined,
             ),
           ),
@@ -296,30 +227,25 @@ class TrainingCategoryScreen extends StatelessWidget {
           _TrainingTile(
             title: l10n.trainingHighScore,
             description: l10n.trainingHighScoreDescription,
-            icon: Icons.local_fire_department,
-            color: AppTheme.error,
+            icon: Icons.local_fire_department_outlined,
             onTap: () => _startWithStrategy(context, HighScoreStrategy()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingHighScore,
               body: l10n.trainingRulesHighScore,
-              color: AppTheme.error,
-              icon: Icons.local_fire_department,
+              icon: Icons.local_fire_department_outlined,
             ),
           ),
-          const SizedBox(height: 12),
           _TrainingTile(
             title: l10n.trainingAroundTheClock,
             description: l10n.trainingAroundTheClockScoringDescription,
-            icon: Icons.schedule,
-            color: AppTheme.primary,
+            icon: Icons.schedule_outlined,
             onTap: () => _openAtcSingleTriple(context),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingAroundTheClock,
               body: l10n.trainingRulesAroundTheClock,
-              color: AppTheme.primary,
-              icon: Icons.schedule,
+              icon: Icons.schedule_outlined,
             ),
           ),
         ];
@@ -328,15 +254,13 @@ class TrainingCategoryScreen extends StatelessWidget {
           _TrainingTile(
             title: l10n.trainingJdcChallenge,
             description: l10n.trainingJdcChallengeDescription,
-            icon: Icons.emoji_events,
-            color: AppTheme.accent,
+            icon: Icons.emoji_events_outlined,
             onTap: () => _startWithStrategy(context, JdcChallengeStrategy()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingJdcChallenge,
               body: l10n.trainingRulesJdcChallenge,
-              color: AppTheme.accent,
-              icon: Icons.emoji_events,
+              icon: Icons.emoji_events_outlined,
             ),
           ),
         ];
@@ -345,31 +269,26 @@ class TrainingCategoryScreen extends StatelessWidget {
           _TrainingTile(
             title: l10n.trainingQuickCount,
             description: l10n.trainingQuickCountDescription,
-            icon: Icons.calculate,
-            color: AppTheme.primary,
+            icon: Icons.calculate_outlined,
             onTap: () => _startQuizScreen(context, const QuickCountScreen()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingQuickCount,
               body: l10n.trainingRulesQuickCount,
-              color: AppTheme.primary,
-              icon: Icons.calculate,
+              icon: Icons.calculate_outlined,
             ),
           ),
-          const SizedBox(height: 12),
           _TrainingTile(
             title: l10n.trainingCheckoutVision,
             description: l10n.trainingCheckoutVisionDescription,
-            icon: Icons.track_changes,
-            color: AppTheme.primary,
+            icon: Icons.track_changes_outlined,
             onTap: () =>
                 _startQuizScreen(context, const CheckoutVisionScreen()),
             onInfo: () => showTrainingRulesSheet(
               context,
               title: l10n.trainingCheckoutVision,
               body: l10n.trainingRulesCheckoutVision,
-              color: AppTheme.primary,
-              icon: Icons.track_changes,
+              icon: Icons.track_changes_outlined,
             ),
           ),
         ];
@@ -377,8 +296,10 @@ class TrainingCategoryScreen extends StatelessWidget {
   }
 }
 
+// The tiles and rows below are DsCards, which already give the tap haptic —
+// these private launchers therefore don't add one of their own.
+
 void _openCategory(BuildContext context, TrainingCategory category) {
-  HapticService.mediumImpact();
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => TrainingCategoryScreen(category: category),
@@ -386,17 +307,18 @@ void _openCategory(BuildContext context, TrainingCategory category) {
   );
 }
 
+Future<void> _pushBotSetup(BuildContext context) {
+  return Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const BotTrainingSetupScreen()),
+  );
+}
+
 /// Mode sheet for the Scoring-family Around the Clock card. The Doubles mode
 /// has its own card in the Doubles family, so only Single and Triple remain.
 Future<void> _openAtcSingleTriple(BuildContext context) async {
-  HapticService.mediumImpact();
   final l10n = AppLocalizations.of(context);
   final mode = await showModalBottomSheet<AtcMode>(
     context: context,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => _ModeSheet(
       title: l10n.trainingAtcPickModeTitle,
       options: [
@@ -404,13 +326,11 @@ Future<void> _openAtcSingleTriple(BuildContext context) async {
           label: l10n.trainingAtcSingle,
           hint: l10n.trainingAtcSingleHint,
           value: AtcMode.single,
-          color: AppTheme.primary,
         ),
         _SheetOption(
           label: l10n.trainingAtcTriple,
           hint: l10n.trainingAtcTripleHint,
           value: AtcMode.triple,
-          color: AppTheme.error,
         ),
       ],
     ),
@@ -420,14 +340,9 @@ Future<void> _openAtcSingleTriple(BuildContext context) async {
 }
 
 Future<void> _openCheckoutPicker(BuildContext context) async {
-  HapticService.mediumImpact();
   final l10n = AppLocalizations.of(context);
   final start = await showModalBottomSheet<int>(
     context: context,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => _ModeSheet(
       title: l10n.trainingCheckoutPickScore,
       options: [
@@ -435,13 +350,11 @@ Future<void> _openCheckoutPicker(BuildContext context) async {
           label: '81',
           hint: l10n.trainingCheckout81Hint,
           value: 81,
-          color: AppTheme.primary,
         ),
         _SheetOption(
           label: '121',
           hint: l10n.trainingCheckout121Hint,
           value: 121,
-          color: AppTheme.accent,
         ),
       ],
     ),
@@ -451,7 +364,6 @@ Future<void> _openCheckoutPicker(BuildContext context) async {
 }
 
 void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
-  HapticService.mediumImpact();
   Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => TrainingAiScreen(strategy: strategy)),
   );
@@ -460,19 +372,16 @@ void _startWithStrategy(BuildContext context, TrainingStrategy strategy) {
 /// Launches a camera-free quiz drill (Calcul family) — same gesture as
 /// [_startWithStrategy] without the AI screen.
 void _startQuizScreen(BuildContext context, Widget screen) {
-  HapticService.mediumImpact();
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 }
 
 /// Opens the bot match configurator (mode, format, rank on one screen) — it
 /// routes through the placement camera setup → game screens on "play".
-/// Kept as the single entry point so the hero card and the stats tab both
+/// Kept as the single entry point so the hub row and the stats tab both
 /// land on the same flow.
 Future<void> openBotTrainingPicker(BuildContext context) async {
   HapticService.mediumImpact();
-  await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const BotTrainingSetupScreen()),
-  );
+  await _pushBotSetup(context);
 }
 
 /// Opens the double picker and, if the player validates a selection, starts an
@@ -481,11 +390,7 @@ Future<void> openImportantDoublesPicker(BuildContext context) async {
   HapticService.mediumImpact();
   final targets = await showModalBottomSheet<List<int>>(
     context: context,
-    backgroundColor: AppTheme.surface,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => const _ImportantDoublesSheet(),
   );
   if (targets == null || targets.isEmpty || !context.mounted) return;
@@ -512,7 +417,6 @@ class _ImportantDoublesSheetState extends State<_ImportantDoublesSheet> {
   final List<int> _selected = [];
 
   void _toggle(int target) {
-    HapticService.lightImpact();
     setState(() {
       if (_selected.remove(target)) return;
       if (_selected.length == 2) _selected.removeAt(0);
@@ -544,10 +448,7 @@ class _ImportantDoublesSheetState extends State<_ImportantDoublesSheet> {
               const SizedBox(height: 6),
               Text(
                 l10n.trainingImportantDoublesPickHint,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                ),
+                style: AppTheme.caption.copyWith(fontSize: 13),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -574,30 +475,20 @@ class _ImportantDoublesSheetState extends State<_ImportantDoublesSheet> {
                 _selected.isEmpty
                     ? l10n.trainingImportantDoublesPickEmpty
                     : l10n.trainingImportantDoublesPickSummary(dartCount),
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _selected.isEmpty
-                    ? null
-                    : () =>
+              SizedBox(
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _selected.isEmpty
+                      ? null
+                      : () =>
                           Navigator.of(context).pop(List<int>.from(_selected)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kImportantDoublesColor,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: AppTheme.surfaceLight,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                  label: Text(l10n.trainingStartButton),
                 ),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: Text(l10n.trainingStartButton),
               ),
             ],
           ),
@@ -607,6 +498,8 @@ class _ImportantDoublesSheetState extends State<_ImportantDoublesSheet> {
   }
 }
 
+/// 76 × 66 selectable chip; the selected variant is primary at 8 % with a
+/// primary hairline, the label in primaryLight.
 class _DoubleChip extends StatelessWidget {
   final int target;
 
@@ -627,53 +520,42 @@ class _DoubleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = order != null;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SizedBox(
+      width: 76,
+      height: 66,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: EdgeInsets.zero,
+        color: selected ? AppTheme.primary.withValues(alpha: 0.08) : null,
+        side: selected ? const BorderSide(color: AppTheme.primary) : null,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 76,
-          height: 66,
-          decoration: BoxDecoration(
-            color: selected
-                ? kImportantDoublesColor.withValues(alpha: 0.18)
-                : AppTheme.surfaceLight.withValues(alpha: 0.25),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? kImportantDoublesColor
-                  : AppTheme.surfaceLight.withValues(alpha: 0.8),
-              width: selected ? 1.8 : 1,
+        child: Stack(
+          children: [
+            Center(
+              child: Text(
+                'D$target',
+                style: TextStyle(
+                  color:
+                      selected ? AppTheme.primaryLight : AppTheme.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
-          ),
-          child: Stack(
-            children: [
-              Center(
+            if (selected && showOrder)
+              Positioned(
+                top: 6,
+                right: 8,
                 child: Text(
-                  'D$target',
-                  style: TextStyle(
-                    color: selected ? kImportantDoublesColor : Colors.white,
-                    fontSize: 22,
+                  '$order',
+                  style: const TextStyle(
+                    color: AppTheme.primaryLight,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              if (selected && showOrder)
-                Positioned(
-                  top: 5,
-                  right: 6,
-                  child: Text(
-                    '$order',
-                    style: const TextStyle(
-                      color: kImportantDoublesColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -681,37 +563,29 @@ class _DoubleChip extends StatelessWidget {
 }
 
 /// Opens a modal bottom sheet that explains the rules of a training.
-/// Reused by the picker tiles and (potentially) by the in-game UI.
+/// Reused by the drill rows and the bot configurator's (i).
 Future<void> showTrainingRulesSheet(
   BuildContext context, {
   required String title,
   required String body,
-  required Color color,
   required IconData icon,
 }) {
   HapticService.lightImpact();
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: AppTheme.surface,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (ctx) =>
-        _RulesSheet(title: title, body: body, color: color, icon: icon),
+    builder: (ctx) => _RulesSheet(title: title, body: body, icon: icon),
   );
 }
 
 class _RulesSheet extends StatelessWidget {
   final String title;
   final String body;
-  final Color color;
   final IconData icon;
 
   const _RulesSheet({
     required this.title,
     required this.body,
-    required this.color,
     required this.icon,
   });
 
@@ -731,14 +605,7 @@ class _RulesSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: color, size: 22),
-                  ),
+                  _IconDisc(icon),
                   const SizedBox(width: 12),
                   Expanded(child: Text(title, style: AppTheme.titleLarge)),
                 ],
@@ -753,14 +620,12 @@ class _RulesSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: color,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(l10n.close),
                 ),
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(l10n.close),
               ),
             ],
           ),
@@ -802,11 +667,31 @@ String trainingDisplayName(AppLocalizations l10n, TrainingType type) {
   }
 }
 
+/// 38 px quiet disc with a light 20 px icon.
+class _IconDisc extends StatelessWidget {
+  final IconData icon;
+  const _IconDisc(this.icon);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.06),
+      ),
+      child: Icon(icon, size: 20, color: _kIconColor),
+    );
+  }
+}
+
+/// 72 px drill row: disc, 15 / 700 title, two-line caption, (i) for the
+/// rules. Tapping the row launches the drill.
 class _TrainingTile extends StatelessWidget {
   final String title;
   final String description;
   final IconData icon;
-  final Color color;
   final VoidCallback onTap;
   final VoidCallback? onInfo;
 
@@ -814,7 +699,6 @@ class _TrainingTile extends StatelessWidget {
     required this.title,
     required this.description,
     required this.icon,
-    required this.color,
     required this.onTap,
     this.onInfo,
   });
@@ -822,154 +706,106 @@ class _TrainingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SizedBox(
+      height: 72,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 28),
+        child: Row(
+          children: [
+            _IconDisc(icon),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.sectionTitle,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption.copyWith(height: 1.25),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: AppTheme.bodyLarge.copyWith(fontSize: 13),
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(width: 8),
+            if (onInfo != null)
+              DsIconButton(
+                icon: Icons.info_outline_rounded,
+                size: 36,
+                tooltip: l10n.trainingRules,
+                onTap: onInfo,
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppTheme.textTertiary,
               ),
-              if (onInfo != null)
-                IconButton(
-                  tooltip: l10n.trainingRules,
-                  icon: const Icon(Icons.info_outline),
-                  color: AppTheme.textSecondary,
-                  onPressed: onInfo,
-                )
-              else
-                const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Square hub tile for a training family. The shape is the signal: full-width
-/// cards launch a game, tiles open a category — with the games it contains
-/// echoed as a mini icon row at the bottom.
+/// 100 px hub tile for a training family: disc top-left, name and "N jeux"
+/// caption at the bottom. The shape is the signal — the full-width row
+/// launches a game, tiles open a category.
 class _CategoryTile extends StatelessWidget {
   final String title;
-  final int gameCount;
+  final String caption;
   final IconData icon;
-  final Color color;
-  final List<IconData> gameIcons;
   final VoidCallback onTap;
 
   const _CategoryTile({
     required this.title,
-    required this.gameCount,
+    required this.caption,
     required this.icon,
-    required this.color,
-    required this.gameIcons,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SizedBox(
+      height: 100,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: 0.45)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _IconDisc(icon),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.sectionTitle.copyWith(height: 1.2),
                 ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 2),
+                Text(
+                  caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.caption.copyWith(height: 1.2),
                 ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                l10n.trainingCategoryGameCount(gameCount).toUpperCase(),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Spacer(),
-              Row(
-                children: [
-                  for (final gameIcon in gameIcons)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 5),
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: AppTheme.textSecondary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme.surfaceLight.withValues(
-                              alpha: 0.65,
-                            ),
-                          ),
-                        ),
-                        child: Icon(
-                          gameIcon,
-                          color: AppTheme.textSecondary,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -980,12 +816,10 @@ class _SheetOption<T> {
   final String label;
   final String hint;
   final T value;
-  final Color color;
   const _SheetOption({
     required this.label,
     required this.hint,
     required this.value,
-    required this.color,
   });
 }
 
@@ -1021,7 +855,7 @@ class _ModeSheet<T> extends StatelessWidget {
                     children: options
                         .map(
                           (o) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: _SheetButton(option: o),
                           ),
                         )
@@ -1037,56 +871,36 @@ class _ModeSheet<T> extends StatelessWidget {
   }
 }
 
+/// Option row of a mode sheet: label, hint, play icon. Tapping picks it.
 class _SheetButton<T> extends StatelessWidget {
   final _SheetOption<T> option;
   const _SheetButton({required this.option});
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticService.mediumImpact();
-          Navigator.of(context).pop(option.value);
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: option.color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: option.color, width: 1.5),
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      onTap: () => Navigator.of(context).pop(option.value),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(option.label, style: AppTheme.sectionTitle),
+                const SizedBox(height: 2),
+                Text(option.hint, style: AppTheme.caption),
+              ],
+            ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      option.label,
-                      style: TextStyle(
-                        color: option.color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      option.hint,
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.play_arrow_rounded, color: option.color),
-            ],
+          const SizedBox(width: 10),
+          const Icon(
+            Icons.play_arrow_rounded,
+            color: AppTheme.primaryLight,
+            size: 22,
           ),
-        ),
+        ],
       ),
     );
   }

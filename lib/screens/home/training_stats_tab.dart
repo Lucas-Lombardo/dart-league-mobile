@@ -5,6 +5,7 @@ import '../../services/training_service.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../widgets/design_system.dart';
 import '../training/logic/atc_mode.dart';
 import '../training/logic/atc_strategy.dart';
 import '../training/logic/bobs_27_strategy.dart';
@@ -18,6 +19,7 @@ import '../training/important_doubles_progress_screen.dart';
 import '../training/quick_count_screen.dart';
 import '../training/training_ai_screen.dart';
 import '../training/training_select_screen.dart';
+import 'stats/stats_widgets.dart';
 
 class TrainingStatsTab extends StatefulWidget {
   const TrainingStatsTab({super.key});
@@ -67,21 +69,22 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
       );
     }
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: AppTheme.error, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              style: const TextStyle(color: AppTheme.error),
-              textAlign: TextAlign.center,
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        children: [
+          DsCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 32, color: AppTheme.textTertiary),
+                const SizedBox(height: 10),
+                Text(_error!, textAlign: TextAlign.center, style: AppTheme.caption),
+                const SizedBox(height: 14),
+                OutlinedButton(onPressed: _load, child: Text(l10n.retry)),
+              ],
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: _load, child: Text(l10n.retry)),
-          ],
-        ),
+          ),
+        ],
       );
     }
     final hasAny = _stats.any((s) => s.sessions > 0);
@@ -90,38 +93,35 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
       color: AppTheme.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.trainingStatsHeader, style: AppTheme.titleLarge),
-            const SizedBox(height: 16),
+            DsSectionHeader(title: l10n.trainingStatsHeader),
+            const SizedBox(height: 12),
             if (!hasAny)
               _buildEmpty(l10n)
             else
-              ..._stats.map(
-                (s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _TrainingStatCard(
-                    stats: s,
-                    onTap: () => _openTraining(s.type),
-                    // Only Important Doubles records a per-target breakdown
-                    // worth charting session over session.
-                    onProgress:
-                        s.type == TrainingType.importantDoubles &&
-                            s.sessions > 0
-                        ? () {
-                            HapticService.lightImpact();
-                            AppNavigator.toScreen(
-                              context,
-                              const ImportantDoublesProgressScreen(),
-                            );
-                          }
-                        : null,
-                  ),
+              for (var i = 0; i < _stats.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                TrainingStatCard(
+                  stats: _stats[i],
+                  onTap: () => _openTraining(_stats[i].type),
+                  // Only Important Doubles records a per-target breakdown
+                  // worth charting session over session.
+                  onProgress: _stats[i].type == TrainingType.importantDoubles &&
+                          _stats[i].sessions > 0
+                      ? () {
+                          HapticService.lightImpact();
+                          AppNavigator.toScreen(
+                            context,
+                            const ImportantDoublesProgressScreen(),
+                          );
+                        }
+                      : null,
                 ),
-              ),
-            const SizedBox(height: 12),
+              ],
+            const SizedBox(height: 14),
             ElevatedButton.icon(
               onPressed: () {
                 HapticService.mediumImpact();
@@ -130,13 +130,8 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
                   const TrainingSelectScreen(),
                 ).then((_) => _load());
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-              ),
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(l10n.trainingStartNewSession),
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: Text(dsSentence(l10n.trainingStartNewSession)),
             ),
           ],
         ),
@@ -206,31 +201,18 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
   }
 
   Widget _buildEmpty(AppLocalizations l10n) {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.surfaceLight),
-      ),
+    return DsCard(
+      padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          const Icon(
-            Icons.fitness_center,
-            size: 48,
-            color: AppTheme.textSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.trainingNoSessionsYet,
-            style: AppTheme.bodyLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
+          const Icon(Icons.fitness_center_rounded, size: 32, color: AppTheme.textTertiary),
+          const SizedBox(height: 10),
+          Text(l10n.trainingNoSessionsYet, textAlign: TextAlign.center, style: AppTheme.rowTitle),
+          const SizedBox(height: 4),
           Text(
             l10n.trainingCompleteSessionToTrack,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
             textAlign: TextAlign.center,
+            style: AppTheme.caption,
           ),
         ],
       ),
@@ -238,14 +220,17 @@ class _TrainingStatsTabState extends State<TrainingStatsTab> {
   }
 }
 
-class _TrainingStatCard extends StatelessWidget {
+/// One exercise: icon disc, name, chevron, then its best / average / last /
+/// attempts (or the bot and quiz variants).
+class TrainingStatCard extends StatelessWidget {
   final TrainingTypeStats stats;
   final VoidCallback onTap;
 
   /// Opens a drill-specific progression view. Null when the drill has none.
   final VoidCallback? onProgress;
 
-  const _TrainingStatCard({
+  const TrainingStatCard({
+    super.key,
     required this.stats,
     required this.onTap,
     this.onProgress,
@@ -256,75 +241,68 @@ class _TrainingStatCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final name = trainingDisplayName(l10n, stats.type);
     final hasData = stats.sessions > 0;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    _iconFor(stats.type),
-                    color: _colorFor(stats.type),
-                    size: 24,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(name, style: AppTheme.titleLarge)),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: AppTheme.textSecondary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (!hasData)
-                Text(
-                  l10n.trainingNotYetPlayed,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontStyle: FontStyle.italic,
-                  ),
-                )
-              else if (stats.type == TrainingType.botTraining)
-                _BotTrainingModes(stats: stats)
-              else if (stats.type == TrainingType.importantDoubles)
-                _percentRow(l10n)
-              else if (stats.type == TrainingType.quickCount ||
-                  stats.type == TrainingType.checkoutVision)
-                _quizRow(l10n)
-              else
-                _defaultRow(l10n),
-              if (onProgress != null) ...[
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: onProgress,
-                    style: TextButton.styleFrom(
-                      foregroundColor: kImportantDoublesColor,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const Icon(Icons.show_chart, size: 18),
-                    label: Text(l10n.trainingViewProgress),
-                  ),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
-              ],
+                child: Icon(_iconFor(stats.type), size: 20, color: const Color(0xFFE2E8F0)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.sectionTitle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textTertiary),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          if (!hasData)
+            Text(
+              l10n.trainingNotYetPlayed,
+              style: AppTheme.caption.copyWith(fontStyle: FontStyle.italic),
+            )
+          else if (stats.type == TrainingType.botTraining)
+            _BotTrainingModes(stats: stats)
+          else if (stats.type == TrainingType.importantDoubles)
+            _percentRow(l10n)
+          else if (stats.type == TrainingType.quickCount ||
+              stats.type == TrainingType.checkoutVision)
+            _quizRow(l10n)
+          else
+            _defaultRow(l10n),
+          if (onProgress != null) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onProgress,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+                icon: const Icon(Icons.show_chart_rounded, size: 16),
+                label: Text(l10n.trainingViewProgress),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -333,39 +311,12 @@ class _TrainingStatCard extends StatelessWidget {
   /// so a bare "21" would read as points.
   Widget _percentRow(AppLocalizations l10n) {
     String pct(num? v) => v == null ? '—' : '${_formatNum(v)} %';
-    return Row(
-      children: [
-        Expanded(
-          child: _metric(
-            label: l10n.trainingBest,
-            value: pct(stats.bestScore),
-            color: AppTheme.success,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAverage,
-            value: pct(stats.averageScore),
-            color: AppTheme.primary,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingLast,
-            value: pct(stats.lastScore),
-            color: AppTheme.accent,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAttempts,
-            value: '${stats.sessions}',
-            color: AppTheme.textSecondary,
-          ),
-        ),
+    return _MetricsRow(
+      metrics: [
+        _Metric(l10n.trainingBest, pct(stats.bestScore), AppTheme.success),
+        _Metric(l10n.trainingAverage, pct(stats.averageScore), AppTheme.primaryLight),
+        _Metric(l10n.trainingLast, pct(stats.lastScore), AppTheme.textPrimary),
+        _Metric(l10n.trainingAttempts, '${stats.sessions}', AppTheme.textSecondary),
       ],
     );
   }
@@ -378,39 +329,12 @@ class _TrainingStatCard extends StatelessWidget {
     final time = avgMs == null
         ? '—'
         : '${(avgMs / 1000).toStringAsFixed(1)} s';
-    return Row(
-      children: [
-        Expanded(
-          child: _metric(
-            label: l10n.trainingBest,
-            value: pct(stats.bestScore),
-            color: AppTheme.success,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAverage,
-            value: pct(stats.averageScore),
-            color: AppTheme.primary,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingQuizTimeAvgLabel,
-            value: time,
-            color: AppTheme.accent,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAttempts,
-            value: '${stats.sessions}',
-            color: AppTheme.textSecondary,
-          ),
-        ),
+    return _MetricsRow(
+      metrics: [
+        _Metric(l10n.trainingBest, pct(stats.bestScore), AppTheme.success),
+        _Metric(l10n.trainingAverage, pct(stats.averageScore), AppTheme.primaryLight),
+        _Metric(l10n.trainingQuizTimeAvgLabel, time, AppTheme.textPrimary),
+        _Metric(l10n.trainingAttempts, '${stats.sessions}', AppTheme.textSecondary),
       ],
     );
   }
@@ -419,71 +343,12 @@ class _TrainingStatCard extends StatelessWidget {
     final bestLabel = stats.higherIsBetter
         ? l10n.trainingBest
         : l10n.trainingBestLow;
-    return Row(
-      children: [
-        Expanded(
-          child: _metric(
-            label: bestLabel,
-            value: _formatNum(stats.bestScore),
-            color: AppTheme.success,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAverage,
-            value: _formatNum(stats.averageScore),
-            color: AppTheme.primary,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingLast,
-            value: _formatNum(stats.lastScore),
-            color: AppTheme.accent,
-          ),
-        ),
-        _divider(),
-        Expanded(
-          child: _metric(
-            label: l10n.trainingAttempts,
-            value: '${stats.sessions}',
-            color: AppTheme.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _divider() =>
-      Container(width: 1, height: 36, color: AppTheme.surfaceLight);
-
-  Widget _metric({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Column(
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+    return _MetricsRow(
+      metrics: [
+        _Metric(bestLabel, _formatNum(stats.bestScore), AppTheme.success),
+        _Metric(l10n.trainingAverage, _formatNum(stats.averageScore), AppTheme.primaryLight),
+        _Metric(l10n.trainingLast, _formatNum(stats.lastScore), AppTheme.textPrimary),
+        _Metric(l10n.trainingAttempts, '${stats.sessions}', AppTheme.textSecondary),
       ],
     );
   }
@@ -499,57 +364,79 @@ class _TrainingStatCard extends StatelessWidget {
       case TrainingType.aroundTheClock:
       case TrainingType.aroundTheClockDouble:
       case TrainingType.aroundTheClockTriple:
-        return Icons.schedule;
+        return Icons.schedule_outlined;
       case TrainingType.bobs27:
-        return Icons.gps_fixed;
+        return Icons.gps_fixed_rounded;
       case TrainingType.highScore:
-        return Icons.local_fire_department;
+        return Icons.local_fire_department_outlined;
       case TrainingType.checkout50:
-        return Icons.center_focus_strong;
+        return Icons.center_focus_strong_outlined;
       case TrainingType.checkout81:
       case TrainingType.checkout121:
         return Icons.flag_outlined;
       case TrainingType.botTraining:
-        return Icons.smart_toy;
+        return Icons.smart_toy_outlined;
       case TrainingType.jdcChallenge:
-        return Icons.emoji_events;
+        return Icons.emoji_events_outlined;
       case TrainingType.importantDoubles:
-        return Icons.my_location;
+        return Icons.my_location_outlined;
       case TrainingType.quickCount:
-        return Icons.calculate;
+        return Icons.calculate_outlined;
       case TrainingType.checkoutVision:
-        return Icons.track_changes;
+        return Icons.track_changes_rounded;
     }
   }
+}
 
-  Color _colorFor(TrainingType type) {
-    switch (type) {
-      case TrainingType.aroundTheClock:
-        return AppTheme.primary;
-      case TrainingType.aroundTheClockDouble:
-        return AppTheme.success;
-      case TrainingType.aroundTheClockTriple:
-        return AppTheme.error;
-      case TrainingType.bobs27:
-        return AppTheme.accent;
-      case TrainingType.highScore:
-        return AppTheme.error;
-      case TrainingType.checkout50:
-        return AppTheme.success;
-      case TrainingType.checkout81:
-        return AppTheme.primary;
-      case TrainingType.checkout121:
-        return AppTheme.accent;
-      case TrainingType.botTraining:
-        return AppTheme.accent;
-      case TrainingType.jdcChallenge:
-        return const Color(0xFFEAB308);
-      case TrainingType.importantDoubles:
-        return kImportantDoublesColor;
-      case TrainingType.quickCount:
-      case TrainingType.checkoutVision:
-        return AppTheme.primary;
-    }
+class _Metric {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _Metric(this.label, this.value, this.color);
+}
+
+/// Equal columns separated by hairlines: group label over a 16 / 700 figure.
+class _MetricsRow extends StatelessWidget {
+  final List<_Metric> metrics;
+
+  const _MetricsRow({required this.metrics});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < metrics.length; i++) ...[
+          if (i > 0) Container(width: 1, height: 32, color: AppTheme.border),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  metrics[i].label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.labelSmall.copyWith(fontSize: 10, letterSpacing: 0.8),
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    metrics[i].value,
+                    style: TextStyle(
+                      color: metrics[i].color,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -604,35 +491,10 @@ class _BotTrainingModesState extends State<_BotTrainingModes> {
   }
 
   Widget _chip(String label, String value) {
-    final selected = _filter == value;
-    return GestureDetector(
-      onTap: () {
-        HapticService.lightImpact();
-        setState(() => _filter = value);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.primary.withValues(alpha: 0.13)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(
-            color: selected
-                ? AppTheme.primary
-                : AppTheme.surfaceLight.withValues(alpha: 0.8),
-            width: selected ? 1.4 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : AppTheme.textSecondary,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
+    return StatsChip(
+      label: label,
+      selected: _filter == value,
+      onTap: () => setState(() => _filter = value),
     );
   }
 
@@ -695,49 +557,17 @@ class _BotTrainingModesState extends State<_BotTrainingModes> {
       return v.toStringAsFixed(1);
     }
 
-    Widget metric(String label, String value, Color color) {
-      return Expanded(
-        child: Column(
-          children: [
-            Text(
-              label.toUpperCase(),
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    Widget divider() =>
-        Container(width: 1, height: 36, color: AppTheme.surfaceLight);
-
-    return Row(
-      children: [
-        metric(l10n.trainingGames, '$sessions', AppTheme.textSecondary),
-        divider(),
-        metric(
+    return _MetricsRow(
+      metrics: [
+        _Metric(l10n.trainingGames, '$sessions', AppTheme.textSecondary),
+        _Metric(
           isCricket ? 'MPR' : l10n.avgScore,
           isCricket && avg != null ? avg.toStringAsFixed(2) : fmt(avg),
-          AppTheme.primary,
+          AppTheme.primaryLight,
         ),
-        divider(),
-        metric(
+        _Metric(
           l10n.winRate,
-          winRate == null ? '—' : '${(winRate * 100).round()}%',
+          winRate == null ? '—' : '${(winRate * 100).round()} %',
           AppTheme.success,
         ),
       ],

@@ -8,9 +8,11 @@ import '../../models/tournament.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/round_labels.dart';
 import '../../utils/tournament_registration_gate.dart';
 import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import '../../widgets/trophy_image.dart';
 import 'tournament_detail_screen.dart';
 import 'tournament_history_screen.dart';
@@ -19,8 +21,12 @@ import '../tournament/tournament_camera_setup_screen.dart';
 /// Tournament tab as a single chronological agenda (UX option 5): every
 /// tournament that matters — open for registration, registered, live — is one
 /// dated row grouped by day. No tabs, no auto-redirect; a registered
-/// tournament is the same row with a checkmark and an unregister action.
+/// tournament is the same row with a green hairline and an unregister action.
 /// Pending match invites pin above the agenda, out of chronology.
+///
+/// Visual system D: the tab draws its own [DsScreenHeader], rows are flat
+/// [DsCard]s whose border colour is the only state signal, and the row's
+/// single trailing action is a pill (register / unregister / status).
 class TournamentScreen extends StatefulWidget {
   const TournamentScreen({super.key});
 
@@ -49,56 +55,16 @@ class _TournamentScreenState extends State<TournamentScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
-          child: Row(
-            children: [
-              Text(
-                l10n.tournaments,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textPrimary,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const Spacer(),
-              Material(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () {
-                    HapticService.lightImpact();
-                    AppNavigator.toScreen(context, const TournamentHistoryScreen());
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppTheme.surfaceLight.withValues(alpha: 0.5),
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.history,
-                          size: 18,
-                          color: AppTheme.textSecondary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          l10n.history,
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: DsScreenHeader(
+            title: l10n.tournaments,
+            actions: [
+              DsIconButton(
+                icon: Icons.history_rounded,
+                tooltip: l10n.history,
+                onTap: () => AppNavigator.toScreen(
+                  context,
+                  const TournamentHistoryScreen(),
                 ),
               ),
             ],
@@ -124,31 +90,31 @@ class _TournamentScreenState extends State<TournamentScreen> {
               if (provider.isLoading &&
                   agenda.isEmpty &&
                   pendingMatches.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(
+                  child: CircularProgressIndicator(color: AppTheme.primary),
+                );
               }
 
               if (agenda.isEmpty && pendingMatches.isEmpty) {
                 return RefreshIndicator(
                   onRefresh: _loadData,
                   child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                     children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                      Center(
+                      DsCard(
+                        padding: const EdgeInsets.all(24),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              Icons.event_busy,
-                              size: 64,
-                              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                            const Icon(
+                              Icons.event_busy_outlined,
+                              size: 32,
+                              color: AppTheme.textTertiary,
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 10),
                             Text(
                               l10n.noUpcomingTournaments,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 16,
-                              ),
+                              textAlign: TextAlign.center,
+                              style: AppTheme.rowTitle,
                             ),
                           ],
                         ),
@@ -160,13 +126,10 @@ class _TournamentScreenState extends State<TournamentScreen> {
 
               final children = <Widget>[];
 
-              if (pendingMatches.isNotEmpty) {
-                children.add(_SectionHeader(title: l10n.matchInvites));
-                children.add(const SizedBox(height: 8));
-                children.addAll(
-                  pendingMatches.map((match) => _MatchInviteCard(match: match)),
-                );
-                children.add(const SizedBox(height: 8));
+              // Pinned invitations, out of chronology.
+              for (var i = 0; i < pendingMatches.length; i++) {
+                if (i > 0) children.add(const SizedBox(height: 10));
+                children.add(_MatchInviteCard(match: pendingMatches[i]));
               }
 
               DateTime? currentDay;
@@ -175,7 +138,13 @@ class _TournamentScreenState extends State<TournamentScreen> {
                 final day = DateTime(local.year, local.month, local.day);
                 if (day != currentDay) {
                   currentDay = day;
-                  children.add(_DayHeader(day: day));
+                  // 22 px above a group; the list padding already gives 14
+                  // under the header, so the first group only adds 8.
+                  children.add(
+                    _DayHeader(day: day, topGap: children.isEmpty ? 8 : 22),
+                  );
+                } else {
+                  children.add(const SizedBox(height: 8));
                 }
                 children.add(_AgendaRow(
                   key: ValueKey(tournament.id),
@@ -187,7 +156,7 @@ class _TournamentScreenState extends State<TournamentScreen> {
               return RefreshIndicator(
                 onRefresh: _loadData,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                   children: children,
                 ),
               );
@@ -199,11 +168,13 @@ class _TournamentScreenState extends State<TournamentScreen> {
   }
 }
 
-/// "Aujourd'hui" / "Demain · ven. 24/7" / "ven. 26/7" above the day's rows.
+/// "AUJOURD'HUI" / "DEMAIN · VEN. 24/7" / "VEN. 26/7" above the day's rows:
+/// an 11 / 700 group label and a hairline.
 class _DayHeader extends StatelessWidget {
   final DateTime day;
+  final double topGap;
 
-  const _DayHeader({required this.day});
+  const _DayHeader({required this.day, required this.topGap});
 
   @override
   Widget build(BuildContext context) {
@@ -220,19 +191,11 @@ class _DayHeader extends StatelessWidget {
             : formatted;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 10, 2, 8),
+      padding: EdgeInsets.only(top: topGap, bottom: 10),
       child: Row(
         children: [
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 10),
+          Text(label.toUpperCase(), style: AppTheme.labelSmall),
+          const SizedBox(width: 12),
           Expanded(
             child: Container(
               height: 1,
@@ -245,10 +208,10 @@ class _DayHeader extends StatelessWidget {
   }
 }
 
-/// One tournament as a compact agenda line. The state lives on the row:
-/// border + trailing action (register / unregister / status chip), and a
-/// green "registered" prefix in the meta line when an unregister button
-/// occupies the trailing slot. Tapping the row opens the detail screen.
+/// One tournament as a 72 px agenda row. The state lives on the row: the
+/// border colour (green = registered, sky = live) and ONE trailing action
+/// (register / unregister pill, or a status pill). Tapping the row opens the
+/// detail screen.
 class _AgendaRow extends StatefulWidget {
   final Tournament tournament;
   final bool isRegistered;
@@ -328,111 +291,89 @@ class _AgendaRowState extends State<_AgendaRow> {
     final timeLabel =
         DateFormat('HH:mm').format(tournament.scheduledDate.toLocal());
 
-    // A tournament awarding a physical trophy gets a "showcase" row: gold
-    // border, faint gold sheen and the trophy render itself. Live/registered
-    // borders keep priority — they carry state, the gold is only dressing.
+    // A physical trophy gets the gold cup next to the name and its render
+    // before the action — gold is dressing, never a border.
     final showTrophy = tournament.hasTrophyImage;
     final borderColor = isLive
-        ? AppTheme.primary.withValues(alpha: 0.6)
+        ? AppTheme.primaryLight.withValues(alpha: 0.45)
         : widget.isRegistered
-            ? AppTheme.success.withValues(alpha: 0.45)
-            : showTrophy
-                ? AppTheme.accent.withValues(alpha: 0.5)
-                : AppTheme.surfaceLight.withValues(alpha: 0.5);
+            ? AppTheme.success.withValues(alpha: 0.35)
+            : AppTheme.border;
 
-    return GestureDetector(
-      onTap: () {
-        HapticService.lightImpact();
-        AppNavigator.toScreen(
+    return SizedBox(
+      height: 72,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(16, 0, 14, 0),
+        side: BorderSide(color: borderColor),
+        onTap: () => AppNavigator.toScreen(
           context,
           TournamentDetailScreen(tournamentId: tournament.id),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: showTrophy ? null : AppTheme.surface,
-          gradient: showTrophy
-              ? LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    AppTheme.surface,
-                    AppTheme.accent.withValues(alpha: 0.08),
-                  ],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
             Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
                     children: [
                       Flexible(
                         child: Text(
                           tournament.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '· $timeLabel',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textSecondary,
+                      if (showTrophy) ...[
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.emoji_events_outlined,
+                          size: 14,
+                          color: AppTheme.accent,
                         ),
-                      ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      if (canLeave)
-                        Text(
-                          '✓ ${l10n.agendaRegisteredChip} · ',
+                  const SizedBox(height: 4),
+                  Text.rich(
+                    TextSpan(
+                      style: AppTheme.caption,
+                      children: [
+                        TextSpan(
+                          text: timeLabel,
                           style: const TextStyle(
-                            fontSize: 11.5,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.success,
+                            color: Color(0xFFCBD5E1),
                           ),
                         ),
-                      Flexible(
-                        child: Text(
-                          _metaLine(l10n),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: AppTheme.textSecondary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                        TextSpan(text: ' · ${_metaLine(l10n)}'),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
             if (showTrophy) ...[
-              const SizedBox(width: 8),
-              TrophyImage(url: tournament.trophyThumbUrl, size: 54),
+              const SizedBox(width: 12),
+              TrophyImage(url: tournament.trophyThumbUrl, size: 40),
             ],
-            const SizedBox(width: 10),
-            _trailing(l10n, isLive: isLive, isFull: isFull, canJoin: canJoin, canLeave: canLeave),
+            const SizedBox(width: 12),
+            _trailing(
+              l10n,
+              isLive: isLive,
+              isFull: isFull,
+              canJoin: canJoin,
+              canLeave: canLeave,
+            ),
           ],
         ),
       ),
@@ -454,10 +395,8 @@ class _AgendaRowState extends State<_AgendaRow> {
               ? tournament.formattedDiscountedPrice(isPremium: true)
               : tournament.formattedPrice,
       if (tournament.premiumRequired) 'Premium',
-      if (tournament.hasRankRequirement) tournament.rankRequirementLabel,
-      // The trophy render next to the row already says it — no text twin.
-      if (tournament.hasPrize && !tournament.hasTrophyImage)
-        '🏆 ${tournament.formattedPrize}',
+      if (tournament.hasRankRequirement)
+        localizedRankRequirement(l10n, tournament),
     ];
     return parts.join(' · ');
   }
@@ -473,54 +412,76 @@ class _AgendaRowState extends State<_AgendaRow> {
       return const SizedBox(
         width: 18,
         height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppTheme.primary,
+        ),
       );
     }
     if (canJoin) {
-      return _SmallActionButton(
-        label: l10n.registerNow,
+      return _PillButton(
+        label: dsSentence(l10n.registerNow),
         filled: true,
         onTap: _register,
       );
     }
     if (canLeave) {
-      return _SmallActionButton(
-        label: l10n.unregister,
+      return _PillButton(
+        label: dsSentence(l10n.unregister),
         filled: false,
         onTap: _unregister,
       );
     }
     if (isLive) {
-      return _StatusChip(
+      return DsPill(
         label: l10n.tournamentStatusInProgress,
-        color: AppTheme.primary,
+        color: AppTheme.primaryLight,
+        dot: true,
       );
     }
     if (widget.isRegistered) {
-      return _StatusChip(
-        label: '✓ ${l10n.agendaRegisteredChip}',
+      return DsPill(
+        label: l10n.agendaRegisteredChip,
         color: AppTheme.success,
       );
     }
     if (isFull && widget.tournament.isRegistrationOpen) {
-      return _StatusChip(
+      return DsPill(
         label: l10n.agendaFullChip,
         color: AppTheme.textSecondary,
       );
     }
-    return _StatusChip(
-      label: localizedTournamentStatus(l10n, widget.tournament.status),
-      color: tournamentStatusColor(widget.tournament.status),
+    final status = widget.tournament.status;
+    return DsPill(
+      label: localizedTournamentStatus(l10n, status),
+      color: _statusPillColor(status),
     );
+  }
+
+  /// Quiet status colours of the system: only "done" and "cancelled" leave
+  /// the secondary grey (no gold for "upcoming").
+  static Color _statusPillColor(String status) {
+    switch (status) {
+      case 'in_progress':
+        return AppTheme.primaryLight;
+      case 'completed':
+        return AppTheme.textTertiary;
+      case 'cancelled':
+        return AppTheme.error;
+      default:
+        return AppTheme.textSecondary;
+    }
   }
 }
 
-class _SmallActionButton extends StatelessWidget {
+/// 32 px pill action of a row: filled primary gradient ("S'inscrire") or a
+/// green outline ("Se désinscrire").
+class _PillButton extends StatelessWidget {
   final String label;
   final bool filled;
   final VoidCallback onTap;
 
-  const _SmallActionButton({
+  const _PillButton({
     required this.label,
     required this.filled,
     required this.onTap,
@@ -528,27 +489,30 @@ class _SmallActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: filled
-              ? const LinearGradient(
-                  colors: [AppTheme.primary, AppTheme.primaryDark],
-                )
-              : null,
-          border: filled
-              ? null
-              : Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: filled ? Colors.white : AppTheme.success,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: filled ? AppTheme.primaryGradient : null,
+            border: filled
+                ? null
+                : Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: filled ? Colors.white : AppTheme.success,
+              height: 1,
+            ),
           ),
         ),
       ),
@@ -556,51 +520,8 @@ class _SmallActionButton extends StatelessWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _StatusChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: AppTheme.textPrimary,
-      ),
-    );
-  }
-}
-
+/// Pinned "your match is ready" card: title + one caption line, the
+/// countdown on the right, and the accept button (or the waiting pill) below.
 class _MatchInviteCard extends StatelessWidget {
   final TournamentMatch match;
 
@@ -613,130 +534,64 @@ class _MatchInviteCard extends StatelessWidget {
     final currentUserId = authProvider.currentUser?.id;
 
     final isPlayer1 = currentUserId == match.player1Id;
-    final opponentName = isPlayer1 ? match.player2Username : match.player1Username;
+    final opponentName =
+        (isPlayer1 ? match.player2Username : match.player1Username) ?? '';
     final isReady = isPlayer1 ? match.player1Ready : match.player2Ready;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+    final caption = [
+      match.tournamentName ?? l10n.tournament,
+      localizedRoundLabel(l10n, match),
+      '${l10n.vs} $opponentName',
+      '${l10n.bestOf} ${match.bestOf}',
+    ].join(' · ');
+
+    return DsCard(
+      side: BorderSide(color: AppTheme.primaryLight.withValues(alpha: 0.45)),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primary.withValues(alpha: 0.2),
-            AppTheme.surface,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
-      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.notifications_active,
-                  color: AppTheme.accent,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.matchInvite,
+                      dsSentence(l10n.tournamentInvitePromptTitle),
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary,
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
-                      match.tournamentName ?? 'Tournament',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
+                      caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.caption,
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  match.roundNameDisplay,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primary,
-                  ),
-                ),
-              ),
+              if (match.inviteSentAt != null) ...[
+                const SizedBox(width: 12),
+                _CountdownTimer(inviteSentAt: match.inviteSentAt!),
+              ],
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(Icons.person, size: 16, color: AppTheme.textSecondary),
-              const SizedBox(width: 8),
-              Text(
-                '${l10n.vs} $opponentName',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                'Best of ${match.bestOf}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-            ],
-          ),
-          if (match.inviteSentAt != null) ...[
-            const SizedBox(height: 8),
-            _CountdownTimer(inviteSentAt: match.inviteSentAt!),
-          ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           if (isReady)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle, color: AppTheme.success, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    l10n.waitingForOpponent,
-                    style: const TextStyle(
-                      color: AppTheme.success,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                DsPill(
+                  label: l10n.waitingForOpponent,
+                  color: AppTheme.success,
+                  dot: true,
+                ),
+              ],
             )
           else
             _AcceptMatchButton(matchId: match.id, matchData: match),
@@ -746,6 +601,7 @@ class _MatchInviteCard extends StatelessWidget {
   }
 }
 
+/// mm:ss left in the 7-minute join window; red under two minutes.
 class _CountdownTimer extends StatefulWidget {
   final DateTime inviteSentAt;
 
@@ -787,25 +643,26 @@ class _CountdownTimerState extends State<_CountdownTimer> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final minutes = _remaining.inMinutes;
     final seconds = _remaining.inSeconds % 60;
     final isUrgent = _remaining.inMinutes < 2;
 
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.timer,
-          size: 14,
-          color: isUrgent ? AppTheme.error : AppTheme.accent,
+        const Icon(
+          Icons.schedule_outlined,
+          size: 16,
+          color: AppTheme.textSecondary,
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 6),
         Text(
-          '${l10n.timeRemaining}: ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+          '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: isUrgent ? AppTheme.error : AppTheme.accent,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: isUrgent ? AppTheme.error : AppTheme.textPrimary,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ],
@@ -873,18 +730,11 @@ class _AcceptMatchButtonState extends State<_AcceptMatchButton> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
+    // The one filled block of the tab, styled by the theme (primary, r14).
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _acceptMatch,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primary,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
         child: _isLoading
             ? const SizedBox(
                 width: 20,
@@ -894,20 +744,7 @@ class _AcceptMatchButtonState extends State<_AcceptMatchButton> {
                   color: Colors.white,
                 ),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_outline),
-                  const SizedBox(width: 8),
-                  Text(
-                    l10n.acceptAndJoin,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
+            : Text(dsSentence(l10n.acceptAndJoin)),
       ),
     );
   }

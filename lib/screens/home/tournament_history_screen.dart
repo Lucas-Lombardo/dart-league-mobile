@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../models/tournament.dart';
@@ -6,8 +7,13 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/design_system.dart';
 import 'tournament_detail_screen.dart';
 
+/// Past tournaments, one 72 px row each: name (gold cup when a physical prize
+/// was won), "date · N joueurs", and the final placement on the right — gold /
+/// silver / bronze for the podium, quiet grey below it. A two-segment scope
+/// toggle narrows the list to the tournaments the user actually played.
 class TournamentHistoryScreen extends StatefulWidget {
   const TournamentHistoryScreen({super.key});
 
@@ -23,7 +29,12 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    // After the first frame: loadTournamentHistory() notifies synchronously,
+    // and calling it straight from initState marked the Consumer dirty while
+    // the tree was still building ("setState during build").
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadHistory();
+    });
   }
 
   Future<void> _loadHistory() async {
@@ -36,47 +47,27 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        elevation: 0,
-        title: Text(
-          l10n.tournamentHistoryTitle,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-          onPressed: () {
-            HapticService.lightImpact();
-            Navigator.pop(context);
-          },
-        ),
-      ),
+      appBar: AppBar(title: Text(l10n.tournamentHistoryTitle)),
       body: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                _buildFilterSegment(l10n.historyFilterAll, false),
-                _buildFilterSegment(l10n.historyFilterMine, true),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: _ScopeToggle(
+              showOnlyMine: _showOnlyMine,
+              onChanged: (mine) {
+                if (_showOnlyMine == mine) return;
+                HapticService.lightImpact();
+                setState(() => _showOnlyMine = mine);
+              },
             ),
           ),
           Expanded(
             child: Consumer<TournamentProvider>(
               builder: (context, provider, _) {
                 if (provider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child: CircularProgressIndicator(color: AppTheme.primary),
+                  );
                 }
 
                 final history = _showOnlyMine
@@ -89,35 +80,31 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
                   return RefreshIndicator(
                     onRefresh: _loadHistory,
                     child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                       children: [
-                        SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                        Center(
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+                        DsCard(
+                          padding: const EdgeInsets.all(24),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.history,
-                                size: 64,
-                                color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                              const Icon(
+                                Icons.history_rounded,
+                                size: 28,
+                                color: AppTheme.textTertiary,
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                               Text(
                                 _showOnlyMine
                                     ? l10n.noParticipatedTournaments
                                     : l10n.noTournamentHistory,
-                                style: const TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 16,
-                                ),
+                                textAlign: TextAlign.center,
+                                style: AppTheme.rowTitle,
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               Text(
                                 l10n.noTournamentHistoryHint,
-                                style: const TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 14,
-                                ),
                                 textAlign: TextAlign.center,
+                                style: AppTheme.caption,
                               ),
                             ],
                           ),
@@ -129,12 +116,12 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
 
                 return RefreshIndicator(
                   onRefresh: _loadHistory,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                     itemCount: history.length,
-                    itemBuilder: (context, index) {
-                      return _TournamentHistoryCard(tournament: history[index]);
-                    },
+                    separatorBuilder: (context, index) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) =>
+                        _TournamentHistoryRow(tournament: history[index]),
                   ),
                 );
               },
@@ -144,300 +131,171 @@ class _TournamentHistoryScreenState extends State<TournamentHistoryScreen> {
       ),
     );
   }
-
-  Widget _buildFilterSegment(String label, bool mine) {
-    final isSelected = _showOnlyMine == mine;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          if (_showOnlyMine == mine) return;
-          HapticService.lightImpact();
-          setState(() => _showOnlyMine = mine);
-        },
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.surfaceLight : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-class _TournamentHistoryCard extends StatelessWidget {
-  final TournamentHistory tournament;
+/// "Tous | Les miens" scope toggle — same control as the leaderboard.
+class _ScopeToggle extends StatelessWidget {
+  final bool showOnlyMine;
+  final ValueChanged<bool> onChanged;
 
-  const _TournamentHistoryCard({required this.tournament});
+  const _ScopeToggle({required this.showOnlyMine, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return GestureDetector(
-      onTap: () {
-        HapticService.lightImpact();
-        AppNavigator.toScreen(context, TournamentDetailScreen(tournamentId: tournament.id));
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              tournament.isWinner
-                  ? AppTheme.accent.withValues(alpha: 0.15)
-                  : AppTheme.surface,
-              AppTheme.surfaceLight.withValues(alpha: 0.5),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: tournament.isWinner
-                ? AppTheme.accent.withValues(alpha: 0.6)
-                : AppTheme.surfaceLight.withValues(alpha: 0.3),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+
+    Widget segment(String label, bool selected, VoidCallback onTap) {
+      return Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.surfaceLight : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
             ),
-          ],
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? AppTheme.textPrimary : AppTheme.textSecondary,
+              ),
+            ),
+          ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          segment(l10n.historyFilterAll, !showOnlyMine, () => onChanged(false)),
+          segment(l10n.historyFilterMine, showOnlyMine, () => onChanged(true)),
+        ],
+      ),
+    );
+  }
+}
+
+/// One past tournament, 72 px. The medal colours are semantic (1st / 2nd /
+/// 3rd); everything else stays grey, and gold appears only for a trophy the
+/// user actually won.
+class _TournamentHistoryRow extends StatelessWidget {
+  final TournamentHistory tournament;
+
+  const _TournamentHistoryRow({required this.tournament});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final placement = tournament.placement;
+    final wonTrophy = tournament.placement == 1 &&
+        tournament.hasPrize &&
+        !tournament.hasCashPrize;
+
+    return SizedBox(
+      height: 72,
+      child: DsCard(
+        radius: AppTheme.radiusRow,
+        padding: const EdgeInsets.fromLTRB(16, 0, 14, 0),
+        onTap: () => AppNavigator.toScreen(
+          context,
+          TournamentDetailScreen(tournamentId: tournament.id),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          tournament.isWinner
-                              ? AppTheme.accent.withValues(alpha: 0.3)
-                              : AppTheme.primary.withValues(alpha: 0.3),
-                          tournament.isWinner
-                              ? AppTheme.accent.withValues(alpha: 0.1)
-                              : AppTheme.primary.withValues(alpha: 0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      tournament.isWinner ? Icons.emoji_events : Icons.emoji_events_outlined,
-                      color: tournament.isWinner ? AppTheme.accent : AppTheme.primary,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
                           tournament.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.calendar_today,
-                              size: 12,
-                              color: AppTheme.textSecondary.withValues(alpha: 0.8),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _formatDate(tournament.scheduledDate),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ],
+                      ),
+                      if (wonTrophy) ...[
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.emoji_events_outlined,
+                          size: 14,
+                          color: AppTheme.accent,
                         ),
                       ],
-                    ),
-                  ),
-                  if (tournament.participated)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            _getPlacementColor(tournament.placement).withValues(alpha: 0.2),
-                            _getPlacementColor(tournament.placement).withValues(alpha: 0.1),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _getPlacementColor(tournament.placement).withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (tournament.placement != null && tournament.placement! <= 3) ...[
-                            Icon(
-                              Icons.emoji_events,
-                              size: 14,
-                              color: _getPlacementColor(tournament.placement),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          Text(
-                            tournament.placementDisplay,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: _getPlacementColor(tournament.placement),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  _InfoChip(
-                    icon: Icons.people,
-                    label: '${tournament.totalParticipants} ${l10n.players}',
-                  ),
-                  const SizedBox(width: 10),
-                  if (tournament.isWinner) ...[
-                    _InfoChip(
-                      icon: Icons.star,
-                      label: '+${tournament.winnerEloReward} ELO',
-                      color: AppTheme.accent,
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  if (tournament.hasPrize && tournament.isWinner) ...[
-                    _InfoChip(
-                      icon: tournament.hasCashPrize ? Icons.attach_money : Icons.emoji_events,
-                      label: tournament.formattedPrize,
-                      color: tournament.hasCashPrize ? AppTheme.success : AppTheme.accent,
-                    ),
-                  ],
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 14,
-                    color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                  ),
-                ],
-              ),
-              if (tournament.winnerUsername != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceLight.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.emoji_events,
-                        size: 14,
-                        color: AppTheme.accent,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${l10n.winner}: ${tournament.winnerUsername}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _metaLine(context, l10n),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (tournament.participated && placement != null)
+              Text(
+                l10n.historyPlacementOrdinal(placement),
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _placementColor(placement),
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-              ],
-            ],
-          ),
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppTheme.textTertiary,
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Color _getPlacementColor(int? placement) {
-    if (placement == null) return AppTheme.textSecondary;
+  /// "4 sept. 2026 · 16 joueurs" — the date and the field size, which is the
+  /// only "format" a finished tournament still carries.
+  String _metaLine(BuildContext context, AppLocalizations l10n) {
+    final locale = Localizations.localeOf(context).toString();
+    String date;
+    try {
+      date = DateFormat('d MMM y', locale).format(tournament.scheduledDate.toLocal());
+    } catch (_) {
+      date = DateFormat('d MMM y').format(tournament.scheduledDate.toLocal());
+    }
+    return '$date · ${tournament.totalParticipants} ${l10n.players}';
+  }
+
+  /// Medals only: gold / silver / bronze are semantic here, every other
+  /// placement reads in the quiet secondary grey.
+  static Color _placementColor(int placement) {
     if (placement == 1) return AppTheme.gold;
     if (placement == 2) return AppTheme.silver;
     if (placement == 3) return AppTheme.bronze;
     return AppTheme.textSecondary;
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color? color;
-
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final chipColor = color ?? AppTheme.textSecondary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: chipColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: chipColor),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: chipColor,
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

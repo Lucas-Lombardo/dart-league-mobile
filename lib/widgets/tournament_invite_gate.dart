@@ -12,7 +12,8 @@ import '../screens/tournament/tournament_camera_setup_screen.dart';
 import '../utils/app_theme.dart';
 import '../utils/dart_sound_service.dart';
 import '../utils/haptic_service.dart';
-import '../utils/tournament_round.dart';
+import '../utils/round_labels.dart';
+import 'design_system.dart';
 
 /// Global, screen-independent "your tournament match is ready" prompt.
 ///
@@ -164,7 +165,9 @@ class _InvitePromptRoute extends PageRouteBuilder<void> {
     : super(
         opaque: false,
         barrierDismissible: false,
-        barrierColor: Colors.black.withValues(alpha: 0.72),
+        // The app background at 92 %: the screen underneath is still
+        // legible as a hint of where the player was, the card is not.
+        barrierColor: AppTheme.background.withValues(alpha: 0.92),
         transitionDuration: const Duration(milliseconds: 260),
         reverseTransitionDuration: const Duration(milliseconds: 180),
         pageBuilder: (_, _, _) =>
@@ -319,11 +322,11 @@ class _TournamentInvitePromptState extends State<_TournamentInvitePrompt> {
     final l10n = AppLocalizations.of(context);
     final remaining = _remaining;
     final urgent = remaining != null && remaining < const Duration(minutes: 2);
-    final timerColor = urgent ? AppTheme.error : AppTheme.accent;
 
-    // Same vocabulary as the "Invitation de match" card on the Tournament
-    // tab (tournament_screen.dart: _MatchInviteCard) and the lobby header —
-    // this is that card promoted to a modal, not a new design.
+    // Same card as the pinned invitation on the Tournament tab
+    // (tournament_screen.dart: _MatchInviteCard), promoted to a modal: a flat
+    // surface with the sky hairline, a 24 / 800 title, caption lines, the one
+    // filled button, and "Plus tard" as a text link.
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -332,151 +335,100 @@ class _TournamentInvitePromptState extends State<_TournamentInvitePrompt> {
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              // The card's gradient starts translucent; on the Tournament
-              // tab it sits on the app background. Give it the same opaque
-              // ground here so the dimmed screen doesn't bleed through.
-              child: Container(
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                decoration: BoxDecoration(
-                  color: AppTheme.background,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primary.withValues(alpha: 0.2),
-                        AppTheme.surface,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.5),
-                    ),
+                child: DsCard(
+                  side: BorderSide(
+                    color: AppTheme.primaryLight.withValues(alpha: 0.45),
                   ),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Header: bell badge + label + round chip (invite card).
+                      // Why this is on top of whatever the player was doing.
+                      Text(
+                        dsSentence(l10n.tournamentInvitePromptTitle),
+                        style: AppTheme.displayMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      // Tournament · round.
                       Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accent.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.notifications_active,
-                              color: AppTheme.accent,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  l10n.matchInvite,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                ),
-                                Text(
-                                  match.tournamentName ?? 'Tournament',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                          Flexible(
                             child: Text(
-                              localizedRoundName(
-                                match.roundName,
-                                l10n,
-                              ).toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
-                              ),
+                              match.tournamentName ?? l10n.tournament,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTheme.caption,
                             ),
+                          ),
+                          const Text(' · ', style: AppTheme.caption),
+                          Text(
+                            localizedRoundLabel(l10n, match),
+                            style: AppTheme.caption,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      // The one line that is new: why this is on top of
-                      // whatever the player was doing.
-                      Text(
-                        l10n.tournamentInvitePromptTitle,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.textPrimary,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
                       const SizedBox(height: 14),
-                      // Opponent + format (invite card).
+                      // Opponent + format.
                       Row(
                         children: [
                           const Icon(
-                            Icons.person,
+                            Icons.person_outline_rounded,
                             size: 16,
                             color: AppTheme.textSecondary,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               '${l10n.vs} $_opponentUsername',
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14,
+                              style: AppTheme.caption.copyWith(
+                                fontWeight: FontWeight.w600,
                                 color: AppTheme.textPrimary,
                               ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             '${l10n.bestOf} ${match.bestOf}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
+                            style: AppTheme.caption,
                           ),
                         ],
                       ),
                       if (remaining != null) ...[
                         const SizedBox(height: 8),
+                        // Countdown: red under two minutes, never gold.
                         Row(
                           children: [
-                            Icon(Icons.timer, size: 14, color: timerColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${l10n.timeRemaining}: ${_format(remaining)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: timerColor,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
+                            const Icon(
+                              Icons.schedule_outlined,
+                              size: 16,
+                              color: AppTheme.textSecondary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${l10n.timeRemaining}: ',
+                                    style: AppTheme.caption,
+                                  ),
+                                  TextSpan(
+                                    text: _format(remaining),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: urgent
+                                          ? AppTheme.error
+                                          : AppTheme.textPrimary,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -484,57 +436,24 @@ class _TournamentInvitePromptState extends State<_TournamentInvitePrompt> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      // Accept button (invite card).
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _join,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.check_circle_outline),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    l10n.acceptAndJoin,
-                                    maxLines: 1,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                      // The one filled block: themed primary button.
+                      ElevatedButton(
+                        onPressed: _join,
+                        child: Text(
+                          dsSentence(l10n.acceptAndJoin),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text(
                         l10n.tournamentInvitePromptForfeitWarning,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary,
-                        ),
+                        style: AppTheme.caption,
                       ),
                       const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerRight,
+                      Center(
                         child: TextButton(
                           onPressed: _dismiss,
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.textSecondary,
-                          ),
                           child: Text(l10n.tournamentInvitePromptLater),
                         ),
                       ),
