@@ -19,11 +19,16 @@ const double kIouThresholdP = 0.85;
 /// INTERNAL class ids, shared by every model: 0-7 = p1..p8 (the double-ring
 /// wire intersections at 45°, 63°, 117°, 135°, 225°, 243°, 297°, 315° from
 /// midnight, clockwise), 8 = dart tip. [Detection.flag], [Detection.isTip],
-/// the quadrant split in _extract4CPs and the homography all key off these —
+/// the per-class dedup in _bestPerClass and the homography all key off these —
 /// every parser remaps the MODEL's class ids onto this order.
 const List<String> kDetectionLabels = [
   'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'tip'
 ];
+
+/// How many control points the board has in total. The homography only needs
+/// four, so most of the pipeline works with four — but "did I read the WHOLE
+/// ring?" is a different question, and this is the number that answers it.
+const int kControlPointCount = 8;
 
 /// Which class index a model gives the DART. This is the one thing about an
 /// export that cannot be read off the tensor — both conventions emit 9

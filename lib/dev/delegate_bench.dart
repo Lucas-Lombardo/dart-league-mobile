@@ -123,7 +123,7 @@ import '../services/model_selector.dart';
 /// xnnpack measured 106ms at thermal=3 too, so that figure was never
 /// throttle-inflated. Delegates agree 9/9 on iPhone (0.0px) but only 6/8 on
 /// the Pixel, where the GPU really does run fp16 arithmetic — see the
-/// _extract4CPs note in the ACCURACY section below.
+/// control-point note in the ACCURACY section below.
 /// The LAYOUT PROBE settled this export's contract, which "same as DartsMind"
 /// only half-covered: anchor tensor [1, 13, 21504], but boxes in CANVAS
 /// PIXELS and the dart at class 0. On a 3-dart frame dart=first yields
@@ -344,9 +344,9 @@ class DelegateBench {
   /// each of p1..p8 (the wire intersections, always present) and 0-3 on
   /// 'tip'; the wrong one inverts that shape.
   ///
-  /// Reads the histogram BEFORE _extract4CPs and the dart filter — those trim
-  /// both layouts down to 4 control points and ≤3 tips, which would hide the
-  /// very difference being measured.
+  /// Reads the histogram BEFORE _bestPerClass and the dart filter — those trim
+  /// both layouts down to one box per intersection and ≤3 tips, which would
+  /// hide the very difference being measured.
   static Future<void> _probeLayouts(
       ({String name, Uint8List rgba, int w, int h}) frame) async {
     _log('===== LAYOUT PROBE (${frame.name}) =====');

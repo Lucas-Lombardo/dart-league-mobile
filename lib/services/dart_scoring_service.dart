@@ -220,14 +220,20 @@ class DartScore {
 class DartScoringService {
   late List<List<double>> _h;
 
-  /// Build from 4 calibration points. Each entry is [x, y, flag]
-  /// where x,y are normalised image coordinates and flag is 1-8.
+  /// Build from 4 to 8 calibration points. Each entry is [x, y, flag] where
+  /// x,y are normalised image coordinates and flag is 1-8.
+  ///
+  /// Every point given is used. Four determine the homography exactly; each
+  /// one beyond that is redundant information the fit averages over, which is
+  /// what pulls a mis-placed point back toward the truth instead of letting it
+  /// tilt the whole board. Passing the same flag twice is a contradiction, not
+  /// extra evidence — callers must hand over one detection per flag.
   DartScoringService(List<List<double>> calibPointsWithFlags) {
     if (calibPointsWithFlags.length < 4) {
       throw ArgumentError(
           'Need 4 calibration points, got ${calibPointsWithFlags.length}');
     }
-    _h = _computePerspectiveTransform(calibPointsWithFlags.sublist(0, 4));
+    _h = _computePerspectiveTransform(calibPointsWithFlags);
   }
 
   // ---- Perspective transform (DLT + Hartley normalisation) ----------------
@@ -292,29 +298,54 @@ class DartScoringService {
     final (normSrc, tSrc) = _hartleyNormalize(srcXY);
     final (normDst, tDst) = _hartleyNormalize(dst);
 
-    final a = List.generate(8, (_) => List.filled(8, 0.0));
-    final b = List.filled(8, 0.0);
+    // Two rows per point: 2n equations for the homography's 8 degrees of
+    // freedom. n == 4 is square, n > 4 is over-determined.
+    final n = src.length;
+    final rows = List.generate(n * 2, (_) => List.filled(8, 0.0));
+    final rhs = List.filled(n * 2, 0.0);
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < n; i++) {
       final sx = normSrc[i][0], sy = normSrc[i][1];
       final dx = normDst[i][0], dy = normDst[i][1];
 
-      a[i * 2][0] = sx;
-      a[i * 2][1] = sy;
-      a[i * 2][2] = 1;
-      a[i * 2][6] = -dx * sx;
-      a[i * 2][7] = -dx * sy;
-      b[i * 2] = dx;
+      rows[i * 2][0] = sx;
+      rows[i * 2][1] = sy;
+      rows[i * 2][2] = 1;
+      rows[i * 2][6] = -dx * sx;
+      rows[i * 2][7] = -dx * sy;
+      rhs[i * 2] = dx;
 
-      a[i * 2 + 1][3] = sx;
-      a[i * 2 + 1][4] = sy;
-      a[i * 2 + 1][5] = 1;
-      a[i * 2 + 1][6] = -dy * sx;
-      a[i * 2 + 1][7] = -dy * sy;
-      b[i * 2 + 1] = dy;
+      rows[i * 2 + 1][3] = sx;
+      rows[i * 2 + 1][4] = sy;
+      rows[i * 2 + 1][5] = 1;
+      rows[i * 2 + 1][6] = -dy * sx;
+      rows[i * 2 + 1][7] = -dy * sy;
+      rhs[i * 2 + 1] = dy;
     }
 
-    final hVec = _solveLinearSystem(a, b);
+    // Normal equations AᵀA·x = Aᵀb: the least-squares fit of a 2n×8 system,
+    // reduced to the 8×8 one [_solveLinearSystem] already solves. Squaring A
+    // squares its condition number too — which is affordable here, and only
+    // here, because Hartley normalisation above has already put both point
+    // sets at unit scale around the origin. Do not drop it.
+    //
+    // At n == 4 the system is square and consistent, so the least-squares
+    // solution IS the exact one: this stays bit-for-bit the old behaviour
+    // whenever only four points are visible (pinned in dart_scoring_test).
+    final ata = List.generate(8, (_) => List.filled(8, 0.0));
+    final atb = List.filled(8, 0.0);
+    for (int r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      for (int i = 0; i < 8; i++) {
+        if (row[i] == 0.0) continue;
+        for (int j = 0; j < 8; j++) {
+          ata[i][j] += row[i] * row[j];
+        }
+        atb[i] += row[i] * rhs[r];
+      }
+    }
+
+    final hVec = _solveLinearSystem(ata, atb);
     final hNorm = [
       [hVec[0], hVec[1], hVec[2]],
       [hVec[3], hVec[4], hVec[5]],

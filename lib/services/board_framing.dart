@@ -75,7 +75,6 @@ class BoardFraming {
     final DartScoringService scorer;
     try {
       scorer = DartScoringService(calibrationPoints
-          .take(4)
           .map((c) => [c.x, c.y, c.flag.toDouble()])
           .toList());
     } catch (_) {

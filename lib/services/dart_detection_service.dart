@@ -222,44 +222,39 @@ class DartDetectionService {
 
   // ---- Control point extraction (extract4CPs equivalent) ------------------
 
-  /// Select best 4 control points from p1-p8 detections.
-  /// Picks highest-confidence per quadrant:
-  ///   Q1 (upper-right): p1, p2   Q2 (lower-right): p3, p4
-  ///   Q3 (lower-left):  p5, p6   Q4 (upper-left):  p7, p8
-  List<Detection> _extract4CPs(List<Detection> controlPoints) {
+  /// One detection per wire intersection: the most confident box of each
+  /// p1..p8 class, in flag order.
+  ///
+  /// This used to select the best FOUR — one per quadrant (p1/p2, p3/p4,
+  /// p5/p6, p7/p8) — because the homography solved a square 8×8 system that
+  /// took exactly four correspondences, and four points spread ~90° apart are
+  /// the best-conditioned choice out of a ring whose points come in pairs 18°
+  /// apart. [DartScoringService] now fits by least squares over every point
+  /// given, so throwing half the evidence away only costs accuracy: on 257
+  /// replayed frames the four-point fit missed the held-out points by 0.49 mm
+  /// median and up to 7.8 mm, against 0.24 mm / 4.2 mm using all eight.
+  ///
+  /// Spread still matters — a fit on four points that all sit on one side of
+  /// the board is ill-conditioned no matter how it is solved — but that is a
+  /// property of what the frame showed, not something a selector can fix by
+  /// discarding more.
+  ///
+  /// Duplicates must go: class-specific NMS keeps two boxes of the same class
+  /// when they overlap little, and two positions for one flag are two
+  /// contradictory constraints on the same destination.
+  List<Detection> _bestPerClass(List<Detection> controlPoints) {
     if (controlPoints.isEmpty) return [];
 
-    final quadrants = <int, List<Detection>>{};
+    final best = <int, Detection>{};
     for (final cp in controlPoints) {
-      final q = cp.classId ~/ 2; // 0=Q1, 1=Q2, 2=Q3, 3=Q4
-      quadrants.putIfAbsent(q, () => []).add(cp);
-    }
-
-    final selected = <Detection>[];
-    for (int q = 0; q < 4; q++) {
-      final group = quadrants[q];
-      if (group == null || group.isEmpty) continue;
-      group.sort((a, b) => b.confidence.compareTo(a.confidence));
-      selected.add(group.first);
-    }
-
-    if (selected.length == 4) return selected;
-
-    // Fallback: pick 4 best from different classes
-    if (selected.length < 4 && controlPoints.length >= 4) {
-      final sorted = List<Detection>.from(controlPoints)
-        ..sort((a, b) => b.confidence.compareTo(a.confidence));
-      final bestByClass = <int, Detection>{};
-      for (final cp in sorted) {
-        bestByClass.putIfAbsent(cp.classId, () => cp);
-        if (bestByClass.length >= 4) break;
-      }
-      if (bestByClass.length >= 4) {
-        return bestByClass.values.take(4).toList();
+      final kept = best[cp.classId];
+      if (kept == null || cp.confidence > kept.confidence) {
+        best[cp.classId] = cp;
       }
     }
 
-    return selected;
+    final ordered = best.keys.toList()..sort();
+    return [for (final id in ordered) best[id]!];
   }
 
   /// Whether the calibration of the CURRENT analysis came from the cache
@@ -405,7 +400,10 @@ class DartDetectionService {
     var dartTips = detections.where((d) => d.isTip).toList();
 
     controlPoints = dropCollidingControlPoints(controlPoints);
-    controlPoints = _extract4CPs(controlPoints);
+    controlPoints = _bestPerClass(controlPoints);
+    // Distinct p1..p8 seen on THIS frame, captured before the cache can put
+    // back points the frame never showed. 8 = the whole double ring was read.
+    final detectedCpClasses = controlPoints.length;
     controlPoints = _applyCalibFallback(controlPoints);
 
     final (filteredDarts, filterLogs) = _filterDarts(dartTips);
@@ -422,6 +420,7 @@ class DartDetectionService {
         imageHeight: imgH,
         error: 'Need 4 control points, found ${controlPoints.length}',
         calibrationFromCache: _calibFromCache,
+        detectedControlPoints: detectedCpClasses,
       );
     }
 
@@ -435,6 +434,7 @@ class DartDetectionService {
         imageHeight: imgH,
         error: 'No darts detected',
         calibrationFromCache: _calibFromCache,
+        detectedControlPoints: detectedCpClasses,
       );
     }
 
@@ -472,6 +472,7 @@ class DartDetectionService {
         imageWidth: imgW,
         imageHeight: imgH,
         calibrationFromCache: _calibFromCache,
+        detectedControlPoints: detectedCpClasses,
       );
     } catch (e) {
       return ScoringResult(
@@ -483,6 +484,7 @@ class DartDetectionService {
         imageHeight: imgH,
         error: 'Scoring error: $e',
         calibrationFromCache: _calibFromCache,
+        detectedControlPoints: detectedCpClasses,
       );
     }
   }

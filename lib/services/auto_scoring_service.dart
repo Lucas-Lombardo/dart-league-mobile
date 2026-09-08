@@ -10,6 +10,7 @@ import 'camera_frame_service.dart';
 import 'dart_detection_service_stub.dart'
     if (dart.library.io) 'dart_detection_service.dart';
 import 'dataset_capture_service.dart';
+import 'detection_parsing.dart' show kControlPointCount;
 import 'ai_model_telemetry.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
@@ -324,6 +325,10 @@ class AutoScoringService extends ChangeNotifier {
   int _lastCalibrationPointCount = 0;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
+  // Whether any frame of the current empty-board run showed the whole ring
+  // ([_autoConfirmFullBoardPoints] of p1..p8, detected — not cache-served).
+  // Reset with [_consecutiveEmptyBoardCount]: it qualifies THAT run.
+  bool _emptyRunSawWholeBoard = false;
   // Turn auto-confirm fires only when the board is **fully empty** for this
   // many consecutive frames. Two frames is too aggressive — model glitches
   // and hand occlusion can briefly drop tips even while darts are still in
@@ -339,6 +344,24 @@ class AutoScoringService extends ChangeNotifier {
   // seul : [manualConfirmNeeded] s'allume et c'est le bouton CONFIRMER qui
   // termine la volée (décision 2026-09-01).
   static const int _autoConfirmMinDarts = 2;
+  // Passage automatique : combien des 8 intersections p1..p8 il faut avoir vues
+  // sur AU MOINS UNE des frames vides avant de fermer la volée.
+  //
+  // `calibrationPoints.length >= 4` ne dit rien : le scorer réduit lui-même à 4
+  // points (un par quadrant) et complète au cache, donc la condition est vraie
+  // sur 99,0 % des frames de prod (1,87 M de frames, 7 j, 2026-09-08) — y
+  // compris quand la moitié de la cible est cachée. Une cible à moitié masquée
+  // n'a alors aucune pointe visible et « prouve » une cible vide.
+  //
+  // 8 = l'anneau entier a été lu, donc « je ne vois plus de fléchette » porte
+  // sur toute la surface de jeu. Exiger les 8 sur les TROIS frames est en
+  // revanche trop dur : rejeu de la session lab du 2026-09-06 (678 frames,
+  // iPhone 15 Pro), 8/8 sur 89,8 % des frames mais seulement 79,8 % de celles
+  // sans pointe — le joueur est devant la cible à ce moment-là. Sur les 17
+  // auto-confirms rejouables, « les 3 frames à 8/8 » n'en laisse passer que 3.
+  // Une seule frame nette dans la fenêtre en laisse passer 15, et suffit à
+  // prouver que la cible est entière.
+  static const int _autoConfirmFullBoardPoints = kControlPointCount;
   bool _manualConfirmNeeded = false;
   int _prevDartCount = 0;
   // Require N consecutive empty frames after seeing darts before flagging
@@ -554,6 +577,7 @@ class AutoScoringService extends ChangeNotifier {
     _manualConfirmNeeded = false;
     _datasetCaptureArmed = true;
     _consecutiveEmptyBoardCount = 0;
+    _emptyRunSawWholeBoard = false;
     _consecutiveRemovalCount = 0;
     _resetErrorStreak();
     _sinceInferenceStart.reset();
@@ -590,6 +614,7 @@ class AutoScoringService extends ChangeNotifier {
     _dartsRemoved = false;
     _manualConfirmNeeded = false;
     _consecutiveEmptyBoardCount = 0;
+    _emptyRunSawWholeBoard = false;
     _consecutiveRemovalCount = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
@@ -917,21 +942,33 @@ class AutoScoringService extends ChangeNotifier {
           dartCount == 0 &&
           result.calibrationPoints.length >= 4) {
         _consecutiveEmptyBoardCount++;
+        // Une frame servie par le cache de calibration n'a PAS vu la cible :
+        // elle ne peut pas témoigner que l'anneau est entier.
+        if (!result.calibrationFromCache &&
+            result.detectedControlPoints >= _autoConfirmFullBoardPoints) {
+          _emptyRunSawWholeBoard = true;
+        }
         if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
-          if (emittedCount >= _autoConfirmMinDarts) {
+          if (emittedCount >= _autoConfirmMinDarts && _emptyRunSawWholeBoard) {
             _consecutiveEmptyBoardCount = 0;
+            _emptyRunSawWholeBoard = false;
             _prevDartCount = 0;
             _trace('GATE auto-confirm (board empty $_autoConfirmThreshold '
-                'frames, $emittedCount darts) — submitting turn');
+                'frames, whole ring seen, $emittedCount darts) '
+                '— submitting turn');
             telemetry.recordAutoConfirm();
             await _maybeCleanup(imagePath, cleanupFile);
             onAutoConfirm?.call();
             return;
           }
+          // Les deux raisons de retenir la main mènent au même endroit : le
+          // bandeau doré. Sans lui, une cible jamais lue en entier laisserait
+          // le joueur devant un écran qui ne bouge plus.
           if (!_manualConfirmNeeded) {
             _manualConfirmNeeded = true;
-            _trace('GATE auto-confirm HELD (only $emittedCount dart emitted) '
-                '— manual CONFIRM required');
+            _trace('GATE auto-confirm HELD ('
+                '${emittedCount < _autoConfirmMinDarts ? 'only $emittedCount dart emitted' : 'ring never fully read: ${result.detectedControlPoints}/$_autoConfirmFullBoardPoints'}'
+                ') — manual CONFIRM required');
           }
           // Clamp: le compteur a fait son office, inutile de le laisser
           // croître pendant toute l'attente du joueur.
@@ -939,6 +976,7 @@ class AutoScoringService extends ChangeNotifier {
         }
       } else {
         _consecutiveEmptyBoardCount = 0;
+        _emptyRunSawWholeBoard = false;
         // Une pointe est revisible (fléchette re-détectée ou nouveau lancer) :
         // la demande de confirmation manuelle n'a plus lieu d'être.
         if (_manualConfirmNeeded && dartCount > 0) {
@@ -1039,7 +1077,6 @@ class AutoScoringService extends ChangeNotifier {
     if (result.calibrationPoints.length >= 4) {
       try {
         final calibData = result.calibrationPoints
-            .take(4)
             .map((c) => [c.x, c.y, c.flag.toDouble()])
             .toList();
         scorer = DartScoringService(calibData);

@@ -63,6 +63,15 @@ class ScoringResult {
   /// 2.5×, half-out-of-frame board pass the setup gate as valid.
   final bool calibrationFromCache;
 
+  /// How many of the EIGHT wire intersections p1..p8 this frame actually
+  /// detected, counted before the cache fallback.
+  ///
+  /// [calibrationPoints] cannot answer that: the cache fills it back up to the
+  /// last good reading, so it stays at 8 on a frame that saw two points. This
+  /// number only ever counts what was really there — which is what a gate that
+  /// closes a visit on what it did NOT see (auto-confirm) has to ask.
+  final int detectedControlPoints;
+
   ScoringResult({
     required this.calibrationPoints,
     required this.dartTips,
@@ -72,5 +81,6 @@ class ScoringResult {
     this.imageWidth = 1,
     this.imageHeight = 1,
     this.calibrationFromCache = false,
+    this.detectedControlPoints = 0,
   });
 }
