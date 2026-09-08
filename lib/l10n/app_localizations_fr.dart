@@ -1972,10 +1972,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get freePlayBannerSubtitle =>
       'Classées illimitées et matchs entre amis gratuits pour tout le monde';
 
-  @override
-  String get unrankedFreeTierHint =>
-      'Après le placement, les joueurs gratuits ont 1 match classé par jour';
-
   // --- Chat (messagerie amis/support) ---
   @override
   String get receivedMessagesTitle => 'Messages reçus';

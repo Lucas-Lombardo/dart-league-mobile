@@ -112,9 +112,10 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
   }
 
   /// Feeds the activity pulse card; the card stays hidden until (and unless)
-  /// a snapshot arrives, so failures cost nothing.
+  /// a snapshot arrives, so failures cost nothing. 24 h window: a full day of
+  /// matches reads better under Compétitif than half a day.
   Future<void> _loadActivity() async {
-    final snapshot = await PresenceService.fetchActivity();
+    final snapshot = await PresenceService.fetchActivity(hours: 24);
     if (mounted && snapshot != null) {
       setState(() => _activity = snapshot);
     }
@@ -166,42 +167,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
       _checkActiveTournamentStatus();
       _refreshSubscription();
     });
-  }
-
-  /// Shown when a free user who has used their daily ranked match tries to
-  /// start another competitive match. Offers an upgrade path to Premium.
-  void _showDailyLimitDialog() {
-    final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: Text(l10n.dailyLimitReachedShort,
-            style: const TextStyle(color: Colors.white)),
-        content: Text(l10n.goPremiumUnlimited,
-            style: const TextStyle(color: AppTheme.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(l10n.cancel,
-                style: const TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-              ).then((_) => _refreshSubscription());
-            },
-            child: Text(l10n.upgrade),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _checkActiveMatch() async {
@@ -429,17 +394,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildUnrankedFreeTierHint() {
-    final l10n = AppLocalizations.of(context);
-    return _hintRow(
-      icon: Icons.info_outline_rounded,
-      iconColor: AppTheme.textSecondary,
-      title: l10n.unrankedFreeTierHint,
-      subtitle: l10n.tapToLearnAboutPremium,
-      onTap: _openPremium,
-    );
-  }
-
   /// The one filled block of the screen. Every state that takes the play slot
   /// renders through this so they all keep the same geometry.
   Widget _primarySlot({
@@ -458,19 +412,24 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Compétitif: free users who've already used their daily ranked match are
-  /// nudged to Premium instead of entering the queue.
+  /// Compétitif: free users who've already used their daily ranked match land
+  /// straight on the paywall instead of entering the queue.
   void _onCompetitiveTapped() {
     if (context.read<SubscriptionProvider>().hasReachedDailyLimit) {
-      _showDailyLimitDialog();
+      _openPremium();
       return;
     }
     _startCompetitive();
   }
 
-  /// Friendly matches are premium-gated inside FriendlyMatchLauncher, which
-  /// shows the upgrade popup for non-premium users on invite.
+  /// Friendly matches need premium (or the Free Play window): the gated tile
+  /// opens the paywall directly, instead of walking the user through picking a
+  /// friend only to hit the upgrade popup on invite.
   void _openFriendMatch() {
+    if (!context.read<SubscriptionProvider>().canPlayFriendMatch) {
+      _openPremium();
+      return;
+    }
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const FriendSelectScreen()))
         .then((_) {
@@ -907,6 +866,10 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
                   child: DsTile(
                     icon: Icons.people_outline_rounded,
                     label: l10n.friendModeTitle,
+                    // Premium (or the Free Play window) is required to invite a
+                    // friend — show the gate on the tile instead of letting the
+                    // user discover it once they've picked someone.
+                    locked: !subscription.canPlayFriendMatch,
                     onTap: _openFriendMatch,
                   ),
                 ),
@@ -1024,10 +987,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
           subtitle: l10n.completePlacementToUnlock,
           onTap: _openPlacement,
         ),
-        if (!subscription.isPremiumActive) ...[
-          const SizedBox(height: 10),
-          _buildUnrankedFreeTierHint(),
-        ],
       ];
     }
     if (_activeMatch != null) {
@@ -1058,8 +1017,8 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     return [
       // The play row is always shown for free users; the daily-match hint
       // stays visible (it reads "match used" once the free match is spent)
-      // and tapping Compétitif surfaces the upgrade popup. During Free Play
-      // the upsell hint is replaced by the "it's free tonight" line.
+      // and tapping Compétitif then opens the paywall. During Free Play the
+      // upsell hint is replaced by the "it's free tonight" line.
       if (subscription.freePlayActive) ...[
         _buildFreePlayBanner(),
         const SizedBox(height: 10),

@@ -154,7 +154,7 @@ class _HomePreview extends StatelessWidget {
                     DsPrimaryRow(
                       icon: Icons.military_tech_outlined,
                       title: l10n.competitiveModeTitle,
-                      subtitle: '${l10n.homeCompetitiveSubtitle} · 136 ${l10n.activityMatchesLabel(12).toLowerCase()}',
+                      subtitle: '${l10n.homeCompetitiveSubtitle} · 136 ${l10n.activityMatchesLabel(24).toLowerCase()}',
                       onTap: () {},
                     ),
                     const SizedBox(height: 10),

@@ -716,7 +716,6 @@ abstract class AppLocalizations {
   String get tapToUpgradeForUnlimited;
   String get freePlayBannerTitle;
   String get freePlayBannerSubtitle;
-  String get unrankedFreeTierHint;
 
   // --- Chat (friend/support messaging) ---
   String get receivedMessagesTitle;

@@ -356,10 +356,26 @@ class DsTile extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? badge;
 
-  const DsTile({super.key, required this.icon, required this.label, this.onTap, this.badge});
+  /// Premium-gated mode: the tile is dimmed and carries a small lock, so the
+  /// gate reads before the tap. Still tappable — the screen behind it is what
+  /// sells the upgrade.
+  final bool locked;
+
+  const DsTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.badge,
+    this.locked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final corner = badge ??
+        (locked
+            ? const Icon(Icons.lock_outline_rounded, size: 13, color: AppTheme.textTertiary)
+            : null);
     return SizedBox(
       height: 68,
       child: DsCard(
@@ -372,22 +388,26 @@ class DsTile extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, size: 20, color: const Color(0xFFE2E8F0)),
+                  Icon(
+                    icon,
+                    size: 20,
+                    color: locked ? AppTheme.textTertiary : const Color(0xFFE2E8F0),
+                  ),
                   const SizedBox(height: 7),
                   Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
+                      color: locked ? AppTheme.textTertiary : AppTheme.textPrimary,
                     ),
                   ),
                 ],
               ),
             ),
-            if (badge != null) Positioned(top: 8, right: 8, child: badge!),
+            if (corner != null) Positioned(top: 8, right: 8, child: corner),
           ],
         ),
       ),

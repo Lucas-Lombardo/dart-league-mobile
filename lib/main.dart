@@ -205,16 +205,28 @@ class DartLegendsApp extends StatelessWidget {
             ],
             supportedLocales: AppLocalizations.supportedLocales,
             navigatorObservers: [routeObserver],
-            builder: (context, child) => MatchmakingNavigationGate(
-              navigatorKey: navigatorKey,
-              child: FriendMatchGate(
-                navigatorKey: navigatorKey,
-                child: TournamentInviteGate(
-                  navigatorKey: navigatorKey,
-                  child: child ?? const SizedBox.shrink(),
+            // Les réglages système « texte plus grand » (iOS/Android) font
+            // exploser toutes les mises en page (pseudos tronqués, lignes
+            // rognées) : on borne l'agrandissement à 1,1× — le texte grossit
+            // un peu, rien ne casse.
+            builder: (context, child) {
+              final media = MediaQuery.of(context);
+              return MediaQuery(
+                data: media.copyWith(
+                  textScaler: media.textScaler.clamp(maxScaleFactor: 1.1),
                 ),
-              ),
-            ),
+                child: MatchmakingNavigationGate(
+                  navigatorKey: navigatorKey,
+                  child: FriendMatchGate(
+                    navigatorKey: navigatorKey,
+                    child: TournamentInviteGate(
+                      navigatorKey: navigatorKey,
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              );
+            },
             initialRoute: '/',
             routes: {
               '/': (context) => const SplashScreen(),
