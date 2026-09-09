@@ -26,6 +26,20 @@ class CameraFrameService {
   bool _p2pMode = false;
   bool _isStreaming = false;
   bool _disposed = false;
+  bool _paused = false;
+  bool _cameraNeedsReopen = false;
+  double _zoom = 1.0;
+  // Camera ownership changes must not overlap (background, resume, lens
+  // switch, initial setup and teardown can all arrive during an await).
+  Future<void> _cameraQueue = Future.value();
+
+  Future<void> _enqueueCamera(Future<void> Function() action) {
+    final op = _cameraQueue.then((_) => action());
+    _cameraQueue = op.catchError((Object e) {
+      debugPrint('[CameraFrameService] camera transition failed: $e');
+    });
+    return op;
+  }
 
   // Session-wide camera frame rate. D8 capped it at 15 (no consumer takes
   // more: the AI pulls ≤4/s, the RTC push is throttled to ~15 via
@@ -299,7 +313,16 @@ class CameraFrameService {
   Future<void> initialize({
     bool p2pMode = false,
     bool replayRing = false,
+  }) => _enqueueCamera(() => _initialize(
+        p2pMode: p2pMode,
+        replayRing: replayRing,
+      ));
+
+  Future<void> _initialize({
+    required bool p2pMode,
+    required bool replayRing,
   }) async {
+    if (_disposed) return;
     _p2pMode = p2pMode;
     _replayMode = replayRing && ReplayBufferService.isSupported;
     if (_replayMode) ReplayBufferService.arm();
@@ -413,41 +436,46 @@ class CameraFrameService {
   /// and persists the choice so it carries to the next screen and next launch.
   /// No-op while a switch is already in flight or after [dispose].
   Future<void> switchCamera() async {
-    if (_disposed || _switching) return;
+    if (_disposed || _switching || _paused) return;
     _switching = true;
     try {
-      final target = _lensDirection == CameraLensDirection.front
-          ? CameraLensDirection.back
-          : CameraLensDirection.front;
-
-      // Tear down the current controller. Null it out FIRST so any widget
-      // rebuild that races with us reads a null controller (and renders its
-      // placeholder) instead of touching a disposed one.
-      // Await the stop: the controller must be out of streaming state before
-      // it is disposed, and before the new lens starts its own stream.
-      await _awaitStream(_stopImageStream());
-      final old = _controller;
-      _controller = null;
-      _latestFrame = null;
-      _firstPushLogged = false;
-      await old?.dispose();
-      if (_disposed) return;
-
-      if (!await _openCamera(target)) return;
-      if (_disposed) return;
-      await _awaitStream(_startImageStream());
-      // The fresh lens starts un-throttled (new device on iOS, and the
-      // Android static survives but the intent must be re-asserted) — re-apply
-      // whatever the turn gate currently says.
-      if (_p2pMode) _applyCaptureThrottle();
-
-      // Persist the lens actually opened (the target may have fallen back to
-      // back when the device has no camera for that direction).
-      await StorageService.saveUseFrontCamera(
-          _lensDirection == CameraLensDirection.front);
+      await _enqueueCamera(_switchCamera);
     } finally {
       _switching = false;
     }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_disposed || _paused) return;
+    final target = _lensDirection == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+
+    // Tear down the current controller. Null it out FIRST so any widget
+    // rebuild that races with us reads a null controller (and renders its
+    // placeholder) instead of touching a disposed one.
+    // Await the stop: the controller must be out of streaming state before
+    // it is disposed, and before the new lens starts its own stream.
+    await _awaitStream(_stopImageStream());
+    final old = _controller;
+    _controller = null;
+    _latestFrame = null;
+    _firstPushLogged = false;
+    await old?.dispose();
+    if (_disposed) return;
+
+    if (!await _openCamera(target)) return;
+    if (_disposed) return;
+    await _awaitStream(_startImageStream());
+    // The fresh lens starts un-throttled (new device on iOS, and the
+    // Android static survives but the intent must be re-asserted) — re-apply
+    // whatever the turn gate currently says.
+    if (_p2pMode) _applyCaptureThrottle();
+
+    // Persist the lens actually opened (the target may have fallen back to
+    // back when the device has no camera for that direction).
+    await StorageService.saveUseFrontCamera(
+        _lensDirection == CameraLensDirection.front);
   }
 
   // Serialises every image-stream transition, and records the DESIRED state
@@ -493,6 +521,7 @@ class CameraFrameService {
     final controller = _controller;
     final want = _wantStreaming &&
         !_disposed &&
+        !_paused &&
         controller != null &&
         controller.value.isInitialized;
     if (want == _isStreaming) return;
@@ -514,7 +543,7 @@ class CameraFrameService {
   }
 
   void _onCameraImage(CameraImage image) {
-    if (_disposed || !_isStreaming) return;
+    if (_disposed || _paused || !_isStreaming) return;
 
     // Cache latest frame for AI capture
     _latestFrame = image;
@@ -1057,6 +1086,7 @@ class CameraFrameService {
   Future<void> setZoomLevel(double zoom) async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     await _controller!.setZoomLevel(zoom);
+    _zoom = zoom;
   }
 
   /// Throttle (or restore) the capture rate for the opponent's turn — see the
@@ -1091,8 +1121,28 @@ class CameraFrameService {
   }
 
   /// Pause the camera (e.g. when app goes to background).
-  void pause() {
+  /// Android background pauses release the device in every game mode.
+  /// Brief inactive interruptions pass [releaseCamera] as false.
+  void pause({bool? releaseCamera}) {
+    if (_disposed) return;
+    _paused = true;
+    _latestFrame = null;
     _stopImageStream();
+    final shouldRelease = releaseCamera ??
+        (!kIsWeb && defaultTargetPlatform == TargetPlatform.android);
+    if (!shouldRelease) return;
+    // Android may close CameraDevice while backgrounded. Restarting only
+    // the image stream on that closed device cannot recover it.
+    _enqueueCamera(() async {
+      _cameraNeedsReopen = true;
+      // An in-flight initialize/resume can have restarted the stream before
+      // this queued release runs. Stop again against the current controller.
+      await _awaitStream(_stopImageStream());
+      final old = _controller;
+      _controller = null;
+      _isStreaming = false;
+      await old?.dispose();
+    });
   }
 
   /// Whether an online call consumes our frames continuously — the opponent
@@ -1101,10 +1151,40 @@ class CameraFrameService {
   bool get _callAttached => _p2pMode;
 
   /// Resume the camera (e.g. when app comes back to foreground).
-  void resume() {
-    if (_disposed) return;
-    // Don't resurrect a stream that [setAiActive] deliberately stopped.
-    if (_aiActive || _callAttached) _startImageStream();
+  Future<void> resume() {
+    if (_disposed) return Future.value();
+    _paused = false;
+    _enqueueCamera(() async {
+      if (_disposed || _paused) return;
+      if (_cameraNeedsReopen) {
+        // A brief pause can interrupt restoration after the device opened.
+        // Keep that controller and retry restoration on the next resume.
+        if (_controller?.value.isInitialized != true &&
+            !await _openCamera(_lensDirection)) {
+          return;
+        }
+        if (_disposed || _paused) return;
+        try {
+          final min = await getMinZoomLevel();
+          final max = await getMaxZoomLevel();
+          await setZoomLevel(_zoom.clamp(min, max));
+        } catch (e) {
+          debugPrint('[CameraFrameService] restoring zoom failed: $e');
+        }
+        _lastPushAt = null;
+        _firstPushLogged = false;
+        if (_p2pMode) _applyCaptureThrottle();
+        if (_disposed || _paused) return;
+        _cameraNeedsReopen = false;
+      }
+      // Don't resurrect a stream that setAiActive deliberately stopped.
+      if (_aiActive || _callAttached) {
+        await _awaitStream(_startImageStream());
+      }
+    });
+    // Lifecycle callers may ignore this future. Errors are logged by the
+    // queue; a failed reopen remains pending for the next resume.
+    return _cameraQueue;
   }
 
   /// Gate the image stream on AI activity — DartsMind never burns pixel work
@@ -1132,8 +1212,12 @@ class CameraFrameService {
   }
 
   /// Release all resources.
-  Future<void> dispose() async {
+  Future<void> dispose() {
     _disposed = true;
+    return _enqueueCamera(_disposeCamera);
+  }
+
+  Future<void> _disposeCamera() async {
     // Reset the delivery throttle: the Android gate is a STATIC on the
     // vendored plugin and would otherwise starve the next camera session
     // (setup screens, trainings) at 2 fps.

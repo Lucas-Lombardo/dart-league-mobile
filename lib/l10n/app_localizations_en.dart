@@ -2116,6 +2116,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get bustReasonInvalid => 'Invalid throw';
 
+  @override
+  String bustFigures(int remaining, int visit) =>
+      '$remaining left, visit of $visit.';
+
   // Tournament Game
   @override
   String legNumber(int number) => 'Leg $number';

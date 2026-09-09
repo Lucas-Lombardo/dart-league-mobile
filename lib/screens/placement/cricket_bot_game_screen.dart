@@ -129,9 +129,14 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       stopAiCapture();
-      cameraService?.pause();
+      cameraService?.pause(
+        releaseCamera: state == AppLifecycleState.inactive ? false : null,
+      );
     } else if (state == AppLifecycleState.resumed) {
-      cameraService?.resume();
+      final camera = cameraService;
+      camera?.resume().then((_) {
+        if (mounted && identical(cameraService, camera)) setState(() {});
+      });
       if (autoScoringEnabled &&
           !aiManuallyDisabled &&
           !_gameEnded &&
@@ -225,16 +230,14 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
       accent: AppTheme.success,
       icon: Icons.emoji_events_outlined,
       title: l10n.cricketAllClosedTitle,
+      prominentActions: true,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            l10n.cricketAllClosedBody,
-            style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary),
-          ),
+          Text(l10n.cricketAllClosedBody, style: gameDialogBodyStyle),
           const SizedBox(height: 6),
-          Text(l10n.isThisCorrect, style: AppTheme.caption),
+          Text(l10n.isThisCorrect, style: gameDialogHintStyle),
         ],
       ),
       actionsBuilder: (ctx) => [
@@ -253,6 +256,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
               autoScoringService?.clearDart(i);
             }
           },
+          style: gameNeutralOutlineButtonStyle(),
           child: Text(dsSentence(l10n.editDarts)),
         ),
         ElevatedButton(

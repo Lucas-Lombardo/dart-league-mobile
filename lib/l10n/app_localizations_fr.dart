@@ -2075,7 +2075,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Confirmer pour passer le tour ou modifier si incorrect';
 
   @override
-  String get confirmBustButton => 'Confirmer Bust';
+  String get confirmBustButton => 'Confirmer le bust';
 
   @override
   String get scoreBusted => 'Score dépassé !';
@@ -2141,6 +2141,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get bustReasonInvalid => 'Lancer invalide';
+
+  @override
+  String bustFigures(int remaining, int visit) =>
+      '$remaining restants, volée de $visit.';
 
   // Tournament Game
   @override

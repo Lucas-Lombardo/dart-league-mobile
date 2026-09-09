@@ -110,9 +110,14 @@ class _LocalCricketMatchScreenState extends State<LocalCricketMatchScreen>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       stopAiCapture();
-      cameraService?.pause();
+      cameraService?.pause(
+        releaseCamera: state == AppLifecycleState.inactive ? false : null,
+      );
     } else if (state == AppLifecycleState.resumed) {
-      cameraService?.resume();
+      final camera = cameraService;
+      camera?.resume().then((_) {
+        if (mounted && identical(cameraService, camera)) setState(() {});
+      });
       // Not under the win dialog either — the leg is waiting on a human.
       if (autoScoringEnabled &&
           !aiManuallyDisabled &&

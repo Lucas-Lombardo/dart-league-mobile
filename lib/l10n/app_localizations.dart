@@ -787,6 +787,9 @@ abstract class AppLocalizations {
   String get bustReasonOneRemaining;
   String get bustReasonInvalid;
 
+  /// Les chiffres derrière un bust : « 130 restants, volée de 139 ».
+  String bustFigures(int remaining, int visit);
+
   // Tournament Game
   String legNumber(int number);
 

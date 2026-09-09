@@ -57,6 +57,60 @@ int notationPoints(String notation) {
   }
 }
 
+int visitPoints(Iterable<String> throws) =>
+    throws.fold(0, (total, dart) => total + notationPoints(dart));
+
+/// Live pending_bust replaces the final score_updated: earlier darts have
+/// reduced the score, but the busting dart exists only in the pending payload.
+/// Syncs and edits have different snapshots and cannot use this reconstruction.
+({int remaining, int visitTotal})? pendingBustFigures({
+  required int currentScore,
+  required int currentRoundScore,
+  required Map<String, dynamic>? pendingData,
+}) {
+  final notation = pendingData?['notation'] as String?;
+  if (pendingData?['restoredFromSync'] == true ||
+      notation == null || notation.isEmpty) {
+    return null;
+  }
+  return (
+    remaining: currentScore + currentRoundScore,
+    visitTotal: currentRoundScore + notationPoints(notation),
+  );
+}
+
+class GameBustDialogContent extends StatelessWidget {
+  final String reason;
+  final int? remaining;
+  final int? visitTotal;
+
+  const GameBustDialogContent({
+    super.key,
+    required this.reason,
+    this.remaining,
+    this.visitTotal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(reason, style: gameDialogBodyStyle),
+        if (remaining != null && visitTotal != null) ...[
+          const SizedBox(height: 6),
+          Text(l10n.bustFigures(remaining!, visitTotal!),
+              style: gameDialogHintStyle),
+        ],
+        const SizedBox(height: 6),
+        Text(l10n.confirmPassOrEdit, style: gameDialogHintStyle),
+      ],
+    );
+  }
+}
+
 /// Small group-label pill over video ("VOUS", "TOUR 26"): 11 / 700 spaced
 /// label on a translucent background with a glass hairline.
 class GameChip extends StatelessWidget {
@@ -2029,6 +2083,37 @@ ButtonStyle gameFilledButtonStyle(Color accent) => ElevatedButton.styleFrom(
   textStyle: gameButtonTextStyle,
 );
 
+/// The neutral half of a [prominentActions] dialog pair ("Modifier les
+/// fléchettes"): same shape as [gameFilledButtonStyle] so the two stacked
+/// buttons match, but no colour of its own — the accent is the card's edge.
+ButtonStyle gameNeutralOutlineButtonStyle() => OutlinedButton.styleFrom(
+  foregroundColor: AppTheme.textPrimary,
+  side: const BorderSide(color: AppTheme.surfaceLight),
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(AppTheme.radiusRow),
+  ),
+  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  textStyle: gameButtonTextStyle,
+);
+
+/// Body and secondary line of a [prominentActions] dialog: 15 / 600 primary
+/// over 13 / 500 secondary (the compact dialogs keep bodyMedium + caption).
+const TextStyle gameDialogBodyStyle = TextStyle(
+  fontFamily: AppTheme.fontFamily,
+  fontSize: 15,
+  fontWeight: FontWeight.w600,
+  height: 1.35,
+  color: AppTheme.textPrimary,
+);
+
+const TextStyle gameDialogHintStyle = TextStyle(
+  fontFamily: AppTheme.fontFamily,
+  fontSize: 13,
+  fontWeight: FontWeight.w500,
+  height: 1.4,
+  color: AppTheme.textSecondary,
+);
+
 /// The dialog shell shared by every in-match popup (win, bust, leave,
 /// forfeit, report): the theme's flat surface dialog, a 17 / 700 sentence-
 /// case title with a 22 px icon in [accent]. [actionsBuilder] receives the
@@ -2042,6 +2127,7 @@ Future<T?> showGameDialog<T>(
   required List<Widget> Function(BuildContext ctx) actionsBuilder,
   bool barrierDismissible = false,
   Widget? bottomBar,
+  bool prominentActions = false,
 }) {
   return showDialog<T>(
     context: context,
@@ -2053,6 +2139,7 @@ Future<T?> showGameDialog<T>(
       content: content,
       actions: actionsBuilder(ctx),
       bottomBar: bottomBar,
+      prominentActions: prominentActions,
     ),
   );
 }
@@ -2065,6 +2152,15 @@ Future<T?> showGameDialog<T>(
 /// the checkout dialog (2026-08-04, piste 2: the in-game bar "follows" the
 /// player into the modal that covers it). Null keeps the exact AlertDialog
 /// every other dialog ships.
+///
+/// [prominentActions] is the layout of the two dialogs a player answers with
+/// the phone on its tripod, at arm's length (checkout, bust — 2026-09-08,
+/// « alternative 2 »): a wider card (28 px inset instead of 40), the accent
+/// as a 3 px edge rather than a coloured button, and two FULL-WIDTH 64 px
+/// actions separated by 28 px of empty space — the AlertDialog's OverflowBar
+/// stacked those two long labels flush against each other, right-aligned,
+/// which is exactly what a rough tap gets wrong. The leave / forfeit /
+/// report dialogs keep the compact frame.
 Widget gameDialogFrame({
   required Color accent,
   required IconData icon,
@@ -2072,18 +2168,83 @@ Widget gameDialogFrame({
   Widget? content,
   required List<Widget> actions,
   Widget? bottomBar,
+  bool prominentActions = false,
 }) {
   final titleRow = Row(
     children: [
-      Icon(icon, color: accent, size: 22),
+      Icon(icon, color: accent, size: prominentActions ? 24 : 22),
       const SizedBox(width: 10),
-      Expanded(child: Text(dsSentence(title), style: AppTheme.titleLarge)),
+      Expanded(
+        child: Text(
+          dsSentence(title),
+          style: prominentActions
+              ? AppTheme.titleLarge.copyWith(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                )
+              : AppTheme.titleLarge,
+        ),
+      ),
     ],
   );
   final shape = RoundedRectangleBorder(
     borderRadius: BorderRadius.circular(AppTheme.radiusCard),
     side: const BorderSide(color: AppTheme.border),
   );
+  if (prominentActions) {
+    return Dialog(
+      backgroundColor: AppTheme.surface,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(height: 3, color: accent),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+              child: titleRow,
+            ),
+            // Flexible + scroll: the card is short at the default text size,
+            // but an accessibility scale can push the message past the screen
+            // — better a scrolling message than clipped actions.
+            if (content != null)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: content,
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < actions.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 28),
+                    // minHeight, not a fixed box: a large text scale grows the
+                    // button instead of clipping its label.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 64),
+                      child: SizedBox(width: double.infinity, child: actions[i]),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            ?bottomBar,
+          ],
+        ),
+      ),
+    );
+  }
   if (bottomBar == null) {
     return AlertDialog(
       backgroundColor: AppTheme.surface,

@@ -114,9 +114,14 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       _stopAiCapture();
-      _cameraService?.pause();
+      _cameraService?.pause(
+        releaseCamera: state == AppLifecycleState.inactive ? false : null,
+      );
     } else if (state == AppLifecycleState.resumed) {
-      _cameraService?.resume();
+      final camera = _cameraService;
+      camera?.resume().then((_) {
+        if (mounted && identical(_cameraService, camera)) setState(() {});
+      });
       if (!_aiManuallyDisabled && !_gameEnded) {
         _startAiCapture();
       }
@@ -496,21 +501,17 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     if (_bustDialogShowing || !mounted) return;
     _bustDialogShowing = true;
     final l10n = AppLocalizations.of(context);
+    final visitTotal = visitPoints(_currentRoundThrows.map((dart) => dart.notation));
     showGameDialog<void>(
       context,
       accent: AppTheme.error,
       icon: Icons.error_outline_rounded,
       title: l10n.bust,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(l10n.scoreBusted,
-              style:
-                  AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
-          const SizedBox(height: 6),
-          Text(l10n.confirmPassOrEdit, style: AppTheme.caption),
-        ],
+      prominentActions: true,
+      content: GameBustDialogContent(
+        reason: l10n.scoreBusted,
+        remaining: _scoreBeforeRound,
+        visitTotal: visitTotal,
       ),
       actionsBuilder: (ctx) => [
         OutlinedButton(
@@ -529,6 +530,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
               _autoScoringService?.clearDart(i);
             }
           },
+          style: gameNeutralOutlineButtonStyle(),
           child: Text(dsSentence(l10n.editDarts)),
         ),
         ElevatedButton(
@@ -537,7 +539,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
             Navigator.pop(ctx);
             _confirmRound();
           },
-          style: gameFilledButtonStyle(AppTheme.error),
+          style: gameFilledButtonStyle(AppTheme.primary),
           child: Text(dsSentence(l10n.confirmBustButton)),
         ),
       ],
@@ -555,15 +557,14 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
       accent: AppTheme.success,
       icon: Icons.emoji_events_outlined,
       title: l10n.checkout,
+      prominentActions: true,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.youHitToFinish(notation),
-              style:
-                  AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          Text(l10n.youHitToFinish(notation), style: gameDialogBodyStyle),
           const SizedBox(height: 6),
-          Text(l10n.isThisCorrect, style: AppTheme.caption),
+          Text(l10n.isThisCorrect, style: gameDialogHintStyle),
         ],
       ),
       actionsBuilder: (ctx) => [
@@ -583,6 +584,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
               _autoScoringService?.clearDart(i);
             }
           },
+          style: gameNeutralOutlineButtonStyle(),
           child: Text(dsSentence(l10n.editDarts)),
         ),
         ElevatedButton(

@@ -120,6 +120,16 @@ class P2pMatchVideo {
   // racing its track creation and orphaning the native track.
   Future<void>? _connecting;
   bool _reportSent = false;
+  bool _resumePending = false;
+
+  /// Android can retain audio/ICE while its video codec or render surface
+  /// is lost in the background. Schedule a fresh generation even if the
+  /// old session still reports healthy; wait for signaling and swap spacing.
+  void onAppResumed() {
+    if (_stopped) return;
+    _resumePending = true;
+    _tick();
+  }
 
   bool get isRemoteReady => _remoteReady;
   bool get isLinkUp => _session?.isLinkUp ?? false;
@@ -379,19 +389,20 @@ class P2pMatchVideo {
   }
 
   /// Abandon the current session and negotiate generation N+1 as offerer.
-  Future<void> _rebuild(String reason, {bool fast = false}) async {
-    if (_stopped || _swapping) return;
+  bool _rebuild(String reason, {bool fast = false}) {
+    if (_stopped || _swapping) return false;
     final last = _lastRebuildAt;
     if (fast &&
         last != null &&
         DateTime.now().difference(last) < fastRebuildSpacing) {
-      return;
+      return false;
     }
     debugPrint('P2P: rebuilding ($reason) → generation ${_gen + 1}');
     _gen += 1;
     _rebuildCount++;
     _lastRebuildAt = DateTime.now();
-    await _swapSession(offerer: true);
+    _swapSession(offerer: true);
+    return true;
   }
 
   /// A fresh PeerConnection re-gathers candidates on the CURRENT network and
@@ -400,6 +411,8 @@ class P2pMatchVideo {
   /// camera restart (and no extra heat).
   Future<void> _swapSession({required bool offerer}) async {
     _swapping = true;
+    // A reconnect or peer offer can satisfy a pending resume too.
+    _resumePending = false;
     try {
       final old = _session;
       _session = null;
@@ -439,6 +452,10 @@ class P2pMatchVideo {
 
   void _tick() {
     if (_stopped || _swapping) return;
+    if (_resumePending && SocketService.isConnected &&
+        _rebuild('app_resumed', fast: true)) {
+      return;
+    }
     if (isLinkUp) return;
     final since = _impairedSince;
     if (since == null) return;

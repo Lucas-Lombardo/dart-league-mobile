@@ -47,6 +47,8 @@ class ReplayBufferPlugin: NSObject {
   private var lastFrameWallMs: Int64 = 0
   private var lastFramePts: Int64 = -1
   private var segmentIndex = 0
+  private var segmentWidth = 0
+  private var segmentHeight = 0
 
   // Match-proof retention: while non-nil, new segments land under
   // match_proof/<key>/, are never evicted, and each closed one appends a JSON
@@ -153,7 +155,11 @@ class ReplayBufferPlugin: NSObject {
       let now = self.nowMs()
       autoreleasepool {
         do {
-          if self.writer == nil || now - self.segmentStartWallMs >= Self.segmentMs {
+          // AVFoundation rotates the delivered BGRA frames with the device.
+          // A segment's pixel-buffer pool has fixed dimensions: reusing it
+          // after a landscape → portrait turn used to write past its height.
+          if self.writer == nil || width != self.segmentWidth || height != self.segmentHeight
+            || now - self.segmentStartWallMs >= Self.segmentMs {
             self.finishCurrentSegment()
             try self.startSegment(width: width, height: height, now: now)
           }
@@ -205,6 +211,8 @@ class ReplayBufferPlugin: NSObject {
     self.adaptor = adaptor
     self.currentURL = url
     self.segmentStartWallMs = now
+    self.segmentWidth = width
+    self.segmentHeight = height
     self.lastFramePts = -1
     self.lastFrameWallMs = now
   }
@@ -217,25 +225,11 @@ class ReplayBufferPlugin: NSObject {
     guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
           let buffer = pixelBuffer
     else { return }
-    CVPixelBufferLockBaseAddress(buffer, [])
-    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-    guard let dstBase = CVPixelBufferGetBaseAddress(buffer) else { return }
-    let dstStride = CVPixelBufferGetBytesPerRow(buffer)
-    let rowBytes = min(width * 4, min(bytesPerRow, dstStride))
-    bytes.withUnsafeBytes { (src: UnsafeRawBufferPointer) in
-      guard let srcBase = src.baseAddress else { return }
-      // Matching strides (the common 720p case): one plane-sized memcpy
-      // instead of `height` row copies.
-      if bytesPerRow == dstStride && rowBytes == bytesPerRow {
-        memcpy(dstBase, srcBase, min(bytes.count, height * dstStride))
-        return
-      }
-      for row in 0..<height {
-        let srcOffset = row * bytesPerRow
-        guard srcOffset + rowBytes <= bytes.count else { break }
-        memcpy(dstBase + row * dstStride, srcBase + srcOffset, rowBytes)
-      }
-    }
+    // Validate the actual destination too: a stale or unexpected pool must
+    // drop a frame, never turn a copy into native heap corruption.
+    guard ReplayFrameCopy.copyBGRA(bytes, width: width, height: height,
+                                  bytesPerRow: bytesPerRow, to: buffer)
+    else { return }
     // Wall-clock-derived pts (ms timescale) so a wall-clock capture window
     // maps straight onto segment times; strictly increasing for the writer.
     var pts = now - segmentStartWallMs
@@ -366,27 +360,7 @@ class ReplayBufferPlugin: NSObject {
       finish(nil, 0)
       return
     }
-    let composition = AVMutableComposition()
-    guard let track = composition.addMutableTrack(
-      withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-    else {
-      finish(nil, 0)
-      return
-    }
-    var cursor = CMTime.zero
-    for url in urls {
-      let asset = AVURLAsset(url: url)
-      guard let source = asset.tracks(withMediaType: .video).first else { continue }
-      track.preferredTransform = source.preferredTransform
-      do {
-        try track.insertTimeRange(
-          CMTimeRange(start: .zero, duration: asset.duration), of: source, at: cursor)
-        cursor = CMTimeAdd(cursor, asset.duration)
-      } catch {
-        NSLog("ReplayBuffer: insert failed: \(error)")
-      }
-    }
-    guard cursor > .zero,
+    guard let composition = ReplayComposition.firstRun(urls),
           let export = AVAssetExportSession(
             asset: composition, presetName: AVAssetExportPresetPassthrough)
     else {
@@ -394,7 +368,7 @@ class ReplayBufferPlugin: NSObject {
       return
     }
     // The composition cursor IS the clip's length — the concat is passthrough.
-    let durationMs = Int64((CMTimeGetSeconds(cursor) * 1000).rounded())
+    let durationMs = Int64((CMTimeGetSeconds(composition.duration) * 1000).rounded())
     let out = outURL ?? clipsDir.appendingPathComponent("clip_\(nowMs()).mp4")
     try? FileManager.default.removeItem(at: out)
     export.outputURL = out
@@ -491,7 +465,16 @@ class ReplayBufferPlugin: NSObject {
           })
       }
       // Give the last writer's finishWriting a moment to land on disk.
-      self.queue.asyncAfter(deadline: .now() + 0.3) { composeNext(0) }
+      self.queue.asyncAfter(deadline: .now() + 0.3) {
+        // Preserve all proof footage, with a separate clip for each continuous
+        // size/transform run. Each clip keeps its actual wall-clock start.
+        runs = runs.flatMap { run in
+          ReplayComposition.compatibleRuns(run.map { $0.url }).map { urls in
+            run.filter { urls.contains($0.url) }
+          }
+        }
+        composeNext(0)
+      }
     }
   }
 

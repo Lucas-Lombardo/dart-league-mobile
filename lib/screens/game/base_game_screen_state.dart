@@ -790,9 +790,12 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       // Pause the camera but DO NOT mark as backgrounded — a resumed event
       // immediately after an inactive-only blip should not trigger a full
       // socket/call re-sync.
-      cameraFrameService?.pause();
+      cameraFrameService?.pause(releaseCamera: false);
     } else if (state == AppLifecycleState.resumed && mounted) {
-      cameraFrameService?.resume();
+      final camera = cameraFrameService;
+      camera?.resume().then((_) {
+        if (mounted && identical(cameraFrameService, camera)) setState(() {});
+      });
       // Re-assert on every resume: a backgrounded/recreated activity can come
       // back without FLAG_KEEP_SCREEN_ON. Cheap no-op if already set.
       WakelockPlus.enable();
@@ -801,6 +804,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         return;
       }
       _wasPausedSinceLastResume = false;
+      if (!kIsWeb && Platform.isAndroid) p2pVideo?.onAppResumed();
       // App actually backgrounded — re-sync everything. A connect timeout used
       // to surface as an unhandled future error, and reconnectToMatch never
       // ran: recovery then depended entirely on the reconnect listener.
@@ -1775,19 +1779,21 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       icon: Icons.emoji_events_outlined,
       title: isCricket ? l10n.cricketAllClosedTitle : l10n.checkout,
       bottomBar: checkoutBar,
+      prominentActions: true,
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (isCricket) ...[
-          Text(l10n.cricketAllClosedBody, style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          Text(l10n.cricketAllClosedBody, style: gameDialogBodyStyle),
           const SizedBox(height: 6),
         ] else if (notation != null && notation.isNotEmpty) ...[
-          Text(l10n.youHitToFinish(notation), style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
+          Text(l10n.youHitToFinish(notation), style: gameDialogBodyStyle),
           const SizedBox(height: 6),
         ],
-        Text(l10n.isThisCorrect, style: AppTheme.caption),
+        Text(l10n.isThisCorrect, style: gameDialogHintStyle),
       ]),
       actionsBuilder: (ctx) => [
         OutlinedButton(
           onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          style: gameNeutralOutlineButtonStyle(),
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
@@ -1808,23 +1814,31 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       'score_one_remaining' => l10n.bustReasonOneRemaining,
       _ => l10n.bustReasonInvalid,
     };
+    final figures = pendingBustFigures(
+      currentScore: game.myScore,
+      currentRoundScore: game.currentRoundScore,
+      pendingData: game.pendingData,
+    );
     showGameDialog(
       context,
       accent: AppTheme.error,
       icon: Icons.error_outline_rounded,
       title: l10n.bust,
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(reasonText, style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary)),
-        const SizedBox(height: 6),
-        Text(l10n.confirmPassOrEdit, style: AppTheme.caption),
-      ]),
+      prominentActions: true,
+      content: GameBustDialogContent(
+        reason: reasonText,
+        remaining: figures?.remaining,
+        visitTotal: figures?.visitTotal,
+      ),
       actionsBuilder: (ctx) => [
         OutlinedButton(
           onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
+          style: gameNeutralOutlineButtonStyle(),
           child: Text(l10n.editDarts),
         ),
         ElevatedButton(
           onPressed: () { bustDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmBust(); },
+          style: gameFilledButtonStyle(AppTheme.primary),
           child: Text(l10n.confirmBustButton),
         ),
       ],
