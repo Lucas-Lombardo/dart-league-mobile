@@ -178,11 +178,8 @@ class LiveBadge extends StatelessWidget {
   }
 }
 
-/// 40 px "glass" circle over the camera feed (back, mic, camera flip, AI):
-/// white at 8 % with a hairline, a 19 px icon in [color] (light slate by
-/// default — pass a warning tint such as [AppTheme.opponentPink] for a muted
-/// mic). [active] is the live state (mic open): primary tint, primaryLight
-/// icon.
+/// Opaque 40 px camera control, readable even over a brightly lit board.
+/// The icon and border identify the active state without changing its size.
 class GameControlButton extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -205,20 +202,18 @@ class GameControlButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: active
-              ? AppTheme.primary.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.08),
+          color: AppTheme.gameBackground,
           shape: BoxShape.circle,
           border: Border.all(
             color: active
-                ? AppTheme.primaryLight.withValues(alpha: 0.5)
-                : _glassBorder,
+                ? AppTheme.primaryLight
+                : AppTheme.textTertiary,
           ),
         ),
         child: Icon(
           icon,
           color: active ? AppTheme.primaryLight : color,
-          size: 19,
+          size: 22,
         ),
       ),
     );
@@ -803,77 +798,68 @@ class _TurnFlagButtonState extends State<TurnFlagButton> {
   }
 }
 
-/// Center line of the turn header that alternates between "Votre moy. 62,4"
-/// and "Moy. adv. 55,1" every couple of seconds — one caption, the value in
-/// bold white. Shows just the available one when the other is still null.
-class AlternatingAverage extends StatefulWidget {
+/// Both averages stay visible on the existing center line. The fixed left /
+/// right order and player colours match the scores above, even before one
+/// player has completed a visit. No animation or interaction on the tripod.
+class TurnAverages extends StatelessWidget {
   final double? myAverage;
   final double? opponentAverage;
 
-  const AlternatingAverage({super.key, this.myAverage, this.opponentAverage});
-
-  @override
-  State<AlternatingAverage> createState() => _AlternatingAverageState();
-}
-
-class _AlternatingAverageState extends State<AlternatingAverage> {
-  Timer? _timer;
-  bool _showMine = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) return;
-      if (widget.myAverage != null && widget.opponentAverage != null) {
-        setState(() => _showMine = !_showMine);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  const TurnAverages({super.key, this.myAverage, this.opponentAverage});
 
   @override
   Widget build(BuildContext context) {
+    if (myAverage == null && opponentAverage == null) {
+      return const SizedBox.shrink();
+    }
     final l10n = AppLocalizations.of(context);
-    // Fall back to whichever side has data while the other is still null.
-    final bool mine =
-        widget.myAverage != null &&
-        (_showMine || widget.opponentAverage == null);
-    final double? value = mine ? widget.myAverage : widget.opponentAverage;
-    if (value == null) return const SizedBox.shrink();
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      child: Text.rich(
-        // Keying on the side makes AnimatedSwitcher cross-fade on each flip.
-        key: ValueKey(mine),
-        TextSpan(
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            height: 1,
-          ),
-          children: [
+    final mine = myAverage?.toStringAsFixed(1) ?? '—';
+    final opponent = opponentAverage?.toStringAsFixed(1) ?? '—';
+    return Semantics(
+      label: '${l10n.yourAvgLabel} $mine, ${l10n.opponentAvgLabel} $opponent',
+      excludeSemantics: true,
+      child: SizedBox(
+        height: 16,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text.rich(
             TextSpan(
-              text:
-                  '${dsSentence(mine ? l10n.yourAvgLabel : l10n.opponentAvgLabel)} ',
-            ),
-            TextSpan(
-              text: value.toStringAsFixed(1),
               style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                height: 1,
                 fontFeatures: [FontFeature.tabularFigures()],
               ),
+              children: [
+                TextSpan(
+                  text: '${dsSentence(l10n.avgLabel)} ',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                TextSpan(
+                  text: mine,
+                  style: const TextStyle(color: AppTheme.playerBlueBright),
+                ),
+                const TextSpan(
+                  text: '  |  ',
+                  style: TextStyle(
+                    color: AppTheme.textTertiary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                TextSpan(
+                  text: opponent,
+                  style: const TextStyle(color: AppTheme.opponentPinkBright),
+                ),
+              ],
             ),
-          ],
+            maxLines: 1,
+          ),
         ),
-        maxLines: 1,
       ),
     );
   }
@@ -882,7 +868,7 @@ class _AlternatingAverageState extends State<AlternatingAverage> {
 /// The score header above the camera, shared by both turns: my identity
 /// (blue, left) vs the opponent (rose, right), names in the identity colour,
 /// scores in plain white, and the series context in the middle (group label,
-/// two-coloured legs, alternating average). A 6 px identity dot next to the
+/// two-coloured legs, simultaneous averages). A 6 px identity dot next to the
 /// name says whose turn it is.
 class TurnScoreHeader extends StatelessWidget {
   final String myName;
@@ -986,6 +972,7 @@ class TurnScoreHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1020,52 +1007,66 @@ class TurnScoreHeader extends StatelessWidget {
                 ],
                 _nameRow(mine: true),
                 const SizedBox(height: 6),
-                Text('$myScore', style: _scoreStyle),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              children: [
-                if (showBadges)
-                  SizedBox(
-                    height: badgeRowHeight,
-                    child: Center(
-                      child: seriesTitle == null && roundNumber != null
-                          ? GameChip(
-                              text: l10n.roundChip(roundNumber!),
-                              color: AppTheme.textSecondary,
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ),
-                // Series mode: group label on the names line, two-coloured
-                // legs on the scores line (mirrors the two side columns).
-                if (seriesTitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    seriesTitle!.toUpperCase(),
-                    style: AppTheme.labelSmall.copyWith(height: 1),
-                  ),
-                  const SizedBox(height: 8),
-                  SeriesLegsScore(
-                    myLegs: myLegs,
-                    opponentLegs: opponentLegs,
-                    fontSize: 24,
-                  ),
-                ],
-                if (myAverage != null || opponentAverage != null) ...[
-                  SizedBox(height: seriesTitle != null ? 8 : 6),
-                  AlternatingAverage(
-                    myAverage: myAverage,
-                    opponentAverage: opponentAverage,
-                  ),
-                ],
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text('$myScore', style: _scoreStyle),
+                ),
               ],
             ),
           ),
           Expanded(
+            flex: 8,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                children: [
+                  if (showBadges)
+                    SizedBox(
+                      height: badgeRowHeight,
+                      child: Center(
+                        child: seriesTitle == null && roundNumber != null
+                            ? GameChip(
+                                text: l10n.roundChip(roundNumber!),
+                                color: AppTheme.textSecondary,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                  // Series mode: group label on the names line, two-coloured
+                  // legs on the scores line (mirrors the two side columns).
+                  if (seriesTitle != null) ...[
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        seriesTitle!.toUpperCase(),
+                        maxLines: 1,
+                        style: AppTheme.labelSmall.copyWith(height: 1),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SeriesLegsScore(
+                      myLegs: myLegs,
+                      opponentLegs: opponentLegs,
+                      fontSize: 24,
+                    ),
+                  ],
+                  if (myAverage != null || opponentAverage != null) ...[
+                    // The averages grow from 11 to 16 px; reclaim those 5 px
+                    // from the gap so the header and camera keep their height.
+                    SizedBox(height: seriesTitle != null ? 3 : 6),
+                    TurnAverages(
+                      myAverage: myAverage,
+                      opponentAverage: opponentAverage,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -1095,7 +1096,11 @@ class TurnScoreHeader extends StatelessWidget {
                 ],
                 _nameRow(mine: false),
                 const SizedBox(height: 6),
-                Text('$opponentScore', style: _scoreStyle),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text('$opponentScore', style: _scoreStyle),
+                ),
               ],
             ),
           ),
