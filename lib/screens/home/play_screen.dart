@@ -30,7 +30,7 @@ import '../../widgets/season_picker_sheet.dart';
 import 'seasons_screen.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../matchmaking/friend_select_screen.dart';
-import '../local_match/local_match_setup_screen.dart';
+import '../local_match/local_match_entry_screen.dart';
 import '../../models/user.dart';
 import '../../widgets/player_card.dart';
 import '../placement/placement_hub_screen.dart';
@@ -440,7 +440,7 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
   /// Hot-seat 1v1 — fully local, no stats, no backend. Free for everyone.
   void _openLocalMatch() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LocalMatchSetupScreen()),
+      MaterialPageRoute(builder: (_) => const LocalMatchEntryScreen()),
     );
   }
 

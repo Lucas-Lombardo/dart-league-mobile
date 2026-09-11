@@ -1,6 +1,141 @@
 import 'app_localizations.dart';
 
 class AppLocalizationsFr extends AppLocalizations {
+  // Local 501 referee mode.
+  @override
+  String get refereeClear => "Effacer";
+  @override
+  String get refereeBackspace => "Supprimer le dernier chiffre";
+  @override
+  String refereeDartCount(int count) =>
+      "$count fléchette${count > 1 ? 's' : ''}";
+  @override
+  String get refereeMode => "Mode arbitre";
+  @override
+  String get localScoringChoice => "Comment voulez-vous compter les points ?";
+  @override
+  String get localScoringChoiceHint =>
+      "Choisissez ce qui vous convient pour cette partie.";
+  @override
+  String get localSameBoard => "Sur une même cible";
+  @override
+  String get localAutomaticScoring => "Score automatique";
+  @override
+  String get localAutomaticDescription =>
+      "La caméra détecte les fléchettes et compte les points pour vous.";
+  @override
+  String get localAutomaticFeatures => "Caméra + IA · X01 et Cricket";
+  @override
+  String get refereeDescription =>
+      "Entrez le total de chaque volée. L’aide au calcul reste à portée de main.";
+  @override
+  String get refereeFeatures => "501 · Saisie manuelle · Sans caméra";
+  @override
+  String get localSharedPhone =>
+      "Deux joueurs, une cible.\nUn téléphone pour tenir le score.";
+  @override
+  String get refereePrepare => "Préparer la partie";
+  @override
+  String get refereeSetupHint =>
+      "Une cible, deux joueurs\nScores saisis à la main";
+  @override
+  String get refereeLegsToWin => "Legs à gagner";
+  @override
+  String get refereeFormatQuick => "Express";
+  @override
+  String get refereeFormatClassic => "Classique";
+  @override
+  String get refereeFormatLong => "Prolongé";
+  @override
+  String get refereeOneLegHint => "Un seul leg décide du match.";
+  @override
+  String get refereeFirstPlayer => "Qui commence ?";
+  @override
+  String get refereeFirstPlayerHint =>
+      "Après le bull, choisissez le premier joueur.\nLe premier joueur alterne à chaque leg.";
+  @override
+  String get refereeStraightOut => "Sortie libre";
+  @override
+  String get refereeStraightOutHint =>
+      "Atteignez zéro avec n’importe quel lancer.";
+  @override
+  String get refereeStartHint => "La saisie du total s’ouvre directement.";
+  @override
+  String get refereeTotalTab => "Total de la volée";
+  @override
+  String get refereeHelpTab => "Aide au calcul";
+  @override
+  String get refereeTotalHint => "Une seule saisie pour toute la volée";
+  @override
+  String get refereeAnnounceRemaining => "Reste à annoncer";
+  @override
+  String get refereeWaitingDart => "En attente";
+  @override
+  String get refereeValidateVisit => "Valider la volée";
+  @override
+  String get refereeClearDarts => "Effacer les fléchettes";
+  @override
+  String get refereeUndo => "Annuler la volée";
+  @override
+  String get refereeUndoShort => "Annuler";
+  @override
+  String get refereeUndoDone =>
+      "Volée annulée. Le score et le joueur sont restaurés.";
+  @override
+  String get refereeImpossibleTotal =>
+      "Saisissez un total réalisable de 0 à 180.";
+  @override
+  String get refereeDartsAfterEnd =>
+      "La volée est déjà terminée. Corrigez ou supprimez les fléchettes suivantes.";
+  @override
+  String get refereeDartsFull =>
+      "Touchez une fléchette pour la corriger, ou validez la volée.";
+  @override
+  String get refereeRecalculate => "Recommencer le calcul";
+  @override
+  String get refereeFinishTitle => "Confirmer la sortie";
+  @override
+  String get refereeFinishDoubleTitle => "Sortie sur un double ?";
+  @override
+  String get refereeFinishQuestion =>
+      "Confirmez le nombre de fléchettes lancées dans cette volée, ratés compris.";
+  @override
+  String get refereeFinishKnown =>
+      "Confirmez la sortie avec les fléchettes saisies.";
+  @override
+  String get refereeNoDouble => "Pas de double → Bust";
+  @override
+  String get refereeHistoryEmpty => "Aucune volée validée pour le moment.";
+  @override
+  String get refereeAverageHint => "Moyenne des volées validées du match";
+  @override
+  String get refereeMiss => "Raté";
+  @override
+  String get refereeBackToSetup => "Revenir aux réglages";
+  @override
+  String refereeFormatHint(int target, int maximum) =>
+      "Le premier à $target legs gagne · $maximum legs maximum.";
+  @override
+  String refereeLegStatus(int leg, int target) => "Leg $leg · $target à gagner";
+  @override
+  String refereeCalculation(int start, int points) =>
+      "$start au départ − $points comptés";
+  @override
+  String refereeDartPoints(int points) => "$points pts";
+  @override
+  String refereeDeleteDart(int number) => "Supprimer la fléchette $number";
+  @override
+  String refereeCorrectDart(int number) => "Corriger la fléchette $number";
+  @override
+  String refereeSwitchWarning(int points) =>
+      "Le total de $points points sera remplacé par les fléchettes que vous saisirez.";
+  @override
+  String refereeBustExplanation(String name, int score) =>
+      "Toute la volée est annulée. $name conserve $score points.";
+  @override
+  String refereeHistoryScore(int before, int points, int after) =>
+      "$before − $points → $after";
+
   @override
   String get appName => 'Dart Legends';
 

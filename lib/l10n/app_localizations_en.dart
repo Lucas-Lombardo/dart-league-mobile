@@ -1,6 +1,138 @@
 import 'app_localizations.dart';
 
 class AppLocalizationsEn extends AppLocalizations {
+  // Local 501 referee mode.
+  @override
+  String get refereeClear => "Clear";
+  @override
+  String get refereeBackspace => "Delete last digit";
+  @override
+  String refereeDartCount(int count) => "$count dart${count > 1 ? 's' : ''}";
+  @override
+  String get refereeMode => "Referee mode";
+  @override
+  String get localScoringChoice => "How would you like to keep score?";
+  @override
+  String get localScoringChoiceHint => "Choose how to score this match.";
+  @override
+  String get localSameBoard => "On the same board";
+  @override
+  String get localAutomaticScoring => "Automatic scoring";
+  @override
+  String get localAutomaticDescription =>
+      "The camera detects your darts and keeps score for you.";
+  @override
+  String get localAutomaticFeatures => "Camera + AI · X01 and Cricket";
+  @override
+  String get refereeDescription =>
+      "Enter each visit total, with a scoring helper whenever you need it.";
+  @override
+  String get refereeFeatures => "501 · Manual scoring · No camera";
+  @override
+  String get localSharedPhone =>
+      "Two players, one board.\nOne phone to keep score.";
+  @override
+  String get refereePrepare => "Set up the match";
+  @override
+  String get refereeSetupHint =>
+      "One board, two players\nManually entered scores";
+  @override
+  String get refereeLegsToWin => "Legs to win";
+  @override
+  String get refereeFormatQuick => "Quick";
+  @override
+  String get refereeFormatClassic => "Classic";
+  @override
+  String get refereeFormatLong => "Longer";
+  @override
+  String get refereeOneLegHint => "A single leg decides the match.";
+  @override
+  String get refereeFirstPlayer => "Who throws first?";
+  @override
+  String get refereeFirstPlayerHint =>
+      "Choose the first player after throwing for the bull.\nThe starting player alternates each leg.";
+  @override
+  String get refereeStraightOut => "Straight out";
+  @override
+  String get refereeStraightOutHint => "Reach zero with any dart.";
+  @override
+  String get refereeStartHint => "Start by entering visit totals.";
+  @override
+  String get refereeTotalTab => "Visit total";
+  @override
+  String get refereeHelpTab => "Scoring helper";
+  @override
+  String get refereeTotalHint => "One entry for the whole visit";
+  @override
+  String get refereeAnnounceRemaining => "Remaining to call";
+  @override
+  String get refereeWaitingDart => "Waiting";
+  @override
+  String get refereeValidateVisit => "Confirm visit";
+  @override
+  String get refereeClearDarts => "Clear darts";
+  @override
+  String get refereeUndo => "Undo visit";
+  @override
+  String get refereeUndoShort => "Undo";
+  @override
+  String get refereeUndoDone => "Visit undone. Score and player restored.";
+  @override
+  String get refereeImpossibleTotal =>
+      "Enter a possible visit total from 0 to 180.";
+  @override
+  String get refereeDartsAfterEnd =>
+      "This visit has already ended. Correct or remove the following darts.";
+  @override
+  String get refereeDartsFull =>
+      "Tap a dart to correct it, or confirm the visit.";
+  @override
+  String get refereeRecalculate => "Start a new calculation";
+  @override
+  String get refereeFinishTitle => "Confirm checkout";
+  @override
+  String get refereeFinishDoubleTitle => "Finished on a double?";
+  @override
+  String get refereeFinishQuestion =>
+      "Confirm how many darts were thrown in this visit, including misses.";
+  @override
+  String get refereeFinishKnown =>
+      "Confirm the checkout with the darts entered.";
+  @override
+  String get refereeNoDouble => "No double → Bust";
+  @override
+  String get refereeHistoryEmpty => "No visits confirmed yet.";
+  @override
+  String get refereeAverageHint =>
+      "Average score of confirmed visits in this match";
+  @override
+  String get refereeMiss => "Miss";
+  @override
+  String get refereeBackToSetup => "Back to setup";
+  @override
+  String refereeFormatHint(int target, int maximum) =>
+      "First to $target legs wins · $maximum legs maximum.";
+  @override
+  String refereeLegStatus(int leg, int target) => "Leg $leg · First to $target";
+  @override
+  String refereeCalculation(int start, int points) =>
+      "$start at start − $points scored";
+  @override
+  String refereeDartPoints(int points) => "$points pts";
+  @override
+  String refereeDeleteDart(int number) => "Delete dart $number";
+  @override
+  String refereeCorrectDart(int number) => "Correct dart $number";
+  @override
+  String refereeSwitchWarning(int points) =>
+      "$points points will be replaced by the darts you enter.";
+  @override
+  String refereeBustExplanation(String name, int score) =>
+      "The whole visit is cancelled. $name keeps $score points.";
+  @override
+  String refereeHistoryScore(int before, int points, int after) =>
+      "$before − $points → $after";
+
   @override
   String get appName => 'Dart Legends';
 

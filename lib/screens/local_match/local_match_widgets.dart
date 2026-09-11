@@ -166,6 +166,7 @@ class LocalMatchEndView extends StatelessWidget {
   final List<Widget> stats;
   final VoidCallback onRematch;
   final VoidCallback onBack;
+  final String? backLabel;
 
   const LocalMatchEndView({
     super.key,
@@ -175,6 +176,7 @@ class LocalMatchEndView extends StatelessWidget {
     this.stats = const [],
     required this.onRematch,
     required this.onBack,
+    this.backLabel,
   });
 
   @override
@@ -204,7 +206,7 @@ class LocalMatchEndView extends StatelessWidget {
               foregroundColor: AppTheme.textSecondary,
               textStyle: gameButtonTextStyle.copyWith(fontSize: 14),
             ),
-            child: Text(dsSentence(l10n.backToHome)),
+            child: Text(backLabel ?? dsSentence(l10n.backToHome)),
           ),
         ),
       ],

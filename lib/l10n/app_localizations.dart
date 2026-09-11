@@ -3,6 +3,65 @@ import 'app_localizations_en.dart';
 import 'app_localizations_fr.dart';
 
 abstract class AppLocalizations {
+  // Local 501 referee mode.
+  String get refereeClear;
+  String get refereeBackspace;
+  String refereeDartCount(int count);
+  String get refereeMode;
+  String get localScoringChoice;
+  String get localScoringChoiceHint;
+  String get localSameBoard;
+  String get localAutomaticScoring;
+  String get localAutomaticDescription;
+  String get localAutomaticFeatures;
+  String get refereeDescription;
+  String get refereeFeatures;
+  String get localSharedPhone;
+  String get refereePrepare;
+  String get refereeSetupHint;
+  String get refereeLegsToWin;
+  String get refereeFormatQuick;
+  String get refereeFormatClassic;
+  String get refereeFormatLong;
+  String get refereeOneLegHint;
+  String get refereeFirstPlayer;
+  String get refereeFirstPlayerHint;
+  String get refereeStraightOut;
+  String get refereeStraightOutHint;
+  String get refereeStartHint;
+  String get refereeTotalTab;
+  String get refereeHelpTab;
+  String get refereeTotalHint;
+  String get refereeAnnounceRemaining;
+  String get refereeWaitingDart;
+  String get refereeValidateVisit;
+  String get refereeClearDarts;
+  String get refereeUndo;
+  String get refereeUndoShort;
+  String get refereeUndoDone;
+  String get refereeImpossibleTotal;
+  String get refereeDartsAfterEnd;
+  String get refereeDartsFull;
+  String get refereeRecalculate;
+  String get refereeFinishTitle;
+  String get refereeFinishDoubleTitle;
+  String get refereeFinishQuestion;
+  String get refereeFinishKnown;
+  String get refereeNoDouble;
+  String get refereeHistoryEmpty;
+  String get refereeAverageHint;
+  String get refereeMiss;
+  String get refereeBackToSetup;
+  String refereeFormatHint(int target, int maximum);
+  String refereeLegStatus(int leg, int target);
+  String refereeCalculation(int start, int points);
+  String refereeDartPoints(int points);
+  String refereeDeleteDart(int number);
+  String refereeCorrectDart(int number);
+  String refereeSwitchWarning(int points);
+  String refereeBustExplanation(String name, int score);
+  String refereeHistoryScore(int before, int points, int after);
+
   static AppLocalizations of(BuildContext context) {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
