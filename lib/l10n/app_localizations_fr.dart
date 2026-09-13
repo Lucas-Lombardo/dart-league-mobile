@@ -2452,6 +2452,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get friendlyX01Hint => 'Le classique — 501, finish sur un double';
 
   @override
+  String get opponentNeedsUpdateFriendly => 'Ton ami doit mettre à jour l’application pour jouer avec ces réglages.';
+
+  @override
+  String get proposeFriendlyBo1 => 'Proposer un 501 · BO1';
+
+  @override
   String get opponentNeedsUpdateCricket =>
       'Ton ami doit mettre à jour l\'app pour jouer au Cricket.';
 

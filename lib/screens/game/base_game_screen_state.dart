@@ -85,11 +85,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   String? get replayFormatLabel => null;
 
   String _replayDefaultFormat(dynamic game) {
-    // isFriendly only turns true when game_won lands (the provider derives
-    // it from that payload), so it is useless during the match — a friendly
-    // clip was burned "RANKED" (2026-08-05). Mid-match the reliable signal
-    // is the series: ranked is BO3-only, so no series = friendly.
     try {
+      if (game.isFriendly == true) {
+        return game.bestOf > 1 ? 'FRIENDLY · BO${game.bestOf}' : 'FRIENDLY';
+      }
       if (game.isRankedSeries == true) return 'RANKED · BO${game.bestOf}';
     } catch (_) {}
     return 'FRIENDLY';

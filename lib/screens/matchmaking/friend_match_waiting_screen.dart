@@ -92,7 +92,7 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen> {
 
   String _statusText(AppLocalizations l10n, MatchInviteProvider p) {
     if (_expired) return l10n.inviteCancelledMsg;
-    if (_needsUpdate(p)) return l10n.opponentNeedsUpdateCricket;
+    if (_needsUpdate(p)) return l10n.opponentNeedsUpdateFriendly;
     if (p.outgoingResolved != null) return l10n.inviteDeclinedMsg;
     if (p.lastError != null) {
       switch (p.lastError) {
@@ -139,13 +139,22 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen> {
                   title: l10n.friendlyMatchLabel,
                   showBack: true,
                   onBack: resolved ? _back : _cancelAndLeave,
-                  actions: [
-                    if (isCricket)
-                      DsPill(
-                        label:
-                            '${l10n.cricketLabel} · ${p.outgoingGameMode == 'cricket_noscore' ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}',
-                        color: AppTheme.success,
-                      ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    DsPill(
+                      label: isCricket
+                          ? '${l10n.cricketLabel} · ${p.outgoingGameMode == 'cricket_noscore' ? l10n.cricketNoScoreLabel : l10n.cricketScoreLabel}'
+                          : '501',
+                      color: AppTheme.success,
+                    ),
+                    DsPill(label: 'BO${p.outgoingBestOf}', color: AppTheme.primary),
                   ],
                 ),
               ),
@@ -211,7 +220,7 @@ class _FriendMatchWaitingScreenState extends State<FriendMatchWaitingScreen> {
                         height: 52,
                         child: ElevatedButton(
                           onPressed: _retryAsX01,
-                          child: Text(dsSentence(l10n.proposeX01Instead)),
+                          child: Text(dsSentence(l10n.proposeFriendlyBo1)),
                         ),
                       ),
                       const SizedBox(height: 10),

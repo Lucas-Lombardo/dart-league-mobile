@@ -101,6 +101,7 @@ class SocketService {
   // invite_friend + the cricket engine). Gates the mode picker: against an
   // older backend the sheet is skipped and every invite stays X01.
   static bool _supportsCricket = false;
+  static bool _supportsFriendlySeries = false;
 
   // Whether the server accepts spectate_match / leave_spectate and serves
   // GET /spectate/live. Gates the whole "En direct" surface: against an older
@@ -147,6 +148,7 @@ class SocketService {
   /// Whether the server this socket is authenticated against can run cricket
   /// friendly matches. See [_supportsCricket].
   static bool get supportsCricket => _supportsCricket;
+  static bool get supportsFriendlySeries => _supportsFriendlySeries;
 
   /// Whether the server this socket is authenticated against supports the
   /// spectator mode. See [_supportsSpectate].
@@ -262,6 +264,7 @@ class SocketService {
       debugPrint('SocketService: server supportsCricket=$supportsCricket');
     }
     _supportsCricket = supportsCricket;
+    _supportsFriendlySeries = data is Map && data['supportsFriendlySeries'] == true;
 
     final supportsSpectate = data is Map && data['supportsSpectate'] == true;
     if (supportsSpectate != _supportsSpectate) {
@@ -313,6 +316,7 @@ class SocketService {
       'supportsRtcV2': RtcFramesService.isSupported,
       'supportsTurnReports': ReplayBufferService.isSupported,
       'supportsCricket': true,
+      'supportsFriendlySeries': true,
     });
   }
 
@@ -424,6 +428,7 @@ class SocketService {
               'supportsRtcV2': RtcFramesService.isSupported,
               'supportsTurnReports': ReplayBufferService.isSupported,
               'supportsCricket': true,
+              'supportsFriendlySeries': true,
             })
             .build(),
       );
@@ -459,6 +464,7 @@ class SocketService {
         _supportsRtcV2 = false;
         _supportsTurnReports = false;
         _supportsCricket = false;
+        _supportsFriendlySeries = false;
         _supportsSpectate = false;
         _onDisconnectHandler?.call();
         for (final l in List.of(_disconnectListeners)) {
@@ -584,6 +590,7 @@ class SocketService {
     _supportsChat = false;
     _supportsRtcV2 = false;
     _supportsCricket = false;
+    _supportsFriendlySeries = false;
     _supportsSpectate = false;
     if (_socket != null) {
       _socket!.disconnect();
@@ -643,6 +650,7 @@ class SocketService {
     _sessionUserId = null;
     _lastIdentityRebuild = null;
     _supportsDartAck = false;
+    _supportsFriendlySeries = false;
     _supportsChat = false;
     _supportsRtcV2 = false;
     _supportsSpectate = false;

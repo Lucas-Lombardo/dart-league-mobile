@@ -41,31 +41,29 @@ class FriendlyMatchLauncher {
       }
     }
 
-    // Game mode picker — only when the backend can run cricket. Against an
-    // older server the sheet is skipped and the flow stays exactly as before
-    // (X01, payload untouched). The flag only lands with the server's
-    // `authenticated` handshake (reset to false on every disconnect), so wait
-    // for it like the BO3 opt-in does — otherwise a tap right after a cold
-    // start or a reconnect silently skips the sheet on a capable server. On
-    // connection failure we fall through with the flag false: same degraded
-    // X01 path as before, and the invite itself will surface the error.
+    // Capabilities arrive with authentication, including after reconnect.
     try {
       await SocketService.ensureAuthenticated();
     } catch (_) {}
     if (!context.mounted) return;
-    String gameMode = 'x01';
-    if (SocketService.supportsCricket) {
-      final choice = await showModalBottomSheet<String>(
-        context: context,
-        backgroundColor: AppTheme.surface,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (_) => _FriendlyModeSheet(friendUsername: friend.username),
-      );
+    var config = (gameMode: 'x01', bestOf: 1);
+    if (SocketService.supportsCricket || SocketService.supportsFriendlySeries) {
+      final choice =
+          await showModalBottomSheet<({String gameMode, int bestOf})>(
+            context: context,
+            backgroundColor: AppTheme.surface,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (_) => FriendlyMatchSetupSheet(
+              friendUsername: friend.username,
+              supportsCricket: SocketService.supportsCricket,
+              supportsSeries: SocketService.supportsFriendlySeries,
+            ),
+          );
       if (choice == null || !context.mounted) return;
-      gameMode = choice;
+      config = choice;
     }
 
     final inviteProvider = context.read<MatchInviteProvider>();
@@ -79,7 +77,8 @@ class FriendlyMatchLauncher {
     inviteProvider.invite(
       friend.id,
       friendUsername: friend.username,
-      gameMode: gameMode,
+      gameMode: config.gameMode,
+      bestOf: config.bestOf,
     );
     if (context.mounted) {
       AppNavigator.toScreen(
@@ -90,19 +89,25 @@ class FriendlyMatchLauncher {
   }
 
   static void _showPremiumRequiredDialog(
-      BuildContext context, AppLocalizations l10n) {
+    BuildContext context,
+    AppLocalizations l10n,
+  ) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: Text(l10n.premium, style: const TextStyle(color: Colors.white)),
-        content: Text(l10n.friendlyMatchPremiumRequired,
-            style: const TextStyle(color: AppTheme.textSecondary)),
+        content: Text(
+          l10n.friendlyMatchPremiumRequired,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(l10n.cancel,
-                style: const TextStyle(color: AppTheme.textSecondary)),
+            child: Text(
+              l10n.cancel,
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -126,13 +131,17 @@ class FriendlyMatchLauncher {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surface,
-        content: Text(message,
-            style: const TextStyle(color: AppTheme.textSecondary)),
+        content: Text(
+          message,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(l10n.close,
-                style: const TextStyle(color: AppTheme.primary)),
+            child: Text(
+              l10n.close,
+              style: const TextStyle(color: AppTheme.primary),
+            ),
           ),
         ],
       ),
@@ -140,26 +149,33 @@ class FriendlyMatchLauncher {
   }
 }
 
-/// "Which game?" sheet shown between the premium gate and the camera setup.
-/// Pops 'x01' | 'cricket_score' | 'cricket_noscore'; X01 first and one tap,
-/// so the historical flow stays two taps for the player in a hurry.
-class _FriendlyModeSheet extends StatefulWidget {
+/// Shared invitation setup: game mode and best-of format before the camera gate.
+class FriendlyMatchSetupSheet extends StatefulWidget {
   final String friendUsername;
+  final bool supportsCricket;
+  final bool supportsSeries;
 
-  const _FriendlyModeSheet({required this.friendUsername});
+  const FriendlyMatchSetupSheet({
+    super.key,
+    required this.friendUsername,
+    required this.supportsCricket,
+    required this.supportsSeries,
+  });
 
   @override
-  State<_FriendlyModeSheet> createState() => _FriendlyModeSheetState();
+  State<FriendlyMatchSetupSheet> createState() => _FriendlyModeSheetState();
 }
 
-class _FriendlyModeSheetState extends State<_FriendlyModeSheet> {
+class _FriendlyModeSheetState extends State<FriendlyMatchSetupSheet> {
   bool _noScore = false;
+  bool _cricket = false;
+  int _bestOf = 1;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -173,41 +189,94 @@ class _FriendlyModeSheetState extends State<_FriendlyModeSheet> {
             const SizedBox(height: 6),
             Text(
               l10n.challengeChooseGame,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              style: const TextStyle(color: AppTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            _optionCard(
-              label: '501',
-              hint: l10n.friendlyX01Hint,
-              color: AppTheme.primary,
-              onTap: () {
-                HapticService.mediumImpact();
-                Navigator.of(context).pop('x01');
-              },
-            ),
-            const SizedBox(height: 12),
-            _optionCard(
-              label: l10n.cricketLabel,
-              hint: l10n.cricketSetupHint,
-              color: AppTheme.success,
-              onTap: () {
-                HapticService.mediumImpact();
-                Navigator.of(context)
-                    .pop(_noScore ? 'cricket_noscore' : 'cricket_score');
-              },
-              extra: Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Row(
-                  children: [
-                    _variantChip(l10n.cricketScoreLabel, !_noScore,
-                        () => setState(() => _noScore = false)),
-                    const SizedBox(width: 6),
-                    _variantChip(l10n.cricketNoScoreLabel, _noScore,
-                        () => setState(() => _noScore = true)),
-                  ],
+            Row(
+              children: [
+                _choice(
+                  '501',
+                  !_cricket,
+                  () => setState(() => _cricket = false),
                 ),
+                if (widget.supportsCricket) ...[
+                  const SizedBox(width: 8),
+                  _choice(
+                    l10n.cricketLabel,
+                    _cricket,
+                    () => setState(() => _cricket = true),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _cricket ? l10n.cricketSetupHint : l10n.friendlyX01Hint,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 13,
               ),
+            ),
+            if (_cricket) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _choice(
+                    l10n.cricketScoreLabel,
+                    !_noScore,
+                    () => setState(() => _noScore = false),
+                  ),
+                  const SizedBox(width: 8),
+                  _choice(
+                    l10n.cricketNoScoreLabel,
+                    _noScore,
+                    () => setState(() => _noScore = true),
+                  ),
+                ],
+              ),
+            ],
+            if (widget.supportsSeries) ...[
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  for (final bestOf in const [1, 3, 5, 7]) ...[
+                    if (bestOf != 1) const SizedBox(width: 8),
+                    _choice(
+                      'BO$bestOf',
+                      _bestOf == bestOf,
+                      () => setState(() => _bestOf = bestOf),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                l10n.firstToNLegs((_bestOf ~/ 2) + 1),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onPressed: () {
+                HapticService.mediumImpact();
+                Navigator.of(context).pop((
+                  gameMode: _cricket
+                      ? (_noScore ? 'cricket_noscore' : 'cricket_score')
+                      : 'x01',
+                  bestOf: _bestOf,
+                ));
+              },
+              child: Text(l10n.continueButton),
             ),
           ],
         ),
@@ -215,86 +284,35 @@ class _FriendlyModeSheetState extends State<_FriendlyModeSheet> {
     );
   }
 
-  Widget _optionCard({
-    required String label,
-    required String hint,
-    required Color color,
-    required VoidCallback onTap,
-    Widget? extra,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color, width: 1.5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.play_arrow_rounded, color: color),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                hint,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
+  Widget _choice(String label, bool selected, VoidCallback onTap) {
+    return Expanded(
+      child: Semantics(
+        selected: selected,
+        button: true,
+        child: Material(
+          color: selected
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : AppTheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected ? AppTheme.primary : AppTheme.surfaceLight,
                 ),
               ),
-              if (extra != null) extra,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _variantChip(String label, bool selected, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          HapticService.lightImpact();
-          onTap();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppTheme.success.withValues(alpha: 0.25)
-                : AppTheme.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: selected
-                  ? AppTheme.success
-                  : AppTheme.surfaceLight.withValues(alpha: 0.8),
-            ),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? Colors.white : AppTheme.textSecondary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ),

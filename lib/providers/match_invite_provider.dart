@@ -15,12 +15,14 @@ class IncomingInvite {
   /// 'x01' (default) | 'cricket_score' | 'cricket_noscore'. Additive server
   /// field — an old backend never sends it, so it falls back to x01.
   final String gameMode;
+  final int bestOf;
 
   IncomingInvite({
     required this.inviteId,
     required this.inviterId,
     required this.inviterUsername,
     this.gameMode = 'x01',
+    this.bestOf = 1,
   });
 
   bool get isCricket => gameMode.startsWith('cricket');
@@ -46,6 +48,7 @@ class MatchInviteProvider with ChangeNotifier {
   String? _outgoingFriendId;
   String? _outgoingFriendUsername;
   String _outgoingGameMode = 'x01';
+  int _outgoingBestOf = 1;
   bool _outgoingWaiting = false;
   String? _outgoingResolved; // 'declined' once the friend declines / accept fails
 
@@ -67,6 +70,7 @@ class MatchInviteProvider with ChangeNotifier {
   bool get outgoingWaiting => _outgoingWaiting;
   String? get outgoingFriendUsername => _outgoingFriendUsername;
   String get outgoingGameMode => _outgoingGameMode;
+  int get outgoingBestOf => _outgoingBestOf;
   String? get outgoingResolved => _outgoingResolved;
   bool get friendlyMatchFound => _friendlyMatchFound;
   String? get matchId => _matchId;
@@ -125,6 +129,7 @@ class MatchInviteProvider with ChangeNotifier {
     _outgoingFriendId = null;
     _outgoingFriendUsername = null;
     _outgoingGameMode = 'x01';
+    _outgoingBestOf = 1;
     _outgoingWaiting = false;
     _outgoingResolved = null;
     _friendlyMatchFound = false;
@@ -159,6 +164,7 @@ class MatchInviteProvider with ChangeNotifier {
     String friendId, {
     String? friendUsername,
     String gameMode = 'x01',
+    int bestOf = 1,
   }) async {
     try {
       await SocketService.ensureConnected();
@@ -169,6 +175,7 @@ class MatchInviteProvider with ChangeNotifier {
       _outgoingFriendId = friendId;
       _outgoingFriendUsername = friendUsername;
       _outgoingGameMode = gameMode;
+      _outgoingBestOf = bestOf;
       _outgoingResolved = null;
       _lastError = null;
       // The previous invite's id is dead the moment we re-send (the server
@@ -183,6 +190,7 @@ class MatchInviteProvider with ChangeNotifier {
       final isCricket = gameMode.startsWith('cricket');
       SocketService.emit('invite_friend', {
         'friendId': friendId,
+        if (bestOf > 1) 'bestOf': bestOf,
         if (isCricket) 'gameMode': 'cricket',
         if (isCricket)
           'cricketScoreMode':
@@ -232,6 +240,7 @@ class MatchInviteProvider with ChangeNotifier {
     _outgoingFriendId = null;
     _outgoingFriendUsername = null;
     _outgoingGameMode = 'x01';
+    _outgoingBestOf = 1;
     _outgoingResolved = null;
     // A failed invite must not leak its error into the next one — the waiting
     // screen would open already "resolved".
@@ -274,6 +283,7 @@ class MatchInviteProvider with ChangeNotifier {
       inviterId: inviterId,
       inviterUsername: data['inviterUsername'] as String? ?? 'A friend',
       gameMode: data['gameMode'] as String? ?? 'x01',
+      bestOf: data['bestOf'] as int? ?? 1,
     );
     HapticService.heavyImpact();
     notifyListeners();

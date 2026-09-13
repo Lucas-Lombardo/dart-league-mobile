@@ -911,6 +911,8 @@ abstract class AppLocalizations {
   String get challengeChooseGame;
   String get friendlyX01Hint;
   String get opponentNeedsUpdateCricket;
+  String get opponentNeedsUpdateFriendly;
+  String get proposeFriendlyBo1;
   String get proposeX01Instead;
   String get matchAverageLabel;
   String get overallBotAverageLabel;

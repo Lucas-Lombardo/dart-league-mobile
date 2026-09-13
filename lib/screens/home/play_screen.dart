@@ -498,7 +498,7 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     return _primarySlot(
       icon: Icons.sports_esports_outlined,
       title: l10n.joinMatch,
-      subtitle: invite.isCricket ? '$hint · ${l10n.cricketLabel}' : hint,
+      subtitle: '$hint · ${invite.isCricket ? l10n.cricketLabel : '501'} · BO${invite.bestOf}',
       onTap: () => _onFriendInviteTapped(invite),
     );
   }
@@ -516,7 +516,7 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
         border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
       ),
       child: Text(
-        '${l10n.cricketLabel} · $variant'.toUpperCase(),
+        '${invite.isCricket ? '${l10n.cricketLabel} · $variant' : '501'} · BO${invite.bestOf}'.toUpperCase(),
         style: const TextStyle(
           color: AppTheme.success,
           fontSize: 10,
@@ -546,7 +546,7 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (invite.isCricket) ...[
+            ...[
               _inviteModeChip(invite, l10n),
               const SizedBox(height: 10),
             ],

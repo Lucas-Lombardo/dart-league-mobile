@@ -523,6 +523,7 @@ class GameProvider with ChangeNotifier {
     // the between-legs screen still reads it after ranked_next_leg).
     _legWinnerId = null;
     _gameStarted = true;
+    _isFriendly = data['isFriendly'] == true;
     _currentPlayerId = data['currentPlayerId'] as String?;
 
     // Capture the first thrower for the match (stable for scoreboard
@@ -563,6 +564,7 @@ class GameProvider with ChangeNotifier {
   /// older backend changes nothing).
   void _applySeriesFields(dynamic data) {
     if (data is! Map) return;
+    if (data['isFriendly'] is bool) _isFriendly = data['isFriendly'] as bool;
     final seriesId = data['seriesId'] as String?;
     if (seriesId == null) return;
     // A NEW series must never inherit the previous one's end-state: the
@@ -759,7 +761,7 @@ class GameProvider with ChangeNotifier {
   /// When the opponent also requests, the server starts a new friendly match
   /// (with the starter swapped) and a friendly_match_found event arrives.
   void requestRematch() {
-    if (!_isFriendly || _matchId == null) return;
+    if (!_isFriendly || _matchId == null || !matchOver) return;
     _rematchWaiting = true;
     _rematchDeclined = false;
     notifyListeners();
@@ -896,6 +898,7 @@ class GameProvider with ChangeNotifier {
   void _handleRankedMatchWon(dynamic data) {
     if (data is! Map || _isForeignSeries(data)) return;
     debugPrint('GAME DEBUG: ranked_match_won received: $data');
+    if (data['isFriendly'] == true) _isFriendly = true;
     _seriesId ??= data['seriesId'] as String?;
     _seriesWinnerId = data['winnerId'] as String? ?? _seriesWinnerId;
     _winnerId = _seriesWinnerId ?? _winnerId;
@@ -919,6 +922,10 @@ class GameProvider with ChangeNotifier {
   void _resetLegState() {
     _myScore = 501;
     _opponentScore = 501;
+    _cricketP1Marks = {};
+    _cricketP2Marks = {};
+    _cricketP1Points = 0;
+    _cricketP2Points = 0;
     _dartsThrown = 0;
     _gameEnded = false;
     _gameStarted = false;
@@ -972,6 +979,7 @@ class GameProvider with ChangeNotifier {
         _seriesId != null &&
         data['seriesId'] == _seriesId;
     if (_isForeignMatch(data) && !isOurSeriesEnd) return;
+    if (data['isFriendly'] == true) _isFriendly = true;
 
     // A BO3 timeout/disconnect/decision ends the whole series server-side;
     // the payload says so. Handle it even if the leg already ended locally
@@ -1150,6 +1158,7 @@ class GameProvider with ChangeNotifier {
     }
 
     // Mark game as ended
+    if (data['isFriendly'] == true) _isFriendly = true;
     _gameEnded = true;
     _winnerId = winnerId;
     // A forfeit on a BO3 leg loses the whole series (server policy).

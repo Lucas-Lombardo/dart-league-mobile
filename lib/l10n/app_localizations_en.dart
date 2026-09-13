@@ -2426,6 +2426,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get friendlyX01Hint => 'The classic — 501, double out';
 
   @override
+  String get opponentNeedsUpdateFriendly => 'Your friend needs to update the app to play with these settings.';
+
+  @override
+  String get proposeFriendlyBo1 => 'Offer a 501 · BO1';
+
+  @override
   String get opponentNeedsUpdateCricket =>
       'Your friend needs to update the app to play Cricket.';
 
