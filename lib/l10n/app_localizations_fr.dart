@@ -1,6 +1,31 @@
 import 'app_localizations.dart';
 
 class AppLocalizationsFr extends AppLocalizations {
+  @override
+  String get checkoutMicOn => 'Micro activé';
+  @override
+  String get checkoutMicOff => 'Micro coupé';
+  @override
+  String get checkoutEnableMic => 'Activer mon micro';
+  @override
+  String get checkoutDisableMic => 'Couper mon micro';
+  @override
+  String get checkoutWaiting => 'Vérifie sa victoire';
+  @override
+  String get checkoutCorrecting => 'Corrige ses fléchettes';
+  @override
+  String get checkoutOpponentHint => 'Peut confirmer ou corriger sa dernière fléchette.';
+  @override
+  String get checkoutCorrectionHint => 'La validation automatique est annulée.';
+  @override
+  String get checkoutAuto => 'Confirmation automatique dans';
+  @override
+  String get checkoutCallEnds => 'Coupure de l’appel dans';
+  @override
+  String get checkoutOwnAuto => 'Sans correction, votre victoire sera validée automatiquement.';
+  @override
+  String get checkoutOtherAuto => 'Sans correction, la victoire adverse sera validée automatiquement.';
+
   // Local 501 referee mode.
   @override
   String get refereeClear => "Effacer";

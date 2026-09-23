@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -24,11 +23,20 @@ class ReplayCapture {
   final int? durationMs;
 }
 
+/// A partial native export must never authorize deleting the source footage.
+class ReplayProofBatch {
+  const ReplayProofBatch(this.clips, {required this.complete});
+  final List<ReplayCapture> clips;
+  final bool complete;
+}
+
 class ReplayBufferService {
   static const _channel = MethodChannel('com.dartrivals/replay_buffer');
 
   static bool get isSupported =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   static bool _armed = false;
   static bool get armed => _armed;
@@ -89,20 +97,23 @@ class ReplayBufferService {
     if (!_armed || !_myTurn || !isSupported) return;
     if (_inFlight >= 2) return;
     _inFlight++;
-    _channel.invokeMethod('pushFrame', {
-      'bytes': bytes,
-      'width': width,
-      'height': height,
-      'rotation': rotationDegrees,
-      'format': format,
-      'bytesPerRow': ?bytesPerRow,
-    }).catchError((Object e) {
-      if (!_pushErrorLogged) {
-        _pushErrorLogged = true;
-        debugPrint('[ReplayBufferService] pushFrame failed: $e');
-      }
-      return null;
-    }).whenComplete(() => _inFlight--);
+    _channel
+        .invokeMethod('pushFrame', {
+          'bytes': bytes,
+          'width': width,
+          'height': height,
+          'rotation': rotationDegrees,
+          'format': format,
+          'bytesPerRow': ?bytesPerRow,
+        })
+        .catchError((Object e) {
+          if (!_pushErrorLogged) {
+            _pushErrorLogged = true;
+            debugPrint('[ReplayBufferService] pushFrame failed: $e');
+          }
+          return null;
+        })
+        .whenComplete(() => _inFlight--);
   }
 
   /// Cut one clip covering [from, to] (bounds snap to segment edges, so the
@@ -121,9 +132,11 @@ class ReplayBufferService {
     int? rotationDegrees,
   }) async {
     if (!isSupported) return null;
-    debugPrint('[ReplayBufferService] cutting clip, orientation hint '
-        '${rotationDegrees ?? "(segment stamps)"} — '
-        '${CameraFrameService.rotationDiagnostics}');
+    debugPrint(
+      '[ReplayBufferService] cutting clip, orientation hint '
+      '${rotationDegrees ?? "(segment stamps)"} — '
+      '${CameraFrameService.rotationDiagnostics}',
+    );
     try {
       final res = await _channel.invokeMethod<Map>('capture', {
         'fromMs': from.millisecondsSinceEpoch,
@@ -195,19 +208,19 @@ class ReplayBufferService {
   /// ring is turn-gated, so segment gaps are turn boundaries). Works during
   /// the match, after [stop], and after an app relaunch. Empty list when
   /// nothing was retained.
-  static Future<List<ReplayCapture>> cutRuns(
+  static Future<ReplayProofBatch> cutRuns(
     String key, {
     int? rotationDegrees,
   }) async {
-    if (!isSupported) return const [];
+    if (!isSupported) return const ReplayProofBatch([], complete: false);
     try {
       final res = await _channel.invokeMethod<Map>('cutRuns', {
         'key': key,
         'rotation': ?rotationDegrees,
       });
       final clips = res?['clips'];
-      if (clips is! List) return const [];
-      return [
+      if (clips is! List) return const ReplayProofBatch([], complete: false);
+      return ReplayProofBatch([
         for (final clip in clips)
           if (clip is Map && clip['path'] is String)
             ReplayCapture(
@@ -215,10 +228,10 @@ class ReplayBufferService {
               (clip['startWallMs'] as num?)?.toInt() ?? 0,
               (clip['durationMs'] as num?)?.toInt(),
             ),
-      ];
+      ], complete: res?['complete'] == true);
     } catch (e) {
       debugPrint('[ReplayBufferService] cutRuns failed: $e');
-      return const [];
+      return const ReplayProofBatch([], complete: false);
     }
   }
 

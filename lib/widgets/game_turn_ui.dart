@@ -2174,6 +2174,7 @@ Widget gameDialogFrame({
   required List<Widget> actions,
   Widget? bottomBar,
   bool prominentActions = false,
+  Widget? titleTrailing,
 }) {
   final titleRow = Row(
     children: [
@@ -2191,6 +2192,7 @@ Widget gameDialogFrame({
               : AppTheme.titleLarge,
         ),
       ),
+      if (titleTrailing != null) ...[const SizedBox(width: 10), titleTrailing],
     ],
   );
   final shape = RoundedRectangleBorder(

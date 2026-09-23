@@ -1,6 +1,31 @@
 import 'app_localizations.dart';
 
 class AppLocalizationsEn extends AppLocalizations {
+  @override
+  String get checkoutMicOn => 'Mic on';
+  @override
+  String get checkoutMicOff => 'Mic off';
+  @override
+  String get checkoutEnableMic => 'Enable my microphone';
+  @override
+  String get checkoutDisableMic => 'Mute my microphone';
+  @override
+  String get checkoutWaiting => 'Checking the win';
+  @override
+  String get checkoutCorrecting => 'Correcting darts';
+  @override
+  String get checkoutOpponentHint => 'Can confirm or correct the final dart.';
+  @override
+  String get checkoutCorrectionHint => 'Automatic confirmation has been cancelled.';
+  @override
+  String get checkoutAuto => 'Automatic confirmation in';
+  @override
+  String get checkoutCallEnds => 'Call ends in';
+  @override
+  String get checkoutOwnAuto => 'Without a correction, your win will be confirmed automatically.';
+  @override
+  String get checkoutOtherAuto => 'Without a correction, your opponent’s win will be confirmed automatically.';
+
   // Local 501 referee mode.
   @override
   String get refereeClear => "Clear";

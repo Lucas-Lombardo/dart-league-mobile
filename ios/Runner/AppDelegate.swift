@@ -3,22 +3,33 @@ import UIKit
 import UserNotifications
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    if #available(iOS 10.0, *) {
-      UNUserNotificationCenter.current().delegate = self
-    }
+    UNUserNotificationCenter.current().delegate = self
     application.registerForRemoteNotifications()
 
-    GeneratedPluginRegistrant.register(with: self)
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
 
-    let controller = window?.rootViewController as! FlutterViewController
+  /// Plugins and the app's own channels are wired here, not in
+  /// `didFinishLaunchingWithOptions`.
+  ///
+  /// Under the UIScene lifecycle the window — and with it the
+  /// `FlutterViewController` this used to reach through
+  /// `window?.rootViewController` — does not exist yet when the app delegate
+  /// finishes launching. The implicit engine's registrar is the supported way
+  /// in, and it is available before the first frame all the same.
+  func didInitializeImplicitFlutterEngine(_ engineBridge: any FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    let messenger = engineBridge.applicationRegistrar.messenger()
+
     let channel = FlutterMethodChannel(
       name: "com.dartrivals/native_inference",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
     let plugin = NativeInferencePlugin()
     channel.setMethodCallHandler(plugin.handle)
@@ -28,7 +39,7 @@ import UserNotifications
     // sharedSingleton exists.
     let rtcFramesChannel = FlutterMethodChannel(
       name: "com.dartrivals/rtc_frames",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
     let rtcFramesPlugin = RtcFramesPlugin()
     rtcFramesChannel.setMethodCallHandler(rtcFramesPlugin.handle)
@@ -36,7 +47,7 @@ import UserNotifications
     // Replays: rolling ring buffer of the local camera (5s MP4 segments).
     let replayChannel = FlutterMethodChannel(
       name: "com.dartrivals/replay_buffer",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
     let replayPlugin = ReplayBufferPlugin()
     replayChannel.setMethodCallHandler(replayPlugin.handle)
@@ -44,11 +55,9 @@ import UserNotifications
     // Thermal: live camera frame-rate throttle for the opponent's turn.
     let cameraThrottleChannel = FlutterMethodChannel(
       name: "com.dartrivals/camera_throttle",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
     let cameraThrottlePlugin = CameraThrottlePlugin()
     cameraThrottleChannel.setMethodCallHandler(cameraThrottlePlugin.handle)
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

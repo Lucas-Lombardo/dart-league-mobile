@@ -1,3 +1,4 @@
+import '../models/win_confirmation.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +52,7 @@ class GameProvider with ChangeNotifier {
   String? _pendingType; // 'win' or 'bust'
   String? _pendingReason;
   Map<String, dynamic>? _pendingData;
+  WinConfirmation? winConfirmation;
   bool _opponentDisconnected = false;
   int _disconnectGraceSeconds = 0;
   Timer? _disconnectCountdownTimer;
@@ -276,6 +278,7 @@ class GameProvider with ChangeNotifier {
       _opponentScore = 501;
       _dartsThrown = 0;
       _gameEnded = false;
+    winConfirmation = null;
       _winnerId = null;
       _lastThrow = null;
       _currentRoundThrows = [];
@@ -344,6 +347,11 @@ class GameProvider with ChangeNotifier {
       _handleMustFinishDouble(data);
     }, owner: this);
 
+    SocketService.on('win_confirmation', (data) {
+      if (_matchId == null || data is! Map || data['matchId'] != _matchId) return;
+      winConfirmation = WinConfirmation.fromJson(data);
+      notifyListeners();
+    }, owner: this);
     SocketService.on('pending_win', (data) {
       _handlePendingWin(data);
     }, owner: this);
@@ -680,6 +688,7 @@ class GameProvider with ChangeNotifier {
     final eventMatchId = data['matchId'] as String?;
     if (eventMatchId != null && eventMatchId != _matchId) return;
     _applyCricketFields(data);
+    winConfirmation = null;
     _dartsThrown = 0;
     _currentRoundThrows = [];
     _opponentRoundThrows = [];
@@ -820,6 +829,14 @@ class GameProvider with ChangeNotifier {
   }
 
   void _handleGameWon(dynamic data) {
+    if (_isForeignMatch(data)) return;
+    if (data is Map && data.containsKey('winConfirmation')) {
+      winConfirmation = WinConfirmation.fromJson(data['winConfirmation']);
+    }
+    _pendingConfirmation = false;
+    _pendingType = null;
+    _pendingData = null;
+
     debugPrint('GAME DEBUG: game_won received - winnerId=${data['winnerId']}, currentMatchId=$_matchId');
 
     // Prevent duplicate processing if game already ended
@@ -928,6 +945,7 @@ class GameProvider with ChangeNotifier {
     _cricketP2Points = 0;
     _dartsThrown = 0;
     _gameEnded = false;
+    winConfirmation = null;
     _gameStarted = false;
     _winnerId = null;
     _lastThrow = null;
@@ -1107,18 +1125,34 @@ class GameProvider with ChangeNotifier {
   void _handlePendingWin(dynamic data) {
     if (_isForeignMatch(data)) return;
     _applyCricketFields(data);
-
-    // Only show dialog if this is MY pending win, not opponent's
     final playerId = data['playerId'] as String?;
-    if (playerId != _myUserId) {
-      _noteOpponentPendingDart(data, notation: _finalDartNotation(data));
-      return;
+    if (playerId == null) return;
+    winConfirmation = WinConfirmation.fromJson(data['winConfirmation']) ??
+      WinConfirmation(playerId: playerId);
+    final p1 = data['player1Score'] as int?;
+    final p2 = data['player2Score'] as int?;
+    if (p1 != null && p2 != null) _updateScoresFromPlayerScores(p1, p2);
+    _dartsThrown = data['dartsThrown'] as int? ?? _dartsThrown;
+    final throws = data['currentRoundThrows'] as List?;
+    if (throws != null) {
+      _currentRoundThrows = throws.map((v) => v.toString()).toList();
+    } else {
+      // Older server: pending_win replaces score_updated for the final dart.
+      if (playerId != _myUserId) _currentRoundThrows = List.of(_opponentRoundThrows);
+      final notation = _finalDartNotation(data);
+      if (notation != null && _dartsThrown > 0 && _dartsThrown <= 3) {
+        while (_currentRoundThrows.length < _dartsThrown) { _currentRoundThrows.add(''); }
+        _currentRoundThrows[_dartsThrown - 1] = notation;
+      }
     }
-    
-    _pendingConfirmation = true;
-    _pendingType = 'win';
-    _pendingData = Map<String, dynamic>.from(data);
-    
+    if (playerId != _myUserId) {
+      _opponentRoundThrows = List.of(_currentRoundThrows);
+      _noteOpponentPendingDart(data, notation: _finalDartNotation(data));
+    } else {
+      _pendingConfirmation = true;
+      _pendingType = 'win';
+      _pendingData = Map<String, dynamic>.from(data);
+    }
     notifyListeners();
   }
 
@@ -1305,6 +1339,9 @@ class GameProvider with ChangeNotifier {
       final serverThrows = currentRoundThrows.map((t) => t.toString()).toList();
       if (!isMyTurn || serverThrows.length >= _currentRoundThrows.length) {
         _currentRoundThrows = serverThrows;
+        // The opponent visit widgets read their own list, including after a
+        // reconnect that missed pending_win (no score_updated follows it).
+        if (!isMyTurn) _opponentRoundThrows = List.of(serverThrows);
         _dartsEmittedThisRound = _currentRoundThrows.length;
         _ackedDartsThisRound = isMyTurn ? serverThrows.length : 0;
       } else {
@@ -1337,6 +1374,9 @@ class GameProvider with ChangeNotifier {
     // pending_win/pending_bust emit used to reconnect to a board stuck at
     // "reste 0" with no dialog and every throw rejected. Only act when the
     // backend actually sends the field (older backends don't).
+    if (data is Map) {
+      winConfirmation = WinConfirmation.fromSync(data, previous: winConfirmation);
+    }
     if (data is Map && data.containsKey('pendingState')) {
       final pendingState = data['pendingState'] as String?;
       final pendingPlayerId = data['pendingPlayerId'] as String?;
@@ -1345,13 +1385,11 @@ class GameProvider with ChangeNotifier {
         _pendingType = pendingState == 'pending_win' ? 'win' : 'bust';
         _pendingReason = data['pendingReason'] as String?;
         _pendingData = _restoredPendingData(pendingState);
-      } else if (pendingState == null &&
-          isMyTurn &&
-          _dartsThrown >= 3 &&
-          _pendingType == null) {
-        // Full non-pending round awaiting confirm: re-show the CONFIRM pill
-        // (round_ready_confirm is fire-and-forget and may have been missed).
-        _pendingConfirmation = true;
+      } else {
+        _pendingType = null;
+        _pendingReason = null;
+        _pendingData = null;
+        _pendingConfirmation = pendingState == null && isMyTurn && _dartsThrown >= 3;
       }
     }
 
@@ -1407,6 +1445,15 @@ class GameProvider with ChangeNotifier {
 
   void _handleDartUndone(dynamic data) {
     if (_isForeignMatch(data)) return;
+    // Legacy peers/servers may only send dart_undone, without the new notice.
+    if (winConfirmation?.pending == true &&
+        winConfirmation?.playerId == data['playerId'] &&
+        data['removedDart'] != null) {
+      winConfirmation = WinConfirmation(
+        playerId: data['playerId'] as String,
+        phase: 'correcting',
+      );
+    }
     _applyCricketFields(data);
     // Update scores
     final player1Score = data['player1Score'] as int?;
@@ -1429,6 +1476,8 @@ class GameProvider with ChangeNotifier {
         _dartsEmittedThisRound = claimed;
       }
     }
+
+    if (!isMyTurn) _opponentRoundThrows = List.of(_currentRoundThrows);
 
     // Clear pending state since dart was undone
     _pendingConfirmation = false;
@@ -1857,6 +1906,7 @@ class GameProvider with ChangeNotifier {
     SocketService.off('invalid_throw', owner: this);
     SocketService.off('must_finish_double', owner: this);
     SocketService.off('pending_win', owner: this);
+    SocketService.off('win_confirmation', owner: this);
     SocketService.off('pending_bust', owner: this);
     SocketService.off('player_forfeited', owner: this);
     SocketService.off('dart_undone', owner: this);
@@ -1887,6 +1937,7 @@ class GameProvider with ChangeNotifier {
     _dartsThrown = 0;
     _gameStarted = false;
     _gameEnded = false;
+    winConfirmation = null;
     _winnerId = null;
     _lastThrow = null;
     _currentRoundThrows = [];

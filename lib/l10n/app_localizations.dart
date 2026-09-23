@@ -3,6 +3,19 @@ import 'app_localizations_en.dart';
 import 'app_localizations_fr.dart';
 
 abstract class AppLocalizations {
+  String get checkoutMicOn;
+  String get checkoutMicOff;
+  String get checkoutEnableMic;
+  String get checkoutDisableMic;
+  String get checkoutWaiting;
+  String get checkoutCorrecting;
+  String get checkoutOpponentHint;
+  String get checkoutCorrectionHint;
+  String get checkoutAuto;
+  String get checkoutCallEnds;
+  String get checkoutOwnAuto;
+  String get checkoutOtherAuto;
+
   // Local 501 referee mode.
   String get refereeClear;
   String get refereeBackspace;

@@ -1,3 +1,5 @@
+import '../../models/win_confirmation.dart';
+import '../../widgets/win_confirmation_widgets.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
@@ -1772,35 +1774,43 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       debugPrint('[Replay] checkout bar hidden: ring not armed');
     }
     final isCricket = cricketStateOf(game) != null;
-    showGameDialog(
-      context,
-      accent: AppTheme.success,
-      icon: Icons.emoji_events_outlined,
-      title: isCricket ? l10n.cricketAllClosedTitle : l10n.checkout,
-      bottomBar: checkoutBar,
-      prominentActions: true,
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (isCricket) ...[
-          Text(l10n.cricketAllClosedBody, style: gameDialogBodyStyle),
-          const SizedBox(height: 6),
-        ] else if (notation != null && notation.isNotEmpty) ...[
-          Text(l10n.youHitToFinish(notation), style: gameDialogBodyStyle),
-          const SizedBox(height: 6),
-        ],
-        Text(l10n.isThisCorrect, style: gameDialogHintStyle),
-      ]),
-      actionsBuilder: (ctx) => [
-        OutlinedButton(
-          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.undoAllDarts(); _turnDartTimes.clear(); for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); } },
-          style: gameNeutralOutlineButtonStyle(),
-          child: Text(l10n.editDarts),
-        ),
-        ElevatedButton(
-          onPressed: () { winDialogShowing = false; Navigator.pop(ctx); setState(() { aiPausedForEdit = true; }); autoScoringService?.stopCapture(); game.confirmWin(); },
-          style: gameFilledButtonStyle(AppTheme.success),
-          child: Text(dsSentence(l10n.confirmWin)),
-        ),
-      ],
+    final Listenable changes = game;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => WinConfirmationDialog(
+        game: changes,
+        pending: () => game.pendingType == 'win' && !game.gameEnded,
+        confirmation: () => game.winConfirmation as WinConfirmation?,
+        muted: () => isAudioMuted,
+        toggleMic: toggleAudio,
+        title: isCricket ? l10n.cricketAllClosedTitle : l10n.checkout,
+        replay: checkoutBar,
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (isCricket) ...[
+            Text(l10n.cricketAllClosedBody, style: gameDialogBodyStyle),
+            const SizedBox(height: 6),
+          ] else if (notation != null && notation.isNotEmpty) ...[
+            Text(l10n.youHitToFinish(notation), style: gameDialogBodyStyle),
+            const SizedBox(height: 6),
+          ],
+          Text(l10n.isThisCorrect, style: gameDialogHintStyle),
+        ]),
+        edit: () {
+          winDialogShowing = false;
+          setState(() { aiPausedForEdit = true; });
+          autoScoringService?.stopCapture();
+          game.undoAllDarts();
+          _turnDartTimes.clear();
+          for (int i = 0; i < 3; i++) { autoScoringService?.clearDart(i); }
+        },
+        confirm: () {
+          winDialogShowing = false;
+          setState(() { aiPausedForEdit = true; });
+          autoScoringService?.stopCapture();
+          game.confirmWin();
+        },
+      ),
     ).then((_) { if (mounted) winDialogShowing = false; });
   }
 
@@ -2226,7 +2236,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                           boardPanel,
                           const Spacer(),
                           const SizedBox(height: 8),
-                          const OpponentWarningBanner(),
+                          buildCheckoutOpponentBanner(game),
                         ],
                       ),
                     ),
@@ -2281,7 +2291,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
-              child: const OpponentWarningBanner(),
+              child: buildCheckoutOpponentBanner(game),
             ),
           ],
         ),
@@ -2339,7 +2349,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                         visitSection,
                         const Spacer(),
                         const SizedBox(height: 8),
-                        const OpponentWarningBanner(),
+                        buildCheckoutOpponentBanner(game),
                       ],
                     ),
                   ),
@@ -2397,11 +2407,26 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           const Spacer(),
           Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, safeBottom + 10),
-            child: const OpponentWarningBanner(),
+            child: buildCheckoutOpponentBanner(game),
           ),
         ],
       ),
     );
+  }
+
+  Widget buildCheckoutOpponentBanner(dynamic game) {
+    final info = game.winConfirmation as WinConfirmation?;
+    if (info == null || (!info.pending && !info.correcting)) return const OpponentWarningBanner();
+    final l10n = AppLocalizations.of(context);
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: AppTheme.surface,
+        border: Border.all(color: AppTheme.border), borderRadius: BorderRadius.circular(20)),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$opponentUsername · ${info.correcting ? l10n.checkoutCorrecting : l10n.checkoutWaiting}',
+          maxLines: 2, overflow: TextOverflow.ellipsis, style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700)),
+        if (info.correcting) Text(l10n.checkoutCorrectionHint, style: AppTheme.caption)
+        else WinConfirmationNotice(confirmation: info, own: false, compact: true),
+      ]));
   }
 
   /// "VOLÉE DE (name) … TOTAL n" label row + the three big visit chips for

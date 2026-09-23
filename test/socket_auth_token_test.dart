@@ -70,6 +70,7 @@ void main() {
       await SocketService.debugAuthPayload((data) => delivered = data);
       expect(delivered, isA<Map>());
       expect((delivered as Map).containsKey('token'), isTrue);
+      expect(delivered['supportsWinConfirmation'], isTrue);
     });
   });
 }

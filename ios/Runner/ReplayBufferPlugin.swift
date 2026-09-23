@@ -407,6 +407,7 @@ class ReplayBufferPlugin: NSObject {
       }
       if self.retainKey == key { self.finishCurrentSegment() }
       let dir = self.retentionDir(key)
+      var complete = true
       var retained: [(url: URL, start: Int64, end: Int64)] = []
       if let text = try? String(
         contentsOf: dir.appendingPathComponent("index.jsonl"), encoding: .utf8)
@@ -417,10 +418,12 @@ class ReplayBufferPlugin: NSObject {
                 let name = obj["f"] as? String,
                 let start = (obj["s"] as? NSNumber)?.int64Value,
                 let end = (obj["e"] as? NSNumber)?.int64Value
-          else { continue }
+          else { complete = false; continue }
           let url = dir.appendingPathComponent(name)
           if FileManager.default.fileExists(atPath: url.path) {
             retained.append((url, start, end))
+          } else {
+            complete = false
           }
         }
       }
@@ -444,7 +447,7 @@ class ReplayBufferPlugin: NSObject {
       // sequentially (one export at a time) and skip files with no track.
       func composeNext(_ index: Int) {
         if index >= runs.count {
-          DispatchQueue.main.async { result(["clips": clips]) }
+          DispatchQueue.main.async { result(["clips": clips, "complete": complete]) }
           return
         }
         let run = runs[index]
@@ -459,6 +462,8 @@ class ReplayBufferPlugin: NSObject {
                   "startWallMs": run[0].start,
                   "durationMs": durationMs,
                 ])
+              } else {
+                complete = false
               }
               composeNext(index + 1)
             }
@@ -469,7 +474,9 @@ class ReplayBufferPlugin: NSObject {
         // Preserve all proof footage, with a separate clip for each continuous
         // size/transform run. Each clip keeps its actual wall-clock start.
         runs = runs.flatMap { run in
-          ReplayComposition.compatibleRuns(run.map { $0.url }).map { urls in
+          let compatible = ReplayComposition.compatibleRuns(run.map { $0.url })
+          if compatible.flatMap({ $0 }).count != run.count { complete = false }
+          return compatible.map { urls in
             run.filter { urls.contains($0.url) }
           }
         }

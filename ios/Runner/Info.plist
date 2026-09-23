@@ -22,13 +22,21 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>dartrivals</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dartrivals</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<!-- Meta (Facebook) SDK. Both values are public (they ship in every build)
-	     and come from developers.facebook.com > l'app > Paramètres > Général
-	     (App ID) and > Avancé (Jeton client). Must match
-	     android/app/src/main/res/values/facebook.xml — `make check-facebook`
-	     runs before every release build. -->
 	<key>FacebookAppID</key>
 	<string>1595576982237919</string>
 	<key>FacebookClientToken</key>
@@ -45,8 +53,6 @@
 	<string>Dart Rivals saves your match replay clips to your photo library so you can post or share them</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Allow tracking so we can see which ads bring real players to Dart Rivals, and stop showing you the ones you don't care about.</string>
-	<!-- Meta's two ad-network ids: they let Apple report conversions to Meta
-	     even for the users who decline the ATT prompt above. -->
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>
@@ -58,24 +64,32 @@
 			<string>n38lu8286q.skadnetwork</string>
 		</dict>
 	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>dartrivals</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>dartrivals</string>
-			</array>
-		</dict>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

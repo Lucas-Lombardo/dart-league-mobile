@@ -317,6 +317,7 @@ class SocketService {
       'supportsTurnReports': ReplayBufferService.isSupported,
       'supportsCricket': true,
       'supportsFriendlySeries': true,
+      'supportsWinConfirmation': true,
     });
   }
 
@@ -429,6 +430,7 @@ class SocketService {
               'supportsTurnReports': ReplayBufferService.isSupported,
               'supportsCricket': true,
               'supportsFriendlySeries': true,
+              'supportsWinConfirmation': true,
             })
             .build(),
       );
@@ -745,7 +747,8 @@ class SocketService {
     Duration timeout = const Duration(seconds: 10),
     Duration pollInterval = const Duration(milliseconds: 250),
   }) async {
-    if (isConnected) return;
+    // The existing test transport handles emits/dispatch without a real socket.
+    if (debugEmitOverride != null || isConnected) return;
     await connect();
 
     final deadline = DateTime.now().add(timeout);

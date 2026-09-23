@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.UUID
 
 /**
  * Rolling replay buffer: encodes the camera frames the app already produces
@@ -83,7 +84,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var segmentStartWallMs = 0L
     private var segmentRotation = 0
     private var lastSampleWallMs = 0L
-    private var segmentIndex = 0
+    private val encoderProgress = ReplayEncoderProgress()
 
     private data class Segment(
         val file: File,
@@ -211,8 +212,16 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             try {
                 lastRotation = rotation
                 ensureCodec(w, h)
+                encoderProgress.frameSubmitted()
                 feedFrame(bytes, format)
                 drainOutputs()
+                // Some hardware codecs stall without throwing: no input
+                // buffers, no output, or no IDR after a turn boundary. Keep
+                // the retained segments and recreate only the encoder.
+                if (encoderProgress.stalled) {
+                    android.util.Log.w("ReplayBuffer", "encoder stalled; restarting")
+                    teardown(deleteRing = false)
+                }
             } catch (e: Exception) {
                 // A bad frame or a codec hiccup must never take the ring
                 // down for the match; the encoder is rebuilt on next frame.
@@ -240,10 +249,16 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // One IDR per segment = one boundary per GOP.
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, (SEGMENT_MS / 1000).toInt())
         }
-        codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).apply {
-            configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            start()
+        val nextCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        try {
+            nextCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            nextCodec.start()
+            codec = nextCodec
+        } catch (e: Exception) {
+            nextCodec.release()
+            throw e
         }
+        encoderProgress.reset()
         encoderStartWallMs = System.currentTimeMillis()
         lastPtsUs = -1L
         awaitingIdr = false
@@ -341,11 +356,12 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
         muxer.writeSampleData(muxerTrack, buffer, info)
         lastSampleWallMs = sampleWallMs
+        encoderProgress.sampleWritten()
     }
 
     private fun openSegment(startWallMs: Long) {
         val dir = retainKey?.let { retentionDir(it) } ?: ringDir()
-        val file = File(dir, "seg_${segmentIndex++}.mp4")
+        val file = File(dir, "seg_${UUID.randomUUID()}.mp4")
         file.delete()
         muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).apply {
             muxerTrack = addTrack(codecFormat!!)
@@ -461,6 +477,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
                 val dir = retentionDir(key)
                 val index = File(dir, "index.jsonl")
+                var complete = true
                 val retained = mutableListOf<Segment>()
                 if (index.exists()) {
                     index.forEachLine { line ->
@@ -474,23 +491,32 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                                     obj.getLong("e"),
                                     obj.optInt("r", 0),
                                 ))
+                            } else {
+                                complete = false
                             }
-                        } catch (_: Exception) {}
+                        } catch (_: Exception) { complete = false }
                     }
                 }
                 retained.sortBy { it.startWallMs }
                 val runsDir = File(dir, "clips").apply { mkdirs() }
                 val clips = mutableListOf<Map<String, Any>>()
                 var run = mutableListOf<Segment>()
+                var runIndex = 0
                 fun flushRun() {
                     if (run.isEmpty()) return
-                    val outFile = File(runsDir, "run_${clips.size}.mp4")
-                    val (path, durationMs) = concat(run, rotationOverride, outFile)
-                    clips.add(mapOf(
-                        "path" to path,
-                        "startWallMs" to run.first().startWallMs,
-                        "durationMs" to durationMs,
-                    ))
+                    val outFile = File(runsDir, "run_${runIndex++}.mp4")
+                    try {
+                        val (path, durationMs) = concat(run, rotationOverride, outFile)
+                        clips.add(mapOf(
+                            "path" to path,
+                            "startWallMs" to run.first().startWallMs,
+                            "durationMs" to durationMs,
+                        ))
+                    } catch (e: Exception) {
+                        complete = false
+                        outFile.delete()
+                        android.util.Log.w("ReplayBuffer", "proof run export failed: $e")
+                    }
                     run = mutableListOf()
                 }
                 for (segment in retained) {
@@ -502,7 +528,7 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     run.add(segment)
                 }
                 flushRun()
-                payload = mapOf("clips" to clips)
+                payload = mapOf("clips" to clips, "complete" to complete)
             } catch (e: Exception) {
                 android.util.Log.w("ReplayBuffer", "cutRuns failed: $e")
             }
@@ -643,60 +669,64 @@ class ReplayBufferPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         try {
             for (segment in picked) {
                 val extractor = MediaExtractor()
-                extractor.setDataSource(segment.file.absolutePath)
-                var videoTrack = -1
-                for (t in 0 until extractor.trackCount) {
-                    val mime = extractor.getTrackFormat(t).getString(MediaFormat.KEY_MIME) ?: ""
-                    if (mime.startsWith("video/")) {
-                        videoTrack = t
-                        break
+                try {
+                    extractor.setDataSource(segment.file.absolutePath)
+                    var videoTrack = -1
+                    for (t in 0 until extractor.trackCount) {
+                        val mime = extractor.getTrackFormat(t).getString(MediaFormat.KEY_MIME) ?: ""
+                        if (mime.startsWith("video/")) {
+                            videoTrack = t
+                            break
+                        }
                     }
-                }
-                if (videoTrack < 0) {
+                    if (videoTrack < 0) {
+                        throw IllegalStateException("Retained segment has no video track")
+                    }
+                    extractor.selectTrack(videoTrack)
+                    if (!started) {
+                        outTrack = outMuxer.addTrack(extractor.getTrackFormat(videoTrack))
+                        // One hint rules the whole clip. The caller's value is the
+                        // authority when it has one (calibration, measured at cut
+                        // time); otherwise segments can disagree — mid-match hint
+                        // changes — so take the dominant rotation, not the first's.
+                        val rotation = rotationOverride
+                            ?: picked.groupingBy { it.rotation }
+                                .eachCount().maxByOrNull { it.value }!!.key
+                        android.util.Log.i("ReplayBuffer", "clip orientation hint=$rotation" +
+                            (if (rotationOverride != null) " (from calibration)" else " (dominant segment)"))
+                        outMuxer.setOrientationHint(rotation)
+                        outMuxer.start()
+                        started = true
+                    }
+                    var maxPtsUs = 0L
+                    var samples = 0
+                    while (true) {
+                        copyBuffer.clear()
+                        val size = extractor.readSampleData(copyBuffer, 0)
+                        if (size < 0) break
+                        val info = MediaCodec.BufferInfo().apply {
+                            set(
+                                0,
+                                size,
+                                extractor.sampleTime + offsetUs,
+                                if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0)
+                                    MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
+                            )
+                        }
+                        outMuxer.writeSampleData(outTrack, copyBuffer, info)
+                        samples++
+                        if (extractor.sampleTime > maxPtsUs) maxPtsUs = extractor.sampleTime
+                        extractor.advance()
+                    }
+                    check(samples > 0) { "Retained segment has no video samples" }
+                    offsetUs += maxPtsUs + 1_000_000L / FRAME_RATE
+                } finally {
                     extractor.release()
-                    continue
                 }
-                extractor.selectTrack(videoTrack)
-                if (!started) {
-                    outTrack = outMuxer.addTrack(extractor.getTrackFormat(videoTrack))
-                    // One hint rules the whole clip. The caller's value is the
-                    // authority when it has one (calibration, measured at cut
-                    // time); otherwise segments can disagree — mid-match hint
-                    // changes — so take the dominant rotation, not the first's.
-                    val rotation = rotationOverride
-                        ?: picked.groupingBy { it.rotation }
-                            .eachCount().maxByOrNull { it.value }!!.key
-                    android.util.Log.i("ReplayBuffer", "clip orientation hint=$rotation" +
-                        (if (rotationOverride != null) " (from calibration)" else " (dominant segment)"))
-                    outMuxer.setOrientationHint(rotation)
-                    outMuxer.start()
-                    started = true
-                }
-                var maxPtsUs = 0L
-                while (true) {
-                    copyBuffer.clear()
-                    val size = extractor.readSampleData(copyBuffer, 0)
-                    if (size < 0) break
-                    val info = MediaCodec.BufferInfo().apply {
-                        set(
-                            0,
-                            size,
-                            extractor.sampleTime + offsetUs,
-                            if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0)
-                                MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
-                        )
-                    }
-                    outMuxer.writeSampleData(outTrack, copyBuffer, info)
-                    if (extractor.sampleTime > maxPtsUs) maxPtsUs = extractor.sampleTime
-                    extractor.advance()
-                }
-                extractor.release()
-                offsetUs += maxPtsUs + 1_000_000L / FRAME_RATE
             }
+            check(started && offsetUs > 0) { "Empty proof export" }
+            outMuxer.stop()
         } finally {
-            try {
-                if (started) outMuxer.stop()
-            } catch (_: Exception) {}
             try { outMuxer.release() } catch (_: Exception) {}
         }
         // offsetUs ended up on the last sample's end: that IS the clip length.
