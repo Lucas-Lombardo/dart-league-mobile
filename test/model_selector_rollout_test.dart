@@ -34,25 +34,26 @@ void main() {
 
     test('no rollout keeps the device probe', () {
       expect(resolve(model: 'auto', capable: true).key, 'heavy');
-      expect(resolve(model: 'auto', capable: false).key, 'v13');
-      expect(resolve(model: null, capable: false).key, 'v13');
+      expect(resolve(model: 'auto', capable: false).key, 'small');
+      expect(resolve(model: null, capable: false).key, 'small');
     });
 
     test('a model this build does not carry falls back to the probe', () {
       // The backend can name a model before every install ships with it; those
       // installs must keep scoring, not try to load a missing asset.
       expect(resolve(model: 'v99', capable: true).key, 'heavy');
-      expect(resolve(model: '', capable: false).key, 'v13');
+      expect(resolve(model: '', capable: false).key, 'small');
       // A retired key (light, dropped 2026-09-06) is just another unknown:
       // a stale rollout persisted by an older launch lands on the probe.
       expect(resolve(model: 'light', capable: true).key, 'heavy');
-      expect(resolve(model: 'light', capable: false).key, 'v13');
+      expect(resolve(model: 'light', capable: false).key, 'small');
     });
 
     test('a known model overrides the probe on both device tiers', () {
       expect(resolve(model: 'v13', capable: true).key, 'v13');
       expect(resolve(model: 'v13', capable: false).key, 'v13');
       expect(resolve(model: 'heavy', capable: false).key, 'heavy');
+      expect(resolve(model: 'small', capable: true).key, 'small');
     });
 
     test('the bucket splits the population at the configured percent', () {
@@ -78,22 +79,24 @@ void main() {
       // The safety valve for a model that turns out expensive: the probe keeps
       // weak phones off heavy on purpose, and a rollout must be able to respect
       // that rather than undo it for the whole low end at once.
-      expect(resolve(model: 'heavy', capableOnly: true, capable: false).key, 'v13');
+      expect(resolve(model: 'heavy', capableOnly: true, capable: false).key, 'small');
       expect(resolve(model: 'heavy', capableOnly: true, capable: true).key, 'heavy');
-      expect(resolve(model: 'v13', capableOnly: true, capable: false).key, 'v13');
+      expect(resolve(model: 'v13', capableOnly: true, capable: false).key, 'small');
     });
   });
 
   group('model registry', () {
     test('every model keeps the layout its own export needs', () {
-      // Read off the .tflite files: heavy puts the dart last with normalized
-      // boxes, v13's o2o export puts it first in canvas pixels.
+      // Read off the .tflite files: heavy and small (both DartsMind exports)
+      // put the dart last with normalized boxes, v13's o2o export puts it
+      // first in canvas pixels.
       expect(ModelSelector.heavy.layout, DetectionLayout.anchorDartLast);
+      expect(ModelSelector.small.layout, DetectionLayout.anchorDartLast);
       expect(ModelSelector.v13.layout, DetectionLayout.anchorPixelsDartFirst);
     });
 
     test('keys match the wire names the backend sends and stores', () {
-      expect(ModelSelector.all.map((m) => m.key), ['heavy', 'v13']);
+      expect(ModelSelector.all.map((m) => m.key), ['heavy', 'small', 'v13']);
     });
 
     test('bundles an asset per model, named after its key', () {
@@ -106,6 +109,7 @@ void main() {
 
     test('byKey only resolves models this build carries', () {
       expect(ModelSelector.byKey('v13'), ModelSelector.v13);
+      expect(ModelSelector.byKey('small'), ModelSelector.small);
       expect(ModelSelector.byKey('auto'), isNull);
       expect(ModelSelector.byKey('light'), isNull); // retired 2026-09-06
       expect(ModelSelector.byKey(null), isNull);

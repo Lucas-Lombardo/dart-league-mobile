@@ -25,6 +25,8 @@ class TournamentService {
     final response = await ApiService.get('/tournaments/my');
     final registeredList = response?['registered'] as List<dynamic>? ?? [];
     final activeList = response?['active'] as List<dynamic>? ?? [];
+    // Community tournaments the user organises (absent on older backends).
+    final organizedList = response?['organized'] as List<dynamic>? ?? [];
     final registered = registeredList
         .whereType<Map<String, dynamic>>()
         .map((t) => Tournament.fromJson(t))
@@ -33,7 +35,11 @@ class TournamentService {
         .whereType<Map<String, dynamic>>()
         .map((t) => Tournament.fromJson(t))
         .toList();
-    return {'registered': registered, 'active': active};
+    final organized = organizedList
+        .whereType<Map<String, dynamic>>()
+        .map((t) => Tournament.fromJson(t))
+        .toList();
+    return {'registered': registered, 'active': active, 'organized': organized};
   }
 
   static Future<Tournament> getTournament(String id) async {
@@ -78,6 +84,75 @@ class TournamentService {
 
   static Future<void> unregisterFromTournament(String tournamentId) async {
     await ApiService.delete('/tournaments/$tournamentId/register');
+  }
+
+  /// Tournaments left this month for a player without premium, for the
+  /// month of [date] (a tournament's start).
+  static Future<MonthlyTournamentQuota> getMonthlyQuota(DateTime date) async {
+    final at = Uri.encodeQueryComponent(date.toUtc().toIso8601String());
+    final response = await ApiService.get('/tournaments/monthly-quota?date=$at');
+    if (response is! Map<String, dynamic>) {
+      throw Exception('Invalid quota data');
+    }
+    return MonthlyTournamentQuota.fromJson(response);
+  }
+
+  // ── Community tournaments (organised by a player) ──────────────────────
+
+  /// Creates a tournament organised by the signed-in player; returns its id.
+  static Future<String> createCommunityTournament({
+    required String name,
+    required DateTime scheduledDate,
+    required int maxParticipants,
+    required int bestOf,
+    required bool organizerPlays,
+  }) async {
+    final response = await ApiService.post('/tournaments/community', {
+      'name': name,
+      'scheduledDate': scheduledDate.toUtc().toIso8601String(),
+      'maxParticipants': maxParticipants,
+      'bestOf': bestOf,
+      'organizerPlays': organizerPlays,
+    });
+    final id = response?['tournament']?['id'];
+    if (id is! String) throw Exception('Invalid tournament data');
+    return id;
+  }
+
+  static Future<void> updateCommunityTournament(
+    String tournamentId, {
+    String? name,
+    DateTime? scheduledDate,
+    int? maxParticipants,
+    int? bestOf,
+  }) async {
+    await ApiService.patch('/tournaments/$tournamentId/community', {
+      'name': ?name,
+      'scheduledDate': ?scheduledDate?.toUtc().toIso8601String(),
+      'maxParticipants': ?maxParticipants,
+      'bestOf': ?bestOf,
+    });
+  }
+
+  static Future<void> cancelCommunityTournament(String tournamentId) async {
+    await ApiService.delete('/tournaments/$tournamentId/community');
+  }
+
+  static Future<void> startCommunityTournament(String tournamentId) async {
+    await ApiService.post('/tournaments/$tournamentId/start', {});
+  }
+
+  static Future<void> removeParticipant(String tournamentId, String userId) async {
+    await ApiService.delete('/tournaments/$tournamentId/registrations/$userId');
+  }
+
+  /// Pushes an invitation to some friends; returns how many got one.
+  static Future<int> inviteFriends(String tournamentId, List<String> userIds) async {
+    final response = await ApiService.post(
+      '/tournaments/$tournamentId/invite',
+      {'userIds': userIds},
+    );
+    return response?['invited'] as int? ?? 0;
   }
 
   static Future<Map<String, dynamic>> getMyRegistration(String tournamentId) async {

@@ -371,6 +371,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
   Widget _buildBenefitsCard(AppLocalizations l10n) {
     final benefits = [
       (l10n.benefitUnlimitedMatches, Icons.all_inclusive_rounded),
+      (l10n.benefitUnlimitedTournaments, Icons.emoji_events_outlined),
       (l10n.benefitPremiumBadge, Icons.workspace_premium_rounded),
       (l10n.benefitSupportDev, Icons.favorite_outline_rounded),
     ];

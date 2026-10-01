@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/tournament.dart';
 import '../providers/app_update_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../screens/settings/subscription_screen.dart';
+import '../services/tournament_service.dart';
+import 'app_navigator.dart';
 import 'app_theme.dart';
 
 /// Product spec: everyone can SEE every tournament; trying to enter one you
@@ -12,6 +16,36 @@ import 'app_theme.dart';
 /// pre-check before registration — the backend enforces all of them again.
 class TournamentRegistrationGate {
   TournamentRegistrationGate._();
+
+  /// Pre-checks before a player creates a tournament: an up-to-date app (the
+  /// organiser is registered on creation) and a verified email.
+  static Future<bool> runForOrganizer(BuildContext context) async {
+    final updateProvider = context.read<AppUpdateProvider>();
+    final needsUpdate = await updateProvider.requiresTournamentUpdate();
+    if (!context.mounted) return false;
+    if (needsUpdate) {
+      showUpdateRequiredDialog(context);
+      return false;
+    }
+
+    final authProvider = context.read<AuthProvider>();
+    await authProvider.checkAuthStatus();
+    if (!context.mounted) return false;
+    final user = authProvider.currentUser;
+    if (user == null) {
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(l10n.profileUnavailable),
+        backgroundColor: AppTheme.error,
+      ));
+      return false;
+    }
+    if (!user.isEmailVerified) {
+      showEmailVerificationDialog(context);
+      return false;
+    }
+    return true;
+  }
 
   /// Returns true when registration may proceed. Otherwise shows the
   /// explanatory dialog and returns false.
@@ -81,7 +115,53 @@ class TournamentRegistrationGate {
       return false;
     }
 
-    return true;
+    // 6) Players without premium: 2 tournaments a month.
+    return checkMonthlyQuota(context, tournament.scheduledDate);
+  }
+
+  /// Fallback limit for the popup when the server refused a registration on
+  /// its own (a stale pre-check). Keep in sync with
+  /// TournamentService.FREE_MONTHLY_TOURNAMENT_LIMIT (backend).
+  static const int freeMonthlyLimit = 2;
+
+  /// Every tournament is free; a player without premium joins at most 2 a
+  /// month (by start date). Asks the server what's left for [date]'s month:
+  /// shows the popup and returns false when it's used up. A failed lookup
+  /// lets the call through — the server enforces the quota again.
+  static Future<bool> checkMonthlyQuota(BuildContext context, DateTime date) async {
+    final MonthlyTournamentQuota quota;
+    try {
+      quota = await TournamentService.getMonthlyQuota(date);
+    } catch (e) {
+      debugPrint('Monthly tournament quota lookup failed: $e');
+      return context.mounted;
+    }
+    if (!context.mounted) return false;
+    if (!quota.reached) return true;
+    showMonthlyLimitDialog(context, limit: quota.limit!, date: date);
+    return false;
+  }
+
+  /// "2 tournois par mois": wait for next month, or go premium.
+  static void showMonthlyLimitDialog(
+    BuildContext context, {
+    required int limit,
+    DateTime? date,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => TournamentMonthlyLimitDialog(
+        limit: limit,
+        date: date,
+        onLater: () => Navigator.of(dialogContext).pop(),
+        onPremium: () {
+          Navigator.of(dialogContext).pop();
+          if (context.mounted) {
+            AppNavigator.toScreen(context, const SubscriptionScreen());
+          }
+        },
+      ),
+    );
   }
 
   /// Maps a registration failure onto the right UX: the email and app-version
@@ -98,6 +178,13 @@ class TournamentRegistrationGate {
     }
     if (raw.contains('update the app') || raw.contains('mets à jour')) {
       showUpdateRequiredDialog(context);
+      return;
+    }
+    // The server's monthly-quota refusal (EN / FR), when the pre-check missed it.
+    if (raw.contains('tournaments this month') ||
+        raw.contains('tournaments that month') ||
+        raw.contains('tournois ce mois')) {
+      showMonthlyLimitDialog(context, limit: freeMonthlyLimit);
       return;
     }
 
@@ -263,6 +350,76 @@ class TournamentRegistrationGate {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The monthly-quota popup of players without premium (see
+/// [TournamentRegistrationGate.checkMonthlyQuota]). Public so the preview
+/// test can render it.
+class TournamentMonthlyLimitDialog extends StatelessWidget {
+  final int limit;
+
+  /// The tournament's start; null = this month.
+  final DateTime? date;
+  final VoidCallback onLater;
+  final VoidCallback onPremium;
+
+  const TournamentMonthlyLimitDialog({
+    super.key,
+    required this.limit,
+    this.date,
+    required this.onLater,
+    required this.onPremium,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final now = DateTime.now();
+    final local = date?.toLocal();
+    final thisMonth =
+        local == null || (local.year == now.year && local.month == now.month);
+    final body = thisMonth
+        ? l10n.tournamentMonthlyLimitBody(limit)
+        : l10n.tournamentMonthlyLimitBodyOtherMonth(
+            limit,
+            DateFormat('MMMM', Localizations.localeOf(context).toString())
+                .format(local),
+          );
+
+    return AlertDialog(
+      backgroundColor: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          const Icon(Icons.workspace_premium, color: AppTheme.accent, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              l10n.tournamentMonthlyLimitTitle(limit),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 20),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        body,
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+      ),
+      actions: [
+        TextButton(
+          onPressed: onLater,
+          child: Text(
+            l10n.tournamentMonthlyLimitLater,
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: onPremium,
+          child: Text(l10n.upgradeToPremium),
+        ),
+      ],
     );
   }
 }

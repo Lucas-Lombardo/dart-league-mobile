@@ -468,7 +468,7 @@ class NativeInferencePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // built earlier (e.g. by the camera-setup screen) instead of rebuilding
         // it per match, which re-inits the GPU delegate and leaked the old
         // interpreter. A DIFFERENT path forces a rebuild: this is the model
-        // switch (heavy <-> v13, from the probe or a rollout). So does a
+        // switch (heavy <-> small, from the probe or a rollout). So does a
         // CPU-only interpreter left by a wedge recovery once forceCpuOnce has
         // been consumed — that rebuild restores the GPU delegate. It runs on
         // dvExecutor, serialized behind any in-flight analyze, so the old

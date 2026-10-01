@@ -2746,6 +2746,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resultUnderReviewBody =>
       "You contested this result. An admin will pick the winner and the match stays frozen until then. You'll be notified.";
   @override
+  String get reportReceivedTitle => 'Report received';
+  @override
+  String get reportReceivedLateBody =>
+      'Your opponent had already started the next round, so the result can no longer be put on hold — but an admin is reviewing your report.';
+  @override
   String get youAdvanceTitle => 'You advance!';
   @override
   String get youAdvanceOpponentNoShow =>
@@ -3661,4 +3666,163 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get trainingProgressEmptyTitle => 'No session recorded yet';
 
+
+  @override
+  String get agendaFilterAll => 'All';
+
+  @override
+  String get agendaFilterOfficial => 'Official';
+
+  @override
+  String get agendaFilterCommunity => 'Community';
+
+  @override
+  String get agendaFilterEmpty => 'No tournament here yet.';
+
+  @override
+  String organizedBy(String name) => 'by $name';
+
+  @override
+  String get organizedByYou => 'by you';
+
+  @override
+  String get organizerLabel => 'Organizer';
+
+  @override
+  String get createTournamentTooltip => 'Create a tournament';
+
+  @override
+  String get communityFormTitleNew => 'New tournament';
+
+  @override
+  String get communityFormTitleEdit => 'Edit tournament';
+
+  @override
+  String get communityFormName => 'Tournament name';
+
+  @override
+  String get communityFormNameHint => 'e.g. Thursday night';
+
+  @override
+  String get communityFormStart => 'Tournament start';
+
+  @override
+  String communityFormRegistrationCloses(String time) => 'Registration closes automatically at $time (15 min before).';
+
+  @override
+  String get communityFormPlayers => 'Players';
+
+  @override
+  String get communityFormFormat => 'Match format';
+
+  @override
+  String get communityFormIPlay => 'I\'m playing too';
+
+  @override
+  String get communityFormIPlaySub => 'Turn off to only host';
+
+  @override
+  String get communityFormNote => 'Open to every player, premium or not. Friendly tournament: no ELO at stake. Organised at least 48 h ahead, 8 players needed to start it.';
+
+  @override
+  String get communityFormCreate => 'Create tournament';
+
+  @override
+  String get communityFormNameTooShort => 'Give it a name of at least 3 characters.';
+
+  @override
+  String get communityFormStartTooSoon => 'A tournament must be organised at least 48 hours before it starts.';
+
+  @override
+  String get communityFormStartTooLate => 'The tournament must start within the next 30 days.';
+
+  @override
+  String communityFormSizeBelowRegistered(int count) => '$count players are already registered.';
+
+  @override
+  String get communityCancelTournament => 'Cancel tournament';
+
+  @override
+  String get communityCancelConfirmTitle => 'Cancel the tournament?';
+
+  @override
+  String get communityCancelConfirmBody => 'Registered players will be notified. This can\'t be undone.';
+
+  @override
+  String get communityKeep => 'Keep it';
+
+  @override
+  String get communityCancelledToast => 'Tournament cancelled';
+
+  @override
+  String get organizerPanelTitle => 'You\'re hosting this tournament';
+
+  @override
+  String organizerPanelBody(String when) => 'Starts $when. Registration closes 15 min before.';
+
+  @override
+  String get organizerShare => 'Share';
+
+  @override
+  String get organizerInvite => 'Invite';
+
+  @override
+  String get organizerEdit => 'Edit';
+
+  @override
+  String get organizerStartNow => 'Start now';
+
+  @override
+  String organizerPlayersMissing(int count) => count == 1 ? 'One more player needed to start (8 minimum).' : '$count more players needed to start (8 minimum).';
+
+  @override
+  String get organizerStartConfirmTitle => 'Start the tournament now?';
+
+  @override
+  String organizerStartConfirmBody(int count) => 'Registration closes and the first-round matches start with $count players.';
+
+  @override
+  String get organizerStartAction => 'Start';
+
+  @override
+  String get organizerStartedToast => 'Tournament started!';
+
+  @override
+  String organizerShareMessage(String name, String when) => 'Join my tournament "$name" on Dart Rivals, $when. Sign up in the app\'s Tournament tab!';
+
+  @override
+  String organizerRemoveConfirmTitle(String name) => 'Remove $name?';
+
+  @override
+  String get organizerRemoveConfirmBody => 'This player leaves the tournament and gets notified.';
+
+  @override
+  String get organizerRemoveAction => 'Remove';
+
+  @override
+  String get inviteSheetTitle => 'Invite friends';
+
+  @override
+  String get inviteSheetEmpty => 'You have no friends on Dart Rivals yet.';
+
+  @override
+  String inviteSheetSend(int count) => count == 0 ? 'Invite' : 'Invite ($count)';
+
+  @override
+  String inviteSheetSent(int count) => count == 0 ? 'No invitation sent: already invited today or registered.' : count == 1 ? '1 invitation sent' : '$count invitations sent';
+
+  @override
+  String tournamentMonthlyLimitTitle(int limit) => '$limit tournaments a month';
+
+  @override
+  String tournamentMonthlyLimitBody(int limit) => 'You have already joined $limit tournaments this month. Wait for next month, or go premium to play every tournament.';
+
+  @override
+  String tournamentMonthlyLimitBodyOtherMonth(int limit, String month) => 'You are already in $limit tournaments in $month. Go premium to play every tournament.';
+
+  @override
+  String get tournamentMonthlyLimitLater => 'Later';
+
+  @override
+  String get benefitUnlimitedTournaments => 'Unlimited tournaments';
 }

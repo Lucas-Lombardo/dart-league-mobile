@@ -1055,6 +1055,8 @@ abstract class AppLocalizations {
   String get paymentRefunded;
   String get resultUnderReviewTitle;
   String get resultUnderReviewBody;
+  String get reportReceivedTitle;
+  String get reportReceivedLateBody;
   String get youAdvanceTitle;
   String get youAdvanceOpponentNoShow;
   // Unmissable "your match is ready" prompt (TournamentInviteGate)
@@ -1518,6 +1520,165 @@ abstract class AppLocalizations {
 
   /// Per-double progress empty state: the title of the card.
   String get trainingProgressEmptyTitle;
+
+  /// Agenda filter chip: every tournament.
+  String get agendaFilterAll;
+
+  /// Agenda filter chip: Dart Rivals tournaments.
+  String get agendaFilterOfficial;
+
+  /// Agenda filter chip: tournaments organised by players.
+  String get agendaFilterCommunity;
+
+  /// Agenda: the filter leaves nothing.
+  String get agendaFilterEmpty;
+
+  /// Meta line of a community tournament: who organises it.
+  String organizedBy(String name);
+
+  /// Meta line of a tournament the user organises.
+  String get organizedByYou;
+
+  /// Pill on a tournament the user organises / on the organiser row.
+  String get organizerLabel;
+
+  /// Tournaments tab header: the + button.
+  String get createTournamentTooltip;
+
+  /// Community tournament form: title when creating.
+  String get communityFormTitleNew;
+
+  /// Community tournament form: title when editing.
+  String get communityFormTitleEdit;
+
+  /// Form label: tournament name.
+  String get communityFormName;
+
+  /// Form hint: tournament name.
+  String get communityFormNameHint;
+
+  /// Form label: the one start date + time.
+  String get communityFormStart;
+
+  /// Form: when registration closes (15 min before the start).
+  String communityFormRegistrationCloses(String time);
+
+  /// Form label: bracket size.
+  String get communityFormPlayers;
+
+  /// Form label: best-of of the matches.
+  String get communityFormFormat;
+
+  /// Form switch: the organiser plays too.
+  String get communityFormIPlay;
+
+  /// Form switch subtitle.
+  String get communityFormIPlaySub;
+
+  /// Form footnote: the rules of a community tournament.
+  String get communityFormNote;
+
+  /// Form button: create.
+  String get communityFormCreate;
+
+  /// Form error: name under 3 characters.
+  String get communityFormNameTooShort;
+
+  /// Form error: start under 48 hours away.
+  String get communityFormStartTooSoon;
+
+  /// Form error: start over 30 days away.
+  String get communityFormStartTooLate;
+
+  /// Form error: picked size smaller than the registrations.
+  String communityFormSizeBelowRegistered(int count);
+
+  /// Form (edit): cancel the tournament.
+  String get communityCancelTournament;
+
+  /// Cancel dialog: title.
+  String get communityCancelConfirmTitle;
+
+  /// Cancel dialog: body.
+  String get communityCancelConfirmBody;
+
+  /// Cancel dialog: keep the tournament.
+  String get communityKeep;
+
+  /// Snackbar once cancelled.
+  String get communityCancelledToast;
+
+  /// Detail screen: the organiser's card.
+  String get organizerPanelTitle;
+
+  /// Organiser card: start date and the 15-min close.
+  String organizerPanelBody(String when);
+
+  /// Organiser card button.
+  String get organizerShare;
+
+  /// Organiser card button.
+  String get organizerInvite;
+
+  /// Organiser card button.
+  String get organizerEdit;
+
+  /// Organiser card: start before the date.
+  String get organizerStartNow;
+
+  /// Organiser card: players still needed to start.
+  String organizerPlayersMissing(int count);
+
+  /// Start-now dialog: title.
+  String get organizerStartConfirmTitle;
+
+  /// Start-now dialog: body.
+  String organizerStartConfirmBody(int count);
+
+  /// Start-now dialog: confirm.
+  String get organizerStartAction;
+
+  /// Snackbar once started.
+  String get organizerStartedToast;
+
+  /// Share-sheet text of a community tournament.
+  String organizerShareMessage(String name, String when);
+
+  /// Remove-player dialog: title.
+  String organizerRemoveConfirmTitle(String name);
+
+  /// Remove-player dialog: body.
+  String get organizerRemoveConfirmBody;
+
+  /// Remove-player dialog: confirm, and the row button tooltip.
+  String get organizerRemoveAction;
+
+  /// Invite-friends sheet: title.
+  String get inviteSheetTitle;
+
+  /// Invite-friends sheet: no friends.
+  String get inviteSheetEmpty;
+
+  /// Invite-friends sheet: send button.
+  String inviteSheetSend(int count);
+
+  /// Snackbar after inviting.
+  String inviteSheetSent(int count);
+
+  /// Popup when a player without premium tries a tournament past the monthly quota: title.
+  String tournamentMonthlyLimitTitle(int limit);
+
+  /// Quota popup body, the tournament is this month.
+  String tournamentMonthlyLimitBody(int limit);
+
+  /// Quota popup body, the tournament is in a later month.
+  String tournamentMonthlyLimitBodyOtherMonth(int limit, String month);
+
+  /// Quota popup: dismiss.
+  String get tournamentMonthlyLimitLater;
+
+  /// Paywall benefit: no monthly tournament limit.
+  String get benefitUnlimitedTournaments;
 
 }
 

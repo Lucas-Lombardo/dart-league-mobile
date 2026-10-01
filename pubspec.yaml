@@ -148,10 +148,12 @@ flutter:
     # files are ~22 MB, so nothing unwanted should ride along.
     # The models the app can run — ONE is used per app run, picked by
     # ModelSelector: the admin's rollout if this install drew into it,
-    # otherwise the device probe (light 3.9 MB on weak phones, heavy 12.8 MB
-    # on capable ones). All three ship in every build: the rollout can only
-    # name a model the install already carries.
+    # otherwise the device probe (small 3.9 MB on weak phones, heavy 12.8 MB
+    # on capable ones). v13 stays bundled as a rollout fallback. All three
+    # ship in every build: the rollout can only name a model the install
+    # already carries.
     - assets/models/dart-rival-ia-heavy.tflite
+    - assets/models/dart-rival-ia-small.tflite
     - assets/models/dart-rivals-v13.tflite
     - assets/models/check_inference.jpg
     # Dev-only: real match frames for the on-device delegate accuracy bench

@@ -102,9 +102,9 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   
-  // Pick the AI model for this device (heavy on capable phones, v13 on the
+  // Pick the AI model for this device (heavy on capable phones, small on the
   // rest) before anything can call loadModel. Self-guarded: a failed probe
-  // keeps v13, which runs everywhere. On Android "capable" is measured by
+  // keeps small, which runs everywhere. On Android "capable" is measured by
   // a background heavy-model run that init() kicks off (once per app
   // version); the first real model load waits for it.
   await ModelSelector.init();

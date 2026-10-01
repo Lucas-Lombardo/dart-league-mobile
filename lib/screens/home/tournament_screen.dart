@@ -14,6 +14,8 @@ import '../../utils/tournament_status.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/trophy_image.dart';
+import 'community_tournament_form_screen.dart';
+import 'stats/stats_widgets.dart' show StatsChip;
 import 'tournament_detail_screen.dart';
 import 'tournament_history_screen.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
@@ -27,6 +29,11 @@ import '../tournament/tournament_camera_setup_screen.dart';
 /// Visual system D: the tab draws its own [DsScreenHeader], rows are flat
 /// [DsCard]s whose border colour is the only state signal, and the row's
 /// single trailing action is a pill (register / unregister / status).
+///
+/// Community tournaments (organised by a player, 2026-10) share the agenda
+/// with the official ones: the left of every row says who organises it (the
+/// shield = Dart Rivals, initials = a player), chips filter the two kinds and
+/// the + of the header creates one.
 class TournamentScreen extends StatefulWidget {
   const TournamentScreen({super.key});
 
@@ -34,7 +41,23 @@ class TournamentScreen extends StatefulWidget {
   State<TournamentScreen> createState() => _TournamentScreenState();
 }
 
+enum _AgendaFilter { all, official, community }
+
 class _TournamentScreenState extends State<TournamentScreen> {
+  _AgendaFilter _filter = _AgendaFilter.all;
+
+  Future<void> _createTournament() async {
+    final allowed = await TournamentRegistrationGate.runForOrganizer(context);
+    if (!allowed || !mounted) return;
+    AppNavigator.toScreen(context, const CommunityTournamentFormScreen());
+  }
+
+  bool _passesFilter(Tournament t) => switch (_filter) {
+        _AgendaFilter.all => true,
+        _AgendaFilter.official => t.isOfficial,
+        _AgendaFilter.community => t.isCommunity,
+      };
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +83,12 @@ class _TournamentScreenState extends State<TournamentScreen> {
             title: l10n.tournaments,
             actions: [
               DsIconButton(
+                icon: Icons.add_rounded,
+                iconColor: AppTheme.primaryLight,
+                tooltip: l10n.createTournamentTooltip,
+                onTap: _createTournament,
+              ),
+              DsIconButton(
                 icon: Icons.history_rounded,
                 tooltip: l10n.history,
                 onTap: () => AppNavigator.toScreen(
@@ -81,21 +110,23 @@ class _TournamentScreenState extends State<TournamentScreen> {
               // the public listing so the freshest status is displayed.
               final byId = <String, Tournament>{
                 for (final t in provider.upcomingTournaments) t.id: t,
+                for (final t in provider.organizedTournaments) t.id: t,
                 for (final t in provider.registeredTournaments) t.id: t,
                 for (final t in provider.activeTournaments) t.id: t,
               };
-              final agenda = byId.values.toList()
+              final allTournaments = byId.values.toList();
+              final agenda = allTournaments.where(_passesFilter).toList()
                 ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
 
               if (provider.isLoading &&
-                  agenda.isEmpty &&
+                  allTournaments.isEmpty &&
                   pendingMatches.isEmpty) {
                 return const Center(
                   child: CircularProgressIndicator(color: AppTheme.primary),
                 );
               }
 
-              if (agenda.isEmpty && pendingMatches.isEmpty) {
+              if (allTournaments.isEmpty && pendingMatches.isEmpty) {
                 return RefreshIndicator(
                   onRefresh: _loadData,
                   child: ListView(
@@ -132,6 +163,24 @@ class _TournamentScreenState extends State<TournamentScreen> {
                 children.add(_MatchInviteCard(match: pendingMatches[i]));
               }
 
+              // Filter chips, right above the agenda they filter.
+              if (children.isNotEmpty) children.add(const SizedBox(height: 18));
+              children.add(_FilterChips(
+                filter: _filter,
+                onChanged: (f) => setState(() => _filter = f),
+              ));
+              if (agenda.isEmpty) {
+                children.add(const SizedBox(height: 14));
+                children.add(DsCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    l10n.agendaFilterEmpty,
+                    textAlign: TextAlign.center,
+                    style: AppTheme.rowTitle,
+                  ),
+                ));
+              }
+
               DateTime? currentDay;
               for (final tournament in agenda) {
                 final local = tournament.scheduledDate.toLocal();
@@ -163,6 +212,36 @@ class _TournamentScreenState extends State<TournamentScreen> {
             },
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Tous · Officiels · Communauté.
+class _FilterChips extends StatelessWidget {
+  final _AgendaFilter filter;
+  final ValueChanged<_AgendaFilter> onChanged;
+
+  const _FilterChips({required this.filter, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final labels = {
+      _AgendaFilter.all: l10n.agendaFilterAll,
+      _AgendaFilter.official: l10n.agendaFilterOfficial,
+      _AgendaFilter.community: l10n.agendaFilterCommunity,
+    };
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final entry in labels.entries)
+          StatsChip(
+            label: entry.value,
+            selected: filter == entry.key,
+            onTap: () => onChanged(entry.key),
+          ),
       ],
     );
   }
@@ -288,6 +367,9 @@ class _AgendaRowState extends State<_AgendaRow> {
     final canJoin =
         tournament.isRegistrationOpen && !widget.isRegistered && !isFull;
     final canLeave = widget.isRegistered && tournament.isRegistrationOpen;
+    final isMine = tournament.isOrganizedBy(
+      context.read<AuthProvider>().currentUser?.id,
+    );
     final timeLabel =
         DateFormat('HH:mm').format(tournament.scheduledDate.toLocal());
 
@@ -304,7 +386,7 @@ class _AgendaRowState extends State<_AgendaRow> {
       height: 72,
       child: DsCard(
         radius: AppTheme.radiusRow,
-        padding: const EdgeInsets.fromLTRB(16, 0, 14, 0),
+        padding: const EdgeInsets.fromLTRB(12, 0, 14, 0),
         side: BorderSide(color: borderColor),
         onTap: () => AppNavigator.toScreen(
           context,
@@ -312,6 +394,18 @@ class _AgendaRowState extends State<_AgendaRow> {
         ),
         child: Row(
           children: [
+            // Who organises it: the shield for Dart Rivals, initials for a
+            // player.
+            if (tournament.isCommunity)
+              _OrganizerAvatar(username: tournament.organizerUsername)
+            else
+              Image.asset(
+                'assets/logo/logo-without-letters.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.contain,
+              ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -353,7 +447,7 @@ class _AgendaRowState extends State<_AgendaRow> {
                             color: Color(0xFFCBD5E1),
                           ),
                         ),
-                        TextSpan(text: ' · ${_metaLine(l10n)}'),
+                        TextSpan(text: ' · ${_metaLine(l10n, isMine: isMine)}'),
                       ],
                     ),
                     maxLines: 1,
@@ -369,6 +463,7 @@ class _AgendaRowState extends State<_AgendaRow> {
             const SizedBox(width: 12),
             _trailing(
               l10n,
+              isMine: isMine,
               isLive: isLive,
               isFull: isFull,
               canJoin: canJoin,
@@ -380,8 +475,18 @@ class _AgendaRowState extends State<_AgendaRow> {
     );
   }
 
-  String _metaLine(AppLocalizations l10n) {
+  String _metaLine(AppLocalizations l10n, {required bool isMine}) {
     final tournament = widget.tournament;
+    if (tournament.isCommunity) {
+      // Free, open to all, no ELO: who organises it, the fill and the format.
+      return [
+        isMine
+            ? l10n.organizedByYou
+            : l10n.organizedBy(tournament.organizerUsername ?? '?'),
+        '${tournament.currentParticipants}/${tournament.maxParticipants}',
+        'BO${tournament.bestOf}',
+      ].join(' · ');
+    }
     final isPremiumUser = context.select<SubscriptionProvider, bool>(
       (p) => p.isPremiumActive,
     );
@@ -403,6 +508,7 @@ class _AgendaRowState extends State<_AgendaRow> {
 
   Widget _trailing(
     AppLocalizations l10n, {
+    required bool isMine,
     required bool isLive,
     required bool isFull,
     required bool canJoin,
@@ -417,6 +523,10 @@ class _AgendaRowState extends State<_AgendaRow> {
           color: AppTheme.primary,
         ),
       );
+    }
+    // The organiser manages their tournament from its screen, not from here.
+    if (isMine && !isLive) {
+      return DsPill(label: l10n.organizerLabel, color: AppTheme.primaryLight);
     }
     if (canJoin) {
       return _PillButton(
@@ -471,6 +581,39 @@ class _AgendaRowState extends State<_AgendaRow> {
       default:
         return AppTheme.textSecondary;
     }
+  }
+}
+
+/// 32 px initials disc of the player organising a community tournament.
+class _OrganizerAvatar extends StatelessWidget {
+  final String? username;
+
+  const _OrganizerAvatar({required this.username});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (username ?? '').trim();
+    final initials = name.isEmpty
+        ? '?'
+        : (name.length >= 2 ? name.substring(0, 2) : name).toUpperCase();
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: AppTheme.surfaceLight,
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        initials,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFFE2E8F0),
+          height: 1,
+        ),
+      ),
+    );
   }
 }
 

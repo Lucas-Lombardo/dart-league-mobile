@@ -23,6 +23,7 @@ import '../../widgets/design_system.dart';
 import '../../widgets/tournament_bracket_tree.dart';
 import '../../widgets/trophy_image.dart';
 import '../spectate/spectator_match_screen.dart';
+import 'community_organizer_panel.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 
 String _initials(String? username) {
@@ -289,6 +290,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                 tournament: tournament,
                 isRegistered: _isRegistered,
                 onRegistrationChanged: _checkRegistration,
+                onOrganizerChanged: _refresh,
               ),
               _UnderlineTabs(controller: _tabController),
               Expanded(
@@ -310,7 +312,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                       onRefresh: _refresh,
                       color: AppTheme.primary,
                       child: _ParticipantsTab(
-                        tournamentId: widget.tournamentId,
+                        tournament: tournament,
                         bracket: bracket,
                         currentUserId: currentUserId,
                       ),
@@ -392,10 +394,20 @@ class _MetaLine extends StatelessWidget {
         : tournament.hasPremiumDiscount(isPremium: isPremium)
         ? tournament.formattedDiscountedPrice(isPremium: true)
         : tournament.formattedPrice;
+    final format = bestOf ?? tournament.bestOf;
+    final isMine = tournament.isOrganizedBy(
+      context.read<AuthProvider>().currentUser?.id,
+    );
     final parts = <String>[
+      if (tournament.isCommunity)
+        isMine
+            ? l10n.organizedByYou
+            : l10n.organizedBy(tournament.organizerUsername ?? '?'),
       '${tournament.currentParticipants} ${l10n.players}',
-      if (bestOf != null && bestOf! > 1) 'BO$bestOf',
-      '+${tournament.winnerEloReward} ${l10n.eloLabel}',
+      if (format > 1) 'BO$format',
+      // Community tournaments award no ELO.
+      if (tournament.winnerEloReward > 0)
+        '+${tournament.winnerEloReward} ${l10n.eloLabel}',
       feeText,
     ];
     return Text(
@@ -447,11 +459,13 @@ class _HeaderExtras extends StatelessWidget {
   final Tournament tournament;
   final bool? isRegistered;
   final VoidCallback onRegistrationChanged;
+  final Future<void> Function() onOrganizerChanged;
 
   const _HeaderExtras({
     required this.tournament,
     required this.isRegistered,
     required this.onRegistrationChanged,
+    required this.onOrganizerChanged,
   });
 
   String _formatDate(DateTime date) {
@@ -463,6 +477,21 @@ class _HeaderExtras extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // The organiser of an open community tournament gets their panel instead
+    // of the chips and the registration button (their own participation is
+    // a switch of the edit form).
+    if (tournament.isRegistrationOpen &&
+        tournament.isOrganizedBy(context.read<AuthProvider>().currentUser?.id)) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+        child: CommunityOrganizerPanel(
+          tournament: tournament,
+          isRegistered: isRegistered,
+          onChanged: onOrganizerChanged,
+        ),
+      );
+    }
+
     final showDetails = !tournament.isInProgress;
     final showRegistration =
         (tournament.isRegistrationOpen || tournament.isUpcoming) &&
@@ -1824,14 +1853,16 @@ class _ChampionCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTheme.sectionTitle,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '+${tournament.winnerEloReward} ${l10n.eloLabel}',
-                  style: AppTheme.caption.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.success,
+                if (tournament.winnerEloReward > 0) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '+${tournament.winnerEloReward} ${l10n.eloLabel}',
+                    style: AppTheme.caption.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.success,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -2072,12 +2103,12 @@ class _ParticipantStanding {
 }
 
 class _ParticipantsTab extends StatefulWidget {
-  final String tournamentId;
+  final Tournament tournament;
   final List<TournamentMatch> bracket;
   final String? currentUserId;
 
   const _ParticipantsTab({
-    required this.tournamentId,
+    required this.tournament,
     required this.bracket,
     required this.currentUserId,
   });
@@ -2096,10 +2127,61 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
     _loadRegistrations();
   }
 
+  // The tournament refreshes on socket events and polls: follow its count so
+  // the list shows who just signed up (the organiser watches this).
+  @override
+  void didUpdateWidget(covariant _ParticipantsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tournament.currentParticipants !=
+        widget.tournament.currentParticipants) {
+      _loadRegistrations();
+    }
+  }
+
+  bool get _canManage =>
+      widget.tournament.isRegistrationOpen &&
+      widget.tournament.isOrganizedBy(widget.currentUserId);
+
+  Future<void> _remove(TournamentRegistration reg) async {
+    final l10n = AppLocalizations.of(context);
+    final name = reg.username ?? l10n.tbdLabel;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.organizerRemoveConfirmTitle(name)),
+        content: Text(l10n.organizerRemoveConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: Text(l10n.organizerRemoveAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final provider = context.read<TournamentProvider>();
+    final ok = await provider.removeParticipant(widget.tournament.id, reg.userId);
+    if (!mounted) return;
+    if (!ok) {
+      final error = provider.error;
+      if (error != null) {
+        TournamentRegistrationGate.showRegistrationError(context, error);
+        provider.clearError();
+      }
+      return;
+    }
+    _loadRegistrations();
+  }
+
   Future<void> _loadRegistrations() async {
     try {
       final regs = await TournamentService.getRegistrations(
-        widget.tournamentId,
+        widget.tournament.id,
       );
       if (mounted) {
         setState(() {
@@ -2206,6 +2288,11 @@ class _ParticipantsTabState extends State<_ParticipantsTab> {
             seed: seedOf[s.registration.id]!,
             isMe: s.registration.userId == widget.currentUserId,
             showElo: index == null,
+            isOrganizer: widget.tournament.isOrganizedBy(s.registration.userId),
+            onRemove: _canManage &&
+                    s.registration.userId != widget.currentUserId
+                ? () => _remove(s.registration)
+                : null,
           ),
       ],
     );
@@ -2219,11 +2306,19 @@ class _ParticipantRow extends StatelessWidget {
   final bool isMe;
   final bool showElo;
 
+  /// This player organises the (community) tournament.
+  final bool isOrganizer;
+
+  /// The organiser's remove button; null when the row can't be removed.
+  final VoidCallback? onRemove;
+
   const _ParticipantRow({
     required this.standing,
     required this.seed,
     required this.isMe,
     required this.showElo,
+    this.isOrganizer = false,
+    this.onRemove,
   });
 
   @override
@@ -2293,6 +2388,18 @@ class _ParticipantRow extends StatelessWidget {
               label: standing.label!,
               color: standing.color,
               dot: standing.live,
+            )
+          else if (isOrganizer)
+            DsPill(label: l10n.organizerLabel, color: AppTheme.primaryLight)
+          else if (onRemove != null)
+            IconButton(
+              tooltip: l10n.organizerRemoveAction,
+              onPressed: onRemove,
+              icon: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: AppTheme.textTertiary,
+              ),
             )
           else if (showElo && elo != null)
             Text(

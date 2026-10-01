@@ -180,15 +180,20 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
   }
 
   // Shown after the player contests a result: the match is frozen server-side
-  // until an admin picks the winner — leave the game flow entirely.
-  void _showResultUnderReviewAndExit() {
+  // until an admin picks the winner — leave the game flow entirely. When the
+  // opponent had already started the next round ([frozen] false) the result
+  // stands and only the report goes to the admin: say so, not "frozen".
+  void _showResultUnderReviewAndExit({bool frozen = true}) {
     final l10n = AppLocalizations.of(context);
     showGameDialog<void>(
       context,
       accent: AppTheme.primary,
       icon: Icons.gavel_rounded,
-      title: l10n.resultUnderReviewTitle,
-      content: Text(l10n.resultUnderReviewBody, style: AppTheme.bodyMedium),
+      title: frozen ? l10n.resultUnderReviewTitle : l10n.reportReceivedTitle,
+      content: Text(
+        frozen ? l10n.resultUnderReviewBody : l10n.reportReceivedLateBody,
+        style: AppTheme.bodyMedium,
+      ),
       actionsBuilder: (ctx) => [
         ElevatedButton(
           onPressed: () {
@@ -310,12 +315,14 @@ class _TournamentGameScreenState extends BaseGameScreenState<TournamentGameScree
             ],
             onSubmit: (reason, comment) async {
               if (tGame.currentGameMatchId == null || auth.currentUser?.id == null) return;
-              await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
+              final response = await MatchService.disputeMatchResult(tGame.currentGameMatchId!, auth.currentUser!.id, reason, comment: comment);
               // The tournament match is now frozen server-side pending admin
               // review — do NOT continue as if the result stood (this used
               // to show the ADVANCE/ELIMINATED ceremony right after
-              // contesting it).
-              if (mounted) _showResultUnderReviewAndExit();
+              // contesting it). Older backends omit bracketFrozen: frozen.
+              if (mounted) {
+                _showResultUnderReviewAndExit(frozen: response['bracketFrozen'] != false);
+              }
             },
             onComplete: () {},
           );

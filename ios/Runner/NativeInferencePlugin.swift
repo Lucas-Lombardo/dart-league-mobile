@@ -343,9 +343,9 @@ class NativeInferencePlugin: NSObject {
 
     // Must track the bundled models (ModelSelector). Dart always passes an
     // explicit modelName (the selected model), so this order only matters if
-    // that lookup misses — v13 first, the model that runs on any device
-    // (DartsMind light retired 2026-09-06).
-    private let defaultModelOrder = ["dart-rivals-v13", "dart-rival-ia-heavy"]
+    // that lookup misses — small first, the model that runs on any device
+    // (the weak-phone pick since 2026-10-01).
+    private let defaultModelOrder = ["dart-rival-ia-small", "dart-rival-ia-heavy", "dart-rivals-v13"]
 
     private func findModelPath(preferred: String? = nil) -> String? {
         // Flutter bundles assets at Frameworks/App.framework/flutter_assets/

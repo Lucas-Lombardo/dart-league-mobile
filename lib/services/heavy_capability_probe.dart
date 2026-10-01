@@ -18,7 +18,7 @@ import 'bundled_asset_file.dart';
 ///    or busy on first launch must get another chance without a release;
 ///  - not measured at all — the load threw, an inference errored —
 ///    [retryFailureAfter], short: that is a bug or a bad moment, not a
-///    number, and it must not park a flagship on v13 for a week;
+///    number, and it must not park a flagship on small for a week;
 ///  - wedged (a native call timed out): [retryAfter] — re-wedging the
 ///    native thread at every launch would cost every match that follows.
 @immutable
@@ -56,9 +56,10 @@ class HeavyProbeVerdict {
   /// FRAMES (a confirmation needs 3 in a row), so 250 ms is the point where
   /// heavy still confirms a dart in under a second. Measured 2026-08-28:
   /// Redmi 13C heavy on its Mali-G52 GPU = 826 ms (fails by 3x); the flagship
-  /// Adreno/Mali-G7x class sits around 100-170 ms (passes with room). v13
-  /// costs ~0.3x heavy on every compute path, so a phone that fails here
-  /// runs v13 at roughly the budget instead — which is the whole point.
+  /// Adreno/Mali-G7x class sits around 100-170 ms (passes with room). small
+  /// costs ~0.35x heavy on every compute path (light, same graph: 306 vs 826
+  /// ms on that Redmi), so a phone that fails here runs small at roughly the
+  /// budget instead — which is the whole point.
   static const int heavyBudgetMs = 250;
 
   /// One sample this far over the budget settles it without the rest — on a
@@ -182,7 +183,7 @@ class HeavyProbeVerdict {
 /// (bounded) so the measurement is never taken on a model a match swapped
 /// in underneath. The interpreter it leaves behind is heavy: a capable phone
 /// then hits native's "same path — reusing" shortcut on its first real load,
-/// a weak one rebuilds with v13 (the normal model switch).
+/// a weak one rebuilds with small (the normal model switch).
 class HeavyCapabilityProbe {
   HeavyCapabilityProbe();
 

@@ -14,6 +14,7 @@ class TournamentProvider extends ChangeNotifier {
   List<Tournament> _upcomingTournaments = [];
   List<Tournament> _registeredTournaments = [];
   List<Tournament> _activeTournaments = [];
+  List<Tournament> _organizedTournaments = [];
   List<TournamentMatch> _pendingMatches = [];
   List<TournamentHistory> _tournamentHistory = [];
   TournamentMatch? _activeMatch;
@@ -71,6 +72,10 @@ class TournamentProvider extends ChangeNotifier {
   List<Tournament> get upcomingTournaments => _upcomingTournaments;
   List<Tournament> get registeredTournaments => _registeredTournaments;
   List<Tournament> get activeTournaments => _activeTournaments;
+
+  /// Community tournaments the user organises and that aren't over — they
+  /// stay in the agenda even when the organiser doesn't play.
+  List<Tournament> get organizedTournaments => _organizedTournaments;
   List<TournamentMatch> get pendingMatches => _pendingMatches;
   List<TournamentHistory> get tournamentHistory => _tournamentHistory;
   TournamentMatch? get activeMatch => _activeMatch;
@@ -151,8 +156,10 @@ class TournamentProvider extends ChangeNotifier {
 
   /// Tournaments currently open for registration — drives the count bubble on
   /// the Tournament tab of the bottom bar.
-  int get openRegistrationCount =>
-      _upcomingTournaments.where((t) => t.isRegistrationOpen).length;
+  /// Official ones only: the players' own tournaments would keep it lit.
+  int get openRegistrationCount => _upcomingTournaments
+      .where((t) => t.isRegistrationOpen && t.isOfficial)
+      .length;
 
   Future<void> loadAllTournaments() async {
     _isLoading = true;
@@ -195,6 +202,7 @@ class TournamentProvider extends ChangeNotifier {
       final result = await TournamentService.getMyTournaments();
       _registeredTournaments = result['registered'] ?? [];
       _activeTournaments = result['active'] ?? [];
+      _organizedTournaments = result['organized'] ?? [];
     } catch (e) {
       _error = e.toString();
       debugPrint('Error loading my tournaments: $e');
@@ -383,6 +391,99 @@ class TournamentProvider extends ChangeNotifier {
       _error = e.toString();
       notifyListeners();
       return false;
+    }
+  }
+
+  // ── Community tournaments (organised by a player) ──────────────────────
+
+  /// Creates a tournament organised by the signed-in player and refreshes the
+  /// agenda. Returns the new id, or null with [error] set.
+  Future<String?> createCommunityTournament({
+    required String name,
+    required DateTime scheduledDate,
+    required int maxParticipants,
+    required int bestOf,
+    required bool organizerPlays,
+  }) async {
+    try {
+      final id = await TournamentService.createCommunityTournament(
+        name: name,
+        scheduledDate: scheduledDate,
+        maxParticipants: maxParticipants,
+        bestOf: bestOf,
+        organizerPlays: organizerPlays,
+      );
+      await loadMyTournaments();
+      await loadUpcomingTournaments();
+      return id;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Runs one organiser action, then refreshes the open tournament and the
+  /// agenda. False with [error] set on failure.
+  Future<bool> _organizerAction(
+    String tournamentId,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+      await _refreshTournamentQuietly(tournamentId);
+      await loadMyTournaments();
+      await loadUpcomingTournaments();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> updateCommunityTournament(
+    String tournamentId, {
+    String? name,
+    DateTime? scheduledDate,
+    int? maxParticipants,
+    int? bestOf,
+  }) =>
+      _organizerAction(
+        tournamentId,
+        () => TournamentService.updateCommunityTournament(
+          tournamentId,
+          name: name,
+          scheduledDate: scheduledDate,
+          maxParticipants: maxParticipants,
+          bestOf: bestOf,
+        ),
+      );
+
+  Future<bool> cancelCommunityTournament(String tournamentId) => _organizerAction(
+        tournamentId,
+        () => TournamentService.cancelCommunityTournament(tournamentId),
+      );
+
+  Future<bool> startCommunityTournament(String tournamentId) => _organizerAction(
+        tournamentId,
+        () => TournamentService.startCommunityTournament(tournamentId),
+      );
+
+  Future<bool> removeParticipant(String tournamentId, String userId) =>
+      _organizerAction(
+        tournamentId,
+        () => TournamentService.removeParticipant(tournamentId, userId),
+      );
+
+  /// How many friends got the invitation, or null with [error] set.
+  Future<int?> inviteFriends(String tournamentId, List<String> userIds) async {
+    try {
+      return await TournamentService.inviteFriends(tournamentId, userIds);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
     }
   }
 

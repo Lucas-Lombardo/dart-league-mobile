@@ -15,6 +15,23 @@ const int kPremiumTournamentDiscountPercent = 50;
 /// Why a user can't register for a tournament (participation conditions).
 enum TournamentEligibility { eligible, premiumRequired, rankTooLow, rankTooHigh }
 
+/// How many tournaments a player without premium still has in a month
+/// (GET /tournaments/monthly-quota). A null [limit] means premium: no limit.
+class MonthlyTournamentQuota {
+  final int? limit;
+  final int used;
+
+  const MonthlyTournamentQuota({required this.limit, required this.used});
+
+  factory MonthlyTournamentQuota.fromJson(Map<String, dynamic> json) =>
+      MonthlyTournamentQuota(
+        limit: json['limit'] as int?,
+        used: json['used'] as int? ?? 0,
+      );
+
+  bool get reached => limit != null && used >= limit!;
+}
+
 class Tournament {
   final String id;
   final String name;
@@ -41,6 +58,14 @@ class Tournament {
   final String? minRank;
   final String? maxRank;
 
+  /// Community tournament: the player who organises it. Null = an official
+  /// Dart Rivals tournament.
+  final String? organizerId;
+  final String? organizerUsername;
+
+  /// Best-of of every match of the bracket (1, 3 or 5).
+  final int bestOf;
+
   Tournament({
     required this.id,
     required this.name,
@@ -66,6 +91,9 @@ class Tournament {
     this.premiumRequired = false,
     this.minRank,
     this.maxRank,
+    this.organizerId,
+    this.organizerUsername,
+    this.bestOf = 3,
   });
 
   factory Tournament.fromJson(Map<String, dynamic> json) {
@@ -94,10 +122,18 @@ class Tournament {
       premiumRequired: json['premiumRequired'] as bool? ?? false,
       minRank: json['minRank'] as String?,
       maxRank: json['maxRank'] as String?,
+      organizerId: json['organizerId'] as String?,
+      organizerUsername: json['organizerUsername'] as String?,
+      bestOf: json['bestOf'] as int? ?? 3,
     );
   }
 
   bool get isFree => entryFee == 0;
+
+  bool get isCommunity => organizerId != null;
+  bool get isOfficial => !isCommunity;
+  bool isOrganizedBy(String? userId) =>
+      userId != null && organizerId == userId;
 
   bool get hasRankRequirement => minRank != null || maxRank != null;
   bool get hasParticipationConditions => premiumRequired || hasRankRequirement;
