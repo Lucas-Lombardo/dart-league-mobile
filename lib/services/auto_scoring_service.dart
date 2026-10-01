@@ -14,6 +14,7 @@ import 'detection_parsing.dart' show kControlPointCount;
 import 'ai_model_telemetry.dart';
 import 'dart_scoring_service.dart';
 import 'native_inference.dart';
+import 'stable_calibration.dart';
 
 // ---------------------------------------------------------------------------
 // DartsMind constants  (DVMind.java fields)
@@ -29,6 +30,19 @@ import 'native_inference.dart';
 // tight triple-20 clusters; looser merges two physically distinct darts.
 const double _tipMergeThresholdBoard = 1.6;
 const int _maxTipHistory = 10;
+// Detections a NEW tip needs in a row before it becomes a dart (DartsMind's
+// tipThreshold window, 3 on its fast-device path). 3 on every phone: the
+// extra frame of latency was accepted for all devices (Lucas, 2026-10-01).
+const int _tipConfirmFrames = 3;
+// Tips farther than this from the board centre, in board units (radius 170),
+// are not darts in the board — DartsMind drops them (2x the board radius).
+// A real miss on the surround stays well inside and still scores Miss.
+const double _offBoardDistance = 340.0;
+// Raw detections kept per tip group to score a dart from its mean position.
+const int _maxRawTips = 10;
+// A dart whose raw detections fall in different beds (on a wire) waits up to
+// this many extra frames before it is scored from the mean of all of them.
+const int _wireHoldMaxFrames = 2;
 const double _minPixelDiff = 0.445;
 const double _maxPixelDiff = 8.0;
 const double _maxShiftThreshold = 40.0;
@@ -42,13 +56,11 @@ const double _defaultZeroProximity = 3.0;
 // cycle) — the old per-loop-tick `_everyXFrame % 2` skip counted iterations,
 // not camera frames, so it never reduced the inference rate. The equivalent
 // brake for a pull loop is a minimum interval between inference STARTS:
-//   ACTIVE  — expecting darts (board live, mid-visit): ≤4 inferences/sec.
-//   RELAXED — takeout phase (leftover darts seen, waiting for the player to
-//             pull them): ~1.4/sec, DartsMind's everyXFrame3-style backoff.
+// ≤4 inferences/sec. (A slower takeout-phase floor existed while leftover
+// darts blocked scoring; scoring now stays live around them.)
 // Slow devices are unaffected (their natural cadence is already below the
 // floor); fast devices stop spending their spare headroom on heat.
 const Duration _inferenceFloorActive = Duration(milliseconds: 250);
-const Duration _inferenceFloorRelaxed = Duration(milliseconds: 700);
 
 // ---------------------------------------------------------------------------
 // Callbacks
@@ -104,13 +116,40 @@ class TipGroup {
   TipVisibility visibility;
   int priority; // 0=normal, 1=low (demoted phantom)
   CnfPoint? fixedAvgCnfP;
+  // Every raw detection of this tip (newest last, capped at _maxRawTips), in
+  // board space. [tips] is collapsed to a running average by
+  // _analyseTipGroups; this keeps the individual reads, so a dart's score can
+  // come from their plain mean and a dart on a wire can be recognised.
+  final List<CnfPoint> raw = [];
+  // DartsMind checkStabilityFurther: decided once, when this group becomes a
+  // counted dart — true when it landed within 10 mm of the previous dart
+  // 1.15–2 s after it (the timing of a re-detected/phantom dart).
+  bool? maybeFake;
 
   TipGroup({required this.id, required List<CnfPoint?> initialTips})
       : tips = initialTips,
         createdTime = _nowSeconds(),
         latestVisibleTime = _nowSeconds(),
         visibility = TipVisibility.invisible,
-        priority = 0;
+        priority = 0 {
+    raw.addAll(initialTips.whereType<CnfPoint>());
+  }
+
+  void addRaw(CnfPoint p) {
+    raw.add(p);
+    if (raw.length > _maxRawTips) raw.removeAt(0);
+  }
+
+  /// Plain mean of the raw detections — the dart's best position estimate.
+  CnfPoint? rawMean() {
+    if (raw.isEmpty) return null;
+    final n = raw.length.toDouble();
+    return CnfPoint(
+      raw.fold(0.0, (s, p) => s + p.x) / n,
+      raw.fold(0.0, (s, p) => s + p.y) / n,
+      raw.fold(0.0, (s, p) => s + p.cnf) / n,
+    );
+  }
 
   /// Average position across all non-null tips (exact copy of TipGroup.avgCnfP)
   CnfPoint? avgCnfP() {
@@ -153,6 +192,9 @@ class ShootGroup {
   int priority;
   final double createdTime;
   bool hasNearbyInvisibleShootsWhenCreated;
+  // Frames this dart has been held back because its reads disagree on the
+  // bed (see _wireHoldMaxFrames).
+  int wireHolds = 0;
 
   ShootGroup(this.firstShoot)
       : id = firstShoot.visionId ?? '',
@@ -195,12 +237,49 @@ class ConfirmedDart {
   });
 }
 
-double _nowSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
+// Every timestamp of the pipeline goes through [AutoScoringService.clock], so
+// a recorded session can be replayed deterministically in tests (TipGroup /
+// ShootGroup times then come from the recorded frame times).
+double _nowSeconds() => AutoScoringService.clock();
+double _wallClockSeconds() => DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+/// What the scorer did with one analysed frame — the exit path of
+/// [AutoScoringService] `_processResult`, named so a replay can tell them apart.
+enum FrameDisposition {
+  /// The native engine call itself failed (no data in the frame).
+  engineFailure,
+
+  /// Persistent engine failures: the engine was invalidated, capture stopped.
+  engineTrip,
+
+  /// Leftover-darts gate armed: frame seen but not scored.
+  gateWait,
+
+  /// The leftover-darts gate cleared on this frame (not scored either).
+  gateCleared,
+
+  /// Board empty long enough after ≥2 emitted darts: the visit was closed.
+  autoConfirm,
+
+  /// Empty board after darts were seen, not yet confirmed (N frames).
+  removalPending,
+
+  /// Darts confirmed pulled from the board (dartsRemoved flag set).
+  dartsRemoved,
+
+  /// The DartsMind pipeline ran on the frame (normal path).
+  scored,
+}
 
 // ---------------------------------------------------------------------------
 // AutoScoringService
 // ---------------------------------------------------------------------------
 class AutoScoringService extends ChangeNotifier {
+  /// Seconds clock behind every pipeline timestamp (see [_nowSeconds]).
+  /// Tests replaying a recorded session set it to the recorded frame time.
+  @visibleForTesting
+  static double Function() clock = _wallClockSeconds;
+
   /// Dart-side fallback interpreter. Used only if the native plugin fails to
   /// load. Inference here blocks the main Dart isolate (~400ms on iOS).
   final DartDetectionService _detector = DartDetectionService(useNativeDecode: false);
@@ -241,7 +320,7 @@ class AutoScoringService extends ChangeNotifier {
   String? _initError;
 
   // Duty-cycle floor: time of the last inference START. The loop waits until
-  // [_inferenceFloorActive]/[_inferenceFloorRelaxed] has elapsed before firing
+  // [_inferenceFloorActive] has elapsed before firing
   // the next one (see the floor constants at the top of the file).
   final Stopwatch _sinceInferenceStart = Stopwatch();
 
@@ -291,7 +370,11 @@ class AutoScoringService extends ChangeNotifier {
   List<double?> _shiftValues = [];
   bool _isShaking = false;
   final double _zeroProximity = _defaultZeroProximity;
-  CnfPoint? _prevBoardCenter; // for shift computation
+
+  // The board calibration held still while darts are in the board (see
+  // StableCalibration). Lives as long as the scorer, like DartsMind's: a
+  // turn change does not move the camera.
+  final StableCalibration _stableCalibration = StableCalibration();
 
   // Slot assignment
   List<String?> _slotShootGroupIds = [null, null, null];
@@ -325,43 +408,22 @@ class AutoScoringService extends ChangeNotifier {
   int _lastCalibrationPointCount = 0;
   bool _dartsRemoved = false;
   int _consecutiveEmptyBoardCount = 0;
-  // Whether any frame of the current empty-board run showed the whole ring
-  // ([_autoConfirmFullBoardPoints] of p1..p8, detected — not cache-served).
-  // Reset with [_consecutiveEmptyBoardCount]: it qualifies THAT run.
-  bool _emptyRunSawWholeBoard = false;
-  // Turn auto-confirm fires only when the board is **fully empty** for this
-  // many consecutive frames. Two frames is too aggressive — model glitches
-  // and hand occlusion can briefly drop tips even while darts are still in
-  // the board, causing the turn to pass while the player has only retrieved
-  // some of their darts. Three frames gives the model a real chance to
-  // re-detect the remaining tips.
-  static const int _autoConfirmThreshold = 3;
+  // Empty board (DartsMind addEmptyBoardFlag): a frame counts as "empty" only
+  // when it saw no tip AND detected all 8 ring points itself (not from the
+  // calibration cache) — a hand or a body in front of the board hides darts
+  // and points alike, so it never passes for an empty board. The visit ends
+  // after this many such frames in a row (DartsMind's window, tipThreshold+1
+  // with its fast-device threshold of 3); frames that cannot see the board
+  // at all say nothing and leave the run as it is.
+  static const int _autoConfirmThreshold = 4;
   // Passage automatique à l'adversaire (cible vide) : exige au moins ce
   // nombre de fléchettes scorées. Une volée d'UNE seule fléchette suivie
   // d'une cible « vide » est le plus souvent un raté de lecture (occlusion,
   // fléchettes non vues) ou une fléchette fantôme — pas une volée
   // volontairement écourtée. Dans ce cas on ne passe JAMAIS la main tout
   // seul : [manualConfirmNeeded] s'allume et c'est le bouton CONFIRMER qui
-  // termine la volée (décision 2026-09-01).
+  // termine la volée (décisions 2026-09-01, confirmée 2026-10-01).
   static const int _autoConfirmMinDarts = 2;
-  // Passage automatique : combien des 8 intersections p1..p8 il faut avoir vues
-  // sur AU MOINS UNE des frames vides avant de fermer la volée.
-  //
-  // `calibrationPoints.length >= 4` ne dit rien : le scorer réduit lui-même à 4
-  // points (un par quadrant) et complète au cache, donc la condition est vraie
-  // sur 99,0 % des frames de prod (1,87 M de frames, 7 j, 2026-09-08) — y
-  // compris quand la moitié de la cible est cachée. Une cible à moitié masquée
-  // n'a alors aucune pointe visible et « prouve » une cible vide.
-  //
-  // 8 = l'anneau entier a été lu, donc « je ne vois plus de fléchette » porte
-  // sur toute la surface de jeu. Exiger les 8 sur les TROIS frames est en
-  // revanche trop dur : rejeu de la session lab du 2026-09-06 (678 frames,
-  // iPhone 15 Pro), 8/8 sur 89,8 % des frames mais seulement 79,8 % de celles
-  // sans pointe — le joueur est devant la cible à ce moment-là. Sur les 17
-  // auto-confirms rejouables, « les 3 frames à 8/8 » n'en laisse passer que 3.
-  // Une seule frame nette dans la fenêtre en laisse passer 15, et suffit à
-  // prouver que la cible est entière.
-  static const int _autoConfirmFullBoardPoints = kControlPointCount;
   bool _manualConfirmNeeded = false;
   int _prevDartCount = 0;
   // Require N consecutive empty frames after seeing darts before flagging
@@ -371,21 +433,31 @@ class AutoScoringService extends ChangeNotifier {
   int _consecutiveRemovalCount = 0;
   static const int _removalConfirmThreshold = 3;
 
-  // One-shot "leftover darts" gate, armed at the start of each of our turns
-  // (and at match start) so darts already in the board — previous visit left
-  // in place, queue warm-up practice — don't get counted as this turn's
-  // throws. The FIRST analyzed frame with a visible board decides: darts
-  // present → hold scoring and show the "remove your darts" hint until the
-  // board is confirmed empty; board clean → disarm immediately so a dart
-  // thrown right at turn start is scored normally.
+  // Visit start. Armed at the start of each of our turns (and at match
+  // start): the FIRST analysed frame that sees the board decides. Darts
+  // already in it — practice darts, a visit left in place, or a phantom the
+  // model keeps seeing — are remembered as leftovers ([_leftoverAnchors])
+  // and never counted; everything else is scored from that frame on. It used
+  // to hold ALL scoring until the board was seen empty, so a phantom on that
+  // first frame could blank a whole visit.
   bool _waitingForEmptyBoard = false;
-  int _emptyBoardCheckCount = 0;
-  static const int _emptyBoardCheckThreshold = 3;
-  // Whether the armed gate has actually SEEN leftover darts (decision made on
-  // the first board-visible frame). The "remove your darts" UI hint keys off
-  // this, and it selects the gate's takeout phase: once true, only
-  // [_emptyBoardCheckThreshold] consecutive empty frames clear the gate.
-  bool _emptyBoardGateSawDarts = false;
+  // Board positions (board units) of the darts already in the board when the
+  // visit started. A dart that becomes counted within [_leftoverAnchorRadius]
+  // of one is that leftover. Cleared once the board has been seen empty.
+  List<List<double>> _leftoverAnchors = [];
+  static const double _leftoverAnchorRadius = 3.0;
+  // DartsMind recallShootsB: the darts of the previous visit when it ended
+  // WITHOUT the board having been seen empty (manual confirm, darts left in
+  // place) — normalised point (boardR == 1) and the bed the AI read. A dart
+  // in the same bed within [_recallRadius] mm of one is that dart, still in
+  // the board. Cleared once the board has been seen empty.
+  List<(List<double>, String)> _previousVisitDarts = [];
+  static const double _recallRadius = 1.6;
+  // The AI's own reading of each emitted slot (a manual edit changes the slot,
+  // not what the dart looked like to the camera).
+  List<String?> _emittedSlotAiBeds = [null, null, null];
+  // Whether the board has been seen empty since the last dart was emitted.
+  bool _boardSeenEmptySinceLastEmit = true;
 
   // Last snapshot of UI-visible state used to suppress no-op rebuilds.
   // notifyListeners() runs after every inference cycle, so without this the
@@ -411,9 +483,14 @@ class AutoScoringService extends ChangeNotifier {
     debugPrintSynchronously('[AS f$_logFrameSeq] $line');
   }
 
-  // Short, stable tail of a group id for readable logs (ids are long).
-  static String _sid(String id) =>
-      id.length <= 5 ? id : id.substring(id.length - 5);
+  // Short, stable name of a group id for readable logs. Ids are
+  // `tg_<counter>_<epochMs>`: the counter is unique per scorer, while the
+  // millisecond tail collides for groups born in the same frame.
+  static String _sid(String id) {
+    final parts = id.split('_');
+    if (parts.length >= 3 && parts[0] == 'tg') return parts[1];
+    return id.length <= 5 ? id : id.substring(id.length - 5);
+  }
 
   String _computeUiStateKey() {
     final b = StringBuffer();
@@ -428,7 +505,7 @@ class AutoScoringService extends ChangeNotifier {
     b.write(_dartsRemoved ? '1' : '0');
     b.write('|');
     b.write(_waitingForEmptyBoard ? '1' : '0');
-    b.write(_emptyBoardGateSawDarts ? '1' : '0');
+    b.write(_leftoverAnchors.isNotEmpty ? '1' : '0');
     b.write(_manualConfirmNeeded ? '1' : '0');
     return b.toString();
   }
@@ -460,26 +537,85 @@ class AutoScoringService extends ChangeNotifier {
   /// appuyer sur CONFIRMER pour terminer sa volée.
   bool get manualConfirmNeeded => _manualConfirmNeeded;
 
-  /// True only when the match-start gate is armed AND the camera has actually
-  /// seen darts on the board — drives the "remove your darts" hint. A board
-  /// that is already empty never shows the hint.
-  bool get showRemoveDartsHint =>
-      _waitingForEmptyBoard && _emptyBoardGateSawDarts;
+  /// Darts were already in the board when the visit started and the board
+  /// has not been seen empty since — drives the "remove your darts" hint.
+  /// They are not counted either way; the hint only asks to pull them.
+  bool get showRemoveDartsHint => _leftoverAnchors.isNotEmpty;
   int get detectedDartCount => _getValidShootDetectionThisRound();
   static bool get isSupported => !kIsWeb;
 
-  /// Arm the one-shot "leftover darts" gate. While armed, the AI continues
-  /// running inference but won't emit dart detections or update the slot UI.
-  /// The first analyzed frame with a visible board decides: darts present →
-  /// show the "remove your darts" hint and wait for a confirmed-empty board;
-  /// board clean → disarm right away so the turn's first throw scores
-  /// normally. Called at match start and at the start of each of our turns.
+  /// Arm the visit-start check. The first analysed frame that sees the board
+  /// decides: darts already in it are remembered as leftovers — never
+  /// counted, "remove your darts" hint shown — and every other dart is
+  /// scored normally from that frame on. Called at match start and at the
+  /// start of each of our turns.
   void waitForEmptyBoardOnce() {
     _waitingForEmptyBoard = true;
-    _emptyBoardCheckCount = 0;
-    _emptyBoardGateSawDarts = false;
+    _leftoverAnchors = [];
     _manualConfirmNeeded = false;
     _notifyIfChanged();
+  }
+
+  /// Remember where the darts of [result] sit on the board: they were there
+  /// before the visit started.
+  void _registerLeftovers(ScoringResult result) {
+    if (result.calibrationPoints.length < 4) return;
+    try {
+      final scorer = DartScoringService(result.calibrationPoints
+          .map((c) => [c.x, c.y, c.flag.toDouble()])
+          .toList());
+      for (final d in result.dartTips) {
+        final b = scorer.toBoard(d.x, d.y);
+        if (b[0].isFinite && b[1].isFinite) _leftoverAnchors.add(b);
+      }
+    } catch (_) {}
+  }
+
+  /// Whether a dart about to become counted, at board position [p], is a
+  /// dart that was already in the board: one seen when the visit started, or
+  /// one the previous visit left in place (DartsMind recallShootsB).
+  bool _isLeftover(CnfPoint p) {
+    for (final a in _leftoverAnchors) {
+      if (_distanceOf2Points(p.x, p.y, a[0], a[1]) <= _leftoverAnchorRadius) {
+        return true;
+      }
+    }
+    if (_previousVisitDarts.isEmpty) return false;
+    final bed = DartScoringService.scoreBoardPoint(p.x, p.y).formatted;
+    for (final (point, prevBed) in _previousVisitDarts) {
+      if (prevBed == bed &&
+          _distanceOf2Points(
+                  p.x, p.y, point[0] * kBoardR, point[1] * kBoardR) <
+              _recallRadius) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// DartsMind's timing rules before passing the hand on an empty board, for
+  /// [valid] counted darts: 3 darts pass at once; with fewer, the last dart
+  /// must have been out of sight ≥ 0.9 s (≥ 1.0 s with two darts), the visit
+  /// must have lasted ≥ 2.4 s, and a visit of misses only waits 2.2 s.
+  bool _autoSwitchTimingOk(int valid) {
+    if (valid >= 3 || _tipGroups.isEmpty) return true;
+    final now = _nowSeconds();
+    final byVisible = List.of(_tipGroups)
+      ..sort((a, b) => a.latestVisibleTime.compareTo(b.latestVisibleTime));
+    final tVis = now - byVisible.last.latestVisibleTime;
+    final tCre = now - byVisible.first.createdTime;
+    if (tVis < 0.9 || tCre < 2.4) return false;
+    if (valid == 2 && tVis < 1.0) return false;
+    final allMisses = _shootGroups.isNotEmpty &&
+        _shootGroups.every((sg) {
+          final p = _shootGroupAvgPoint(sg);
+          return p != null &&
+              DartScoringService.scoreBoardPoint(p[0] * kBoardR, p[1] * kBoardR)
+                      .score ==
+                  0;
+        });
+    if (allMisses && tVis < 2.2) return false;
+    return true;
   }
 
   // ---- DartsMind: getValidShootDetectionThisRound -------------------------
@@ -577,7 +713,6 @@ class AutoScoringService extends ChangeNotifier {
     _manualConfirmNeeded = false;
     _datasetCaptureArmed = true;
     _consecutiveEmptyBoardCount = 0;
-    _emptyRunSawWholeBoard = false;
     _consecutiveRemovalCount = 0;
     _resetErrorStreak();
     _sinceInferenceStart.reset();
@@ -596,6 +731,18 @@ class AutoScoringService extends ChangeNotifier {
 
   /// DartsMind: clearDetectData
   void resetTurn() {
+    // DartsMind clearDetectData → recallShootsB: when the visit being closed
+    // was never followed by an empty board, its darts may still be in it.
+    _previousVisitDarts = [
+      if (!_boardSeenEmptySinceLastEmit)
+        for (int s = 0; s < 3; s++)
+          if (_emittedSlots[s] &&
+              _emittedSlotPoints[s] != null &&
+              _emittedSlotAiBeds[s] != null)
+            (_emittedSlotPoints[s]!, _emittedSlotAiBeds[s]!),
+    ];
+    _boardSeenEmptySinceLastEmit = true;
+    _emittedSlotAiBeds = [null, null, null];
     OpponentVideoFraming.noteScorer(null);
     _dartSlots = [null, null, null];
     _turnTotal = 0;
@@ -604,7 +751,6 @@ class AutoScoringService extends ChangeNotifier {
     _emptyBoardFlags = [];
     _shiftValues = [];
     _isShaking = false;
-    _prevBoardCenter = null;
     _slotShootGroupIds = [null, null, null];
     _emittedSlots = [false, false, false];
     _manualOverrideSlots = [false, false, false];
@@ -614,7 +760,6 @@ class AutoScoringService extends ChangeNotifier {
     _dartsRemoved = false;
     _manualConfirmNeeded = false;
     _consecutiveEmptyBoardCount = 0;
-    _emptyRunSawWholeBoard = false;
     _consecutiveRemovalCount = 0;
     _zoomHint = null;
     _lastInferenceMs = null;
@@ -639,6 +784,7 @@ class AutoScoringService extends ChangeNotifier {
       _manualOverrideSlots[i] = false;
       _removedSlots[i] = false;
       _emittedSlotPoints[i] = null;
+      _emittedSlotAiBeds[i] = null;
     }
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -665,6 +811,7 @@ class AutoScoringService extends ChangeNotifier {
     _manualOverrideSlots[index] = false;
     _removedSlots[index] = false;
     _emittedSlotPoints[index] = null;
+    _emittedSlotAiBeds[index] = null;
     _manualConfirmNeeded = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -681,6 +828,7 @@ class AutoScoringService extends ChangeNotifier {
     // L'ancre anti-doublon tombe avec la fléchette : le joueur affirme qu'il
     // n'y a rien à cet endroit, une future détection y est donc légitime.
     _emittedSlotPoints[index] = null;
+    _emittedSlotAiBeds[index] = null;
     _manualConfirmNeeded = false;
     _turnTotal = _dartSlots.fold<int>(0, (sum, s) => sum + (s?.score ?? 0));
     notifyListeners();
@@ -706,13 +854,8 @@ class AutoScoringService extends ChangeNotifier {
       if (!_capturing || generation != _captureGeneration) break;
 
       // Duty-cycle floor: wait out the remainder of the minimum interval
-      // since the previous inference START. RELAXED during the takeout phase
-      // (leftover darts seen, waiting for the player to pull them) — the gate
-      // clearing flips the next cycle back to ACTIVE, and the player has to
-      // walk back before throwing again, so the slower cadence is invisible.
-      final floor = (_waitingForEmptyBoard && _emptyBoardGateSawDarts)
-          ? _inferenceFloorRelaxed
-          : _inferenceFloorActive;
+      // since the previous inference START.
+      const floor = _inferenceFloorActive;
       if (_sinceInferenceStart.isRunning &&
           _sinceInferenceStart.elapsed < floor) {
         await Future.delayed(floor - _sinceInferenceStart.elapsed);
@@ -819,6 +962,37 @@ class AutoScoringService extends ChangeNotifier {
         return;
       }
 
+      // Everything after inference lives in [_processResult], so a recorded
+      // session replays through exactly this code (see [debugProcessResult]).
+      final disposition = await _processResult(
+        result,
+        onDartDetected,
+        datasetYuv: datasetYuv,
+        datasetPixels: datasetPixels,
+        datasetPixelsAreBgra: datasetPixelsAreBgra,
+      );
+      await _maybeCleanup(imagePath, cleanupFile);
+      if (disposition == FrameDisposition.autoConfirm) onAutoConfirm?.call();
+    } catch (e) {
+      await _maybeCleanup(imagePath, cleanupFile);
+      debugPrint('[AutoScoring] Capture error: $e');
+    } finally {
+      _inferenceInProgress = false;
+    }
+  }
+
+  /// The scorer's decision on one analysed frame — every gate, then the
+  /// DartsMind pipeline. Returns what happened to the frame. No I/O here: the
+  /// caller cleans the frame file up and fires the auto-confirm callback.
+  Future<FrameDisposition> _processResult(
+    ScoringResult result,
+    OnDartDetectedCallback? onDartDetected, {
+    YuvFrame? datasetYuv,
+    (Uint8List, int, int)? datasetPixels,
+    bool datasetPixelsAreBgra = false,
+  }) async {
+    {
+      final seq = _logFrameSeq;
       final dartCount = result.dartTips.length;
       _framesAnalyzed++;
       _lastDartTipCount = dartCount;
@@ -866,14 +1040,12 @@ class AutoScoringService extends ChangeNotifier {
             await _nativeInference!.invalidateEngine();
             _modelLoaded = false;
             _initError = 'AI engine failing: ${result.error}';
-            await _maybeCleanup(imagePath, cleanupFile);
             stopCapture();
-            return;
+            return FrameDisposition.engineTrip;
           }
         }
-        await _maybeCleanup(imagePath, cleanupFile);
         _notifyIfChanged();
-        return;
+        return FrameDisposition.engineFailure;
       }
       _resetErrorStreak();
 
@@ -889,120 +1061,89 @@ class AutoScoringService extends ChangeNotifier {
 
       _updateZoomHint(result);
 
-      // One-shot "leftover darts" gate (armed at turn start). The FIRST
-      // analyzed frame with a visible board decides:
-      //  - darts present → they can only be leftovers (previous visit left in
-      //    the board, warm-up practice): show the "remove your darts" hint and
-      //    hold scoring until the board is confirmed empty;
-      //  - board clean → disarm immediately. Requiring several empty frames
-      //    before disarming (the old behaviour) misread a dart thrown right at
-      //    turn start as a leftover: the hint asked the player to pull a
-      //    legitimate first throw, which was then never scored.
+      // Visit start (armed at turn start): the FIRST frame that sees the
+      // board decides. Darts already in it are remembered as leftovers and
+      // never counted; the frame itself is then scored like any other.
       if (_waitingForEmptyBoard) {
-        final boardVisible = result.calibrationPoints.length >= 4;
-        if (!_emptyBoardGateSawDarts) {
-          // Decision frame — a frame without a visible board proves nothing,
-          // keep waiting for the first usable look at the board.
-          if (boardVisible) {
-            if (dartCount > 0) {
-              _emptyBoardGateSawDarts = true;
-            } else {
-              _waitingForEmptyBoard = false;
-              _emptyBoardCheckCount = 0;
-            }
-          }
-        } else if (boardVisible && dartCount == 0) {
-          // Takeout phase: leftovers were seen. A single empty frame is
-          // unreliable (hand occlusion while pulling darts), so require
-          // several consecutive empty frames before scoring resumes.
-          _emptyBoardCheckCount++;
-          if (_emptyBoardCheckCount >= _emptyBoardCheckThreshold) {
-            _waitingForEmptyBoard = false;
-            _emptyBoardCheckCount = 0;
-            _emptyBoardGateSawDarts = false;
-          }
-        } else if (dartCount > 0) {
-          _emptyBoardCheckCount = 0;
+        if (result.calibrationPoints.length < 4) {
+          _trace('GATE visit start: board not seen yet (frame not scored)');
+          _notifyIfChanged();
+          return FrameDisposition.gateWait;
         }
-        _trace('GATE waitingForEmptyBoard tips=$dartCount cp=${result.calibrationPoints.length} '
-            'sawDarts=${_emptyBoardGateSawDarts ? 1 : 0} '
-            'emptyCount=$_emptyBoardCheckCount/$_emptyBoardCheckThreshold '
-            '${_waitingForEmptyBoard ? "(frame not scored)" : "(gate cleared)"}');
-        await _maybeCleanup(imagePath, cleanupFile);
-        _notifyIfChanged();
-        return;
+        _waitingForEmptyBoard = false;
+        if (dartCount > 0) _registerLeftovers(result);
+        _trace('GATE visit start: board seen, '
+            '${_leftoverAnchors.length} dart(s) already in it');
       }
 
-      // Auto-confirm — le passage automatique à l'adversaire exige au moins
-      // [_autoConfirmMinDarts] fléchettes scorées. Avec une seule, on allume
-      // [manualConfirmNeeded] à la place : le bandeau demande au joueur
-      // d'appuyer sur CONFIRMER, et la main ne passe jamais toute seule.
+      // ---- Empty board → pass the hand (DartsMind addEmptyBoardFlag) -------
+      // See [_autoConfirmThreshold]. Le passage automatique exige au moins
+      // [_autoConfirmMinDarts] fléchettes ; avec une seule, le bandeau
+      // [manualConfirmNeeded] demande d'appuyer sur CONFIRMER.
       final emittedCount = _emittedSlots.where((e) => e).length;
-      if (emittedCount > 0 &&
-          dartCount == 0 &&
-          result.calibrationPoints.length >= 4) {
+      if (dartCount == 0 && result.calibrationPoints.length < 4) {
+        // The board is not in sight at all: no evidence either way.
+      } else if (dartCount == 0 &&
+          !result.calibrationFromCache &&
+          result.detectedControlPoints >= kControlPointCount) {
         _consecutiveEmptyBoardCount++;
-        // Une frame servie par le cache de calibration n'a PAS vu la cible :
-        // elle ne peut pas témoigner que l'anneau est entier.
-        if (!result.calibrationFromCache &&
-            result.detectedControlPoints >= _autoConfirmFullBoardPoints) {
-          _emptyRunSawWholeBoard = true;
-        }
-        if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
-          if (emittedCount >= _autoConfirmMinDarts && _emptyRunSawWholeBoard) {
-            _consecutiveEmptyBoardCount = 0;
-            _emptyRunSawWholeBoard = false;
-            _prevDartCount = 0;
-            _trace('GATE auto-confirm (board empty $_autoConfirmThreshold '
-                'frames, whole ring seen, $emittedCount darts) '
-                '— submitting turn');
-            telemetry.recordAutoConfirm();
-            await _maybeCleanup(imagePath, cleanupFile);
-            onAutoConfirm?.call();
-            return;
-          }
-          // Les deux raisons de retenir la main mènent au même endroit : le
-          // bandeau doré. Sans lui, une cible jamais lue en entier laisserait
-          // le joueur devant un écran qui ne bouge plus.
-          if (!_manualConfirmNeeded) {
-            _manualConfirmNeeded = true;
-            _trace('GATE auto-confirm HELD ('
-                '${emittedCount < _autoConfirmMinDarts ? 'only $emittedCount dart emitted' : 'ring never fully read: ${result.detectedControlPoints}/$_autoConfirmFullBoardPoints'}'
-                ') — manual CONFIRM required');
-          }
-          // Clamp: le compteur a fait son office, inutile de le laisser
-          // croître pendant toute l'attente du joueur.
-          _consecutiveEmptyBoardCount = _autoConfirmThreshold;
-        }
       } else {
         _consecutiveEmptyBoardCount = 0;
-        _emptyRunSawWholeBoard = false;
         // Une pointe est revisible (fléchette re-détectée ou nouveau lancer) :
         // la demande de confirmation manuelle n'a plus lieu d'être.
         if (_manualConfirmNeeded && dartCount > 0) {
           _manualConfirmNeeded = false;
         }
       }
+      if (_consecutiveEmptyBoardCount >= _autoConfirmThreshold) {
+        // The board has been seen empty: whatever was in it is gone.
+        _boardSeenEmptySinceLastEmit = true;
+        _leftoverAnchors = [];
+        _previousVisitDarts = [];
+        if (emittedCount >= _autoConfirmMinDarts &&
+            _autoSwitchTimingOk(emittedCount)) {
+          _consecutiveEmptyBoardCount = 0;
+          _prevDartCount = 0;
+          _trace('GATE auto-confirm (board empty $_autoConfirmThreshold '
+              'frames, whole ring seen, $emittedCount darts) '
+              '— submitting turn');
+          telemetry.recordAutoConfirm();
+          return FrameDisposition.autoConfirm;
+        }
+        if (emittedCount > 0 &&
+            emittedCount < _autoConfirmMinDarts &&
+            !_manualConfirmNeeded) {
+          _manualConfirmNeeded = true;
+          _trace('GATE auto-confirm HELD (only $emittedCount dart emitted) '
+              '— manual CONFIRM required');
+        }
+        // Clamp: le compteur a fait son office, inutile de le laisser
+        // croître pendant toute l'attente du joueur.
+        _consecutiveEmptyBoardCount = _autoConfirmThreshold;
+      }
 
       // Dart removal detection — require N consecutive empty frames after
       // seeing darts. A single empty frame is unreliable: the model can
       // momentarily lose all tips when a hand or arm crosses the board.
       if (_prevDartCount > 0 && dartCount == 0) {
+        if (result.calibrationPoints.length < 4) {
+          // Nothing in sight: neither "removed" nor "still there".
+          _notifyIfChanged();
+          return FrameDisposition.removalPending;
+        }
         _consecutiveRemovalCount++;
         if (_consecutiveRemovalCount >= _removalConfirmThreshold) {
           _consecutiveRemovalCount = 0;
           _prevDartCount = 0;
           _dartsRemoved = true;
           _trace('GATE darts removed (empty $_removalConfirmThreshold frames after darts)');
-          await _maybeCleanup(imagePath, cleanupFile);
           _notifyIfChanged();
-          return;
+          return FrameDisposition.dartsRemoved;
         }
         // Don't update _prevDartCount yet — keep accumulating empty frames
         // against the previous non-zero count.
-        await _maybeCleanup(imagePath, cleanupFile);
         _notifyIfChanged();
-        return;
+        return FrameDisposition.removalPending;
       }
       _consecutiveRemovalCount = 0;
       _prevDartCount = dartCount;
@@ -1037,13 +1178,8 @@ class AutoScoringService extends ChangeNotifier {
       // ---- DartsMind autoScore pipeline -----------------------------------
       _autoScore(result, onDartDetected);
 
-      await _maybeCleanup(imagePath, cleanupFile);
       _notifyIfChanged();
-    } catch (e) {
-      await _maybeCleanup(imagePath, cleanupFile);
-      debugPrint('[AutoScoring] Capture error: $e');
-    } finally {
-      _inferenceInProgress = false;
+      return FrameDisposition.scored;
     }
   }
 
@@ -1052,31 +1188,28 @@ class AutoScoringService extends ChangeNotifier {
   // ========================================================================
 
   void _autoScore(ScoringResult result, OnDartDetectedCallback? onDartDetected) {
-    // Compute board center shift for shaking detection
-    if (result.calibrationPoints.length >= 4) {
-      final cx = result.calibrationPoints.fold(0.0, (s, d) => s + d.x) /
-          result.calibrationPoints.length;
-      final cy = result.calibrationPoints.fold(0.0, (s, d) => s + d.y) /
-          result.calibrationPoints.length;
-      if (_prevBoardCenter != null) {
-        final shift = sqrt(pow(cx - _prevBoardCenter!.x, 2) +
-            pow(cy - _prevBoardCenter!.y, 2));
-        _addShiftValue(shift * 1024.0);
-      }
-      _prevBoardCenter = CnfPoint(cx, cy, 1.0);
-    } else {
-      _addShiftValue(null);
-    }
+    // The points to calibrate THIS frame with: the frame's own on an empty
+    // board, the stable empty-board reference (shifted to follow the camera)
+    // as soon as darts are in the board — see StableCalibration.
+    final calibrationPoints = _stableCalibration.update(
+      result.calibrationPoints,
+      hasTip: result.dartTips.isNotEmpty,
+      imageWidth: result.imageWidth,
+      imageHeight: result.imageHeight,
+    );
+    // Shake detection watches how far the points sit from that reference
+    // (DartsMind's shift value, in pixels of the analysed frame).
+    _addShiftValue(_stableCalibration.lastShift);
 
-    // Build a per-frame perspective transform from the 4 calibration points
+    // Build a per-frame perspective transform from the calibration points
     // so tips can be remapped into DartsMind's dartboard space (170-centred,
     // 340-side) before mergeTips. Without this, a small board shift between
     // frames would make the same physical dart land at a different normalised
     // image position and create a duplicate TipGroup.
     DartScoringService? scorer;
-    if (result.calibrationPoints.length >= 4) {
+    if (calibrationPoints.length >= 4) {
       try {
-        final calibData = result.calibrationPoints
+        final calibData = calibrationPoints
             .map((c) => [c.x, c.y, c.flag.toDouble()])
             .toList();
         scorer = DartScoringService(calibData);
@@ -1097,20 +1230,32 @@ class AutoScoringService extends ChangeNotifier {
     // would just pollute the group state with non-comparable coordinates.
     final tipCnfPoints = <CnfPoint>[];
     _latestScores = {};
-    if (scorer != null) {
+    if (scorer == null) {
+      // No calibration this frame: it says nothing about the darts. DartsMind
+      // skips such a frame; marking every tip group "not seen" instead broke
+      // the run of reads a dart needs to be confirmed (and could age a real
+      // dart out). The groups simply wait for the next calibrated frame.
+      _trace('frame skipped: no calibration');
+      return;
+    }
+    {
       for (int i = 0; i < result.dartTips.length; i++) {
         final d = result.dartTips[i];
         final board = scorer.toBoard(d.x, d.y);
-        tipCnfPoints.add(CnfPoint(board[0], board[1], d.confidence));
-        if (i < result.scores.length) {
-          // Key by *normalised* board coords (board / boardR) so it shares the
-          // same space as Shoot.actualPoint, which is what _lookupScore uses.
-          final nbx = board[0] / kBoardR;
-          final nby = board[1] / kBoardR;
-          _latestScores[
-                  '${nbx.toStringAsFixed(4)},${nby.toStringAsFixed(4)}'] =
-              result.scores[i];
+        final fromCentre = _distanceOf2Points(board[0], board[1], kBoardR, kBoardR);
+        if (!fromCentre.isFinite || fromCentre > _offBoardDistance) {
+          _trace('tip[$i] dropped: ${fromCentre.toStringAsFixed(0)} units '
+              'from the centre (off the board)');
+          continue;
         }
+        tipCnfPoints.add(CnfPoint(board[0], board[1], d.confidence));
+        // Key by *normalised* board coords (board / boardR) so it shares the
+        // same space as Shoot.actualPoint, which is what _lookupScore uses.
+        // Scored with THIS frame's (stable) calibration, not the detector's.
+        final nbx = board[0] / kBoardR;
+        final nby = board[1] / kBoardR;
+        _latestScores['${nbx.toStringAsFixed(4)},${nby.toStringAsFixed(4)}'] =
+            DartScoringService.scoreBoardPoint(board[0], board[1]);
       }
     }
 
@@ -1347,6 +1492,7 @@ class AutoScoringService extends ChangeNotifier {
       final idx = _tipGroups.indexWhere((tg) => tg.id == m.$1);
       if (idx >= 0) {
         _tipGroups[idx].tips.add(tips[m.$2]);
+        _tipGroups[idx].addRaw(tips[m.$2]);
       }
     }
 
@@ -1549,8 +1695,12 @@ class AutoScoringService extends ChangeNotifier {
     // Then collapse tips to their average (DartsMind replaces tips with [avg])
     for (int i = _tipGroups.length - 1; i >= 0; i--) {
       final tg = _tipGroups[i];
-      // Skip groups that don't have enough history yet (tipThreshold = 2)
-      if (tg.tips.length < 2) continue;
+      // Skip groups that don't have enough history yet. A tip not yet
+      // confirmed needs a full window of [_tipConfirmFrames] reads; a
+      // confirmed one keeps updating its visibility every 2 frames.
+      if (tg.tips.length < (tg.firstPassTime == null ? _tipConfirmFrames : 2)) {
+        continue;
+      }
       final threshold85 = tg.tips.length * 0.85;
       final nonNullCount =
           tg.tips.whereType<CnfPoint>().length.toDouble();
@@ -1568,6 +1718,15 @@ class AutoScoringService extends ChangeNotifier {
             // Ignore new tip during shaking
           } else {
             tg.firstPassTime = now;
+            // A dart that was already in the board when the visit started
+            // (or that the previous visit left there) becomes a tracked but
+            // never-counted group — see _isLeftover.
+            if (tg.priority == 0 && _isLeftover(avg)) {
+              tg.priority = 2;
+              _trace('EVENT leftover TG ${_sid(tg.id)} at '
+                  '(${avg.x.toStringAsFixed(1)},${avg.y.toStringAsFixed(1)}) '
+                  '— already in the board, not counted');
+            }
           }
         }
         tg.latestPassTime = now;
@@ -1625,6 +1784,12 @@ class AutoScoringService extends ChangeNotifier {
           final exIdx =
               _tipGroups.indexWhere((tg) => tg.id == bestMerge!.$2);
           if (exIdx >= 0) {
+            final newIdx = _tipGroups.indexWhere((tg) => tg.id == newTg.id);
+            if (newIdx >= 0) {
+              for (final r in _tipGroups[newIdx].raw) {
+                _tipGroups[exIdx].addRaw(r);
+              }
+            }
             final exAvg = _tipGroups[exIdx].tips.firstOrNull;
             if (exAvg != null) {
               _tipGroups[exIdx].tips = [exAvg, newAvg];
@@ -1660,6 +1825,13 @@ class AutoScoringService extends ChangeNotifier {
             // Merge j into i in the main tipGroups
             final iIdx =
                 _tipGroups.indexWhere((tg) => tg.id == newGroups[j].id);
+            final fromIdx =
+                _tipGroups.indexWhere((tg) => tg.id == newGroups[i].id);
+            if (iIdx >= 0 && fromIdx >= 0) {
+              for (final r in _tipGroups[fromIdx].raw) {
+                _tipGroups[iIdx].addRaw(r);
+              }
+            }
             if (iIdx >= 0) {
               final iAvg = _tipGroups[iIdx].tips.firstOrNull;
               if (iAvg != null) {
@@ -1687,7 +1859,6 @@ class AutoScoringService extends ChangeNotifier {
     }
 
     // Phase 5: checkStability (3 rounds with increasing timeSpan)
-    // For single camera: primarily validates groups, dual-cam merging skipped
     var stableGroups = _checkStability(newGroups, 0.65);
     if (stableGroups.isNotEmpty) {
       stableGroups = _checkStability(stableGroups, 1.15);
@@ -1698,11 +1869,16 @@ class AutoScoringService extends ChangeNotifier {
 
     // Phase 6: Restore priority for dual-cam confirmed groups (skip for single cam)
 
-    // Phase 7: Collect ClearVisible groups with firstPassTime, sort by createdTime desc
+    // DartsMind runs checkStabilityFurther on the main camera too.
+    _checkStabilityFurther();
+
+    // Phase 7: Collect ClearVisible, passed, still-counted groups (DartsMind
+    // emits priority-0 groups only), sorted by createdTime desc.
     final visibleGroups = _tipGroups
         .where((tg) =>
             tg.visibility == TipVisibility.clearVisible &&
-            tg.firstPassTime != null)
+            tg.firstPassTime != null &&
+            tg.priority == 0)
         .toList()
       ..sort((a, b) => b.createdTime.compareTo(a.createdTime));
     // Phase 8: Convert visible groups to Shoots via dartTipToShoot.
@@ -1735,42 +1911,143 @@ class AutoScoringService extends ChangeNotifier {
     copy.latestVisibleTime = tg.latestVisibleTime;
     copy.visibility = tg.visibility;
     copy.priority = tg.priority;
+    copy.maybeFake = tg.maybeFake;
     return copy;
   }
 
   // ========================================================================
-  // DartsMind: checkStability (from DVMind.java line 1663)
-  // For single camera: validates groups created within timeSpan of each other.
-  // The dual-camera merging logic (bulk of the method) is skipped.
+  // DartsMind: checkStability, single-camera rounds 3 and 4 (DVMind 4.4.12).
+  // Rounds 1-2 and the revive loop need a paired second camera.
+  //
+  // DartsMind demotes freely and lets the game take a shown dart back; we
+  // never retract, so both rounds are applied BEFORE a dart is shown and
+  // never demote one already emitted — the not-yet-shown side loses instead.
   // ========================================================================
+  // Round 3 keeps one dart among counted darts born within the time window of
+  // each other. DartsMind applies it board-wide, which also drops one of two
+  // REAL darts that appear together (e.g. after the player stops hiding
+  // them); here it only applies within the split-read band — one dart read
+  // as two tips lands them 1.6–3.2 mm apart (twice the tip merge distance).
+  // A 10 mm radius was tried first: on the 2026-09-06 lab leg (f1815) it
+  // dropped a real dart born 9 mm from the re-read of an occluded one.
+  static const double _coTimedDupRadius = 2 * _tipMergeThresholdBoard;
+  // Round 4: a counted dart this close to one of the three first darts,
+  // born within 1.6 s of it, is the same dart.
+  static const double _round4DupRadius = 3.0;
+
   List<TipGroup> _checkStability(List<TipGroup> inputGroups, double timeSpan) {
     if (inputGroups.isEmpty) return [];
 
     final groups = inputGroups.map((tg) => _copyTipGroup(tg)).toList();
 
+    bool emitted(String id) {
+      final slot = _slotShootGroupIds.indexOf(id);
+      return slot >= 0 && _emittedSlots[slot];
+    }
+
+    void demote(TipGroup live, String why) {
+      live.priority = 1;
+      for (final sg in _shootGroups) {
+        if (sg.id == live.id && sg.priority == 0) sg.priority = 1;
+      }
+      for (final c in groups) {
+        if (c.id == live.id) c.priority = 1;
+      }
+      _trace('EVENT demote TG ${_sid(live.id)} ($why) — not counted');
+    }
+
     for (final g in groups) {
       if (g.priority != 0) continue;
+      final w = min(1.15, timeSpan);
 
-      // Find other tipGroups created within timeSpan
-      final nearby = <TipGroup>[];
-      for (final tg in _tipGroups) {
-        if (tg.priority > 1) continue;
-        if (tg.firstPassTime == null) continue;
-        final timeDiff = (tg.createdTime - g.createdTime).abs();
-        if (timeDiff <= min(1.15, timeSpan)) {
-          nearby.add(tg);
+      // ---- Round 3: co-timed reads of one dart -----------------------------
+      final r3 = _tipGroups
+          .where((t) =>
+              t.priority == 0 &&
+              t.firstPassTime != null &&
+              (t.createdTime - g.createdTime).abs() <= w)
+          .toList();
+      for (int i = 0; i < r3.length; i++) {
+        for (int j = i + 1; j < r3.length; j++) {
+          final a = r3[i], b = r3[j];
+          if (a.priority != 0 || b.priority != 0) continue;
+          final pa = a.tips.firstOrNull, pb = b.tips.firstOrNull;
+          if (pa == null || pb == null) continue;
+          if (_distanceOf2Points(pa.x, pa.y, pb.x, pb.y) > _coTimedDupRadius) {
+            continue;
+          }
+          final ea = emitted(a.id), eb = emitted(b.id);
+          if (ea && eb) continue;
+          // DartsMind: the lower smoothed confidence loses (ties: the first).
+          TipGroup loser = pb.cnf < pa.cnf ? b : a;
+          if (emitted(loser.id)) loser = identical(loser, a) ? b : a;
+          demote(loser, 'born within ${w}s and 3.2mm of another read');
         }
       }
 
-      // Dual-camera merging logic — skipped for single camera
-      // (DartsMind lines L70-L3ac: only runs when dvExtraCamConnector.isPaired)
+      // ---- Round 4: re-read of one of the first three darts ----------------
+      if (timeSpan > 1.15) {
+        final r4 = _tipGroups
+            .where((t) =>
+                t.priority == 0 &&
+                t.firstPassTime != null &&
+                (t.createdTime - g.createdTime).abs() <= timeSpan)
+            .toList();
+        if (r4.length >= 2) {
+          final first3 = _shootGroups.where((sg) => sg.priority == 0).toList()
+            ..sort((a, b) => a.createdTime.compareTo(b.createdTime));
+          final s3 = first3.take(3).toList();
+          for (final t in r4) {
+            if (t.priority != 0 || emitted(t.id)) continue;
+            final tp = t.tips.firstOrNull;
+            if (tp == null) continue;
+            for (final sg in s3) {
+              if (sg.id == t.id) continue;
+              final sp = _shootGroupAvgPoint(sg);
+              if (sp == null) continue;
+              if (_distanceOf2Points(
+                      tp.x, tp.y, sp[0] * kBoardR, sp[1] * kBoardR) <=
+                  _round4DupRadius) {
+                demote(t, 'within 3mm of SG ${_sid(sg.id)}, born within '
+                    '${timeSpan}s');
+                break;
+              }
+            }
+          }
+        }
+      }
     }
 
-    return groups;
+    return groups.where((g) => g.priority == 0).toList();
   }
 
-  // DartsMind: checkStabilityFurther — only runs for as2ndCam (dual camera).
-  // Skipped: mobile app is single camera.
+  /// DartsMind checkStabilityFurther (main camera): flag, once, the newest
+  /// counted dart when it landed within 10 mm of the previous one 1.15–2 s
+  /// after it. DartsMind shows it and drops it when a 4th dart turns up; we
+  /// cannot drop a shown dart, so a flagged dart instead needs a longer,
+  /// solid track before it is shown (see _assignSlots).
+  void _checkStabilityFurther() {
+    final counted = _tipGroups
+        .where((t) => t.priority == 0 && t.firstPassTime != null)
+        .toList()
+      ..sort((a, b) => a.createdTime.compareTo(b.createdTime));
+    if (counted.length == 1 && counted.first.maybeFake == null) {
+      counted.first.maybeFake = false;
+    }
+    if (counted.length >= 2 && counted.last.maybeFake == null) {
+      final last = counted.last, prev = counted[counted.length - 2];
+      final a = last.avgCnfP(), b = prev.avgCnfP();
+      if (a == null || b == null) return;
+      final d = _distanceOf2Points(a.x, a.y, b.x, b.y);
+      final dt = last.createdTime - prev.createdTime;
+      last.maybeFake = d <= 10.0 && dt > 1.15 && dt <= 2.0;
+      if (last.maybeFake!) {
+        _trace('EVENT maybe-fake TG ${_sid(last.id)} '
+            '(${d.toStringAsFixed(1)}mm, ${dt.toStringAsFixed(2)}s after '
+            'TG ${_sid(prev.id)})');
+      }
+    }
+  }
 
   // Frames a suspect (born-near-invisible) shoot group must survive before it
   // may be emitted — see _assignSlots. Must be strictly greater than the
@@ -2227,7 +2504,35 @@ class AutoScoringService extends ChangeNotifier {
       }
       if (_hasUnresolvedNearbyCompetitor(sg)) continue;
 
-      final base = _lookupScore(sg);
+      final tg = _tipGroups.where((t) => t.id == sg.id).firstOrNull;
+      // A maybe-fake dart (see _checkStabilityFurther) is shown only once it
+      // has a solid track: [_phantomConfirmFrames] frames, all but one seen.
+      if (tg?.maybeFake == true &&
+          (sg.shoots.length < _phantomConfirmFrames ||
+              _sgNonNull(sg) < _phantomConfirmFrames - 1)) {
+        continue;
+      }
+
+      // The dart's score comes from the MEAN of its raw reads, not from one
+      // frame's detection. When those reads land in different beds the dart
+      // sits on a wire: wait up to [_wireHoldMaxFrames] more frames so the
+      // mean rests on more reads, then score it — once shown it never moves.
+      final reads = tg?.raw ?? const <CnfPoint>[];
+      if (reads.length >= 2 && sg.wireHolds < _wireHoldMaxFrames) {
+        final beds = reads
+            .map((r) => DartScoringService.scoreBoardPoint(r.x, r.y).formatted)
+            .toSet();
+        if (beds.length > 1) {
+          sg.wireHolds++;
+          _trace('EVENT wire-hold SG ${_sid(sg.id)} ${sg.wireHolds}/'
+              '$_wireHoldMaxFrames (reads in ${beds.join(" / ")})');
+          continue;
+        }
+      }
+      final mean = tg?.rawMean();
+      final base = mean != null
+          ? DartScoringService.scoreBoardPoint(mean.x, mean.y)
+          : _lookupScore(sg);
       if (base == null) continue;
 
       // Store dartScore on the shoot, carrying the detector's confidence for
@@ -2254,6 +2559,8 @@ class AutoScoringService extends ChangeNotifier {
               'SG ${_sid(sg.id)} ${score.formatted}');
           if (firstEmit) {
             _emittedSlots[s] = true;
+            _emittedSlotAiBeds[s] = score.formatted;
+            _boardSeenEmptySinceLastEmit = false;
             telemetry.recordAutoScored();
             // Where the opponent's screen should zoom: the tip, re-expressed
             // in the frame we are streaming to them (the board crop when one
@@ -2347,6 +2654,38 @@ class AutoScoringService extends ChangeNotifier {
     } else {
       _zoomHint = null;
     }
+  }
+
+  // ---- Test seams: replay a recorded session through the real pipeline ----
+
+  /// The per-capture resets of [startCapture], without the capture loop.
+  @visibleForTesting
+  void debugMarkCaptureStart() {
+    _dartsRemoved = false;
+    _manualConfirmNeeded = false;
+    _datasetCaptureArmed = true;
+    _consecutiveEmptyBoardCount = 0;
+    _consecutiveRemovalCount = 0;
+    _resetErrorStreak();
+  }
+
+  /// Run one already-analysed frame through the scorer exactly as the capture
+  /// loop would (gates, auto-confirm, removal, DartsMind pipeline, slots).
+  /// Set [clock] to the frame's time before calling.
+  @visibleForTesting
+  Future<FrameDisposition> debugProcessResult(
+    ScoringResult result, {
+    OnDartDetectedCallback? onDartDetected,
+    OnAutoConfirmCallback? onAutoConfirm,
+    int? seq,
+    int? inferenceMs,
+  }) async {
+    _captureSeq = seq ?? _captureSeq + 1;
+    _logFrameSeq = _captureSeq;
+    _lastInferenceMs = inferenceMs;
+    final disposition = await _processResult(result, onDartDetected);
+    if (disposition == FrameDisposition.autoConfirm) onAutoConfirm?.call();
+    return disposition;
   }
 
   @override

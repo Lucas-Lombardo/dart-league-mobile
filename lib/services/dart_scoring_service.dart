@@ -477,10 +477,16 @@ class DartScoringService {
   /// Replicate DartsMind's `dartTipToShoot` exactly.
   DartScore score(double x, double y) {
     final board = _toBoard(x, y);
+    return scoreBoardPoint(board[0], board[1]);
+  }
 
+  /// [score] for a point already in absolute board space (see [toBoard]) —
+  /// how the scorer reads a dart from the AVERAGE of its tracked positions
+  /// rather than from one frame's detection.
+  static DartScore scoreBoardPoint(double bx, double by) {
     // Normalise to unit circle centred at (1.0, 1.0)
-    final normX = board[0] / _boardR;
-    final normY = board[1] / _boardR;
+    final normX = bx / _boardR;
+    final normY = by / _boardR;
 
     // Distance from centre (1.0, 1.0)
     final dist = sqrt(pow(normX - 1.0, 2) + pow(normY - 1.0, 2));

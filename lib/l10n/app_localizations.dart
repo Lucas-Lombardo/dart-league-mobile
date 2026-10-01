@@ -1542,8 +1542,12 @@ abstract class AppLocalizations {
   /// Pill on a tournament the user organises / on the organiser row.
   String get organizerLabel;
 
-  /// Tournaments tab header: the + button.
-  String get createTournamentTooltip;
+  /// Tournaments tab: the sticky button at the bottom that creates a
+  /// community tournament.
+  String get organizeTournamentCta;
+
+  /// Tournaments tab: subtitle of the sticky "organise" button.
+  String get organizeTournamentCtaSubtitle;
 
   /// Community tournament form: title when creating.
   String get communityFormTitleNew;

@@ -162,9 +162,12 @@ void main() {
       ], layout: heavy), isEmpty);
     });
 
-    test('darts pass at 0.50 but calibration points need 0.80', () {
+    // The dart floor was 0.50 when v13 launched; raised to 0.87 on 2026-09-01
+    // (see DetectionLayout.e2eDartFirst).
+    test('darts pass at 0.87 but calibration points need 0.80', () {
       final dets = parse([
-        [246, 497, 266, 527, 0.55, 0], // dart, above 0.50 → kept
+        [246, 497, 266, 527, 0.88, 0], // dart, above 0.87 → kept
+        [246, 600, 266, 630, 0.85, 0], // dart, below 0.87 → dropped
         [100, 100, 110, 110, 0.55, 1], // p1, below 0.80 → dropped
         [200, 200, 210, 210, 0.85, 2], // p2, above 0.80 → kept
       ]);

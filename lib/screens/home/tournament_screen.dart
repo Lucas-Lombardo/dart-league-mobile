@@ -33,7 +33,7 @@ import '../tournament/tournament_camera_setup_screen.dart';
 /// Community tournaments (organised by a player, 2026-10) share the agenda
 /// with the official ones: the left of every row says who organises it (the
 /// shield = Dart Rivals, initials = a player), chips filter the two kinds and
-/// the + of the header creates one.
+/// a sticky gradient button at the bottom creates one.
 class TournamentScreen extends StatefulWidget {
   const TournamentScreen({super.key});
 
@@ -53,10 +53,10 @@ class _TournamentScreenState extends State<TournamentScreen> {
   }
 
   bool _passesFilter(Tournament t) => switch (_filter) {
-        _AgendaFilter.all => true,
-        _AgendaFilter.official => t.isOfficial,
-        _AgendaFilter.community => t.isCommunity,
-      };
+    _AgendaFilter.all => true,
+    _AgendaFilter.official => t.isOfficial,
+    _AgendaFilter.community => t.isCommunity,
+  };
 
   @override
   void initState() {
@@ -83,12 +83,6 @@ class _TournamentScreenState extends State<TournamentScreen> {
             title: l10n.tournaments,
             actions: [
               DsIconButton(
-                icon: Icons.add_rounded,
-                iconColor: AppTheme.primaryLight,
-                tooltip: l10n.createTournamentTooltip,
-                onTap: _createTournament,
-              ),
-              DsIconButton(
                 icon: Icons.history_rounded,
                 tooltip: l10n.history,
                 onTap: () => AppNavigator.toScreen(
@@ -100,116 +94,192 @@ class _TournamentScreenState extends State<TournamentScreen> {
           ),
         ),
         Expanded(
-          child: Consumer<TournamentProvider>(
-            builder: (context, provider, _) {
-              final pendingMatches = provider.pendingMatches;
-              final registeredIds =
-                  provider.registeredTournaments.map((t) => t.id).toSet();
+          child: Stack(
+            children: [
+              Positioned.fill(child: _buildAgenda(l10n)),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _OrganizeBar(onTap: _createTournament),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
-              // One entry per tournament; the "my tournaments" copies win over
-              // the public listing so the freshest status is displayed.
-              final byId = <String, Tournament>{
-                for (final t in provider.upcomingTournaments) t.id: t,
-                for (final t in provider.organizedTournaments) t.id: t,
-                for (final t in provider.registeredTournaments) t.id: t,
-                for (final t in provider.activeTournaments) t.id: t,
-              };
-              final allTournaments = byId.values.toList();
-              final agenda = allTournaments.where(_passesFilter).toList()
-                ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+  Widget _buildAgenda(AppLocalizations l10n) {
+    return Consumer<TournamentProvider>(
+      builder: (context, provider, _) {
+        final pendingMatches = provider.pendingMatches;
+        final registeredIds = provider.registeredTournaments
+            .map((t) => t.id)
+            .toSet();
 
-              if (provider.isLoading &&
-                  allTournaments.isEmpty &&
-                  pendingMatches.isEmpty) {
-                return const Center(
-                  child: CircularProgressIndicator(color: AppTheme.primary),
-                );
-              }
+        // One entry per tournament; the "my tournaments" copies win over
+        // the public listing so the freshest status is displayed.
+        final byId = <String, Tournament>{
+          for (final t in provider.upcomingTournaments) t.id: t,
+          for (final t in provider.organizedTournaments) t.id: t,
+          for (final t in provider.registeredTournaments) t.id: t,
+          for (final t in provider.activeTournaments) t.id: t,
+        };
+        final allTournaments = byId.values.toList();
+        final agenda = allTournaments.where(_passesFilter).toList()
+          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
 
-              if (allTournaments.isEmpty && pendingMatches.isEmpty) {
-                return RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        if (provider.isLoading &&
+            allTournaments.isEmpty &&
+            pendingMatches.isEmpty) {
+          return const Center(
+            child: CircularProgressIndicator(color: AppTheme.primary),
+          );
+        }
+
+        if (allTournaments.isEmpty && pendingMatches.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: _loadData,
+            child: ListView(
+              padding: _listPadding,
+              children: [
+                DsCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
                     children: [
-                      DsCard(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.event_busy_outlined,
-                              size: 32,
-                              color: AppTheme.textTertiary,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              l10n.noUpcomingTournaments,
-                              textAlign: TextAlign.center,
-                              style: AppTheme.rowTitle,
-                            ),
-                          ],
-                        ),
+                      const Icon(
+                        Icons.event_busy_outlined,
+                        size: 32,
+                        color: AppTheme.textTertiary,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        l10n.noUpcomingTournaments,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.rowTitle,
                       ),
                     ],
                   ),
-                );
-              }
-
-              final children = <Widget>[];
-
-              // Pinned invitations, out of chronology.
-              for (var i = 0; i < pendingMatches.length; i++) {
-                if (i > 0) children.add(const SizedBox(height: 10));
-                children.add(_MatchInviteCard(match: pendingMatches[i]));
-              }
-
-              // Filter chips, right above the agenda they filter.
-              if (children.isNotEmpty) children.add(const SizedBox(height: 18));
-              children.add(_FilterChips(
-                filter: _filter,
-                onChanged: (f) => setState(() => _filter = f),
-              ));
-              if (agenda.isEmpty) {
-                children.add(const SizedBox(height: 14));
-                children.add(DsCard(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    l10n.agendaFilterEmpty,
-                    textAlign: TextAlign.center,
-                    style: AppTheme.rowTitle,
-                  ),
-                ));
-              }
-
-              DateTime? currentDay;
-              for (final tournament in agenda) {
-                final local = tournament.scheduledDate.toLocal();
-                final day = DateTime(local.year, local.month, local.day);
-                if (day != currentDay) {
-                  currentDay = day;
-                  // 22 px above a group; the list padding already gives 14
-                  // under the header, so the first group only adds 8.
-                  children.add(
-                    _DayHeader(day: day, topGap: children.isEmpty ? 8 : 22),
-                  );
-                } else {
-                  children.add(const SizedBox(height: 8));
-                }
-                children.add(_AgendaRow(
-                  key: ValueKey(tournament.id),
-                  tournament: tournament,
-                  isRegistered: registeredIds.contains(tournament.id),
-                ));
-              }
-
-              return RefreshIndicator(
-                onRefresh: _loadData,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-                  children: children,
                 ),
-              );
-            },
+              ],
+            ),
+          );
+        }
+
+        final children = <Widget>[];
+
+        // Pinned invitations, out of chronology.
+        for (var i = 0; i < pendingMatches.length; i++) {
+          if (i > 0) children.add(const SizedBox(height: 10));
+          children.add(_MatchInviteCard(match: pendingMatches[i]));
+        }
+
+        // Filter chips, right above the agenda they filter.
+        if (children.isNotEmpty) children.add(const SizedBox(height: 18));
+        children.add(
+          _FilterChips(
+            filter: _filter,
+            onChanged: (f) => setState(() => _filter = f),
+          ),
+        );
+        if (agenda.isEmpty) {
+          children.add(const SizedBox(height: 14));
+          children.add(
+            DsCard(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                l10n.agendaFilterEmpty,
+                textAlign: TextAlign.center,
+                style: AppTheme.rowTitle,
+              ),
+            ),
+          );
+        }
+
+        DateTime? currentDay;
+        for (final tournament in agenda) {
+          final local = tournament.scheduledDate.toLocal();
+          final day = DateTime(local.year, local.month, local.day);
+          if (day != currentDay) {
+            currentDay = day;
+            // 22 px above a group; the list padding already gives 14
+            // under the header, so the first group only adds 8.
+            children.add(
+              _DayHeader(day: day, topGap: children.isEmpty ? 8 : 22),
+            );
+          } else {
+            children.add(const SizedBox(height: 8));
+          }
+          children.add(
+            _AgendaRow(
+              key: ValueKey(tournament.id),
+              tournament: tournament,
+              isRegistered: registeredIds.contains(tournament.id),
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: _loadData,
+          child: ListView(padding: _listPadding, children: children),
+        );
+      },
+    );
+  }
+}
+
+/// Both agenda lists end above the sticky [_OrganizeBar], so the last row
+/// can still be scrolled clear of it.
+const _listPadding = EdgeInsets.fromLTRB(16, 14, 16, _OrganizeBar.height + 16);
+
+/// The sticky "Organiser un tournoi" block at the bottom of the tab: the
+/// screen's gradient [DsPrimaryRow] over a fade, so the agenda scrolls
+/// under it. The bottom gap clears the "Jouer" disc that rises above the
+/// bottom bar.
+class _OrganizeBar extends StatelessWidget {
+  static const double _fade = 24;
+  static const double _button = 64;
+  static const double _bottomGap = 24;
+  static const double height = _fade + _button + _bottomGap;
+
+  final VoidCallback onTap;
+
+  const _OrganizeBar({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The fade only paints: rows under it stay tappable.
+        IgnorePointer(
+          child: Container(
+            height: _fade,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTheme.background.withValues(alpha: 0),
+                  AppTheme.background,
+                ],
+              ),
+            ),
+          ),
+        ),
+        ColoredBox(
+          color: AppTheme.background,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, _bottomGap),
+            child: DsPrimaryRow(
+              icon: Icons.add_rounded,
+              title: l10n.organizeTournamentCta,
+              subtitle: l10n.organizeTournamentCtaSubtitle,
+              height: _button,
+              onTap: onTap,
+            ),
           ),
         ),
       ],
@@ -266,8 +336,8 @@ class _DayHeader extends StatelessWidget {
     final label = diff == 0
         ? l10n.agendaToday
         : diff == 1
-            ? '${l10n.agendaTomorrow} · $formatted'
-            : formatted;
+        ? '${l10n.agendaTomorrow} · $formatted'
+        : formatted;
 
     return Padding(
       padding: EdgeInsets.only(top: topGap, bottom: 10),
@@ -314,8 +384,10 @@ class _AgendaRowState extends State<_AgendaRow> {
     // Product spec: the tournament is visible to everyone; trying to join
     // while blocked (app outdated, email unverified, full, premium/rank)
     // explains why in a popup. Backend enforces everything again.
-    final allowed =
-        await TournamentRegistrationGate.run(context, widget.tournament);
+    final allowed = await TournamentRegistrationGate.run(
+      context,
+      widget.tournament,
+    );
     if (!allowed || !mounted) return;
 
     setState(() => _isLoading = true);
@@ -340,8 +412,9 @@ class _AgendaRowState extends State<_AgendaRow> {
     HapticService.lightImpact();
 
     final provider = context.read<TournamentProvider>();
-    final success =
-        await provider.unregisterFromTournament(widget.tournament.id);
+    final success = await provider.unregisterFromTournament(
+      widget.tournament.id,
+    );
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (!success) {
@@ -362,16 +435,16 @@ class _AgendaRowState extends State<_AgendaRow> {
     final l10n = AppLocalizations.of(context);
     final tournament = widget.tournament;
     final isLive = tournament.isInProgress;
-    final isFull =
-        tournament.currentParticipants >= tournament.maxParticipants;
+    final isFull = tournament.currentParticipants >= tournament.maxParticipants;
     final canJoin =
         tournament.isRegistrationOpen && !widget.isRegistered && !isFull;
     final canLeave = widget.isRegistered && tournament.isRegistrationOpen;
     final isMine = tournament.isOrganizedBy(
       context.read<AuthProvider>().currentUser?.id,
     );
-    final timeLabel =
-        DateFormat('HH:mm').format(tournament.scheduledDate.toLocal());
+    final timeLabel = DateFormat(
+      'HH:mm',
+    ).format(tournament.scheduledDate.toLocal());
 
     // A physical trophy gets the gold cup next to the name and its render
     // before the action — gold is dressing, never a border.
@@ -379,8 +452,8 @@ class _AgendaRowState extends State<_AgendaRow> {
     final borderColor = isLive
         ? AppTheme.primaryLight.withValues(alpha: 0.45)
         : widget.isRegistered
-            ? AppTheme.success.withValues(alpha: 0.35)
-            : AppTheme.border;
+        ? AppTheme.success.withValues(alpha: 0.35)
+        : AppTheme.border;
 
     return SizedBox(
       height: 72,
@@ -497,8 +570,8 @@ class _AgendaRowState extends State<_AgendaRow> {
       tournament.isFree
           ? l10n.freeLabel
           : tournament.hasPremiumDiscount(isPremium: isPremiumUser)
-              ? tournament.formattedDiscountedPrice(isPremium: true)
-              : tournament.formattedPrice,
+          ? tournament.formattedDiscountedPrice(isPremium: true)
+          : tournament.formattedPrice,
       if (tournament.premiumRequired) 'Premium',
       if (tournament.hasRankRequirement)
         localizedRankRequirement(l10n, tournament),
@@ -550,16 +623,10 @@ class _AgendaRowState extends State<_AgendaRow> {
       );
     }
     if (widget.isRegistered) {
-      return DsPill(
-        label: l10n.agendaRegisteredChip,
-        color: AppTheme.success,
-      );
+      return DsPill(label: l10n.agendaRegisteredChip, color: AppTheme.success);
     }
     if (isFull && widget.tournament.isRegistrationOpen) {
-      return DsPill(
-        label: l10n.agendaFullChip,
-        color: AppTheme.textSecondary,
-      );
+      return DsPill(label: l10n.agendaFullChip, color: AppTheme.textSecondary);
     }
     final status = widget.tournament.status;
     return DsPill(
@@ -837,8 +904,12 @@ class _AcceptMatchButtonState extends State<_AcceptMatchButton> {
       final auth = context.read<AuthProvider>();
       final currentUserId = auth.currentUser?.id;
       final isPlayer1 = currentUserId == match.player1Id;
-      final opponentUsername = isPlayer1 ? (match.player2Username ?? 'Opponent') : (match.player1Username ?? 'Opponent');
-      final opponentId = isPlayer1 ? (match.player2Id ?? '') : (match.player1Id ?? '');
+      final opponentUsername = isPlayer1
+          ? (match.player2Username ?? 'Opponent')
+          : (match.player1Username ?? 'Opponent');
+      final opponentId = isPlayer1
+          ? (match.player2Id ?? '')
+          : (match.player1Id ?? '');
 
       if (mounted) {
         Navigator.of(context).push(

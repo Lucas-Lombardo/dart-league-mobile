@@ -3721,7 +3721,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get organizerLabel => 'Organisateur';
 
   @override
-  String get createTournamentTooltip => 'Créer un tournoi';
+  String get organizeTournamentCta => 'Organiser un tournoi';
+
+  @override
+  String get organizeTournamentCtaSubtitle => 'Pour tes amis ou ta communauté';
 
   @override
   String get communityFormTitleNew => 'Nouveau tournoi';

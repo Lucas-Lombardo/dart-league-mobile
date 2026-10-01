@@ -23,7 +23,10 @@ export 'dart_detection_types.dart';
 // ---------------------------------------------------------------------------
 const int _modelInputSize = 1024;
 const double _iouThresholdTip = kIouThresholdTip;
-const int _maxDarts = 3;
+// Up to 6 tips a frame: 3 thrown darts plus 3 left in the board from before
+// the visit, which the scorer tracks (and never counts) — see
+// AutoScoringService._isLeftover. Only 3 slots are ever filled.
+const int _maxDarts = 6;
 const double _dartNmsMinDist = 0.004;
 
 class DartDetectionService {

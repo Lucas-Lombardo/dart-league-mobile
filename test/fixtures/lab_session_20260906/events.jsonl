@@ -1,0 +1,283 @@
+{"ts":1788697592715,"seq":0,"type":"visit_start","visit":1}
+{"ts":1788697592715,"seq":0,"type":"capture_start"}
+{"ts":1788697608206,"seq":61,"type":"dart_emitted","visit":1,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"outer_single","radius":0.7960712525550887,"angle":4.4406543561378795,"conf":0.9718992412090302}}
+{"ts":1788697610987,"seq":72,"type":"dart_emitted","visit":1,"slot":1,"score":{"f":"SBull (25)","score":25,"segment":25,"ring":"single_bull","radius":0.07096853801289622,"angle":4.633733483253844,"conf":0.9673075675964355}}
+{"ts":1788697613517,"seq":82,"type":"dart_emitted","visit":1,"slot":2,"score":{"f":"S19 (19)","score":19,"segment":19,"ring":"inner_single","radius":0.4544658400681286,"angle":1.9533169447644911,"conf":0.9733562469482422}}
+{"ts":1788697616756,"seq":96,"type":"auto_confirm","slots":["S5 (5)","SBull (25)","S19 (19)"]}
+{"ts":1788697616756,"seq":96,"type":"visit","visit":1,"how":"auto_confirm","slots":["S5 (5)","SBull (25)","S19 (19)"],"total":49,"detectedOnBoard":3}
+{"ts":1788697616756,"seq":96,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697616756,"seq":96,"type":"visit_start","visit":2}
+{"ts":1788697616756,"seq":96,"type":"capture_start"}
+{"ts":1788697621933,"seq":115,"type":"dart_emitted","visit":2,"slot":0,"score":{"f":"S8 (8)","score":8,"segment":8,"ring":"outer_single","radius":0.9103588218667649,"angle":2.712422015961816,"conf":0.9479621648788452}}
+{"ts":1788697624715,"seq":126,"type":"dart_emitted","visit":2,"slot":1,"score":{"f":"S8 (8)","score":8,"segment":8,"ring":"outer_single","radius":0.7860565336447768,"angle":2.721428316177789,"conf":0.9178129434585571}}
+{"ts":1788697626988,"seq":135,"type":"dart_emitted","visit":2,"slot":2,"score":{"f":"S16 (16)","score":16,"segment":16,"ring":"outer_single","radius":0.9096335737088065,"angle":2.438772391069847,"conf":0.9689724743366241}}
+{"ts":1788697629487,"seq":146,"type":"auto_confirm","slots":["S8 (8)","S8 (8)","S16 (16)"]}
+{"ts":1788697629487,"seq":146,"type":"visit","visit":2,"how":"auto_confirm","slots":["S8 (8)","S8 (8)","S16 (16)"],"total":32,"detectedOnBoard":3}
+{"ts":1788697629487,"seq":146,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697629487,"seq":146,"type":"visit_start","visit":3}
+{"ts":1788697629487,"seq":146,"type":"capture_start"}
+{"ts":1788697634908,"seq":166,"type":"dart_emitted","visit":3,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"outer_single","radius":0.6562879645950284,"angle":4.522433456986018,"conf":0.972440630197525}}
+{"ts":1788697638189,"seq":179,"type":"dart_emitted","visit":3,"slot":1,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"outer_single","radius":0.729875853730981,"angle":4.982563397078383,"conf":0.974066436290741}}
+{"ts":1788697640705,"seq":189,"type":"dart_emitted","visit":3,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.49722148471777833,"angle":4.65794906787189,"conf":0.9630903899669647}}
+{"ts":1788697642961,"seq":199,"type":"auto_confirm","slots":["S5 (5)","S1 (1)","S20 (20)"]}
+{"ts":1788697642961,"seq":199,"type":"visit","visit":3,"how":"auto_confirm","slots":["S5 (5)","S1 (1)","S20 (20)"],"total":26,"detectedOnBoard":3}
+{"ts":1788697642961,"seq":199,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697642961,"seq":199,"type":"visit_start","visit":4}
+{"ts":1788697642961,"seq":199,"type":"capture_start"}
+{"ts":1788697649138,"seq":222,"type":"dart_emitted","visit":4,"slot":0,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"outer_single","radius":0.6814468657468339,"angle":4.922103595574488,"conf":0.970380574464798}}
+{"ts":1788697651519,"seq":231,"type":"dart_emitted","visit":4,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6376283443286868,"angle":4.569539484556541,"conf":0.960021436214447}}
+{"ts":1788697653437,"seq":238,"type":"dart_emitted","visit":4,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.2166778558823394,"angle":4.617138946819507,"conf":0.9645215272903442}}
+{"ts":1788697656888,"seq":253,"type":"auto_confirm","slots":["S1 (1)","S20 (20)","S20 (20)"]}
+{"ts":1788697656888,"seq":253,"type":"visit","visit":4,"how":"auto_confirm","slots":["S1 (1)","S20 (20)","S20 (20)"],"total":41,"detectedOnBoard":3}
+{"ts":1788697656888,"seq":253,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697656888,"seq":253,"type":"visit_start","visit":5}
+{"ts":1788697656888,"seq":253,"type":"capture_start"}
+{"ts":1788697662564,"seq":274,"type":"dart_emitted","visit":5,"slot":0,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.5809627494149808,"angle":4.488233082765544,"conf":0.9738444089889526}}
+{"ts":1788697665422,"seq":285,"type":"dart_emitted","visit":5,"slot":1,"score":{"f":"SBull (25)","score":25,"segment":25,"ring":"single_bull","radius":0.08724165099933542,"angle":1.9641963174728994,"conf":0.951897531747818}}
+{"ts":1788697667981,"seq":295,"type":"dart_emitted","visit":5,"slot":2,"score":{"f":"D16 (32)","score":32,"segment":16,"ring":"double","radius":0.9719609232585156,"angle":2.5573340606160735,"conf":0.9673483967781067}}
+{"ts":1788697670700,"seq":307,"type":"auto_confirm","slots":["T5 (15)","SBull (25)","D16 (32)"]}
+{"ts":1788697670701,"seq":307,"type":"visit","visit":5,"how":"auto_confirm","slots":["T5 (15)","SBull (25)","D16 (32)"],"total":72,"detectedOnBoard":3}
+{"ts":1788697670701,"seq":307,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697670701,"seq":307,"type":"visit_start","visit":6}
+{"ts":1788697670701,"seq":307,"type":"capture_start"}
+{"ts":1788697676628,"seq":329,"type":"dart_emitted","visit":6,"slot":0,"score":{"f":"Miss (0)","score":0,"segment":0,"ring":"miss","radius":1.158186031997926,"angle":2.6240221407121456,"conf":0.9549392759799957}}
+{"ts":1788697679301,"seq":339,"type":"dart_emitted","visit":6,"slot":1,"score":{"f":"D11 (22)","score":22,"segment":11,"ring":"double","radius":0.9890338938473799,"angle":3.0957068382319406,"conf":0.9615337550640106}}
+{"ts":1788697681269,"seq":346,"type":"dart_emitted","visit":6,"slot":2,"score":{"f":"D16 (32)","score":32,"segment":16,"ring":"double","radius":0.9650425197808973,"angle":2.572203125206681,"conf":0.9702679812908173}}
+{"ts":1788697684724,"seq":361,"type":"auto_confirm","slots":["Miss (0)","D11 (22)","D16 (32)"]}
+{"ts":1788697684725,"seq":361,"type":"visit","visit":6,"how":"auto_confirm","slots":["Miss (0)","D11 (22)","D16 (32)"],"total":54,"detectedOnBoard":3}
+{"ts":1788697684725,"seq":361,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697684725,"seq":361,"type":"visit_start","visit":7}
+{"ts":1788697684725,"seq":361,"type":"capture_start"}
+{"ts":1788697690900,"seq":384,"type":"dart_emitted","visit":7,"slot":0,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"inner_single","radius":0.44279438442923547,"angle":4.893957077375367,"conf":0.9682910740375519}}
+{"ts":1788697693807,"seq":394,"type":"dart_emitted","visit":7,"slot":1,"score":{"f":"S6 (6)","score":6,"segment":6,"ring":"inner_single","radius":0.37537769354440614,"angle":6.391213981980509,"conf":0.9702674150466919}}
+{"ts":1788697695591,"seq":400,"type":"dart_emitted","visit":7,"slot":2,"score":{"f":"SBull (25)","score":25,"segment":25,"ring":"single_bull","radius":0.048827587820657506,"angle":4.826904145213807,"conf":0.9670698940753937}}
+{"ts":1788697699627,"seq":417,"type":"auto_confirm","slots":["S1 (1)","S6 (6)","SBull (25)"]}
+{"ts":1788697699627,"seq":417,"type":"visit","visit":7,"how":"auto_confirm","slots":["S1 (1)","S6 (6)","SBull (25)"],"total":32,"detectedOnBoard":3}
+{"ts":1788697699628,"seq":417,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697699628,"seq":417,"type":"visit_start","visit":8}
+{"ts":1788697699628,"seq":417,"type":"capture_start"}
+{"ts":1788697705310,"seq":438,"type":"dart_emitted","visit":8,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.5405602902212263,"angle":4.288635965315192,"conf":0.9768022000789642}}
+{"ts":1788697708192,"seq":446,"type":"dart_emitted","visit":8,"slot":1,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.5825460300692492,"angle":4.27564594186124,"conf":0.9641188085079193}}
+{"ts":1788697710361,"seq":452,"type":"dart_emitted","visit":8,"slot":2,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.48127699920763684,"angle":4.330499817938687,"conf":0.9727522730827332}}
+{"ts":1788697712947,"seq":462,"type":"auto_confirm","slots":["S5 (5)","T5 (15)","S5 (5)"]}
+{"ts":1788697712947,"seq":462,"type":"visit","visit":8,"how":"auto_confirm","slots":["S5 (5)","T5 (15)","S5 (5)"],"total":25,"detectedOnBoard":3}
+{"ts":1788697712947,"seq":462,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697712947,"seq":462,"type":"visit_start","visit":9}
+{"ts":1788697712947,"seq":462,"type":"capture_start"}
+{"ts":1788697719396,"seq":486,"type":"dart_emitted","visit":9,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.3804452496225596,"angle":4.261629276881637,"conf":0.965802937746048}}
+{"ts":1788697722290,"seq":495,"type":"dart_emitted","visit":9,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.45229335849500796,"angle":4.614455054093309,"conf":0.8971469700336456}}
+{"ts":1788697724686,"seq":502,"type":"dart_emitted","visit":9,"slot":2,"score":{"f":"SBull (25)","score":25,"segment":25,"ring":"single_bull","radius":0.0825701366038825,"angle":1.955631484208632,"conf":0.9637111723423004}}
+{"ts":1788697727472,"seq":513,"type":"auto_confirm","slots":["S5 (5)","S20 (20)","SBull (25)"]}
+{"ts":1788697727472,"seq":513,"type":"visit","visit":9,"how":"auto_confirm","slots":["S5 (5)","S20 (20)","SBull (25)"],"total":50,"detectedOnBoard":4}
+{"ts":1788697727472,"seq":513,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697727472,"seq":513,"type":"visit_start","visit":10}
+{"ts":1788697727472,"seq":513,"type":"capture_start"}
+{"ts":1788697734432,"seq":539,"type":"dart_emitted","visit":10,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6711977745188021,"angle":4.621976584726308,"conf":0.9647878706455231}}
+{"ts":1788697737337,"seq":548,"type":"dart_emitted","visit":10,"slot":1,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.5273168789278164,"angle":4.437205801017033,"conf":0.9698140323162079}}
+{"ts":1788697739818,"seq":555,"type":"dart_emitted","visit":10,"slot":2,"score":{"f":"S7 (7)","score":7,"segment":7,"ring":"outer_single","radius":0.870145143361178,"angle":2.0813024919172456,"conf":0.9459463953971863}}
+{"ts":1788697742368,"seq":565,"type":"auto_confirm","slots":["S20 (20)","S5 (5)","S7 (7)"]}
+{"ts":1788697742368,"seq":565,"type":"visit","visit":10,"how":"auto_confirm","slots":["S20 (20)","S5 (5)","S7 (7)"],"total":32,"detectedOnBoard":3}
+{"ts":1788697742368,"seq":565,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697742368,"seq":565,"type":"visit_start","visit":11}
+{"ts":1788697742368,"seq":565,"type":"capture_start"}
+{"ts":1788697748069,"seq":586,"type":"dart_emitted","visit":11,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.4931661088099738,"angle":4.737639796220606,"conf":0.9670783281326294}}
+{"ts":1788697750987,"seq":595,"type":"dart_emitted","visit":11,"slot":1,"score":{"f":"S11 (11)","score":11,"segment":11,"ring":"inner_single","radius":0.13227911031635795,"angle":3.108030679461767,"conf":0.9587582945823669}}
+{"ts":1788697753404,"seq":602,"type":"dart_emitted","visit":11,"slot":2,"score":{"f":"S16 (16)","score":16,"segment":16,"ring":"outer_single","radius":0.8460908997397273,"angle":2.527086271904151,"conf":0.9698426723480225}}
+{"ts":1788697756699,"seq":615,"type":"auto_confirm","slots":["S20 (20)","S11 (11)","S16 (16)"]}
+{"ts":1788697756699,"seq":615,"type":"visit","visit":11,"how":"auto_confirm","slots":["S20 (20)","S11 (11)","S16 (16)"],"total":47,"detectedOnBoard":3}
+{"ts":1788697756699,"seq":615,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697756699,"seq":615,"type":"visit_start","visit":12}
+{"ts":1788697756699,"seq":615,"type":"capture_start"}
+{"ts":1788697763652,"seq":641,"type":"dart_emitted","visit":12,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6511213321162025,"angle":4.794856314659974,"conf":0.9554431438446045}}
+{"ts":1788697767862,"seq":654,"type":"dart_emitted","visit":12,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6522444493214452,"angle":4.818852549042115,"conf":0.9519651792943478}}
+{"ts":1788697768945,"seq":657,"type":"dart_emitted","visit":12,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.22275402688244916,"angle":4.77013622030046,"conf":0.9583821892738342}}
+{"ts":1788697771779,"seq":668,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"]}
+{"ts":1788697771779,"seq":668,"type":"visit","visit":12,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"],"total":60,"detectedOnBoard":3}
+{"ts":1788697771780,"seq":668,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697771780,"seq":668,"type":"visit_start","visit":13}
+{"ts":1788697771780,"seq":668,"type":"capture_start"}
+{"ts":1788697778489,"seq":693,"type":"dart_emitted","visit":13,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.5226655649771682,"angle":4.5210975359956205,"conf":0.9685596227645874}}
+{"ts":1788697781364,"seq":702,"type":"dart_emitted","visit":13,"slot":1,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.5948762429225233,"angle":4.3050904617677155,"conf":0.9679596722126007}}
+{"ts":1788697783722,"seq":709,"type":"dart_emitted","visit":13,"slot":2,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.542420600705622,"angle":4.446291425074748,"conf":0.9489604830741882}}
+{"ts":1788697787049,"seq":722,"type":"auto_confirm","slots":["S5 (5)","T5 (15)","S5 (5)"]}
+{"ts":1788697787049,"seq":722,"type":"visit","visit":13,"how":"auto_confirm","slots":["S5 (5)","T5 (15)","S5 (5)"],"total":25,"detectedOnBoard":3}
+{"ts":1788697787049,"seq":722,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697787049,"seq":722,"type":"visit_start","visit":14}
+{"ts":1788697787049,"seq":722,"type":"capture_start"}
+{"ts":1788697793013,"seq":744,"type":"dart_emitted","visit":14,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6379141262476921,"angle":4.701216977587463,"conf":0.9698070287704468}}
+{"ts":1788697796238,"seq":754,"type":"dart_emitted","visit":14,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7419707572985786,"angle":4.740288779173579,"conf":0.962319016456604}}
+{"ts":1788697799994,"seq":765,"type":"dart_emitted","visit":14,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.635664856844699,"angle":4.642946846106031,"conf":0.9559201635420322}}
+{"ts":1788697802541,"seq":775,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"]}
+{"ts":1788697802541,"seq":775,"type":"visit","visit":14,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"],"total":60,"detectedOnBoard":3}
+{"ts":1788697802541,"seq":775,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697802541,"seq":775,"type":"visit_start","visit":15}
+{"ts":1788697802541,"seq":775,"type":"capture_start"}
+{"ts":1788697810036,"seq":803,"type":"dart_emitted","visit":15,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"outer_single","radius":0.768057389115337,"angle":4.458981596828208,"conf":0.9728040099143982}}
+{"ts":1788697812794,"seq":811,"type":"dart_emitted","visit":15,"slot":1,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"outer_single","radius":0.7071438880048826,"angle":4.402702877465657,"conf":0.9636433720588684}}
+{"ts":1788697815011,"seq":817,"type":"dart_emitted","visit":15,"slot":2,"score":{"f":"Miss (0)","score":0,"segment":0,"ring":"miss","radius":1.0372260347901445,"angle":2.705573794298316,"conf":0.9204292595386505}}
+{"ts":1788697817917,"seq":828,"type":"auto_confirm","slots":["S5 (5)","S5 (5)","Miss (0)"]}
+{"ts":1788697817917,"seq":828,"type":"visit","visit":15,"how":"auto_confirm","slots":["S5 (5)","S5 (5)","Miss (0)"],"total":10,"detectedOnBoard":3}
+{"ts":1788697817917,"seq":828,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697817917,"seq":828,"type":"visit_start","visit":16}
+{"ts":1788697817917,"seq":828,"type":"capture_start"}
+{"ts":1788697824654,"seq":853,"type":"dart_emitted","visit":16,"slot":0,"score":{"f":"S19 (19)","score":19,"segment":19,"ring":"outer_single","radius":0.6879533156478694,"angle":1.9777947648077399,"conf":0.9729080498218536}}
+{"ts":1788697827324,"seq":861,"type":"dart_emitted","visit":16,"slot":1,"score":{"f":"D19 (38)","score":38,"segment":19,"ring":"double","radius":0.9545080755196403,"angle":1.840677237616665,"conf":0.9690908491611481}}
+{"ts":1788697829584,"seq":867,"type":"dart_emitted","visit":16,"slot":2,"score":{"f":"S16 (16)","score":16,"segment":16,"ring":"outer_single","radius":0.8185256521143984,"angle":2.39840110855646,"conf":0.9743129312992096}}
+{"ts":1788697833239,"seq":881,"type":"auto_confirm","slots":["S19 (19)","D19 (38)","S16 (16)"]}
+{"ts":1788697833240,"seq":881,"type":"visit","visit":16,"how":"auto_confirm","slots":["S19 (19)","D19 (38)","S16 (16)"],"total":73,"detectedOnBoard":3}
+{"ts":1788697833240,"seq":881,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697833240,"seq":881,"type":"visit_start","visit":17}
+{"ts":1788697833240,"seq":881,"type":"capture_start"}
+{"ts":1788697844550,"seq":924,"type":"dart_emitted","visit":17,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.4496553466777149,"angle":4.492751042799702,"conf":0.9739924967288971}}
+{"ts":1788697847236,"seq":932,"type":"dart_emitted","visit":17,"slot":1,"score":{"f":"S19 (19)","score":19,"segment":19,"ring":"outer_single","radius":0.7609269840951611,"angle":1.7598713956751781,"conf":0.9696707725524902}}
+{"ts":1788697849769,"seq":939,"type":"dart_emitted","visit":17,"slot":2,"score":{"f":"S3 (3)","score":3,"segment":3,"ring":"inner_single","radius":0.23732494059663464,"angle":1.4828706703622496,"conf":0.9640516042709351}}
+{"ts":1788697852971,"seq":951,"type":"auto_confirm","slots":["S5 (5)","S19 (19)","S3 (3)"]}
+{"ts":1788697852971,"seq":951,"type":"visit","visit":17,"how":"auto_confirm","slots":["S5 (5)","S19 (19)","S3 (3)"],"total":27,"detectedOnBoard":3}
+{"ts":1788697852971,"seq":951,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697852971,"seq":951,"type":"visit_start","visit":18}
+{"ts":1788697852971,"seq":951,"type":"capture_start"}
+{"ts":1788697870359,"seq":1018,"type":"dart_emitted","visit":18,"slot":0,"score":{"f":"D20 (40)","score":40,"segment":20,"ring":"double","radius":0.9562813372760118,"angle":4.658591654362757,"conf":0.9659181237220764}}
+{"ts":1788697873017,"seq":1026,"type":"dart_emitted","visit":18,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7477237867515352,"angle":4.5732931750803765,"conf":0.960509330034256}}
+{"ts":1788697875526,"seq":1033,"type":"dart_emitted","visit":18,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.19853595824571793,"angle":4.796295650977188,"conf":0.9561810493469238}}
+{"ts":1788697877945,"seq":1042,"type":"auto_confirm","slots":["D20 (40)","S20 (20)","S20 (20)"]}
+{"ts":1788697877945,"seq":1042,"type":"visit","visit":18,"how":"auto_confirm","slots":["D20 (40)","S20 (20)","S20 (20)"],"total":80,"detectedOnBoard":3}
+{"ts":1788697877945,"seq":1042,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697877945,"seq":1042,"type":"visit_start","visit":19}
+{"ts":1788697877945,"seq":1042,"type":"capture_start"}
+{"ts":1788697883700,"seq":1063,"type":"dart_emitted","visit":19,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.5501277342803215,"angle":4.805727692680987,"conf":0.9514118134975433}}
+{"ts":1788697886724,"seq":1072,"type":"dart_emitted","visit":19,"slot":1,"score":{"f":"S19 (19)","score":19,"segment":19,"ring":"inner_single","radius":0.12356544979075902,"angle":1.8713205650790183,"conf":0.962600588798523}}
+{"ts":1788697888978,"seq":1078,"type":"dart_emitted","visit":19,"slot":2,"score":{"f":"D16 (32)","score":32,"segment":16,"ring":"double","radius":0.9862569395491705,"angle":2.382720560036824,"conf":0.9599110186100006}}
+{"ts":1788697891896,"seq":1089,"type":"auto_confirm","slots":["S20 (20)","S19 (19)","D16 (32)"]}
+{"ts":1788697891896,"seq":1089,"type":"visit","visit":19,"how":"auto_confirm","slots":["S20 (20)","S19 (19)","D16 (32)"],"total":71,"detectedOnBoard":3}
+{"ts":1788697891896,"seq":1089,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697891896,"seq":1089,"type":"visit_start","visit":20}
+{"ts":1788697891896,"seq":1089,"type":"capture_start"}
+{"ts":1788697897870,"seq":1111,"type":"dart_emitted","visit":20,"slot":0,"score":{"f":"S8 (8)","score":8,"segment":8,"ring":"outer_single","radius":0.9160176166701134,"angle":2.6889536405732906,"conf":0.9371887147426605}}
+{"ts":1788697900571,"seq":1119,"type":"dart_emitted","visit":20,"slot":1,"score":{"f":"S16 (16)","score":16,"segment":16,"ring":"outer_single","radius":0.8228997076109035,"angle":2.632501500689188,"conf":0.975989580154419}}
+{"ts":1788697902878,"seq":1125,"type":"dart_emitted","visit":20,"slot":2,"score":{"f":"S8 (8)","score":8,"segment":8,"ring":"outer_single","radius":0.9232431795485952,"angle":2.912422880252791,"conf":0.9508611857891083}}
+{"ts":1788697906037,"seq":1137,"type":"auto_confirm","slots":["S8 (8)","S16 (16)","S8 (8)"]}
+{"ts":1788697906037,"seq":1137,"type":"visit","visit":20,"how":"auto_confirm","slots":["S8 (8)","S16 (16)","S8 (8)"],"total":32,"detectedOnBoard":3}
+{"ts":1788697906037,"seq":1137,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697906037,"seq":1137,"type":"visit_start","visit":21}
+{"ts":1788697906037,"seq":1137,"type":"capture_start"}
+{"ts":1788697912755,"seq":1162,"type":"dart_emitted","visit":21,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7348880406715106,"angle":4.818107799834637,"conf":0.9652142822742462}}
+{"ts":1788697915811,"seq":1171,"type":"dart_emitted","visit":21,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.6761652429297802,"angle":4.613685433380061,"conf":0.9512308835983276}}
+{"ts":1788697918722,"seq":1179,"type":"dart_emitted","visit":21,"slot":2,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.5911021912880242,"angle":4.330628886588432,"conf":0.9690896272659302}}
+{"ts":1788697921163,"seq":1188,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","T5 (15)"]}
+{"ts":1788697921163,"seq":1188,"type":"visit","visit":21,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","T5 (15)"],"total":55,"detectedOnBoard":3}
+{"ts":1788697921163,"seq":1188,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697921163,"seq":1188,"type":"visit_start","visit":22}
+{"ts":1788697921163,"seq":1188,"type":"capture_start"}
+{"ts":1788697927171,"seq":1210,"type":"dart_emitted","visit":22,"slot":0,"score":{"f":"T20 (60)","score":60,"segment":20,"ring":"triple","radius":0.5742608097551601,"angle":4.58560326230376,"conf":0.9591911435127258}}
+{"ts":1788697930071,"seq":1218,"type":"dart_emitted","visit":22,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.4793893524552862,"angle":4.8471737489452424,"conf":0.9581409096717834}}
+{"ts":1788697932674,"seq":1225,"type":"dart_emitted","visit":22,"slot":2,"score":{"f":"S15 (15)","score":15,"segment":15,"ring":"inner_single","radius":0.25988416142911047,"angle":0.6543011426950194,"conf":0.9708539843559265}}
+{"ts":1788697935356,"seq":1235,"type":"auto_confirm","slots":["T20 (60)","S20 (20)","S15 (15)"]}
+{"ts":1788697935356,"seq":1235,"type":"visit","visit":22,"how":"auto_confirm","slots":["T20 (60)","S20 (20)","S15 (15)"],"total":95,"detectedOnBoard":3}
+{"ts":1788697935356,"seq":1235,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697935356,"seq":1235,"type":"visit_start","visit":23}
+{"ts":1788697935356,"seq":1235,"type":"capture_start"}
+{"ts":1788697942093,"seq":1260,"type":"dart_emitted","visit":23,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.641728741423837,"angle":4.653027084483428,"conf":0.9545661807060242}}
+{"ts":1788697945562,"seq":1270,"type":"dart_emitted","visit":23,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7571088332515334,"angle":4.654532939664433,"conf":0.9609326422214508}}
+{"ts":1788697948118,"seq":1277,"type":"dart_emitted","visit":23,"slot":2,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.540677315832501,"angle":4.409846028590433,"conf":0.9711558818817139}}
+{"ts":1788697951339,"seq":1289,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","S5 (5)"]}
+{"ts":1788697951339,"seq":1289,"type":"visit","visit":23,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","S5 (5)"],"total":45,"detectedOnBoard":5}
+{"ts":1788697951339,"seq":1289,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697951339,"seq":1289,"type":"visit_start","visit":24}
+{"ts":1788697951339,"seq":1289,"type":"capture_start"}
+{"ts":1788697958413,"seq":1315,"type":"dart_emitted","visit":24,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"inner_single","radius":0.46325518343687555,"angle":4.358950987504463,"conf":0.9738440215587616}}
+{"ts":1788697961212,"seq":1323,"type":"dart_emitted","visit":24,"slot":1,"score":{"f":"S19 (19)","score":19,"segment":19,"ring":"outer_single","radius":0.6906300911055199,"angle":1.8681577780401293,"conf":0.9716446995735168}}
+{"ts":1788697963917,"seq":1330,"type":"dart_emitted","visit":24,"slot":2,"score":{"f":"SBull (25)","score":25,"segment":25,"ring":"single_bull","radius":0.08662289513735327,"angle":3.363684535759959,"conf":0.9530569016933441}}
+{"ts":1788697966862,"seq":1341,"type":"auto_confirm","slots":["S5 (5)","S19 (19)","SBull (25)"]}
+{"ts":1788697966863,"seq":1341,"type":"visit","visit":24,"how":"auto_confirm","slots":["S5 (5)","S19 (19)","SBull (25)"],"total":49,"detectedOnBoard":3}
+{"ts":1788697966863,"seq":1341,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697966863,"seq":1341,"type":"visit_start","visit":25}
+{"ts":1788697966863,"seq":1341,"type":"capture_start"}
+{"ts":1788697972104,"seq":1360,"type":"dart_emitted","visit":25,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.5181413472782893,"angle":4.58126004506933,"conf":0.9588748216629028}}
+{"ts":1788697975569,"seq":1369,"type":"dart_emitted","visit":25,"slot":1,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"inner_single","radius":0.48054424114072797,"angle":5.085628462313769,"conf":0.9674097895622253}}
+{"ts":1788697977846,"seq":1375,"type":"dart_emitted","visit":25,"slot":2,"score":{"f":"T19 (57)","score":57,"segment":19,"ring":"triple","radius":0.5790569371473477,"angle":2.0042486785050118,"conf":0.9645891487598419}}
+{"ts":1788697980845,"seq":1386,"type":"auto_confirm","slots":["S20 (20)","S1 (1)","T19 (57)"]}
+{"ts":1788697980845,"seq":1386,"type":"visit","visit":25,"how":"auto_confirm","slots":["S20 (20)","S1 (1)","T19 (57)"],"total":78,"detectedOnBoard":3}
+{"ts":1788697980845,"seq":1386,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697980845,"seq":1386,"type":"visit_start","visit":26}
+{"ts":1788697980845,"seq":1386,"type":"capture_start"}
+{"ts":1788697987340,"seq":1410,"type":"dart_emitted","visit":26,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.38792520681800635,"angle":4.676210850084166,"conf":0.954658180475235}}
+{"ts":1788697990523,"seq":1419,"type":"dart_emitted","visit":26,"slot":1,"score":{"f":"S7 (7)","score":7,"segment":7,"ring":"inner_single","radius":0.5371614908837314,"angle":2.0816646863628354,"conf":0.9647108316421509}}
+{"ts":1788697994888,"seq":1430,"type":"dart_emitted","visit":26,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.645660762897681,"angle":4.572381638173783,"conf":0.9453937709331512}}
+{"ts":1788697997900,"seq":1441,"type":"auto_confirm","slots":["S20 (20)","S7 (7)","S20 (20)"]}
+{"ts":1788697997900,"seq":1441,"type":"visit","visit":26,"how":"auto_confirm","slots":["S20 (20)","S7 (7)","S20 (20)"],"total":47,"detectedOnBoard":3}
+{"ts":1788697997900,"seq":1441,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788697997900,"seq":1441,"type":"visit_start","visit":27}
+{"ts":1788697997900,"seq":1441,"type":"capture_start"}
+{"ts":1788698003935,"seq":1463,"type":"dart_emitted","visit":27,"slot":0,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.6070020764103373,"angle":4.431854360582335,"conf":0.9722758531570435}}
+{"ts":1788698006797,"seq":1471,"type":"dart_emitted","visit":27,"slot":1,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.5822210018644713,"angle":4.508440165299229,"conf":0.9727786481380463}}
+{"ts":1788698009487,"seq":1478,"type":"dart_emitted","visit":27,"slot":2,"score":{"f":"S3 (3)","score":3,"segment":3,"ring":"inner_single","radius":0.11316894576449563,"angle":1.5597486002208885,"conf":0.9526623487472534}}
+{"ts":1788698012719,"seq":1490,"type":"auto_confirm","slots":["T5 (15)","T5 (15)","S3 (3)"]}
+{"ts":1788698012719,"seq":1490,"type":"visit","visit":27,"how":"auto_confirm","slots":["T5 (15)","T5 (15)","S3 (3)"],"total":33,"detectedOnBoard":3}
+{"ts":1788698012719,"seq":1490,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698012719,"seq":1490,"type":"visit_start","visit":28}
+{"ts":1788698012719,"seq":1490,"type":"capture_start"}
+{"ts":1788698020848,"seq":1519,"type":"dart_emitted","visit":28,"slot":0,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"inner_single","radius":0.5427638929091023,"angle":4.895963177300485,"conf":0.9657376706600189}}
+{"ts":1788698023782,"seq":1527,"type":"dart_emitted","visit":28,"slot":1,"score":{"f":"S8 (8)","score":8,"segment":8,"ring":"outer_single","radius":0.824532747429185,"angle":2.732302425182765,"conf":0.9494320154190063}}
+{"ts":1788698026150,"seq":1533,"type":"dart_emitted","visit":28,"slot":2,"score":{"f":"Miss (0)","score":0,"segment":0,"ring":"miss","radius":1.0662217565878913,"angle":2.633887788561723,"conf":0.8879768550395966}}
+{"ts":1788698029656,"seq":1546,"type":"auto_confirm","slots":["S1 (1)","S8 (8)","Miss (0)"]}
+{"ts":1788698029656,"seq":1546,"type":"visit","visit":28,"how":"auto_confirm","slots":["S1 (1)","S8 (8)","Miss (0)"],"total":9,"detectedOnBoard":4}
+{"ts":1788698029656,"seq":1546,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698029656,"seq":1546,"type":"visit_start","visit":29}
+{"ts":1788698029656,"seq":1546,"type":"capture_start"}
+{"ts":1788698037258,"seq":1573,"type":"dart_emitted","visit":29,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.41720118869338674,"angle":4.6648938795998856,"conf":0.9435834288597107}}
+{"ts":1788698039853,"seq":1580,"type":"dart_emitted","visit":29,"slot":1,"score":{"f":"Miss (0)","score":0,"segment":0,"ring":"miss","radius":1.0939649895665737,"angle":2.450675710259281,"conf":0.9351688623428345}}
+{"ts":1788698041863,"seq":1585,"type":"dart_emitted","visit":29,"slot":2,"score":{"f":"S16 (16)","score":16,"segment":16,"ring":"outer_single","radius":0.8485964644194826,"angle":2.5725940731589216,"conf":0.9209319353103638}}
+{"ts":1788698054723,"seq":1635,"type":"auto_confirm","slots":["S20 (20)","Miss (0)","S16 (16)"]}
+{"ts":1788698054723,"seq":1635,"type":"visit","visit":29,"how":"auto_confirm","slots":["S20 (20)","Miss (0)","S16 (16)"],"total":36,"detectedOnBoard":3}
+{"ts":1788698054723,"seq":1635,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698054723,"seq":1635,"type":"visit_start","visit":30}
+{"ts":1788698054723,"seq":1635,"type":"capture_start"}
+{"ts":1788698062632,"seq":1661,"type":"dart_emitted","visit":30,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7112163677322357,"angle":4.727114301713097,"conf":0.9451388418674469}}
+{"ts":1788698065254,"seq":1668,"type":"dart_emitted","visit":30,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.8461653846046924,"angle":4.695853735071862,"conf":0.9350493252277374}}
+{"ts":1788698068083,"seq":1675,"type":"dart_emitted","visit":30,"slot":2,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.590231062482293,"angle":4.482965694987397,"conf":0.9660588204860687}}
+{"ts":1788698072393,"seq":1691,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","T5 (15)"]}
+{"ts":1788698072393,"seq":1691,"type":"visit","visit":30,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","T5 (15)"],"total":55,"detectedOnBoard":4}
+{"ts":1788698072393,"seq":1691,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698072393,"seq":1691,"type":"visit_start","visit":31}
+{"ts":1788698072393,"seq":1691,"type":"capture_start"}
+{"ts":1788698079561,"seq":1715,"type":"dart_emitted","visit":31,"slot":0,"score":{"f":"S5 (5)","score":5,"segment":5,"ring":"outer_single","radius":0.6380796257247255,"angle":4.505958047146061,"conf":0.9707974195480347}}
+{"ts":1788698082604,"seq":1723,"type":"dart_emitted","visit":31,"slot":1,"score":{"f":"S2 (2)","score":2,"segment":2,"ring":"inner_single","radius":0.2255103545797406,"angle":0.8838350166759813,"conf":0.957231342792511}}
+{"ts":1788698085096,"seq":1729,"type":"dart_emitted","visit":31,"slot":2,"score":{"f":"Miss (0)","score":0,"segment":0,"ring":"miss","radius":1.0628379110656652,"angle":2.739406964378346,"conf":0.9093434512615204}}
+{"ts":1788698086773,"seq":1734,"type":"darts_removed","slots":["S5 (5)","S2 (2)","Miss (0)"]}
+{"ts":1788698086773,"seq":1734,"type":"visit","visit":31,"how":"darts_removed","slots":["S5 (5)","S2 (2)","Miss (0)"],"total":7,"detectedOnBoard":3}
+{"ts":1788698086774,"seq":1734,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698086774,"seq":1734,"type":"visit_start","visit":32}
+{"ts":1788698086774,"seq":1734,"type":"capture_start"}
+{"ts":1788698096420,"seq":1758,"type":"dart_emitted","visit":32,"slot":0,"score":{"f":"S1 (1)","score":1,"segment":1,"ring":"inner_single","radius":0.5453063903281462,"angle":5.082188775024434,"conf":0.9722547233104706}}
+{"ts":1788698098746,"seq":1764,"type":"dart_emitted","visit":32,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.508456752398895,"angle":4.646498172998848,"conf":0.9548877775669098}}
+{"ts":1788698100839,"seq":1769,"type":"dart_emitted","visit":32,"slot":2,"score":{"f":"DBull (50)","score":50,"segment":25,"ring":"double_bull","radius":0.020795181630082836,"angle":5.607946419686092,"conf":0.9686469435691833}}
+{"ts":1788698104993,"seq":1784,"type":"auto_confirm","slots":["S1 (1)","S20 (20)","DBull (50)"]}
+{"ts":1788698104993,"seq":1784,"type":"visit","visit":32,"how":"auto_confirm","slots":["S1 (1)","S20 (20)","DBull (50)"],"total":71,"detectedOnBoard":3}
+{"ts":1788698104993,"seq":1784,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698104993,"seq":1784,"type":"visit_start","visit":33}
+{"ts":1788698104993,"seq":1784,"type":"capture_start"}
+{"ts":1788698112172,"seq":1808,"type":"dart_emitted","visit":33,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7960003596071187,"angle":4.631095683784869,"conf":0.9465965926647186}}
+{"ts":1788698116518,"seq":1819,"type":"dart_emitted","visit":33,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.8083449263154742,"angle":4.637908669944673,"conf":0.9488734193146229}}
+{"ts":1788698116518,"seq":1819,"type":"dart_emitted","visit":33,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7635282753628562,"angle":4.676553909804302,"conf":0.9299357682466507}}
+{"ts":1788698123456,"seq":1845,"type":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"]}
+{"ts":1788698123456,"seq":1845,"type":"visit","visit":33,"how":"auto_confirm","slots":["S20 (20)","S20 (20)","S20 (20)"],"total":60,"detectedOnBoard":4}
+{"ts":1788698123456,"seq":1845,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698123456,"seq":1845,"type":"visit_start","visit":34}
+{"ts":1788698123456,"seq":1845,"type":"capture_start"}
+{"ts":1788698131239,"seq":1868,"type":"dart_emitted","visit":34,"slot":0,"score":{"f":"T5 (15)","score":15,"segment":5,"ring":"triple","radius":0.595587315430914,"angle":4.3487933939967895,"conf":0.9716984033584595}}
+{"ts":1788698136335,"seq":1881,"type":"dart_emitted","visit":34,"slot":1,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.5478970833279393,"angle":4.72871163640276,"conf":0.958026260137558}}
+{"ts":1788698140490,"seq":1891,"type":"dart_emitted","visit":34,"slot":2,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"outer_single","radius":0.7538173379955785,"angle":4.620062923577358,"conf":0.9495739042758942}}
+{"ts":1788698142499,"seq":1898,"type":"auto_confirm","slots":["T5 (15)","S20 (20)","S20 (20)"]}
+{"ts":1788698142499,"seq":1898,"type":"visit","visit":34,"how":"auto_confirm","slots":["T5 (15)","S20 (20)","S20 (20)"],"total":55,"detectedOnBoard":4}
+{"ts":1788698142499,"seq":1898,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698142499,"seq":1898,"type":"visit_start","visit":35}
+{"ts":1788698142500,"seq":1898,"type":"capture_start"}
+{"ts":1788698150260,"seq":1921,"type":"dart_emitted","visit":35,"slot":0,"score":{"f":"S20 (20)","score":20,"segment":20,"ring":"inner_single","radius":0.5217597339184188,"angle":4.732740516875706,"conf":0.9445928037166595}}
+{"ts":1788698153027,"seq":1928,"type":"dart_emitted","visit":35,"slot":1,"score":{"f":"S3 (3)","score":3,"segment":3,"ring":"inner_single","radius":0.1366723998048919,"angle":1.6448549773616887,"conf":0.9585763812065125}}
+{"ts":1788698155540,"seq":1934,"type":"dart_emitted","visit":35,"slot":2,"score":{"f":"D16 (32)","score":32,"segment":16,"ring":"double","radius":0.9854695517818329,"angle":2.488739417617788,"conf":0.9571953117847443}}
+{"ts":1788698159311,"seq":1947,"type":"auto_confirm","slots":["S20 (20)","S3 (3)","D16 (32)"]}
+{"ts":1788698159311,"seq":1947,"type":"visit","visit":35,"how":"auto_confirm","slots":["S20 (20)","S3 (3)","D16 (32)"],"total":55,"detectedOnBoard":3}
+{"ts":1788698159311,"seq":1947,"type":"capture_stop","reason":"visit_closed"}
+{"ts":1788698159311,"seq":1947,"type":"visit_start","visit":36}
+{"ts":1788698159311,"seq":1947,"type":"capture_start"}
+{"ts":1788698161737,"seq":1955,"type":"capture_stop","reason":"background"}

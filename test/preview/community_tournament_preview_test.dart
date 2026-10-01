@@ -26,6 +26,7 @@ import 'package:mobile/screens/home/community_tournament_form_screen.dart';
 import 'package:mobile/screens/home/tournament_screen.dart';
 import 'package:mobile/utils/app_theme.dart';
 import 'package:mobile/utils/tournament_registration_gate.dart';
+import 'package:mobile/widgets/design_system.dart';
 
 const _enabled = bool.fromEnvironment('PREVIEW');
 const _outDir = String.fromEnvironment('PREVIEW_OUT');
@@ -178,7 +179,24 @@ void main() {
     await _shoot(
       tester,
       provider,
-      const Scaffold(body: SafeArea(bottom: false, child: TournamentScreen())),
+      // The real bottom bar: the sticky "Organiser" button must clear the
+      // "Jouer" disc that rises above it.
+      Scaffold(
+        body: const SafeArea(bottom: false, child: TournamentScreen()),
+        bottomNavigationBar: DsBottomBar(
+          currentIndex: 1,
+          onSelect: (_) {},
+          centerLabel: 'Jouer',
+          items: const [
+            DsBottomBarItem(icon: Icons.bar_chart_rounded, label: 'Stats'),
+            DsBottomBarItem(
+                icon: Icons.emoji_events_outlined, label: 'Tournoi'),
+            DsBottomBarItem(icon: Icons.people_outline_rounded, label: 'Amis'),
+            DsBottomBarItem(
+                icon: Icons.trending_up_rounded, label: 'Classement'),
+          ],
+        ),
+      ),
       'community_agenda.png',
     );
   }, skip: !_enabled);
