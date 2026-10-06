@@ -4,6 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/auto_scoring_service.dart';
 import '../../services/dart_scoring_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/haptic_service.dart';
 import '../../widgets/auto_score_display.dart' show shortDartLabel;
 import '../../widgets/design_system.dart';
@@ -265,6 +266,7 @@ class TrainingGameView extends StatelessWidget {
         if (isLandscape) {
           // Half a phone's width per column and barely 350dp of height: the
           // scoring side always runs dense here.
+          final gutters = gameSideGutters(context);
           return Container(
             color: AppTheme.gameBackground,
             child: Row(
@@ -272,7 +274,7 @@ class TrainingGameView extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
-                      12,
+                      gutters.left,
                       safeTop + 8,
                       6,
                       safeBottom + 8,
@@ -285,7 +287,7 @@ class TrainingGameView extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(
                       6,
                       safeTop + 8,
-                      12,
+                      gutters.right,
                       safeBottom + 8,
                     ),
                     child: Column(

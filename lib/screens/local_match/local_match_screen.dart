@@ -15,6 +15,7 @@ import '../../services/dart_scoring_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
@@ -83,6 +84,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     _scores = [widget.config.startingScore, widget.config.startingScore];
     _scoreBeforeRound = widget.config.startingScore;
     _autoScoringService = AutoScoringService();
@@ -106,6 +108,7 @@ class _LocalMatchScreenState extends State<LocalMatchScreen>
     DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     super.dispose();
   }
 

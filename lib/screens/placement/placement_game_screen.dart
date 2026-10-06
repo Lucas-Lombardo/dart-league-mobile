@@ -17,6 +17,7 @@ import '../../utils/dart_caller_service.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../l10n/app_localizations.dart';
@@ -94,6 +95,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     final provider = context.read<PlacementProvider>();
     _myScore = provider.player1Score;
     _scoreBeforeRound = _myScore;
@@ -131,6 +133,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     super.dispose();
   }
 
@@ -949,6 +952,7 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   ) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final safeBottom = MediaQuery.of(context).padding.bottom;
+    final gutters = gameSideGutters(context);
 
     final header = TurnScoreHeader(
       myName: auth.currentUser?.username ?? 'You',
@@ -985,13 +989,13 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
               child: Row(children: [
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                    padding: EdgeInsets.fromLTRB(gutters.left, 8, 6, 8),
                     child: botPanel,
                   ),
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                    padding: EdgeInsets.fromLTRB(6, 8, gutters.right, 8),
                     child: Column(children: [
                       header,
                       const SizedBox(height: 8),

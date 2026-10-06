@@ -30,6 +30,13 @@ const _sizes = <String, (Size, EdgeInsets)>{
   'iPhone SE': (Size(375, 667), EdgeInsets.only(top: 20)),
   'small Android': (Size(320, 568), EdgeInsets.only(top: 24)),
   'landscape': (Size(852, 393), EdgeInsets.only(left: 59, right: 59)),
+  // Punch hole on the left; full screen hides the bars (GameSystemUi)...
+  'Android landscape': (Size(800, 360), EdgeInsets.only(left: 26)),
+  // ...unless they stay up anyway (split screen): 3-button bar on the right.
+  'Android landscape, bar up': (
+    Size(800, 360),
+    EdgeInsets.only(left: 26, top: 24, right: 48),
+  ),
 };
 
 /// French is the longest of the two locales on every string that matters here.
@@ -112,6 +119,17 @@ void main() {
         expect(label.didExceedMaxLines, isFalse);
       });
     }
+
+    // The 3-button navigation bar used to cover the right column (score,
+    // confirm button) in landscape — reported 2026-10-02.
+    testWidgets('${entry.key} keeps clear of the side insets', (tester) async {
+      const locale = Locale('fr');
+      await _pumpDrill(tester, size, padding, locale: locale);
+      final camera = tester.getRect(find.byType(GameCameraPanel));
+      final button = tester.getRect(find.byType(OutlinedButton));
+      expect(camera.left, greaterThanOrEqualTo(padding.left));
+      expect(button.right, lessThanOrEqualTo(size.width - padding.right));
+    });
 
     testWidgets('${entry.key} keeps the camera still when capture stops', (
       tester,

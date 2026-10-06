@@ -19,6 +19,7 @@ import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../widgets/auto_score_display.dart';
@@ -104,6 +105,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     _state = CricketState(scoreMode: _scoreMode);
     _visitStart = _state.clone();
     autoScoringService = AutoScoringService();
@@ -121,6 +123,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
     DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     super.dispose();
   }
 
@@ -669,6 +672,7 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final safeBottom = MediaQuery.of(context).padding.bottom;
+    final gutters = gameSideGutters(context);
     final noScore = _scoreMode == CricketScoreMode.noScore;
 
     final header = TurnScoreHeader(
@@ -713,13 +717,13 @@ class _CricketBotGameScreenState extends State<CricketBotGameScreen>
                 children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                      padding: EdgeInsets.fromLTRB(gutters.left, 8, 6, 8),
                       child: botPanel,
                     ),
                   ),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                      padding: EdgeInsets.fromLTRB(6, 8, gutters.right, 8),
                       child: Column(
                         children: [
                           header,

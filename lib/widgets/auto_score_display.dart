@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auto_scoring_service.dart';
 import '../services/dart_scoring_service.dart';
 import '../utils/app_theme.dart';
+import '../utils/game_system_ui.dart';
 import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'dartboard_edit_modal.dart';
@@ -352,6 +353,7 @@ class AutoScoreGameView extends StatelessWidget {
         );
 
         if (isLandscape) {
+          final gutters = gameSideGutters(context);
           return Container(
             color: AppTheme.gameBackground,
             child: Row(
@@ -359,7 +361,7 @@ class AutoScoreGameView extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
-                      12,
+                      gutters.left,
                       safeTop + 8,
                       6,
                       safeBottom + 8,
@@ -372,7 +374,7 @@ class AutoScoreGameView extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(
                       6,
                       safeTop + 8,
-                      12,
+                      gutters.right,
                       safeBottom + 8,
                     ),
                     child: Column(

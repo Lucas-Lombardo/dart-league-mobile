@@ -13,6 +13,7 @@ import '../../services/dataset_capture_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../widgets/auto_score_display.dart';
@@ -83,6 +84,7 @@ class _LocalCricketMatchScreenState extends State<LocalCricketMatchScreen>
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     _state = CricketState(scoreMode: _config.cricketScoreMode);
     _visitStart = _state.clone();
     autoScoringService = AutoScoringService();
@@ -102,6 +104,7 @@ class _LocalCricketMatchScreenState extends State<LocalCricketMatchScreen>
     DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     super.dispose();
   }
 

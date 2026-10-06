@@ -28,6 +28,7 @@ import '../../utils/media_permissions.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/dart_caller_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../widgets/cricket_board.dart';
@@ -707,6 +708,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       (_) { if (mounted) WakelockPlus.enable(); },
     );
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     // Both roles of the report feature start listening here and stay attached
     // for the whole screen — which spans a whole BO3/tournament series. The
     // REPORTED side matters most: a player who never flags anything still has
@@ -753,6 +755,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     scoreAnimationController.dispose();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     autoScoringService?.dispose();
     autoScoringService = null;
     RtcFramesService.onSendActiveChanged = null;
@@ -1935,10 +1938,11 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
     if (!selfDisconnected) return null;
     final l10n = AppLocalizations.of(context);
+    final gutters = gameSideGutters(context);
     return Positioned(
       top: safeTop + 52,
-      left: 12,
-      right: 12,
+      left: gutters.left,
+      right: gutters.right,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -2176,6 +2180,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     final l10n = AppLocalizations.of(context);
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final safeBottom = MediaQuery.of(context).padding.bottom;
+    final gutters = gameSideGutters(context);
     final disconnectBanner = buildOpponentDisconnectBanner(game);
     final cricket = cricketStateOf(game);
 
@@ -2218,18 +2223,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(height: safeTop),
-              if (disconnectBanner != null) disconnectBanner,
+              if (disconnectBanner != null)
+                Padding(
+                  padding: EdgeInsets.only(left: gutters.left, right: gutters.right),
+                  child: disconnectBanner,
+                ),
               Expanded(
                 child: Row(children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                      padding: EdgeInsets.fromLTRB(gutters.left, 8, 6, 8),
                       child: cameraView,
                     ),
                   ),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                      padding: EdgeInsets.fromLTRB(6, 8, gutters.right, 8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -2329,18 +2338,22 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(height: safeTop),
-            if (disconnectBanner != null) disconnectBanner,
+            if (disconnectBanner != null)
+              Padding(
+                padding: EdgeInsets.only(left: gutters.left, right: gutters.right),
+                child: disconnectBanner,
+              ),
             Expanded(
               child: Row(children: [
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                    padding: EdgeInsets.fromLTRB(gutters.left, 8, 6, 8),
                     child: cameraView,
                   ),
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+                    padding: EdgeInsets.fromLTRB(6, 8, gutters.right, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [

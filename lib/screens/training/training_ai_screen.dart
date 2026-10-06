@@ -15,6 +15,7 @@ import '../../services/training_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
+import '../../utils/game_system_ui.dart';
 import '../../utils/orientation_utils.dart';
 import '../../utils/score_converter.dart';
 import '../../utils/storage_service.dart';
@@ -72,6 +73,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     OrientationUtils.allowAll();
+    GameSystemUi.enter();
     _ai = AutoScoringService();
     _ai!.telemetrySessionOf = () => ('training', null);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initCameraAndAi());
@@ -91,6 +93,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
     DatasetCaptureService.flush();
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
+    GameSystemUi.exit();
     super.dispose();
   }
 
