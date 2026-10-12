@@ -32,6 +32,7 @@ import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'dev/delegate_bench.dart';
 import 'services/api_service.dart';
+import 'utils/storage_service.dart';
 import 'services/dataset_capture_service.dart';
 import 'services/meta_events_service.dart';
 import 'services/model_selector.dart';
@@ -135,8 +136,43 @@ void main() async {
   // Create GameProvider eagerly at app startup so listeners are ready
   final gameProvider = GameProvider();
 
-  // When token refresh fails, force user back to login
+  // A keychain write that fails is retried by StorageService; the line in
+  // the server log is what lets us see it happen on a player's phone.
+  StorageService.onPersistFailure = (key, error) {
+    ApiService.reportClientEvent('storage.write_failed', '$key: $error');
+  };
+
+  // A session the server rejected waits for the current match to finish
+  // before the app signs out: the match screen forfeits when it is left.
+  ApiService.isMatchLive = () {
+    if (gameProvider.gameStarted && !gameProvider.gameEnded) return true;
+    if (gameProvider.isRankedSeries && !gameProvider.seriesEnded) return true;
+    final context = navigatorKey.currentContext;
+    if (context == null) return false;
+    try {
+      final tournament = context.read<TournamentGameProvider>();
+      if (tournament.gameStarted && !tournament.gameEnded) return true;
+      if (tournament.tournamentMatchId != null &&
+          tournament.seriesWinnerId == null) {
+        return true;
+      }
+    } catch (_) {
+      // Provider tree not built yet.
+    }
+    return false;
+  };
+
+  // When the session is definitely gone, drop the signed-in state and show
+  // the login form (e-mail prefilled).
   ApiService.onAuthFailure = () {
+    final context = navigatorKey.currentContext;
+    if (context != null) {
+      try {
+        context.read<AuthProvider>().handleSessionLost();
+      } catch (_) {
+        // Provider tree not built yet.
+      }
+    }
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
   };
 

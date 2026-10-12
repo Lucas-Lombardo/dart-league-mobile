@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StorageService {
@@ -6,28 +9,136 @@ class StorageService {
   static const String _refreshTokenKey = 'refresh_token';
   static const String _languageKey = 'user_language';
 
+  // The session tokens live here once read or written; the keychain is only
+  // their backup. On 2026-10-10 a phone received a freshly refreshed token
+  // (HTTP 201) and could not write it to the keychain: with the keychain as
+  // the source of truth the next request carried the stale token, the app
+  // signed the player out mid-match and the match was forfeited. A failed
+  // write is now retried in the background and never changes what the app
+  // sends.
+  static String? _token;
+  static bool _tokenLoaded = false;
+  static String? _refreshToken;
+  static bool _refreshTokenLoaded = false;
+  static final Map<String, String?> _pendingWrites = {};
+  static Timer? _persistRetry;
+  static const Duration _persistRetryEvery = Duration(seconds: 20);
+
+  /// Fired once per failed keychain write so the failure can be reported;
+  /// the write itself is retried regardless.
+  static void Function(String key, Object error)? onPersistFailure;
+
   static Future<void> saveToken(String token) async {
-    await _storage.write(key: _tokenKey, value: token);
+    _token = token;
+    _tokenLoaded = true;
+    await _persist(_tokenKey, token);
   }
 
   static Future<String?> getToken() async {
-    return await _storage.read(key: _tokenKey);
+    if (_tokenLoaded) return _token;
+    final value = await _readOrNull(_tokenKey);
+    if (value == null) return null;
+    _token = value;
+    _tokenLoaded = true;
+    return value;
   }
 
   static Future<void> deleteToken() async {
-    await _storage.delete(key: _tokenKey);
+    _token = null;
+    _tokenLoaded = true;
+    await _persist(_tokenKey, null);
   }
 
   static Future<void> saveRefreshToken(String token) async {
-    await _storage.write(key: _refreshTokenKey, value: token);
+    _refreshToken = token;
+    _refreshTokenLoaded = true;
+    await _persist(_refreshTokenKey, token);
   }
 
   static Future<String?> getRefreshToken() async {
-    return await _storage.read(key: _refreshTokenKey);
+    if (_refreshTokenLoaded) return _refreshToken;
+    final value = await _readOrNull(_refreshTokenKey);
+    if (value == null) return null;
+    _refreshToken = value;
+    _refreshTokenLoaded = true;
+    return value;
   }
 
   static Future<void> deleteRefreshToken() async {
-    await _storage.delete(key: _refreshTokenKey);
+    _refreshToken = null;
+    _refreshTokenLoaded = true;
+    await _persist(_refreshTokenKey, null);
+  }
+
+  /// Whether a keychain write is still waiting to land (diagnostics).
+  static bool get hasPendingPersist => _pendingWrites.isNotEmpty;
+
+  /// Forgets the in-memory copies so the next read goes to the keychain.
+  @visibleForTesting
+  static void resetSessionCache() {
+    _token = null;
+    _tokenLoaded = false;
+    _refreshToken = null;
+    _refreshTokenLoaded = false;
+    _pendingWrites.clear();
+    _persistRetry?.cancel();
+    _persistRetry = null;
+  }
+
+  // A read that throws (locked keychain, plugin hiccup) is treated as "not
+  // there yet" without caching the miss: the next call tries again.
+  static Future<String?> _readOrNull(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (e) {
+      debugPrint('StorageService: read of $key failed: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _persist(String key, String? value) async {
+    try {
+      if (value == null) {
+        await _storage.delete(key: key);
+      } else {
+        await _storage.write(key: key, value: value);
+      }
+      _pendingWrites.remove(key);
+      if (_pendingWrites.isEmpty) {
+        _persistRetry?.cancel();
+        _persistRetry = null;
+      }
+    } catch (e) {
+      debugPrint('StorageService: write of $key failed, will retry: $e');
+      _pendingWrites[key] = value;
+      onPersistFailure?.call(key, e);
+      _persistRetry ??= Timer.periodic(_persistRetryEvery, (_) => _retryPending());
+    }
+  }
+
+  static Future<void> _retryPending() async {
+    for (final entry in Map.of(_pendingWrites).entries) {
+      // A newer value for the key removes it from the map on success, so a
+      // retry can never put an older token back.
+      if (!identical(_pendingWrites[entry.key], entry.value)) continue;
+      await _persist(entry.key, entry.value);
+    }
+  }
+
+  // The e-mail of the last successful sign-in, so the login form only ever
+  // asks for the password again.
+  static const String _rememberedEmailKey = 'remembered_email';
+
+  static Future<void> saveRememberedEmail(String email) async {
+    try {
+      await _storage.write(key: _rememberedEmailKey, value: email.trim());
+    } catch (e) {
+      debugPrint('StorageService: could not remember e-mail: $e');
+    }
+  }
+
+  static Future<String?> getRememberedEmail() async {
+    return _readOrNull(_rememberedEmailKey);
   }
 
   static Future<void> saveLanguage(String languageCode) async {

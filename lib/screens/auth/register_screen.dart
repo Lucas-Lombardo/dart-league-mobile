@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/locale_provider.dart';
@@ -45,6 +46,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (success && mounted) {
+        // Lets iOS / Android offer to save the new credentials.
+        TextInput.finishAutofillContext();
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -69,9 +72,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // "install it and put my code" is still fresh. It sends the user on
           // to /home itself, whichever branch they take.
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => const ReferralOnboardingScreen(),
-            ),
+            MaterialPageRoute(builder: (_) => const ReferralOnboardingScreen()),
           );
         }
       }
@@ -141,114 +142,121 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _buildForm(AppLocalizations l10n) {
     return Form(
       key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _LabeledField(
-            label: l10n.username,
-            controller: _usernameController,
-            icon: Icons.person_outline_rounded,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.usernameRequired;
-              }
-              if (value.length < 3) {
-                return l10n.usernameTooShort;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          _LabeledField(
-            label: l10n.email,
-            controller: _emailController,
-            icon: Icons.mail_outline_rounded,
-            keyboardType: TextInputType.emailAddress,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.emailRequired;
-              }
-              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
-                return l10n.emailInvalid;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          _LabeledField(
-            label: l10n.password,
-            controller: _passwordController,
-            icon: Icons.lock_outline_rounded,
-            obscureText: _obscurePassword,
-            suffix: _eyeToggle(_obscurePassword, () {
-              setState(() {
-                _obscurePassword = !_obscurePassword;
-              });
-            }),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.passwordRequired;
-              }
-              if (value.length < 6) {
-                return l10n.passwordTooShort;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          _LabeledField(
-            label: l10n.confirmPassword,
-            controller: _confirmPasswordController,
-            icon: Icons.lock_outline_rounded,
-            obscureText: _obscureConfirmPassword,
-            suffix: _eyeToggle(_obscureConfirmPassword, () {
-              setState(() {
-                _obscureConfirmPassword = !_obscureConfirmPassword;
-              });
-            }),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.confirmPasswordRequired;
-              }
-              if (value != _passwordController.text) {
-                return l10n.passwordMismatch;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 20),
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              final message = authProvider.errorMessage;
-              if (message == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _ErrorBanner(message: message),
-              );
-            },
-          ),
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              return SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: authProvider.isLoading ? null : _handleRegister,
-                  child: authProvider.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(dsSentence(l10n.registerButton)),
-                ),
-              );
-            },
-          ),
-        ],
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _LabeledField(
+              label: l10n.username,
+              controller: _usernameController,
+              autofillHints: const [AutofillHints.newUsername],
+              icon: Icons.person_outline_rounded,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.usernameRequired;
+                }
+                if (value.length < 3) {
+                  return l10n.usernameTooShort;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            _LabeledField(
+              label: l10n.email,
+              controller: _emailController,
+              autofillHints: const [AutofillHints.email],
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.emailRequired;
+                }
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+                  return l10n.emailInvalid;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            _LabeledField(
+              label: l10n.password,
+              controller: _passwordController,
+              autofillHints: const [AutofillHints.newPassword],
+              icon: Icons.lock_outline_rounded,
+              obscureText: _obscurePassword,
+              suffix: _eyeToggle(_obscurePassword, () {
+                setState(() {
+                  _obscurePassword = !_obscurePassword;
+                });
+              }),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.passwordRequired;
+                }
+                if (value.length < 6) {
+                  return l10n.passwordTooShort;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            _LabeledField(
+              label: l10n.confirmPassword,
+              controller: _confirmPasswordController,
+              autofillHints: const [AutofillHints.newPassword],
+              icon: Icons.lock_outline_rounded,
+              obscureText: _obscureConfirmPassword,
+              suffix: _eyeToggle(_obscureConfirmPassword, () {
+                setState(() {
+                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                });
+              }),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.confirmPasswordRequired;
+                }
+                if (value != _passwordController.text) {
+                  return l10n.passwordMismatch;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                final message = authProvider.errorMessage;
+                if (message == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ErrorBanner(message: message),
+                );
+              },
+            ),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                return SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: authProvider.isLoading ? null : _handleRegister,
+                    child: authProvider.isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Text(dsSentence(l10n.registerButton)),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -294,6 +302,7 @@ class _LabeledField extends StatelessWidget {
   final bool obscureText;
   final Widget? suffix;
   final FormFieldValidator<String>? validator;
+  final Iterable<String>? autofillHints;
 
   const _LabeledField({
     required this.label,
@@ -303,6 +312,7 @@ class _LabeledField extends StatelessWidget {
     this.obscureText = false,
     this.suffix,
     this.validator,
+    this.autofillHints,
   });
 
   @override
@@ -323,6 +333,7 @@ class _LabeledField extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           obscureText: obscureText,
+          autofillHints: autofillHints,
           style: AppTheme.rowTitle,
           decoration: InputDecoration(
             hintText: label,
@@ -349,14 +360,19 @@ class _ErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded,
-              size: 18, color: AppTheme.error),
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 18,
+            color: AppTheme.error,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: AppTheme.caption
-                  .copyWith(color: AppTheme.textPrimary, height: 1.35),
+              style: AppTheme.caption.copyWith(
+                color: AppTheme.textPrimary,
+                height: 1.35,
+              ),
             ),
           ),
         ],

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/storage_service.dart';
 import '../../widgets/design_system.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -18,6 +20,19 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // The last signed-in e-mail: only the password is asked again. The OS
+    // password manager can fill that one (autofill hints below).
+    StorageService.getRememberedEmail().then((email) {
+      if (!mounted || email == null || _emailController.text.isNotEmpty) {
+        return;
+      }
+      setState(() => _emailController.text = email);
+    });
+  }
 
   @override
   void dispose() {
@@ -35,6 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (success && mounted) {
+        // Lets iOS / Android offer to save the credentials.
+        TextInput.finishAutofillContext();
         AppNavigator.toAuth(context, '/home');
       }
     }
@@ -102,110 +119,124 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildForm(AppLocalizations l10n) {
     return Form(
       key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _LabeledField(
-            label: l10n.email,
-            controller: _emailController,
-            icon: Icons.mail_outline_rounded,
-            keyboardType: TextInputType.emailAddress,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.emailRequired;
-              }
-              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
-                return l10n.emailInvalid;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          _LabeledField(
-            label: l10n.password,
-            controller: _passwordController,
-            icon: Icons.lock_outline_rounded,
-            obscureText: _obscurePassword,
-            suffix: IconButton(
-              onPressed: () {
-                setState(() {
-                  _obscurePassword = !_obscurePassword;
-                });
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _LabeledField(
+              label: l10n.email,
+              controller: _emailController,
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [
+                AutofillHints.username,
+                AutofillHints.email,
+              ],
+              textInputAction: TextInputAction.next,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.emailRequired;
+                }
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+                  return l10n.emailInvalid;
+                }
+                return null;
               },
-              icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                size: 18,
-                color: AppTheme.textSecondary,
-              ),
             ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return l10n.passwordRequired;
-              }
-              if (value.length < 6) {
-                return l10n.passwordTooShort;
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                context.read<AuthProvider>().clearError();
-                AppNavigator.toAuth(context, '/forgot-password');
-              },
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                minimumSize: const Size(0, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            const SizedBox(height: 16),
+            _LabeledField(
+              label: l10n.password,
+              controller: _passwordController,
+              icon: Icons.lock_outline_rounded,
+              obscureText: _obscurePassword,
+              autofillHints: const [AutofillHints.password],
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _handleLogin(),
+              suffix: IconButton(
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 18,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-              child: Text(
-                l10n.forgotPassword,
-                style: AppTheme.caption.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryLight,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.passwordRequired;
+                }
+                if (value.length < 6) {
+                  return l10n.passwordTooShort;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  context.read<AuthProvider>().clearError();
+                  AppNavigator.toAuth(context, '/forgot-password');
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  l10n.forgotPassword,
+                  style: AppTheme.caption.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryLight,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              final message = authProvider.errorMessage;
-              if (message == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _ErrorBanner(message: message),
-              );
-            },
-          ),
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              return SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: authProvider.isLoading ? null : _handleLogin,
-                  child: authProvider.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(dsSentence(l10n.loginButton)),
-                ),
-              );
-            },
-          ),
-        ],
+            const SizedBox(height: 8),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                final message = authProvider.errorMessage;
+                if (message == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ErrorBanner(message: message),
+                );
+              },
+            ),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                return SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: authProvider.isLoading ? null : _handleLogin,
+                    child: authProvider.isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Text(dsSentence(l10n.loginButton)),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -252,6 +283,9 @@ class _LabeledField extends StatelessWidget {
   final bool obscureText;
   final Widget? suffix;
   final FormFieldValidator<String>? validator;
+  final Iterable<String>? autofillHints;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onFieldSubmitted;
 
   const _LabeledField({
     required this.label,
@@ -261,6 +295,9 @@ class _LabeledField extends StatelessWidget {
     this.obscureText = false,
     this.suffix,
     this.validator,
+    this.autofillHints,
+    this.textInputAction,
+    this.onFieldSubmitted,
   });
 
   @override
@@ -281,6 +318,9 @@ class _LabeledField extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           obscureText: obscureText,
+          autofillHints: autofillHints,
+          textInputAction: textInputAction,
+          onFieldSubmitted: onFieldSubmitted,
           style: AppTheme.rowTitle,
           decoration: InputDecoration(
             hintText: label,
@@ -308,14 +348,19 @@ class _ErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded,
-              size: 18, color: AppTheme.error),
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 18,
+            color: AppTheme.error,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: AppTheme.caption
-                  .copyWith(color: AppTheme.textPrimary, height: 1.35),
+              style: AppTheme.caption.copyWith(
+                color: AppTheme.textPrimary,
+                height: 1.35,
+              ),
             ),
           ),
         ],

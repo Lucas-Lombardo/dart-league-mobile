@@ -6,6 +6,7 @@ import '../services/meta_events_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/socket_service.dart';
 import '../utils/error_messages.dart';
+import '../utils/storage_service.dart';
 import 'locale_provider.dart';
 import 'presence_provider.dart';
 import 'subscription_provider.dart';
@@ -151,6 +152,21 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// The server no longer knows this device's session (refresh rejected).
+  /// Drops the signed-in state without calling the server: the tokens are
+  /// already dead. The caller shows the login form.
+  void handleSessionLost() {
+    if (_currentUser == null) return;
+    PushNotificationService.dispose();
+    _setCurrentUser(null);
+    _errorMessage = null;
+    _subscriptionProvider?.clear();
+    _presenceProvider?.stop();
+    unawaited(StorageService.deleteToken());
+    unawaited(StorageService.deleteRefreshToken());
+    notifyListeners();
   }
 
   Future<void> logout() async {

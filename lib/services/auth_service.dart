@@ -22,12 +22,7 @@ class AuthService {
         includeAuth: false,
       );
 
-      if (response['access_token'] != null) {
-        await StorageService.saveToken(response['access_token']);
-      }
-      if (response['refresh_token'] != null) {
-        await StorageService.saveRefreshToken(response['refresh_token']);
-      }
+      await _storeSession(response, email: email);
 
       return {
         'user': User.fromJson(response['user']),
@@ -52,12 +47,7 @@ class AuthService {
         includeAuth: false,
       );
 
-      if (response['access_token'] != null) {
-        await StorageService.saveToken(response['access_token']);
-      }
-      if (response['refresh_token'] != null) {
-        await StorageService.saveRefreshToken(response['refresh_token']);
-      }
+      await _storeSession(response, email: email);
 
       return {
         'user': User.fromJson(response['user']),
@@ -68,11 +58,32 @@ class AuthService {
     }
   }
 
+  /// Tokens go to memory first (the keychain write is best-effort and
+  /// retried), the e-mail is remembered for the next login form, and any
+  /// earlier "session rejected" verdict is cleared.
+  static Future<void> _storeSession(
+    dynamic response, {
+    required String email,
+  }) async {
+    if (response['access_token'] != null) {
+      await StorageService.saveToken(response['access_token']);
+    }
+    if (response['refresh_token'] != null) {
+      await StorageService.saveRefreshToken(response['refresh_token']);
+    }
+    ApiService.markSessionValid();
+    await StorageService.saveRememberedEmail(email);
+  }
+
   static Future<void> logout() async {
     try {
-      // Call backend to invalidate the refresh token server-side
+      // Call backend to end THIS device's session (older servers ignore the
+      // token and end every session of the account, as they always did).
       try {
-        await ApiService.post('/auth/logout', {});
+        final refreshToken = await StorageService.getRefreshToken();
+        await ApiService.post('/auth/logout', {
+          'refreshToken': ?refreshToken,
+        });
       } catch (e) {
         debugPrint('⚠️ Backend logout failed (token may already be invalid): $e');
       }
