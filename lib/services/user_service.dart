@@ -7,6 +7,10 @@ class UserStats {
   final int totalMatches;
   final double winRate;
   final double averageScore;
+  /// Career three-dart average, points ÷ darts × 3 — the figure every other
+  /// stats surface shows. 0 from a backend that predates it, in which case
+  /// [averageScore] (points per scoring visit) is the closest thing available.
+  final double threeDartAverage;
   final int count180s;
   final int currentStreak;
   final int wins;
@@ -35,6 +39,7 @@ class UserStats {
     required this.currentStreak,
     required this.wins,
     required this.losses,
+    this.threeDartAverage = 0.0,
     this.legsCounted = -1,
     this.biggestCheckout = 0,
     this.biggestCheckoutLastMonth = 0,
@@ -52,6 +57,7 @@ class UserStats {
       // Backend sends 'averageScorePerRound', map it to 'averageScore'
       averageScore: (json['averageScorePerRound'] as num?)?.toDouble() ??
                     (json['averageScore'] as num?)?.toDouble() ?? 0.0,
+      threeDartAverage: (json['threeDartAverage'] as num?)?.toDouble() ?? 0.0,
       count180s: json['count180s'] as int? ?? 0,
       currentStreak: json['currentStreak'] as int? ?? 0,
       wins: json['wins'] as int? ?? 0,

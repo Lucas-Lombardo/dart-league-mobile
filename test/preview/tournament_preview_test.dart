@@ -122,45 +122,47 @@ Tournament _t({
   );
 }
 
-void main() {
-  testWidgets('tournament tab preview', (tester) async {
-    await tester.runAsync(_loadFonts);
-    final key = GlobalKey();
-    await tester.binding.setSurfaceSize(const Size(393, 852));
-    tester.view.devicePixelRatio = 3;
+/// The Tournament tab over seeded providers: five agenda rows across two
+/// days and one pinned invitation. [english] swaps the user-written
+/// tournament names so an English render reads naturally.
+class TournamentPreviewScene extends StatelessWidget {
+  final bool english;
+  const TournamentPreviewScene({super.key, this.english = false});
 
+  TournamentProvider _seeded() {
     final now = DateTime.now();
     DateTime day(int offset, int h, int m) =>
         DateTime(now.year, now.month, now.day + offset, h, m);
+    String name(String fr, String en) => english ? en : fr;
 
     final samedi = _t(
-      id: 't1', name: 'Tournoi du samedi', at: day(0, 20, 30),
+      id: 't1', name: name('Tournoi du samedi', 'Saturday Open'), at: day(0, 20, 30),
       status: 'registration_open', max: 16, current: 8, elo: 500,
       trophy: 'classic',
     );
     final cricket = _t(
-      id: 't2', name: 'Soirée Cricket', at: day(0, 21, 30),
+      id: 't2', name: name('Soirée Cricket', 'Cricket Night'), at: day(0, 21, 30),
       status: 'registration_open', max: 8, current: 6, elo: 300,
     );
     final ligue = _t(
-      id: 't3', name: 'Ligue du soir', at: day(0, 19, 0),
+      id: 't3', name: name('Ligue du soir', 'Evening League'), at: day(0, 19, 0),
       status: 'in_progress', max: 8, current: 8, elo: 400,
     );
     final coupe = _t(
-      id: 't4', name: 'Coupe Or+', at: day(1, 18, 0),
+      id: 't4', name: name('Coupe Or+', 'Gold+ Cup'), at: day(1, 18, 0),
       status: 'upcoming', max: 16, current: 12, elo: 600, minRank: 'gold',
     );
     final express = _t(
-      id: 't5', name: 'Défi express', at: day(1, 21, 0),
+      id: 't5', name: name('Défi express', 'Express Challenge'), at: day(1, 21, 0),
       status: 'registration_closed', max: 8, current: 8, elo: 250,
     );
     final diamant = _t(
-      id: 't6', name: 'Grand Prix Diamant des champions', at: day(6, 20, 0),
+      id: 't6', name: name('Grand Prix Diamant des champions', 'Diamond Champions Grand Prix'), at: day(6, 20, 0),
       status: 'registration_open', max: 32, current: 3, elo: 800,
       fee: 500, premium: true,
     );
     final debutants = _t(
-      id: 't7', name: 'Tournoi débutants', at: day(6, 17, 0),
+      id: 't7', name: name('Tournoi débutants', 'Beginners Open'), at: day(6, 17, 0),
       status: 'registration_open', max: 16, current: 16, elo: 400,
       maxRank: 'silver',
     );
@@ -176,14 +178,14 @@ void main() {
       TournamentMatch(
         id: 'm1',
         tournamentId: 't3',
-        tournamentName: 'Ligue du soir',
+        tournamentName: name('Ligue du soir', 'Evening League'),
         roundNumber: 2,
         roundName: 'semi_final',
         matchNumber: 1,
         player1Id: 'opp',
         player1Username: 'DODO180',
         player2Id: 'me',
-        player2Username: 'Moi',
+        player2Username: name('Moi', 'Me'),
         status: 'waiting_for_players',
         player1Score: 0,
         player2Score: 0,
@@ -191,32 +193,44 @@ void main() {
         inviteSentAt: now.subtract(const Duration(seconds: 18)),
       ),
     ]);
+    return tournaments;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
+        ChangeNotifierProvider<TournamentProvider>(create: (_) => _seeded()),
+      ],
+      child: const Scaffold(
+        body: SafeArea(bottom: false, child: TournamentScreen()),
+      ),
+    );
+  }
+}
+
+void main() {
+  testWidgets('tournament tab preview', (tester) async {
+    await tester.runAsync(_loadFonts);
+    final key = GlobalKey();
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    tester.view.devicePixelRatio = 3;
 
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => AuthProvider()),
-          ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
-          ChangeNotifierProvider<TournamentProvider>.value(value: tournaments),
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.themeData,
+        locale: const Locale('fr'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
         ],
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.themeData,
-          locale: const Locale('fr'),
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: RepaintBoundary(
-            key: key,
-            child: const Scaffold(
-              body: SafeArea(bottom: false, child: TournamentScreen()),
-            ),
-          ),
-        ),
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RepaintBoundary(key: key, child: const TournamentPreviewScene()),
       ),
     );
     // Localizations resolve asynchronously.

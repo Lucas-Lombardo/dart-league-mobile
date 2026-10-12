@@ -80,7 +80,7 @@ DartScore _dart(int segment, String ring) {
 }
 
 /// One visit in progress (T20 counted, two darts to come), AI capturing.
-class _ScoringStub extends AutoScoringService {
+class ScoringStub extends AutoScoringService {
   @override
   bool get isCapturing => true;
   @override
@@ -93,14 +93,17 @@ class _ScoringStub extends AutoScoringService {
   bool get manualConfirmNeeded => false;
 }
 
-class _MyTurnPreview extends StatelessWidget {
+class MyTurnPreview extends StatelessWidget {
   final AutoScoringService scoring;
-  const _MyTurnPreview(this.scoring);
+  /// What the camera panel shows; null renders the "no video" placeholder.
+  final Widget? cameraPreview;
+  const MyTurnPreview(this.scoring, {super.key, this.cameraPreview});
 
   @override
   Widget build(BuildContext context) {
     return AutoScoreGameView(
       scoringService: scoring,
+      localCameraPreview: cameraPreview,
       onConfirm: () {},
       pendingConfirmation: false,
       isAudioMuted: false,
@@ -338,8 +341,8 @@ MatchStats _fakeStats() => const MatchStats(
       windowAverage: 58.0,
     );
 
-class _EndPanel extends StatelessWidget {
-  const _EndPanel();
+class EndPanel extends StatelessWidget {
+  const EndPanel({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -452,13 +455,13 @@ void main() {
     await tester.binding.setSurfaceSize(_size);
     tester.view.devicePixelRatio = 3;
 
-    final scoring = _ScoringStub();
+    final scoring = ScoringStub();
     // The game screen hosts these in a Scaffold (buildLiveMatchBody), which
     // is what gives plain TextStyles the theme's font.
     await _render(
       tester,
       'en_jeu',
-      Scaffold(backgroundColor: AppTheme.background, body: _MyTurnPreview(scoring)),
+      Scaffold(backgroundColor: AppTheme.background, body: MyTurnPreview(scoring)),
       withPadding: true,
     );
     await _render(
@@ -491,7 +494,7 @@ void main() {
             subtitle: l10n.provenLegend,
             scoreLine: '2 – 1',
             scoreCaption: l10n.bestOfN(3),
-            panel: const _EndPanel(),
+            panel: const EndPanel(),
             replayClips: [
               for (var i = 0; i < 3; i++)
                 ReplayClip(path: 'clip$i.mp4', createdAt: DateTime.now()),

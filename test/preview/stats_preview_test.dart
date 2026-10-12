@@ -1,7 +1,8 @@
-// Renders the Stats tab (system D: header, Matchs / Entraînement segmented
-// control, standing cards, form, record, breakdowns, records; training cards)
-// to PNG so the screens can be reviewed without a device or a backend. The
-// pure widgets are fed fake data; the self-loading sections are bypassed.
+// Renders the Stats tab (header, Matchs / Entraînement segmented control,
+// level card, impacts, doubles, form, record, records; training cards) and a
+// player's page to PNG so the screens can be reviewed without a device or a
+// backend. The pure widgets are fed production figures exported on
+// 2026-10-06; the self-loading sections are bypassed.
 // Not a test of behaviour — skipped unless run explicitly:
 //
 //   flutter test test/preview/stats_preview_test.dart \
@@ -18,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mobile/l10n/app_localizations.dart';
 import 'package:mobile/models/player_percentiles.dart';
+import 'package:mobile/models/player_profile_stats.dart';
 import 'package:mobile/models/stats_summary.dart';
 import 'package:mobile/models/training.dart';
 import 'package:mobile/screens/home/stats/comparison_section.dart';
@@ -26,8 +28,13 @@ import 'package:mobile/screens/home/stats/stats_filter_sheet.dart';
 import 'package:mobile/screens/home/stats/stats_pages.dart';
 import 'package:mobile/screens/home/stats/stats_widgets.dart';
 import 'package:mobile/screens/home/training_stats_tab.dart';
+import 'package:mobile/screens/profile/player_stats_screen.dart';
+import 'package:mobile/services/user_service.dart';
 import 'package:mobile/utils/app_theme.dart';
 import 'package:mobile/widgets/design_system.dart';
+import 'package:mobile/widgets/player_card.dart';
+
+import 'impacts_fixture.dart';
 
 const _enabled = bool.fromEnvironment('PREVIEW');
 const _outDir = String.fromEnvironment('PREVIEW_OUT');
@@ -62,61 +69,96 @@ Future<void> _loadFonts() async {
 }
 
 const _percentiles = PlayerPercentiles(
-  cohort: PercentileCohort(byRank: true, rank: 'platinum', size: 214, windowDays: 90, minLegs: 20),
+  cohort: PercentileCohort(byRank: true, rank: 'platinum', size: 20, windowDays: 90, minLegs: 10),
   eligible: true,
-  legs: 64,
+  legs: 208,
   legsUntilEligible: 0,
-  overall: 88,
-  metrics: [
-    PercentileEntry(key: PercentileMetric.average, value: 62.4, percentile: 78, median: 55, higherIsBetter: true),
-    PercentileEntry(key: PercentileMetric.checkoutPct, value: 38.5, percentile: 91, median: 30, higherIsBetter: true),
-    PercentileEntry(key: PercentileMetric.dartsToWinLeg, value: 18.2, percentile: 64, median: 20, higherIsBetter: false),
-    PercentileEntry(key: PercentileMetric.tonRate, value: 32, percentile: 57, median: 28, higherIsBetter: true),
-    PercentileEntry(key: PercentileMetric.bustRate, value: 4.1, percentile: 45, median: 4, higherIsBetter: false),
-  ],
-  strongest: PercentileMetric.checkoutPct,
-  weakest: PercentileMetric.bustRate,
+  level: PlayerLevel(
+    overall: 40,
+    metrics: [
+      LevelEntry(key: LevelMetric.average, value: 47.7, percentile: 33, median: 48.9),
+      LevelEntry(key: LevelMetric.first9, value: 52.7, percentile: 28, median: 55.2),
+      LevelEntry(key: LevelMetric.scoringAverage, value: 54.5, percentile: 28, median: 55.7),
+      LevelEntry(key: LevelMetric.finishingAverage, value: 33.4, percentile: 28, median: 35.2),
+      LevelEntry(key: LevelMetric.checkoutPct, value: 13.8, percentile: 18, median: 18),
+    ],
+  ),
 );
 
 StatsSummary _summary() => StatsSummary(
-      legs: 120,
-      record: const StatsRecordLine(wins: 41, losses: 29, winRate: 58.6),
+      legs: 208,
+      record: const StatsRecordLine(wins: 114, losses: 93, winRate: 55.1),
       form: const StatsForm(
-        average: 61.8,
-        previousAverage: 58.2,
-        delta: 3.6,
-        curve: [55, 57, 56, 59, 61, 60, 63, 62, 64, 61.8],
+        average: 45.9,
+        previousAverage: 52,
+        delta: -6.1,
+        curve: [50.1, 49.3, 48.8, 45.4, 44.8, 40.1, 37.3, 39.6, 41.1, 39.2, 46.3, 50, 51.6, 48.3, 51.5, 45.5, 46.3, 47.2, 49.2, 46.7],
         sampleLegs: 20,
       ),
-      scoring: const StatsScoring(
-        average: 61.8,
-        bestVisit: 180,
-        totalVisits: 812,
-        buckets: [
-          StatsBucket(label: '180', count: 3),
-          StatsBucket(label: '140+', count: 41),
-          StatsBucket(label: '100+', count: 164),
-          StatsBucket(label: '60+', count: 302),
-          StatsBucket(label: '<60', count: 302),
-        ],
-      ),
+      scoring: const StatsScoring(average: 47.7, bestVisit: 180, totalVisits: 1791),
       finishing: const StatsFinishing(
-        checkoutPct: 38.5,
+        checkoutPct: 13.8,
         doubles: [
-          StatsRate(label: 'D20', hits: 22, attempts: 50, pct: 44),
-          StatsRate(label: 'D16', hits: 19, attempts: 49, pct: 39),
-          StatsRate(label: 'D8', hits: 9, attempts: 29, pct: 31),
-          StatsRate(label: 'D10', hits: 4, attempts: 18, pct: 22),
-          StatsRate(label: 'D18', hits: 2, attempts: 11, pct: 18),
+          StatsRate(label: 'D16', hits: 14, attempts: 98, pct: 14.3),
+          StatsRate(label: 'D8', hits: 8, attempts: 83, pct: 9.6),
+          StatsRate(label: 'D4', hits: 13, attempts: 71, pct: 18.3),
+          StatsRate(label: 'D10', hits: 13, attempts: 69, pct: 18.8),
+          StatsRate(label: 'D2', hits: 9, attempts: 61, pct: 14.8),
+          StatsRate(label: 'D20', hits: 5, attempts: 59, pct: 8.5),
         ],
       ),
       records: [
-        StatsRecord(key: StatsRecordKey.bestCheckout, value: 121, matchId: 'm1', opponentUsername: 'DODO180', playedAt: DateTime(2026, 8, 12)),
-        StatsRecord(key: StatsRecordKey.bestLeg, value: 15, matchId: 'm2', opponentUsername: 'Kev_Darts', playedAt: DateTime(2026, 8, 3)),
-        StatsRecord(key: StatsRecordKey.bestLegAverage, value: 98.3, matchId: 'm3', opponentUsername: 'Marion_B', playedAt: DateTime(2026, 7, 28)),
-        StatsRecord(key: StatsRecordKey.longestWinStreak, value: 7, matchId: 'm4'),
+        StatsRecord(key: StatsRecordKey.bestCheckout, value: 141, matchId: 'm1', opponentUsername: 'Dodo180', playedAt: DateTime(2026, 8, 3)),
+        StatsRecord(key: StatsRecordKey.bestLeg, value: 18, matchId: 'm2', opponentUsername: 'Nico', playedAt: DateTime(2026, 8, 21)),
+        StatsRecord(key: StatsRecordKey.bestLegAverage, value: 99.3, matchId: 'm3', opponentUsername: 'Dodo180', playedAt: DateTime(2026, 8, 3)),
+        StatsRecord(key: StatsRecordKey.longestWinStreak, value: 11, matchId: 'm4', opponentUsername: 'Dodo180', playedAt: DateTime(2026, 8, 4)),
       ],
+      impacts: vatiImpacts,
     );
+
+/// lucas pdc paulhan, the profile the redesign was drawn from.
+final _player = PlayerProfileStats(
+  percentiles: const PlayerPercentiles(
+    cohort: PercentileCohort(byRank: false, rank: 'master', size: 191, windowDays: 90, minLegs: 10),
+    eligible: true,
+    legs: 236,
+    legsUntilEligible: 0,
+    level: PlayerLevel(
+      overall: 99.2,
+      metrics: [
+        LevelEntry(key: LevelMetric.average, value: 59.8, percentile: 99.2, median: 41.5),
+        LevelEntry(key: LevelMetric.first9, value: 68.6, percentile: 99.2, median: 47.4),
+        LevelEntry(key: LevelMetric.scoringAverage, value: 68.2, percentile: 99.7, median: 47.9),
+        LevelEntry(key: LevelMetric.finishingAverage, value: 42.9, percentile: 97.1, median: 29.1),
+        LevelEntry(key: LevelMetric.checkoutPct, value: 24.6, percentile: 97.1, median: 11.6),
+      ],
+    ),
+  ),
+  impacts: paulhanImpacts,
+  doubles: const [
+    StatsRate(label: 'D16', hits: 25, attempts: 102, pct: 24.5),
+    StatsRate(label: 'D8', hits: 28, attempts: 92, pct: 30.4),
+    StatsRate(label: 'D20', hits: 28, attempts: 84, pct: 33.3),
+    StatsRate(label: 'D1', hits: 12, attempts: 83, pct: 14.5),
+    StatsRate(label: 'D2', hits: 20, attempts: 64, pct: 31.3),
+    StatsRate(label: 'Bull', hits: 2, attempts: 45, pct: 4.4),
+    StatsRate(label: 'D10', hits: 14, attempts: 45, pct: 31.1),
+  ],
+);
+
+final _playerStats = UserStats(
+  totalMatches: 106,
+  winRate: 83,
+  averageScore: 59.5,
+  threeDartAverage: 59.8,
+  count180s: 17,
+  currentStreak: 43,
+  wins: 88,
+  losses: 18,
+  legsCounted: 236,
+  biggestCheckout: 133,
+  finishingDoublePercentage: 24.6,
+);
 
 TrainingTypeStats _training(TrainingType type, {int sessions = 0, num? best, num? avg, num? last, List<BotModeStats>? modes, num? winRate}) =>
     TrainingTypeStats(
@@ -160,8 +202,8 @@ Widget _shell(AppLocalizations l10n, int tab, Widget body) {
   );
 }
 
-class _MatchesPreview extends StatelessWidget {
-  const _MatchesPreview();
+class MatchesPreview extends StatelessWidget {
+  const MatchesPreview({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +217,64 @@ class _MatchesPreview extends StatelessWidget {
         filterBar: StatsFilterBar(
           filter: const StatsFilter(period: StatsPeriod.last30Days, modes: {MatchMode.ranked}),
           onTap: () {},
+        ),
+      ),
+    );
+  }
+}
+
+/// The player page, composed the way PlayerStatsScreen lays it out. [profile]
+/// null renders what an older backend (or a failed request) leaves behind.
+class _PlayerPreview extends StatelessWidget {
+  final PlayerProfileStats? profile;
+
+  const _PlayerPreview({this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('lucas pdc paulhan'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: DsIconButton(icon: Icons.chat_bubble_outline_rounded, onTap: () {}),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PlayerCard(
+              rank: 'master',
+              username: 'lucas pdc paulhan',
+              isPremium: true,
+              subline: Text(l10n.master, style: AppTheme.caption.copyWith(fontSize: 13)),
+              value: '2714',
+              valueLabel: l10n.eloLabel,
+              progress: 1,
+            ),
+            const SizedBox(height: 14),
+            PlayerDartBlocks(profile: profile, stats: _playerStats, isSelf: false),
+            PlayerRecordCard(stats: _playerStats),
+            const SizedBox(height: 14),
+            DsListRow(
+              leading: const Icon(Icons.compare_arrows_rounded, size: 22, color: Color(0xFFCBD5E1)),
+              title: l10n.headToHeadTitle,
+              onTap: () {},
+            ),
+            const SizedBox(height: 28),
+            OutlinedButton.icon(
+              onPressed: () {},
+              icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+              label: Text(l10n.addFriendButton),
+            ),
+          ],
         ),
       ),
     );
@@ -260,7 +360,8 @@ Future<void> _render(WidgetTester tester, Widget page, Size size, String name) a
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
   });
-  await tester.pump();
+  // Long enough for the impact boards to land their last dart.
+  await tester.pump(const Duration(seconds: 4));
 
   final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   await tester.runAsync(() async {
@@ -275,7 +376,15 @@ Future<void> _render(WidgetTester tester, Widget page, Size size, String name) a
 
 void main() {
   testWidgets('stats matches preview', (tester) async {
-    await _render(tester, const _MatchesPreview(), const Size(393, 2300), 'stats_matches');
+    await _render(tester, const MatchesPreview(), const Size(393, 2300), 'stats_matches');
+  }, skip: !_enabled);
+
+  testWidgets('player page preview', (tester) async {
+    await _render(tester, _PlayerPreview(profile: _player), const Size(393, 1700), 'player_page');
+  }, skip: !_enabled);
+
+  testWidgets('player page preview, career figures only', (tester) async {
+    await _render(tester, const _PlayerPreview(), const Size(393, 900), 'player_page_fallback');
   }, skip: !_enabled);
 
   testWidgets('stats training preview', (tester) async {

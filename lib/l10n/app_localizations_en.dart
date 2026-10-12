@@ -3828,4 +3828,65 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get benefitUnlimitedTournaments => 'Unlimited tournaments';
+
+  @override
+  String get levelFirst9 => 'First 9 darts';
+
+  @override
+  String get levelScoring => 'Scoring, 501 down to 170';
+
+  @override
+  String get levelFinishing => 'Finishing, 170 and below';
+
+  @override
+  String get levelDoubles => 'Doubles hit';
+
+  @override
+  String levelBeatsRank(int percent, String rank) =>
+      'better than $percent% of $rank players';
+
+  @override
+  String levelBeatsAll(int percent) => 'better than $percent% of players';
+
+  @override
+  String levelFootnoteRank(int size, String rank, int days) =>
+      '$size $rank players compared · $days d · the mark is the median';
+
+  @override
+  String levelFootnoteAll(int size, int days) =>
+      '$size players compared · $days d · the mark is the median';
+
+  @override
+  String levelWindowOnly(int days) => 'Over the last $days days';
+
+  @override
+  String get impactsYours => 'Your impacts';
+
+  @override
+  String get impactsTheirs => 'Their impacts';
+
+  @override
+  String get impactsScoring => 'Scoring';
+
+  @override
+  String get impactsDoubles => 'Doubles';
+
+  @override
+  String impactsTrebles(int hits, int total) =>
+      hits == 1 ? '$hits treble out of $total' : '$hits trebles out of $total';
+
+  @override
+  String impactsDoublesHit(int hits, int total) => '$hits hit out of $total';
+
+  @override
+  String get impactsNone => 'No located darts yet';
+
+  @override
+  String get impactsReplay => 'Replay the animation';
+
+  @override
+  String get profileRecord => 'Record';
+
+  @override
+  String get profileWinsLosses => 'Wins – losses';
 }

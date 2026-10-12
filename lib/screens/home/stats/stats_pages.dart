@@ -7,14 +7,17 @@ import '../../../utils/haptic_service.dart';
 import '../../../widgets/design_system.dart';
 import '../../profile/match_history_screen.dart';
 import 'comparison_section.dart';
+import 'double_ladder_card.dart';
+import 'impacts_card.dart';
 import 'stats_widgets.dart';
 
 /// The stats page: one scroll, no sub-tabs.
 ///
-/// It reads top-down as one argument. The standing comes first — where the
-/// player sits among comparable players — because "is that good" is the
-/// question none of their own figures can answer. Then their form, their
-/// record, and the two breakdowns that tell them what to actually practise.
+/// It reads top-down as one argument. The level comes first — the five figures
+/// a player is judged on, each placed among comparable players — because "is
+/// that good" is the question none of their own numbers can answer. Then where
+/// their darts actually land, the doubles to go and practise, their form and
+/// their record.
 ///
 /// The four sub-tabs this replaces split the same figures across screens
 /// nobody visited, and repeated the three headline numbers on the landing one
@@ -22,21 +25,6 @@ import 'stats_widgets.dart';
 
 String _num(double value) =>
     value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
-
-/// Highlights the strongest and weakest rows of a breakdown, so the same colour
-/// always means the same thing.
-Color _rateColor(StatsRate rate, List<StatsRate> all) {
-  if (all.length < 3) return AppTheme.primary;
-  final pcts = all.map((r) => r.pct);
-  final best = pcts.reduce((a, b) => a > b ? a : b);
-  final worst = pcts.reduce((a, b) => a < b ? a : b);
-  // All equal means there is no best and no worst — colouring every row green
-  // would claim a strength that isn't there.
-  if (best == worst) return AppTheme.primary;
-  if (rate.pct == best) return AppTheme.success;
-  if (rate.pct == worst) return AppTheme.error;
-  return AppTheme.primary;
-}
 
 class StatsOverviewPage extends StatelessWidget {
   final StatsSummary summary;
@@ -65,6 +53,18 @@ class StatsOverviewPage extends StatelessWidget {
       comparison,
       filterBar,
     ];
+
+    // Under the filter on purpose: unlike the level above, these are the
+    // darts of the window the player picked.
+    final impacts = summary.impacts;
+    if (impacts != null && !impacts.isEmpty) {
+      children.add(ImpactsCard(impacts: impacts, self: true));
+    }
+
+    final finishing = summary.finishing;
+    if (finishing != null && finishing.doubles.isNotEmpty) {
+      children.add(DoubleLadderCard(doubles: finishing.doubles));
+    }
 
     final form = summary.form;
     if (form != null) {
@@ -114,48 +114,7 @@ class StatsOverviewPage extends StatelessWidget {
       );
     }
 
-    // The two breakdowns worth keeping. Everything else the old sub-tabs held
-    // — first nine, treble-20 rate, darts to win a leg, bust rate — is already
-    // on the standing above, WITH what it is worth against other players.
     final scoring = summary.scoring;
-    if (scoring != null && scoring.buckets.isNotEmpty) {
-      final maxCount = scoring.buckets.fold<int>(0, (m, b) => b.count > m ? b.count : m);
-      children.add(
-        StatsCard(
-          label: l10n.statsVisitBreakdown(scoring.totalVisits),
-          children: [
-            for (final bucket in scoring.buckets)
-              StatsBar(
-                label: bucket.label,
-                fraction: maxCount == 0 ? 0 : bucket.count / maxCount,
-                value: '${bucket.count}',
-              ),
-          ],
-        ),
-      );
-    }
-
-    // The single most actionable card in the app: the double you miss most is
-    // the one to go and practise tonight.
-    final finishing = summary.finishing;
-    if (finishing != null && finishing.doubles.isNotEmpty) {
-      final best = finishing.doubles.map((r) => r.pct).reduce((a, b) => a > b ? a : b);
-      children.add(
-        StatsCard(
-          label: l10n.statsDoubleLadder,
-          children: [
-            for (final rate in finishing.doubles)
-              StatsBar(
-                label: rate.label,
-                fraction: best <= 0 ? 0 : rate.pct / best,
-                value: '${_num(rate.pct)} %',
-                color: _rateColor(rate, finishing.doubles),
-              ),
-          ],
-        ),
-      );
-    }
-
     children.add(
       _RecordsCard(
         records: summary.records,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/head_to_head.dart';
+import '../../models/player_profile_stats.dart';
 import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
@@ -16,12 +17,16 @@ import '../../utils/rank_utils.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/player_card.dart';
 import '../chat/chat_thread_screen.dart';
+import '../home/stats/double_ladder_card.dart';
+import '../home/stats/impacts_card.dart';
+import '../home/stats/level_card.dart';
 import '../home/stats/stats_widgets.dart';
 import 'head_to_head_screen.dart';
 
 /// Another player's profile (also opens on your own row of a leaderboard):
-/// their player card, the challenge row for a friend, the head-to-head
-/// shortcut, their career figures, and the friend action at the bottom.
+/// their player card, the challenge row for a friend, then the same three
+/// blocks as the Stats tab — level, impacts, doubles — followed by their
+/// career record, the head-to-head shortcut and the friend action.
 class PlayerStatsScreen extends StatefulWidget {
   final String userId;
   final String username;
@@ -48,6 +53,10 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
   /// premium for the card when they are not a friend, and the record for the
   /// head-to-head row. Absent on your own profile (the endpoint refuses it).
   HeadToHead? _headToHead;
+
+  /// Best effort too: where they stand, where their darts land, their
+  /// doubles. Without it the page falls back to the career figures alone.
+  PlayerProfileStats? _profile;
   bool _friendBusy = false;
 
   @override
@@ -63,6 +72,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     });
 
     if (!_isSelf(context)) _loadHeadToHead();
+    _loadProfile();
     try {
       final stats = await UserService.getUserStats(widget.userId);
       if (!mounted) return;
@@ -85,6 +95,15 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
       if (mounted) setState(() => _headToHead = data);
     } catch (_) {
       // The card falls back to the name alone; the row still opens the screen.
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await StatsService.getPlayerProfile(widget.userId);
+      if (mounted) setState(() => _profile = data);
+    } catch (_) {
+      // An older backend, or a failed request: the career card covers for it.
     }
   }
 
@@ -255,17 +274,12 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               const SizedBox(height: 14),
               _buildChallengeRow(l10n, friend, friends.isOnline(friend.id)),
             ],
+            const SizedBox(height: 14),
+            PlayerDartBlocks(profile: _profile, stats: stats, isSelf: isSelf),
+            PlayerRecordCard(stats: stats),
             if (!isSelf) ...[
               const SizedBox(height: 14),
               _buildHeadToHeadRow(l10n),
-            ],
-            const SizedBox(height: 28),
-            DsSectionHeader(title: l10n.performanceOverview),
-            const SizedBox(height: 12),
-            _buildRecordCard(l10n, stats),
-            const SizedBox(height: 14),
-            _buildFiguresCard(l10n, stats),
-            if (!isSelf) ...[
               const SizedBox(height: 28),
               _buildFriendButton(l10n, status),
             ],
@@ -362,59 +376,6 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     );
   }
 
-  /// Win rate as the hero, the tally under it.
-  Widget _buildRecordCard(AppLocalizations l10n, UserStats stats) {
-    if (stats.totalMatches == 0) return StatsBlockEmpty(l10n.noStatisticsAvailable);
-    return StatsCard(
-      children: [
-        StatsHero(
-          value: stats.winRate.toStringAsFixed(1),
-          unit: '%',
-          caption: l10n.winRate,
-        ),
-        const SizedBox(height: 16),
-        StatsRow(label: l10n.wins, value: '${stats.wins}', valueColor: AppTheme.success),
-        const SizedBox(height: 10),
-        StatsRow(label: l10n.losses, value: '${stats.losses}', valueColor: AppTheme.error),
-        const SizedBox(height: 10),
-        StatsRow(label: l10n.totalMatches, value: '${stats.totalMatches}'),
-        const SizedBox(height: 10),
-        StatsRow(
-          label: dsSentence(l10n.streak),
-          value: '${stats.currentStreak}',
-          valueColor: stats.currentStreak > 0 ? AppTheme.success : null,
-        ),
-      ],
-    );
-  }
-
-  /// The dart figures. A player whose only matches were against bots has no
-  /// measured darts — an empty block, never "0.0" read as a real average.
-  Widget _buildFiguresCard(AppLocalizations l10n, UserStats stats) {
-    if (stats.legsCounted == 0) return StatsBlockEmpty(l10n.noStatisticsAvailable);
-    return StatsCard(
-      children: [
-        StatsHero(
-          value: stats.averageScore.toStringAsFixed(1),
-          caption: l10n.avgScore,
-        ),
-        const SizedBox(height: 16),
-        StatsRow(label: l10n.count180s, value: '${stats.count180s}'),
-        if (stats.biggestCheckout > 0) ...[
-          const SizedBox(height: 10),
-          StatsRow(label: l10n.bestCheckout, value: '${stats.biggestCheckout}'),
-        ],
-        if (stats.finishingDoublePercentage > 0) ...[
-          const SizedBox(height: 10),
-          StatsRow(
-            label: l10n.finishingDoubles,
-            value: '${stats.finishingDoublePercentage.toStringAsFixed(1)} %',
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildFriendButton(AppLocalizations l10n, String status) {
     switch (status) {
       case 'friends':
@@ -437,5 +398,119 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
           label: Text(l10n.addFriendButton),
         );
     }
+  }
+}
+
+/// Level, impacts and doubles when the comparison window has them; the career
+/// figures otherwise. Each block carries its own trailing gap, so a missing
+/// one leaves no hole. Public so the page can be rendered without the network.
+class PlayerDartBlocks extends StatelessWidget {
+  final PlayerProfileStats? profile;
+  final UserStats stats;
+  final bool isSelf;
+
+  const PlayerDartBlocks({
+    super.key,
+    required this.profile,
+    required this.stats,
+    required this.isSelf,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = SizedBox(height: 14);
+    final profile = this.profile;
+    final impacts = profile?.impacts;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (profile == null || profile.percentiles.level == null) ...[
+          _CareerFiguresCard(stats: stats),
+          gap,
+        ] else ...[
+          LevelCard(data: profile.percentiles),
+          gap,
+          if (impacts != null && !impacts.isEmpty) ...[
+            ImpactsCard(impacts: impacts, self: isSelf),
+            gap,
+          ],
+          if (profile.doubles.isNotEmpty) ...[
+            DoubleLadderCard(doubles: profile.doubles, limit: 6),
+            gap,
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+/// The career record: outcomes first, then the two feats worth quoting.
+class PlayerRecordCard extends StatelessWidget {
+  final UserStats stats;
+
+  const PlayerRecordCard({super.key, required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (stats.totalMatches == 0) return StatsBlockEmpty(l10n.noStatisticsAvailable);
+    final rows = <Widget>[
+      StatsRow(label: l10n.winRate, value: '${stats.winRate.toStringAsFixed(1)} %'),
+      StatsRow(label: l10n.profileWinsLosses, value: '${stats.wins} – ${stats.losses}'),
+      StatsRow(
+        label: dsSentence(l10n.streak),
+        value: '${stats.currentStreak}',
+        valueColor: stats.currentStreak > 0 ? AppTheme.success : null,
+      ),
+      // A player who has only faced bots has no measured darts: no row rather
+      // than a "0" read as a real figure.
+      if (stats.legsCounted != 0) StatsRow(label: l10n.count180s, value: '${stats.count180s}'),
+      if (stats.biggestCheckout > 0)
+        StatsRow(label: l10n.bestCheckout, value: '${stats.biggestCheckout}'),
+    ];
+    return StatsCard(
+      label: l10n.profileRecord,
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          rows[i],
+        ],
+      ],
+    );
+  }
+}
+
+/// The career dart figures, shown only when the comparison window has nothing
+/// for this player (no leg in it, or a backend that predates it). A player
+/// whose only matches were against bots has no measured darts — an empty
+/// block, never "0.0" read as a real average.
+class _CareerFiguresCard extends StatelessWidget {
+  final UserStats stats;
+
+  const _CareerFiguresCard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (stats.legsCounted == 0) return StatsBlockEmpty(l10n.noStatisticsAvailable);
+    // Points ÷ darts × 3 when the backend sends it; its older per-visit figure
+    // otherwise, under the label that describes what it actually is.
+    final standard = stats.threeDartAverage > 0;
+    return StatsCard(
+      children: [
+        StatsHero(
+          value: (standard ? stats.threeDartAverage : stats.averageScore).toStringAsFixed(1),
+          caption: standard ? l10n.avgThreeDart : l10n.avgScore,
+        ),
+        if (stats.finishingDoublePercentage > 0) ...[
+          const SizedBox(height: 16),
+          StatsRow(
+            label: l10n.levelDoubles,
+            value: '${stats.finishingDoublePercentage.toStringAsFixed(1)} %',
+          ),
+        ],
+      ],
+    );
   }
 }

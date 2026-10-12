@@ -1,4 +1,4 @@
-.PHONY: help run-dev run-prod release-android release-ios release-ios-archive check-facebook clean help
+.PHONY: help run-dev run-prod release-android release-ios release-ios-archive store-screenshots check-facebook clean help
 
 # Default target
 help:
@@ -8,6 +8,7 @@ help:
 	@echo "  make release-android  - build signed App Bundle for Play Store"
 	@echo "  make release-ios      - build iOS .ipa (release, no archive)"
 	@echo "  make release-ios-archive - flutter build ios --release (Xcode archive next)"
+	@echo "  make store-screenshots - render App Store / Play Store screenshots (no simulator)"
 	@echo "  make clean            - flutter clean + pub get"
 
 # Run with dev (test) Stripe key
@@ -59,6 +60,15 @@ release-ios-archive:
 	flutter build ios --release --dart-define-from-file=env/prod.json
 	@echo "✅ iOS release build complete"
 	@echo "   Now open ios/Runner.xcworkspace in Xcode → Product → Archive"
+
+# Store listing screenshots, rendered headlessly from test/preview/store
+# (no simulator). Outputs build/store_screenshots/<ios|android>/<profile>/<fr|en>/*.png
+# plus an index.html to review the set.
+store-screenshots:
+	flutter test test/preview/store \
+		--dart-define=STORE=true \
+		--dart-define=STORE_OUT=$(CURDIR)/build/store_screenshots
+	@echo "✅ Screenshots in build/store_screenshots — open build/store_screenshots/index.html"
 
 # Meta (Facebook) SDK credentials must be real before any store build:
 # shipping the placeholders means the paid campaigns report zero conversions.

@@ -1,6 +1,7 @@
 import '../models/head_to_head.dart';
 import '../models/match_stats.dart';
 import '../models/player_percentiles.dart';
+import '../models/player_profile_stats.dart';
 import '../models/stats_summary.dart';
 import 'api_service.dart';
 
@@ -37,6 +38,16 @@ class StatsService {
       return PlayerPercentiles.fromJson(response);
     }
     throw Exception('Unexpected percentiles response');
+  }
+
+  /// The stats blocks of a player's page — where they stand, where their darts
+  /// land, which doubles they hit. Works for the caller's own id too.
+  static Future<PlayerProfileStats> getPlayerProfile(String userId) async {
+    final response = await ApiService.get('/stats/profile/$userId');
+    if (response is Map<String, dynamic>) {
+      return PlayerProfileStats.fromJson(response);
+    }
+    throw Exception('Unexpected player profile response');
   }
 
   /// The stats card shown when a match ends. Covers the whole series when the

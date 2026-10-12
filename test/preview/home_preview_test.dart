@@ -21,6 +21,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/l10n/app_localizations.dart';
 import 'package:mobile/models/match.dart';
 import 'package:mobile/utils/app_theme.dart';
+import 'package:mobile/utils/rank_translation.dart';
+import 'package:mobile/utils/season_format.dart';
 import 'package:mobile/widgets/design_system.dart';
 import 'package:mobile/widgets/live_matches_pill.dart';
 import 'package:mobile/widgets/player_card.dart';
@@ -92,8 +94,8 @@ Match _match({
   );
 }
 
-class _HomePreview extends StatelessWidget {
-  const _HomePreview();
+class HomePreview extends StatelessWidget {
+  const HomePreview({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -129,24 +131,27 @@ class _HomePreview extends StatelessWidget {
                       rank: 'platinum',
                       username: 'Vati99',
                       isPremium: true,
-                      subline: Text('Platine · #39', style: AppTheme.caption.copyWith(fontSize: 13)),
+                      subline: Text('${RankTranslation.translate(l10n, 'platinum')} · #39', style: AppTheme.caption.copyWith(fontSize: 13)),
                       value: '1601',
                       valueLabel: l10n.eloLabel,
                       progress: 1 / 400,
                       footerLeft: Text.rich(
                         TextSpan(
                           style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
-                          children: const [
-                            TextSpan(text: 'Diamant dans '),
-                            TextSpan(text: '+399 pts', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                          children: [
+                            TextSpan(text: '${RankTranslation.translate(l10n, 'diamond')} ${l10n.nextRankConnector} '),
+                            const TextSpan(text: '+399 pts', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
                           ],
                         ),
                       ),
-                      footerRight: const Row(
+                      footerRight: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Saison 1 · 84 j', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryLight)),
-                          Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.primaryLight),
+                          Text(
+                            '${l10n.seasonN(1)} · ${formatSeasonCountdown(l10n, const Duration(days: 84, hours: 14))}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryLight),
+                          ),
+                          const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.primaryLight),
                         ],
                       ),
                     ),
@@ -213,7 +218,7 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        home: RepaintBoundary(key: key, child: const _HomePreview()),
+        home: RepaintBoundary(key: key, child: const HomePreview()),
       ),
     );
     // Localizations and asset images (badge, shield) resolve asynchronously.

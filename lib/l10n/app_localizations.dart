@@ -1684,6 +1684,63 @@ abstract class AppLocalizations {
   /// Paywall benefit: no monthly tournament limit.
   String get benefitUnlimitedTournaments;
 
+  /// Level card rows: the average over the first nine darts of a leg.
+  String get levelFirst9;
+
+  /// Level card rows: the average while more than 170 remains.
+  String get levelScoring;
+
+  /// Level card rows: the average from 170 down.
+  String get levelFinishing;
+
+  /// Level card rows: darts at a finishing double that checked out.
+  String get levelDoubles;
+
+  /// Level card headline caption, cohort = the player's rank.
+  String levelBeatsRank(int percent, String rank);
+
+  /// Level card headline caption, cohort = every player.
+  String levelBeatsAll(int percent);
+
+  /// Level card footnote, cohort = the player's rank.
+  String levelFootnoteRank(int size, String rank, int days);
+
+  /// Level card footnote, cohort = every player.
+  String levelFootnoteAll(int size, int days);
+
+  /// Level card footnote when no figure can be placed yet.
+  String levelWindowOnly(int days);
+
+  /// Impacts card label on the player's own stats.
+  String get impactsYours;
+
+  /// Impacts card label on another player's page.
+  String get impactsTheirs;
+
+  /// Impacts card: the board of darts thrown above 170.
+  String get impactsScoring;
+
+  /// Impacts card: the board of darts thrown at a finishing double.
+  String get impactsDoubles;
+
+  /// Impacts card caption under the scoring board.
+  String impactsTrebles(int hits, int total);
+
+  /// Impacts card caption under the doubles board.
+  String impactsDoublesHit(int hits, int total);
+
+  /// Impacts card caption under a board with no located dart.
+  String get impactsNone;
+
+  /// Screen-reader hint: tapping a board replays its darts.
+  String get impactsReplay;
+
+  /// Player page: the career record card.
+  String get profileRecord;
+
+  /// Player page: "88 – 18" row label.
+  String get profileWinsLosses;
+
 }
 
 class _AppLocalizationsDelegate

@@ -3860,4 +3860,66 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get benefitUnlimitedTournaments => 'Tournois illimités';
+
+  @override
+  String get levelFirst9 => '9 premières fléchettes';
+
+  @override
+  String get levelScoring => 'Scoring, de 501 à 170';
+
+  @override
+  String get levelFinishing => 'Finition, 170 et moins';
+
+  @override
+  String get levelDoubles => 'Réussite aux doubles';
+
+  @override
+  String levelBeatsRank(int percent, String rank) =>
+      'mieux que $percent % des joueurs $rank';
+
+  @override
+  String levelBeatsAll(int percent) => 'mieux que $percent % des joueurs';
+
+  @override
+  String levelFootnoteRank(int size, String rank, int days) =>
+      '$size joueurs $rank comparés · $days j · le trait marque la médiane';
+
+  @override
+  String levelFootnoteAll(int size, int days) =>
+      '$size joueurs comparés · $days j · le trait marque la médiane';
+
+  @override
+  String levelWindowOnly(int days) => 'Sur les $days derniers jours';
+
+  @override
+  String get impactsYours => 'Tes impacts';
+
+  @override
+  String get impactsTheirs => 'Ses impacts';
+
+  @override
+  String get impactsScoring => 'Scoring';
+
+  @override
+  String get impactsDoubles => 'Doubles';
+
+  @override
+  String impactsTrebles(int hits, int total) =>
+      hits <= 1 ? '$hits triple sur $total' : '$hits triples sur $total';
+
+  @override
+  String impactsDoublesHit(int hits, int total) =>
+      hits <= 1 ? '$hits réussi sur $total' : '$hits réussis sur $total';
+
+  @override
+  String get impactsNone => 'Aucune fléchette localisée';
+
+  @override
+  String get impactsReplay => "Rejouer l'animation";
+
+  @override
+  String get profileRecord => 'Bilan';
+
+  @override
+  String get profileWinsLosses => 'Victoires – défaites';
 }

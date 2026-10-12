@@ -89,9 +89,9 @@ LeaderboardEntry _entry({
   );
 }
 
-class _LeaderboardPreview extends StatelessWidget {
+class LeaderboardPreview extends StatelessWidget {
   final bool friends;
-  const _LeaderboardPreview({this.friends = false});
+  const LeaderboardPreview({super.key, this.friends = false});
 
   @override
   Widget build(BuildContext context) {
@@ -234,7 +234,7 @@ Future<void> _render(WidgetTester tester, Widget screen, String name) async {
 void main() {
   testWidgets('leaderboard preview', (tester) async {
     await tester.runAsync(_loadFonts);
-    await _render(tester, const _LeaderboardPreview(), 'leaderboard');
-    await _render(tester, const _LeaderboardPreview(friends: true), 'leaderboard_friends');
+    await _render(tester, const LeaderboardPreview(), 'leaderboard');
+    await _render(tester, const LeaderboardPreview(friends: true), 'leaderboard_friends');
   }, skip: !_enabled);
 }

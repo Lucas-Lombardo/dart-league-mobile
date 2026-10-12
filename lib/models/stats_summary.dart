@@ -5,6 +5,8 @@
 // they receive, which is what lets a brand-new account and a five-hundred-leg
 // account share one layout with no special cases.
 
+import 'stats_impacts.dart';
+
 enum StatsPeriod { last7Days, last30Days, last90Days, all }
 
 extension StatsPeriodX on StatsPeriod {
@@ -48,6 +50,9 @@ class StatsSummary {
   final StatsConsistency? consistency;
   final List<StatsRecord> records;
 
+  /// Where the window's darts landed. Null when none of them was located.
+  final StatsImpacts? impacts;
+
   const StatsSummary({
     required this.legs,
     this.record,
@@ -56,6 +61,7 @@ class StatsSummary {
     this.finishing,
     this.consistency,
     this.records = const [],
+    this.impacts,
   });
 
   bool get isEmpty => legs == 0;
@@ -83,6 +89,7 @@ class StatsSummary {
               .map(StatsRecord.fromJson)
               .toList() ??
           const [],
+      impacts: StatsImpacts.fromJson(json['impacts']),
     );
   }
 }

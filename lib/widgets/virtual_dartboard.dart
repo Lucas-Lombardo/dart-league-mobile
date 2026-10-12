@@ -124,6 +124,12 @@ class SpectatorDartboardPainter extends CustomPainter {
   static const Color _green = Color(0xFF2F9E57);
   static const Color _numberColor = AppTheme.textPrimary;
 
+  /// False on boards too small for the numbers to be read — at 150 px they
+  /// would be six pixels tall and only add noise around the darts.
+  final bool showNumbers;
+
+  const SpectatorDartboardPainter({this.showNumbers = true});
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -181,6 +187,8 @@ class SpectatorDartboardPainter extends CustomPainter {
     canvas.drawCircle(center, r * bullseye, Paint()..color = _red);
     canvas.drawCircle(center, r * bullseye, wirePaint);
 
+    if (!showNumbers) return;
+
     // Numbers: small and muted, on the outer disc.
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     for (var i = 0; i < 20; i++) {
@@ -219,7 +227,8 @@ class SpectatorDartboardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant SpectatorDartboardPainter oldDelegate) =>
+      oldDelegate.showNumbers != showNumbers;
 }
 
 class _ImpactMarker extends StatelessWidget {
