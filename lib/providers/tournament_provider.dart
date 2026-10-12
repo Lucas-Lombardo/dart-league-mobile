@@ -24,6 +24,24 @@ class TournamentProvider extends ChangeNotifier {
   String? _error;
 
   bool _realtimeStarted = false;
+  // The screen that currently owns the realtime (home). After a tournament
+  // match the app comes back to a NEW home screen; Flutter disposes the old
+  // one ~300 ms later, i.e. AFTER the new one has started realtime, and that
+  // late dispose used to stop it for the rest of the session — no socket
+  // listeners, no poll, so the next round's invite never reached the prompt
+  // (Tournoi du Samedi #11, 2026-10-10: yann56, round of 16 forfeited while
+  // the app was open). A stop from a screen that no longer owns it is a no-op.
+  Object? _realtimeOwner;
+
+  @visibleForTesting
+  bool get realtimeStarted => _realtimeStarted;
+
+  /// Test seam: realtime "running" under [owner] without a backend.
+  @visibleForTesting
+  void debugMarkRealtimeStarted(Object owner) {
+    _realtimeStarted = true;
+    _realtimeOwner = owner;
+  }
   Timer? _pollTimer;
   static const Duration _pollInterval = Duration(seconds: 30);
 
@@ -516,8 +534,11 @@ class TournamentProvider extends ChangeNotifier {
   /// without a periodic refresh a user could silently miss the 15-minute
   /// window to join their tournament match (= automatic forfeit). The poll is
   /// the safety net; the socket is the fast path.
-  Future<void> startRealtime({String? myUserId}) async {
+  Future<void> startRealtime({String? myUserId, Object? owner}) async {
     if (myUserId != null) _myUserId = myUserId;
+    // The newest screen owns it, started or not: its predecessor's deferred
+    // dispose must not be able to stop what it just took over.
+    if (owner != null) _realtimeOwner = owner;
     if (_realtimeStarted) return;
     _realtimeStarted = true;
 
@@ -542,7 +563,15 @@ class TournamentProvider extends ChangeNotifier {
     _pollTimer = Timer.periodic(_pollInterval, (_) => _pollOnce());
   }
 
-  void stopRealtime() {
+  /// Stops the socket listeners and the poll. With [owner], only if that
+  /// screen is the one that last started realtime: a stale screen's deferred
+  /// dispose is ignored. Without, unconditional (provider dispose).
+  void stopRealtime({Object? owner}) {
+    if (owner != null && _realtimeOwner != null && owner != _realtimeOwner) {
+      debugPrint('Tournament realtime: stop from a stale screen ignored');
+      return;
+    }
+    _realtimeOwner = null;
     _pollTimer?.cancel();
     _pollTimer = null;
     SocketService.removeReconnectListener(_handleReconnect);

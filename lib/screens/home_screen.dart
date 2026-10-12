@@ -58,7 +58,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       if (!mounted) return;
       final tp = context.read<TournamentProvider>();
       _tournamentProvider = tp;
-      tp.startRealtime(myUserId: context.read<AuthProvider>().currentUser?.id);
+      tp.startRealtime(
+        myUserId: context.read<AuthProvider>().currentUser?.id,
+        owner: this,
+      );
 
       // Referral: the "I have a code" entry points on the Premium screen and
       // the daily-limit card need eligibility resolved before they can decide
@@ -115,8 +118,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
-    // Tear down on logout (HomeScreen is removed from the tree).
-    _tournamentProvider?.stopRealtime();
+    // Tear down on logout (HomeScreen is removed from the tree). Owned: a
+    // home screen replaced by a newer one (return from a match) must not
+    // stop the realtime the newer one runs.
+    _tournamentProvider?.stopRealtime(owner: this);
     _seasonProvider?.removeListener(_onSeasonStandingsRequest);
     PushNotificationService.removeOpenedListener(_onSeasonPushOpened);
     _refreshNotifier.dispose();
