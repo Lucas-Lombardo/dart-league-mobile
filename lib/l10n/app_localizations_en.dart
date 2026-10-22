@@ -497,6 +497,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get datasetShareDescription =>
       'Share photos of my dartboard while I play (Wi-Fi only)';
 
+  // Settings > friend-online push
+  @override
+  String get friendOnlineNotifTitle => 'Friends online';
+
+  @override
+  String get friendOnlineNotifDescription =>
+      'Get notified when a friend opens the app';
+
   // Settings > profile hero & account
   @override
   String get editProfile => 'Edit profile';

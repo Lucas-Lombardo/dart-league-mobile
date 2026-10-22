@@ -81,9 +81,9 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       seasons.addListener(_onSeasonStandingsRequest);
       seasons.refresh();
       // Once-only end-of-season screens: on launch, and when the
-      // "season_ended" push is opened.
+      // "season_ended" push is opened. Also routes "friend_online" taps.
       _maybeShowSeasonRecap();
-      PushNotificationService.addOpenedListener(_onSeasonPushOpened);
+      PushNotificationService.addOpenedListener(_onPushOpened);
 
       // Chat: unread badge + realtime routing, and "new message" push taps
       // deep-link straight into the thread.
@@ -123,12 +123,18 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     // stop the realtime the newer one runs.
     _tournamentProvider?.stopRealtime(owner: this);
     _seasonProvider?.removeListener(_onSeasonStandingsRequest);
-    PushNotificationService.removeOpenedListener(_onSeasonPushOpened);
+    PushNotificationService.removeOpenedListener(_onPushOpened);
     _refreshNotifier.dispose();
     super.dispose();
   }
 
-  void _onSeasonPushOpened(Map<String, dynamic> data) {
+  void _onPushOpened(Map<String, dynamic> data) {
+    // "Your friend is online" → the Friends tab, where the green dot and the
+    // Défier button are.
+    if (data['type'] == 'friend_online') {
+      if (mounted && _currentIndex != 3) setState(() => _currentIndex = 3);
+      return;
+    }
     if (data['type'] != 'season_ended') return;
     _seasonProvider?.refresh();
     _maybeShowSeasonRecap();

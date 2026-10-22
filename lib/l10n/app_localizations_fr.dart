@@ -503,6 +503,14 @@ class AppLocalizationsFr extends AppLocalizations {
   String get datasetShareDescription =>
       'Partager des photos de ma cible en jeu (Wi-Fi uniquement)';
 
+  // Settings > friend-online push
+  @override
+  String get friendOnlineNotifTitle => 'Amis en ligne';
+
+  @override
+  String get friendOnlineNotifDescription =>
+      'Être prévenu quand un ami ouvre l\'appli';
+
   // Settings > profile hero & account
   @override
   String get editProfile => 'Modifier le profil';

@@ -41,6 +41,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _callerEnabled = DartCallerService.enabled;
   bool _hapticsEnabled = HapticService.isEnabled;
   bool _datasetShareEnabled = DatasetCaptureService.shareEnabled;
+  // Server-side push preference. Null until loaded: the row stays hidden on
+  // a backend that doesn't have the endpoint yet.
+  bool? _friendOnlineEnabled;
   final Map<SoundCategory, bool> _soundEnabled = {
     for (final c in SoundCategory.values) c: DartSoundService.isEnabled(c),
   };
@@ -58,6 +61,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       debugPrint('[Settings] replay count failed: $e');
     });
     _loadAppVersion();
+    _loadNotificationSettings();
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    try {
+      final data = await ApiService.get('/users/me/notification-settings');
+      if (!mounted || data is! Map || data['friendOnline'] is! bool) return;
+      setState(() => _friendOnlineEnabled = data['friendOnline'] as bool);
+    } catch (e) {
+      debugPrint('[Settings] notification settings failed: $e');
+    }
+  }
+
+  Future<void> _setFriendOnline(bool value) async {
+    HapticService.selectionClick();
+    setState(() => _friendOnlineEnabled = value);
+    try {
+      await ApiService.patch(
+        '/users/me/notification-settings',
+        {'friendOnline': value},
+      );
+    } catch (e) {
+      debugPrint('[Settings] friendOnline update failed: $e');
+      if (mounted) setState(() => _friendOnlineEnabled = !value);
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -109,6 +137,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: languageCode == 'fr' ? 'Français' : 'English',
                 onTap: () => _showLanguageDialog(context),
               ),
+              if (_friendOnlineEnabled != null)
+                _SettingsRow(
+                  icon: Icons.people_outline_rounded,
+                  title: l10n.friendOnlineNotifTitle,
+                  subtitle: l10n.friendOnlineNotifDescription,
+                  toggle: _friendOnlineEnabled!,
+                  onToggle: _setFriendOnline,
+                ),
               _SettingsRow(
                 icon: Icons.center_focus_weak_rounded,
                 title: l10n.datasetShareTitle,

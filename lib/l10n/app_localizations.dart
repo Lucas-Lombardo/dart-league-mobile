@@ -208,6 +208,10 @@ abstract class AppLocalizations {
   String get datasetShareTitle;
   String get datasetShareDescription;
 
+  // Settings > friend-online push
+  String get friendOnlineNotifTitle;
+  String get friendOnlineNotifDescription;
+
   // Settings > profile hero & account
   String get editProfile;
   String get accountSection;
