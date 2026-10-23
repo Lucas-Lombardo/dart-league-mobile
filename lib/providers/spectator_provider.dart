@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show Widget;
 
 import '../services/socket_service.dart';
 import '../services/spectate_service.dart';
+import '../services/spectator_video_session.dart';
+import '../utils/dart_caller_service.dart';
 import '../widgets/game_turn_ui.dart' show notationPoints;
 
 /// One completed visit shown in the spectator "last visits" feed.
@@ -63,6 +66,25 @@ class SpectatorProvider extends ChangeNotifier {
   bool _disposed = false;
   Timer? _resnapshotTimer;
 
+  // ── Cameras (series on Cloudflare Realtime) ──────────────────────────────
+  // 'sfu' while the players' series runs on Cloudflare — then their cameras
+  // can be watched; 'p2p' (old app on one side, or a fallback) = virtual
+  // board only, exactly as before.
+  String _videoTransport = 'p2p';
+  // Players whose camera is published, and the publications behind them:
+  // a change of session (a player's app rebuilt its connection) means the
+  // pulled tracks are dead — watch again.
+  Set<String> _videoPlayers = const {};
+  String? _videoSignature;
+  SpectatorVideoSession? _video;
+  bool _watchInFlight = false;
+  int _watchFailures = 0;
+  Timer? _rewatchTimer;
+
+  // Local caller mute for THIS screen only — the global caller setting is
+  // left alone (it also drives the player's own matches).
+  bool _callerMuted = false;
+
   // Getters
   String? get matchId => _matchId;
   SpectatorStatus get status => _status;
@@ -80,6 +102,26 @@ class SpectatorProvider extends ChangeNotifier {
   int get spectatorCount => _spectatorCount;
   String? get winnerId => _winnerId;
   List<SpectatedVisit> get lastVisits => List.unmodifiable(_lastVisits);
+
+  /// 'sfu' when the cameras can be watched, 'p2p' otherwise.
+  String get videoTransport => _videoTransport;
+  bool get camerasAvailable => _videoTransport == 'sfu';
+
+  /// [playerId]'s camera is live (frames actually arriving).
+  bool hasCameraFor(String? playerId) => _video?.hasVideoFor(playerId) ?? false;
+
+  Widget? cameraViewFor(String? playerId) =>
+      playerId == null ? null : _video?.viewFor(playerId);
+
+  /// The caller can only be muted here when it is on in the settings.
+  bool get callerAvailable => DartCallerService.enabled;
+  bool get callerMuted => _callerMuted;
+
+  void toggleCallerMuted() {
+    _callerMuted = !_callerMuted;
+    if (_callerMuted) DartCallerService.stop();
+    _safeNotify();
+  }
 
   int get currentVisitTotal =>
       _currentRoundThrows.fold(0, (sum, n) => sum + notationPoints(n));
@@ -168,11 +210,23 @@ class SpectatorProvider extends ChangeNotifier {
     SocketService.addReconnectListener(_onReconnected);
     SocketService.onShared('spectate_state', _handleSpectateState, owner: this);
     SocketService.onShared('spectate_left', _handleSpectateLeft, owner: this);
-    SocketService.onShared('spectate_denied', _handleSpectateDenied, owner: this);
-    SocketService.onShared('spectator_count', _handleSpectatorCount, owner: this);
+    SocketService.onShared(
+      'spectate_denied',
+      _handleSpectateDenied,
+      owner: this,
+    );
+    SocketService.onShared(
+      'spectator_count',
+      _handleSpectatorCount,
+      owner: this,
+    );
     SocketService.onShared('score_updated', _handleScoreUpdated, owner: this);
     SocketService.onShared('round_complete', _handleRoundComplete, owner: this);
-    SocketService.onShared('game_state_sync', _handleGameStateSync, owner: this);
+    SocketService.onShared(
+      'game_state_sync',
+      _handleGameStateSync,
+      owner: this,
+    );
     SocketService.onShared('dart_undone', _handleDartUndone, owner: this);
     SocketService.onShared('game_started', _handleGameStarted, owner: this);
     SocketService.onShared('ranked_next_leg', _handleNextLeg, owner: this);
@@ -180,9 +234,19 @@ class SpectatorProvider extends ChangeNotifier {
     SocketService.onShared('ranked_leg_won', _handleLegWon, owner: this);
     SocketService.onShared('tournament_leg_won', _handleLegWon, owner: this);
     SocketService.onShared('ranked_match_won', _handleMatchWon, owner: this);
-    SocketService.onShared('tournament_match_won', _handleMatchWon, owner: this);
+    SocketService.onShared(
+      'tournament_match_won',
+      _handleMatchWon,
+      owner: this,
+    );
     SocketService.onShared('game_won', _handleGameWon, owner: this);
     SocketService.onShared('player_forfeited', _handleMatchWon, owner: this);
+    SocketService.onShared('sfu_tracks', _handleSfuTracks, owner: this);
+    SocketService.onShared(
+      'video_transport_changed',
+      _handleVideoTransportChanged,
+      owner: this,
+    );
   }
 
   void _teardownListeners() {
@@ -207,6 +271,8 @@ class SpectatorProvider extends ChangeNotifier {
       'tournament_match_won',
       'game_won',
       'player_forfeited',
+      'sfu_tracks',
+      'video_transport_changed',
     ]) {
       SocketService.offShared(event, owner: this);
     }
@@ -218,7 +284,150 @@ class SpectatorProvider extends ChangeNotifier {
   void _deny(String reason) {
     _status = SpectatorStatus.denied;
     _denyReason = reason;
+    _stopVideo();
     _safeNotify();
+  }
+
+  // ── Cameras ───────────────────────────────────────────────────────────────
+
+  bool _isOurPlayer(dynamic id) =>
+      id != null && (id == _player1?.id || id == _player2?.id);
+
+  /// Adopt the video part of a spectate_state snapshot.
+  void _adoptVideoSnapshot(Map map) {
+    final transport = map['videoTransport'];
+    if (transport is! String) return; // older backend: no cameras, ever
+    final players = map['videoPlayers'];
+    _videoTransport = transport == 'sfu' ? 'sfu' : 'p2p';
+    if (players is List) {
+      _videoPlayers = players.map((e) => '$e').toSet();
+    }
+    _syncVideo();
+  }
+
+  void _handleSfuTracks(dynamic data) {
+    if (data is! Map) return;
+    final players = data['players'];
+    if (players is! Map || !players.keys.any(_isOurPlayer)) return;
+    _videoTransport = data['transport'] == 'p2p' ? 'p2p' : 'sfu';
+    final withVideo = <String>{};
+    final signature = <String>[];
+    players.forEach((id, pub) {
+      if (pub is Map && pub['video'] != null) {
+        withVideo.add('$id');
+        signature.add('$id:${pub['sessionId']}');
+      }
+    });
+    signature.sort();
+    _videoPlayers = withVideo;
+    final sig = signature.join(',');
+    if (sig != _videoSignature) {
+      _videoSignature = sig;
+      // A (re)publication: the tracks we pulled are gone — watch again.
+      _stopVideo(keepSignature: true);
+    }
+    _syncVideo();
+    _safeNotify();
+  }
+
+  void _handleVideoTransportChanged(dynamic data) {
+    if (data is! Map || data['transport'] != 'p2p') return;
+    final players = data['players'];
+    if (players is List && !players.any(_isOurPlayer)) return;
+    _videoTransport = 'p2p';
+    _videoPlayers = const {};
+    _stopVideo();
+    _safeNotify();
+  }
+
+  /// Start watching when the cameras are up and nothing is watched yet.
+  void _syncVideo() {
+    if (_disposed ||
+        _videoTransport != 'sfu' ||
+        _videoPlayers.isEmpty ||
+        _status == SpectatorStatus.ended ||
+        _status == SpectatorStatus.denied ||
+        _video != null ||
+        _watchInFlight) {
+      return;
+    }
+    _rewatchTimer?.cancel();
+    // Short debounce: both players usually (re)publish within a second.
+    _rewatchTimer = Timer(const Duration(milliseconds: 600), _watch);
+  }
+
+  Future<void> _watch() async {
+    final matchId = _matchId;
+    if (_disposed || matchId == null || _video != null || _watchInFlight) {
+      return;
+    }
+    _watchInFlight = true;
+    final session = SpectatorVideoSession(
+      matchId: matchId,
+      onChanged: _safeNotify,
+    );
+    final error = await session.watch();
+    _watchInFlight = false;
+    if (_disposed || error != null) {
+      await session.dispose();
+      if (_disposed) return;
+      debugPrint('SpectatorProvider: camera watch failed: $error');
+      if (error == 'not_sfu') {
+        _videoTransport = 'p2p';
+        _safeNotify();
+        return;
+      }
+      if (error == 'no_video_yet') return; // sfu_tracks will bring them
+      // Transient (socket, Cloudflare): retry with a short backoff.
+      if (_watchFailures++ < 5) {
+        _rewatchTimer?.cancel();
+        _rewatchTimer = Timer(
+          Duration(seconds: 2 * _watchFailures),
+          _syncVideo,
+        );
+      }
+      return;
+    }
+    _watchFailures = 0;
+    _video = session;
+    _safeNotify();
+  }
+
+  void _stopVideo({bool keepSignature = false}) {
+    _rewatchTimer?.cancel();
+    final video = _video;
+    _video = null;
+    if (!keepSignature) _videoSignature = null;
+    video?.dispose();
+  }
+
+  /// Announce the visit that just ended and the next thrower's finish, like
+  /// the players' own screens — played locally from the scores, no sound
+  /// ever comes from the players' phones.
+  void _callVisit({
+    required Map map,
+    required String? thrower,
+    required List<String> throws,
+  }) {
+    if (_callerMuted || !DartCallerService.enabled) return;
+    if (thrower == null || throws.isEmpty) return;
+    if (map['cricket'] != null ||
+        map['gameMode'] is String &&
+            (map['gameMode'] as String).startsWith('cricket')) {
+      return; // cricket has no called score
+    }
+    final total = map['reason'] == 'bust_confirmed'
+        ? 0
+        : throws.fold<int>(0, (sum, n) => sum + notationPoints(n));
+    DartCallerService.callScore(total);
+    final next = map['nextPlayerId'] as String?;
+    if (next == null || next == thrower) return;
+    final remaining = next == _player1?.id
+        ? _player1Score
+        : next == _player2?.id
+        ? _player2Score
+        : null;
+    if (remaining != null) DartCallerService.callCheckout(remaining);
   }
 
   void _handleSpectateDenied(dynamic data) {
@@ -280,7 +489,8 @@ class SpectatorProvider extends ChangeNotifier {
 
   void _handleSpectatorCount(dynamic data) {
     if (_isForeign(data)) return;
-    _spectatorCount = ((data as Map)['count'] as num?)?.toInt() ?? _spectatorCount;
+    _spectatorCount =
+        ((data as Map)['count'] as num?)?.toInt() ?? _spectatorCount;
     _safeNotify();
   }
 
@@ -301,6 +511,7 @@ class SpectatorProvider extends ChangeNotifier {
       if (_status != SpectatorStatus.live) {
         _status = SpectatorStatus.waitingNextLeg;
       }
+      _adoptVideoSnapshot(map);
       _scheduleResnapshot();
       _safeNotify();
       return;
@@ -310,6 +521,7 @@ class SpectatorProvider extends ChangeNotifier {
     _status = SpectatorStatus.live;
     // A successful snapshot re-credits the stale-leg recovery budget.
     _notLiveRetries = 2;
+    _adoptVideoSnapshot(map);
     _safeNotify();
   }
 
@@ -359,6 +571,7 @@ class SpectatorProvider extends ChangeNotifier {
     // The visit that just ended belongs to whoever was throwing before the
     // turn switch we're being told about.
     final thrower = _currentPlayerId;
+    final visitThrows = List<String>.of(_currentRoundThrows);
     if (thrower != null && _currentRoundThrows.isNotEmpty) {
       _lastVisits.insert(
         0,
@@ -377,6 +590,7 @@ class SpectatorProvider extends ChangeNotifier {
     _player2Rounds = _intList(map['player2Rounds']) ?? _player2Rounds;
     _currentPlayerId = map['nextPlayerId'] as String? ?? _currentPlayerId;
     _currentRoundThrows = const [];
+    _callVisit(map: map, thrower: thrower, throws: visitThrows);
     _safeNotify();
   }
 
@@ -399,8 +613,10 @@ class SpectatorProvider extends ChangeNotifier {
     if (throws is List) {
       _currentRoundThrows = throws.map((t) => t.toString()).toList();
     } else if (_currentRoundThrows.isNotEmpty) {
-      _currentRoundThrows =
-          _currentRoundThrows.sublist(0, _currentRoundThrows.length - 1);
+      _currentRoundThrows = _currentRoundThrows.sublist(
+        0,
+        _currentRoundThrows.length - 1,
+      );
     }
     _safeNotify();
   }
@@ -467,6 +683,7 @@ class SpectatorProvider extends ChangeNotifier {
     _player2LegsWon =
         (map['player2LegsWon'] as num?)?.toInt() ?? _player2LegsWon;
     _status = SpectatorStatus.ended;
+    _stopVideo();
     _safeNotify();
   }
 
@@ -487,6 +704,7 @@ class SpectatorProvider extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _resnapshotTimer?.cancel();
+    _stopVideo();
     _teardownListeners();
     final id = _matchId;
     if (id != null) {

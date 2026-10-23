@@ -19,6 +19,7 @@ import 'package:mobile/l10n/app_localizations.dart';
 import 'package:mobile/models/local_match_config.dart';
 import 'package:mobile/screens/local_match/local_match_widgets.dart';
 import 'package:mobile/screens/spectate/spectator_match_screen.dart';
+import 'package:mobile/services/socket_service.dart';
 import 'package:mobile/services/spectate_service.dart';
 import 'package:mobile/utils/app_theme.dart';
 
@@ -77,6 +78,7 @@ Future<void> _render(
   Size size = _size,
   Duration settle = Duration.zero,
   bool withPadding = false,
+  void Function()? beforeCapture,
 }) async {
   final key = GlobalKey();
   final Widget home = MediaQuery(
@@ -107,6 +109,15 @@ Future<void> _render(
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
   });
+  if (beforeCapture != null) {
+    beforeCapture();
+    await tester.runAsync(() async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    });
+  }
   if (settle > Duration.zero) {
     await tester.pump(settle);
     await tester.pump(settle);
@@ -152,6 +163,31 @@ void main() {
         seedRanked: _seed,
       ),
       withPadding: true,
+    );
+
+    // Series on Cloudflare: the thrower's camera (not renderable off-device,
+    // so this shows its "unavailable" fallback over the virtual board), the
+    // Camera / Board toggle and the caller mute button.
+    await _render(
+      tester,
+      'spectateur_cameras',
+      const SpectatorMatchScreen(
+        matchId: 'm1',
+        title: 'CLASSÉ',
+        seedRanked: _seed,
+      ),
+      withPadding: true,
+      beforeCapture: () => SocketService.debugDispatch('spectate_state', {
+        'matchId': 'm1',
+        'player1': {'id': 'p1', 'username': 'Vati99', 'elo': 1601},
+        'player2': {'id': 'p2', 'username': 'DODO180', 'elo': 1580},
+        'player1Score': 301,
+        'player2Score': 341,
+        'currentPlayerId': 'p1',
+        'currentRoundThrows': ['T20', 'T20'],
+        'videoTransport': 'sfu',
+        'videoPlayers': ['p1', 'p2'],
+      }),
     );
 
     // The tightest phone we support: the board panel must still fit.

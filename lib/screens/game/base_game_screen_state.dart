@@ -13,7 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/tournament_game_provider.dart'
     show TournamentGameState;
 import '../../services/camera_frame_service.dart';
-import '../../services/p2p_match_video.dart';
+import '../../services/match_video.dart';
 import '../../services/replay_buffer_service.dart';
 import '../../services/replay_clips_store.dart';
 import '../../services/replay_overlay_timeline.dart';
@@ -519,9 +519,10 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   // recovery is the session's own rebuild loop. It deliberately survives leg
   // transitions (BO3 ranked AND tournament): the peers never change between
   // legs, so there is nothing to re-key either.
-  /// The whole P2P path in one object (session + native track + recovery
-  /// loop) — see [P2pMatchVideo]. Null when the match got no video block.
-  P2pMatchVideo? p2pVideo;
+  /// The match's video in one object — Cloudflare (SFU) or P2P, whichever
+  /// the server chose for the series, including the fallback from one to the
+  /// other — see [MatchVideo]. Null when the match got no video block.
+  MatchVideo? matchVideo;
   // Opponent-turn dart zoom: driven by OpponentDartFlash, painted by the
   // remote video (BoardSafeVideo). One per screen, idle outside their turn.
   final VideoZoomController videoZoom = VideoZoomController();
@@ -764,8 +765,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // P2P: fire-and-forget, mirroring the un-awaited leaveChannel below (a
     // State.dispose can't await). The controller sends the telemetry report
     // and releases the native track.
-    p2pVideo?.stopDetached();
-    p2pVideo = null;
+    matchVideo?.stopDetached();
+    matchVideo = null;
     videoZoom.dispose();
     // Outgoing board crop + zoom bookkeeping is static, like the turn gate
     // it follows: forget this match's board — unless a newer match screen
@@ -808,7 +809,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         return;
       }
       _wasPausedSinceLastResume = false;
-      if (!kIsWeb && Platform.isAndroid) p2pVideo?.onAppResumed();
+      if (!kIsWeb && Platform.isAndroid) matchVideo?.onAppResumed();
       // App actually backgrounded — re-sync everything. A connect timeout used
       // to surface as an unhandled future error, and reconnectToMatch never
       // ran: recovery then depended entirely on the reconnect listener.
@@ -883,7 +884,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         // keeping camera, AI and call alive avoids the multi-second rebuild);
         // the series verdict below ends the call instead. A match with no
         // video block has nothing to keep, and tears down as before.
-        if (p2pVideo == null || !_tournamentSeriesGoesOn(game)) {
+        if (matchVideo == null || !_tournamentSeriesGoesOn(game)) {
           endMatchCall();
         }
       }
@@ -904,7 +905,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         tournamentSeriesEndedNow =
             game.tournamentState == TournamentGameState.seriesEnded;
       } catch (_) {}
-      if (p2pVideo != null &&
+      if (matchVideo != null &&
           tournamentSeriesEndedNow &&
           !_sawTournamentSeriesEnded) {
         endMatchCall();
@@ -1394,9 +1395,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     await loadAutoScoringPref();
     // Rejoin: credentials arrive later via game_state_sync, so show the
     // spinner rather than the manual dartboard until the model loads. On the
-    // P2P path the camera/AI are already up, hence the p2pVideo guard.
+    // P2P path the camera/AI are already up, hence the matchVideo guard.
     if (autoScoringEnabled &&
-        p2pVideo == null &&
+        matchVideo == null &&
         !kIsWeb &&
         AutoScoringService.isSupported) {
       setState(() => autoScoringLoading = true);
@@ -1417,17 +1418,17 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   /// re-drives the live session or launches one; never gives up on P2P,
   /// because there is nothing else to give up TO.
   void reconnectRtcTransport(dynamic game) {
-    if (p2pVideo != null) {
+    if (matchVideo != null) {
       // P2P: nothing to re-key — the session spans legs and socket
       // reconnects. BUT the sync that brought us here proves the socket
       // works again: if the media link is down, re-drive the negotiation —
       // any restart offer emitted while the socket was dead was lost
       // forever (no replay), and waiting wedged the airplane-mode test.
-      if (!p2pVideo!.isLinkUp) {
+      if (!matchVideo!.isLinkUp) {
         // The socket is proof the network is usable again: renegotiate NOW —
         // any offer emitted into the dead socket was lost forever (signals
         // have no replay).
-        p2pVideo!.onSocketReconnected();
+        matchVideo!.onSocketReconnected();
       }
       return;
     }
@@ -1505,7 +1506,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     // Re-entry guard: the reconnect relaunch is fire-and-forget from a
     // provider listener that can notify repeatedly, and two concurrent
     // sessions would fight over the single rtc_signal handler slot.
-    if (p2pVideo != null || _p2pInitInFlight) return;
+    if (matchVideo != null || _p2pInitInFlight) return;
     _p2pInitInFlight = true;
     // Camera for the app-owned capture, mic for the WebRTC audio track.
     if (!kIsWeb) {
@@ -1523,7 +1524,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     } else {
       permissionsGranted = true;
     }
-    final video = P2pMatchVideo(
+    final video = MatchVideo(
       matchId: matchId,
       opponentId: opponentId,
       configProvider: () => _rtcV2ConfigOf(readGame()) ?? config,
@@ -1531,7 +1532,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
         if (mounted) setState(() {});
       },
     );
-    p2pVideo = video;
+    matchVideo = video;
     // A mid-match relaunch builds a FRESH P2pMatchVideo whose mic starts
     // muted, while the screen's toggle still shows whatever the player chose
     // — an unmuted player went silently mute at every relaunch (device test
@@ -1603,7 +1604,7 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   ///
   /// Camera FIRST — same order as dispose(). It is the local, fast half
   /// (image stream, replay ring, AI tee) and it must stop feeding the
-  /// transports before they are torn down. Gating it behind p2pVideo.stop()
+  /// transports before they are torn down. Gating it behind matchVideo.stop()
   /// left the whole camera pipeline running on the end screen whenever that
   /// stop dragged (telemetry emit, native track dispose) — 2026-08-04
   /// report: the deferred replay renders/uploads then crawled until the
@@ -1614,9 +1615,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       RtcFramesService.onSendActiveChanged = null;
       await cameraFrameService?.dispose();
       cameraFrameService = null;
-      if (p2pVideo != null) {
-        await p2pVideo!.stop();
-        p2pVideo = null;
+      if (matchVideo != null) {
+        await matchVideo!.stop();
+        matchVideo = null;
       }
     } catch (e) {
       debugPrint('[BaseGameScreen] endMatchCall error: $e');
@@ -1643,9 +1644,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
   Future<void> toggleAudio() async {
     // The audio track is pre-added disabled, so the toggle is a plain
     // enabled flip.
-    if (p2pVideo == null) return;
+    if (matchVideo == null) return;
     setState(() => isAudioMuted = !isAudioMuted);
-    await p2pVideo!.setMicEnabled(!isAudioMuted);
+    await matchVideo!.setMicEnabled(!isAudioMuted);
   }
 
   Future<void> switchCamera() async {
@@ -2020,9 +2021,9 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
             // flows; the placeholder before the first frame AND during a
             // detected outage — a dead renderer painted black and read as
             // "no camera at all" in the 2026-08-03 airplane test.
-            if (p2pVideo != null)
-              (p2pVideo!.isRemoteReady && p2pVideo!.isLinkUp
-                  ? (p2pVideo!.remoteView(
+            if (matchVideo != null)
+              (matchVideo!.isRemoteReady && matchVideo!.isLinkUp
+                  ? (matchVideo!.remoteView(
                         zoom: videoZoom,
                         topInset: kOpponentFeedBadgeRowHeight,
                       ) ??

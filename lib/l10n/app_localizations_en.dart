@@ -3292,6 +3292,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get spectateUnavailable => 'Spectating unavailable for this match';
   @override
+  String get spectateCamera => 'Camera';
+  @override
+  String get spectateBoard => 'Board';
+  @override
+  String spectateThrowing(String name) => '$name throwing';
+  @override
+  String spectateCameraUnavailable(String name) => "$name's camera unavailable";
+  @override
+  String get spectateMuteCaller => 'Mute the caller';
+  @override
+  String get spectateUnmuteCaller => 'Unmute the caller';
+  @override
   String get spectateMatchOver => 'Match over';
   @override
   String get spectateConnecting => 'Connecting to the match…';

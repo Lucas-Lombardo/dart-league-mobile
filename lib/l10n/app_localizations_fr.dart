@@ -3328,6 +3328,18 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get spectateUnavailable => 'Spectateur indisponible pour ce match';
   @override
+  String get spectateCamera => 'Caméra';
+  @override
+  String get spectateBoard => 'Cible';
+  @override
+  String spectateThrowing(String name) => '$name lance';
+  @override
+  String spectateCameraUnavailable(String name) => 'Caméra de $name indisponible';
+  @override
+  String get spectateMuteCaller => 'Couper le caller';
+  @override
+  String get spectateUnmuteCaller => 'Réactiver le caller';
+  @override
   String get spectateMatchOver => 'Match terminé';
   @override
   String get spectateConnecting => 'Connexion au match…';

@@ -314,6 +314,10 @@ class SocketService {
     cb({
       'token': token,
       'supportsRtcV2': RtcFramesService.isSupported,
+      // Match video over Cloudflare Realtime (SfuMatchVideo) — same native
+      // track as P2P, so the same device gate. The server only moves a series
+      // to Cloudflare when BOTH players declare it.
+      'supportsSfuVideo': RtcFramesService.isSupported,
       'supportsTurnReports': ReplayBufferService.isSupported,
       'supportsCricket': true,
       'supportsFriendlySeries': true,
@@ -427,6 +431,7 @@ class SocketService {
             .setAuth({
               'token': token,
               'supportsRtcV2': RtcFramesService.isSupported,
+              'supportsSfuVideo': RtcFramesService.isSupported,
               'supportsTurnReports': ReplayBufferService.isSupported,
               'supportsCricket': true,
               'supportsFriendlySeries': true,
@@ -676,6 +681,34 @@ class SocketService {
     }
     _socket!.emit(event, data);
   }
+
+  /// Request/response over the socket.io ACK: emits [event] and completes
+  /// with the server handler's return value. Throws when the socket is down
+  /// or nothing answers within [timeout] — callers treat both as "retry
+  /// later", never as a verdict.
+  static Future<dynamic> request(
+    String event,
+    dynamic data, {
+    Duration timeout = const Duration(seconds: 12),
+  }) {
+    final override = debugRequestOverride;
+    if (override != null) return override(event, data);
+    final socket = _socket;
+    if (socket == null || !isConnected) {
+      return Future.error(Exception('Socket not connected'));
+    }
+    final completer = Completer<dynamic>();
+    // Optional positional: a handler that returns nothing acks with no
+    // argument at all, and Function.apply would throw on a required one.
+    socket.emitWithAck(event, data, ack: ([dynamic response]) {
+      if (!completer.isCompleted) completer.complete(response);
+    });
+    return completer.future.timeout(timeout);
+  }
+
+  /// Test seam for [request].
+  static Future<dynamic> Function(String event, dynamic data)?
+      debugRequestOverride;
 
   /// Register [handler] for [event], replacing any previous one.
   ///

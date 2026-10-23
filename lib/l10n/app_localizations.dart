@@ -1312,6 +1312,12 @@ abstract class AppLocalizations {
   String get spectateLastVisits;
   String get spectateLeave;
   String get spectateUnavailable;
+  String get spectateCamera;
+  String get spectateBoard;
+  String spectateThrowing(String name);
+  String spectateCameraUnavailable(String name);
+  String get spectateMuteCaller;
+  String get spectateUnmuteCaller;
   String get spectateMatchOver;
   String get spectateConnecting;
   String get spectateWaitingNextLeg;

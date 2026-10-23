@@ -40,6 +40,10 @@ class SpectatorMatchScreen extends StatefulWidget {
 class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
   late final SpectatorProvider _provider;
 
+  // The viewer's choice when the cameras are available: the thrower's
+  // camera (default) or the virtual board.
+  bool _boardOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -120,6 +124,21 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
             onTap: () => Navigator.of(context).maybePop(),
           ),
           const Expanded(child: Center(child: LiveBadge())),
+          if (p.callerAvailable) ...[
+            Semantics(
+              button: true,
+              label: p.callerMuted
+                  ? AppLocalizations.of(context).spectateUnmuteCaller
+                  : AppLocalizations.of(context).spectateMuteCaller,
+              child: GameControlButton(
+                icon: p.callerMuted
+                    ? Icons.volume_off_rounded
+                    : Icons.volume_up_rounded,
+                onTap: p.toggleCallerMuted,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           Container(
             height: 26,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -149,16 +168,29 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     );
   }
 
-  /// The virtual board in the camera panel's clothes: flat empty-panel
-  /// background, r20, and the 1.5 px identity border of the thrower (a quiet
-  /// hairline while the match is not live).
+  String? _throwerName(SpectatorProvider p) => _throwerIsPlayer1(p)
+      ? p.player1?.username
+      : p.currentPlayerId == p.player2?.id
+      ? p.player2?.username
+      : null;
+
+  /// The thrower's camera when the series runs on Cloudflare (only the
+  /// thrower's, never a thumbnail of the other), else — and whenever the
+  /// viewer picks "Board" or that camera is down — the virtual board in the
+  /// camera panel's clothes: flat empty-panel background, r20, and the 1.5 px
+  /// identity border of the thrower (a quiet hairline while not live).
   Widget _buildBoardPanel(SpectatorProvider p, AppLocalizations l10n) {
     final isLive = p.status == SpectatorStatus.live;
     final borderColor = !isLive
         ? AppTheme.border
         : _throwerIsPlayer1(p)
-            ? AppTheme.playerBlue
-            : AppTheme.opponentPink;
+        ? AppTheme.playerBlue
+        : AppTheme.opponentPink;
+    final wantsCamera = p.camerasAvailable && !_boardOnly && isLive;
+    final camera = wantsCamera && p.hasCameraFor(p.currentPlayerId)
+        ? p.cameraViewFor(p.currentPlayerId)
+        : null;
+    final throwerName = _throwerName(p);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.radiusCard),
@@ -166,42 +198,55 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
         fit: StackFit.expand,
         children: [
           Container(color: AppTheme.gamePanelEmpty),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Fitted to the panel in BOTH directions: the board used to be
-              // sized on the width alone and was cut off by the panel's
-              // bottom edge on short phones.
-              final available = constraints.maxWidth - 40 < constraints.maxHeight - 56
-                  ? constraints.maxWidth - 40
-                  : constraints.maxHeight - 56;
-              final boardSize = available.clamp(120.0, 300.0);
-              return Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.spectateVirtualBoard.toUpperCase(),
-                    style: AppTheme.labelSmall.copyWith(
-                      color: AppTheme.textTertiary,
-                      height: 1,
+          if (camera != null) ...[
+            camera,
+            if (throwerName != null)
+              Positioned(
+                left: 12,
+                top: 12,
+                child: _glassPill(
+                  leading: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _throwerColor(p),
+                      shape: BoxShape.circle,
                     ),
                   ),
-                  Expanded(
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        VirtualDartboard(
-                          throws: p.currentRoundThrows,
-                          size: boardSize,
-                        ),
-                        if (!isLive) _buildStatusPill(p, l10n),
-                      ],
-                    ),
+                  text: l10n.spectateThrowing(throwerName),
+                ),
+              ),
+          ] else
+            _buildVirtualBoard(
+              p,
+              l10n,
+              isLive,
+              // Keep the board clear of the bottom overlays: the toggle row
+              // and, above it, the "camera unavailable" pill.
+              bottomReserve: !p.camerasAvailable
+                  ? 0
+                  : wantsCamera && throwerName != null
+                  ? 84
+                  : 44,
+            ),
+          if (wantsCamera && camera == null && throwerName != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 56,
+              child: Center(
+                child: _glassPill(
+                  leading: const Icon(
+                    Icons.videocam_off_outlined,
+                    size: 14,
+                    color: AppTheme.textSecondary,
                   ),
-                  const SizedBox(height: 12),
-                ],
-              );
-            },
-          ),
+                  text: l10n.spectateCameraUnavailable(throwerName),
+                ),
+              ),
+            ),
+          if (p.camerasAvailable)
+            Positioned(left: 12, bottom: 12, child: _buildViewToggle(l10n)),
           IgnorePointer(
             child: Container(
               decoration: BoxDecoration(
@@ -212,6 +257,143 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Camera / Board segmented control, docked bottom-left of the panel.
+  Widget _buildViewToggle(AppLocalizations l10n) {
+    Widget segment(String label, bool selected, VoidCallback onTap) {
+      return Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.textPrimary : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                height: 1,
+                color: selected
+                    ? AppTheme.gameBackground
+                    : AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.gameBackground.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          segment(
+            l10n.spectateCamera,
+            !_boardOnly,
+            () => setState(() => _boardOnly = false),
+          ),
+          const SizedBox(width: 2),
+          segment(
+            l10n.spectateBoard,
+            _boardOnly,
+            () => setState(() => _boardOnly = true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Glass pill over the feed: background at 85 %, a hairline, 12 / 700.
+  Widget _glassPill({required Widget leading, required String text}) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.gameBackground.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          leading,
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVirtualBoard(
+    SpectatorProvider p,
+    AppLocalizations l10n,
+    bool isLive, {
+    double bottomReserve = 0,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Fitted to the panel in BOTH directions: the board used to be
+        // sized on the width alone and was cut off by the panel's
+        // bottom edge on short phones.
+        final height = constraints.maxHeight - 56 - bottomReserve;
+        final available = constraints.maxWidth - 40 < height
+            ? constraints.maxWidth - 40
+            : height;
+        final boardSize = available.clamp(120.0, 300.0);
+        return Column(
+          children: [
+            const SizedBox(height: 12),
+            Text(
+              l10n.spectateVirtualBoard.toUpperCase(),
+              style: AppTheme.labelSmall.copyWith(
+                color: AppTheme.textTertiary,
+                height: 1,
+              ),
+            ),
+            Expanded(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  VirtualDartboard(
+                    throws: p.currentRoundThrows,
+                    size: boardSize,
+                  ),
+                  if (!isLive) _buildStatusPill(p, l10n),
+                ],
+              ),
+            ),
+            SizedBox(height: 12 + bottomReserve),
+          ],
+        );
+      },
     );
   }
 
@@ -244,8 +426,8 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
         final winner = p.winnerId == p.player1?.id
             ? p.player1?.username
             : p.winnerId == p.player2?.id
-                ? p.player2?.username
-                : null;
+            ? p.player2?.username
+            : null;
         message = winner != null
             ? '${l10n.spectateMatchOver} · $winner'
             : l10n.spectateMatchOver;
@@ -322,8 +504,8 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
     final throwerName = throwerIsPlayer1
         ? p.player1?.username
         : p.currentPlayerId == p.player2?.id
-            ? p.player2?.username
-            : null;
+        ? p.player2?.username
+        : null;
     final color = _throwerColor(p);
     final throws = p.currentRoundThrows;
 
@@ -338,9 +520,7 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Text(
-                  throwerName != null
-                      ? l10n.spectateVisitOf(throwerName)
-                      : '…',
+                  throwerName != null ? l10n.spectateVisitOf(throwerName) : '…',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTheme.labelSmall,
@@ -422,10 +602,7 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          l10n.spectateLastVisits.toUpperCase(),
-          style: AppTheme.labelSmall,
-        ),
+        Text(l10n.spectateLastVisits.toUpperCase(), style: AppTheme.labelSmall),
         const SizedBox(height: 8),
         if (visits.isEmpty)
           DsCard(
@@ -444,8 +621,9 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
   Widget _visitRow(SpectatorProvider p, SpectatedVisit visit) {
     final isPlayer1 = visit.playerId == p.player1?.id;
     final name = (isPlayer1 ? p.player1?.username : p.player2?.username) ?? '?';
-    final color =
-        isPlayer1 ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright;
+    final color = isPlayer1
+        ? AppTheme.playerBlueBright
+        : AppTheme.opponentPinkBright;
     return DsCard(
       radius: AppTheme.radiusControl,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

@@ -6,7 +6,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/rtc_v2_config.dart';
 import '../widgets/board_safe_video.dart';
-import 'camera_frame_service.dart';
+import '../widgets/remote_video_view.dart';
+import 'webrtc_sender_tuning.dart';
 
 /// ONE negotiation attempt with the match opponent: one PeerConnection, one
 /// generation, one fixed role. When anything about it goes stale, nobody
@@ -53,15 +54,6 @@ class P2pRtcSession {
   /// Connected). The session reports; [P2pMatchVideo]'s loop decides.
   final void Function(String reason)? onImpaired;
 
-  /// Outgoing-video encoder budget (thermal audit 2026-08-10). Without caps
-  /// libwebrtc's BWE pushed the static 720p board scene to ~2.5 Mbps and the
-  /// encoder ran unconstrained for the whole match — a top heat source on
-  /// both phones (each pays its encode AND the peer's decode). DartsMind
-  /// ships the same scene at ~1.1 Mbps @ 15 fps with no visible difference.
-  /// The fps cap tracks the camera cadence — one Dart home for the value.
-  static const int _maxVideoBitrateBps = 1100 * 1000;
-  static const int _maxVideoFps = CameraFrameService.cameraFps;
-
   /// How often the decoded-frame counter is sampled once connected.
   /// 5s (was 3s, thermal round 5): getStats walks the full native stats
   /// tree on every tick for the whole match. The stall timeout below is
@@ -79,6 +71,10 @@ class P2pRtcSession {
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
   RTCPeerConnection? _pc;
+
+  /// The live PeerConnection (null before setup / after dispose) — read by
+  /// the quality probe only.
+  RTCPeerConnection? get peerConnection => _disposed ? null : _pc;
   MediaStreamTrack? _localAudioTrack;
   MediaStream? _remoteStream;
 
@@ -212,8 +208,10 @@ class P2pRtcSession {
     // Mic: track added up-front but disabled, so the mute toggle is a plain
     // `enabled` flip with no renegotiation, and players start muted.
     try {
-      final audio = await navigator.mediaDevices
-          .getUserMedia({'audio': true, 'video': false});
+      final audio = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': false,
+      });
       final audioTrack = audio.getAudioTracks().firstOrNull;
       if (_disposed) {
         // dispose() ran during getUserMedia (mic permission dialog can take
@@ -253,8 +251,10 @@ class P2pRtcSession {
       final stream = await createLocalMediaStream('dartrivals-local');
       final sender = await pc.addTrack(track, stream);
       _hadLocalVideo = true;
-      await _capVideoSender(sender);
-      await _preferH264(sender);
+      await WebRtcSenderTuning.capVideoSender(sender, logTag: 'P2P');
+      // Before any offer/answer: shapes the offer as offerer AND the answer
+      // as answerer, so a mixed pair with one updated side lands on H264.
+      await WebRtcSenderTuning.preferH264(_pc, sender, logTag: 'P2P');
     }
 
     // Local media is final — process whatever the opponent sent meanwhile,
@@ -279,63 +279,6 @@ class P2pRtcSession {
     }
   }
 
-  /// Apply [_maxVideoBitrateBps]/[_maxVideoFps] to the video sender.
-  /// MAINTAIN_RESOLUTION: on a near-static board sharpness (reading the
-  /// darts) matters, motion doesn't — under pressure the encoder drops
-  /// frames instead of blurring the board.
-  Future<void> _capVideoSender(RTCRtpSender sender) async {
-    try {
-      final params = sender.parameters;
-      final encodings = params.encodings ?? <RTCRtpEncoding>[];
-      if (encodings.isEmpty) encodings.add(RTCRtpEncoding());
-      for (final encoding in encodings) {
-        encoding.maxBitrate = _maxVideoBitrateBps;
-        encoding.maxFramerate = _maxVideoFps;
-      }
-      params.encodings = encodings;
-      params.degradationPreference =
-          RTCDegradationPreference.MAINTAIN_RESOLUTION;
-      await sender.setParameters(params);
-    } catch (e) {
-      // An uncapped sender still calls fine — worse thermally, never fatally.
-      debugPrint('P2P: video sender caps failed: $e');
-    }
-  }
-
-  /// Put H264 first in the video transceiver's codec list (thermal round 5).
-  /// Without an explicit preference the negotiation falls back to libwebrtc's
-  /// default order, which lists VP8 first — SOFTWARE encode on Android
-  /// offers and ALWAYS software decode on iOS (75% of the fleet), paid for
-  /// the whole match on both phones. H264 rides the dedicated video block on
-  /// both platforms. Reorder only, never filter: every codec stays offered,
-  /// so a peer without H264 hardware still negotiates whatever it has.
-  ///
-  /// Runs before any offer/answer is created (local setup precedes the
-  /// signal drain), so it shapes the offer as offerer AND the answer as
-  /// answerer — a mixed pair with one updated side still lands on H264.
-  Future<void> _preferH264(RTCRtpSender sender) async {
-    try {
-      final caps = await getRtpSenderCapabilities('video');
-      final codecs = caps.codecs ?? const [];
-      final h264 = codecs
-          .where((c) => c.mimeType.toLowerCase() == 'video/h264')
-          .toList();
-      if (h264.isEmpty) return;
-      final rest = codecs
-          .where((c) => c.mimeType.toLowerCase() != 'video/h264')
-          .toList();
-      final transceivers = await _pc?.getTransceivers() ?? const [];
-      for (final transceiver in transceivers) {
-        if (transceiver.sender.senderId != sender.senderId) continue;
-        await transceiver.setCodecPreferences([...h264, ...rest]);
-        return;
-      }
-    } catch (e) {
-      // Preference only — the default negotiation still connects fine.
-      debugPrint('P2P: H264 preference failed: $e');
-    }
-  }
-
   /// Whether a live mic track exists (false when permission was denied) —
   /// lets the UI avoid showing an unmuted mic nobody can hear.
   bool get hasLocalAudio => _localAudioTrack != null;
@@ -344,54 +287,13 @@ class P2pRtcSession {
     _localAudioTrack?.enabled = enabled;
   }
 
-  /// The sender's frame aspect follows THEIR phone's orientation (portrait
-  /// 9:16, landscape 16:9) while our panel's follows OURS. `cover` cropped
-  /// that mismatch straight off the dartboard, `contain` answered it with half
-  /// a panel of black bars — so the view is sized by [BoardSafeVideo] instead,
-  /// which keeps the board whole and crops only what surrounds it. The inner
-  /// fit is `cover` on purpose: the box it gets already has the stream's exact
-  /// ratio, so cover and contain agree inside it.
-  ///
-  /// The renderer reports its resolution asynchronously (and re-reports it
-  /// when the peer rotates), hence the listenable — and `contain` until the
-  /// first resolution lands, so nothing is cropped on a guess.
-  ///
-  /// `value.width/height` are the frame's PRE-rotation dimensions: WebRTC
-  /// ships Android camera frames unrotated plus a rotation flag (CVO), and
-  /// RTCVideoView applies that flag at paint time. Sizing the box from the
-  /// raw dimensions gave a portrait Android sender a landscape box around a
-  /// portrait picture, and the inner `cover` zoomed ~1.8× straight into the
-  /// board — so the box must be sized from the DISPLAYED (rotated) ones.
-  ///
-  /// [zoom] is the opponent-turn dart zoom and [topInset] the badge row the
-  /// fitted video stays below (see [BoardSafeVideo]); both zero on screens
-  /// that only watch.
+  /// The peer's board feed — see [remoteVideoView]. [zoom] is the
+  /// opponent-turn dart zoom and [topInset] the badge row the fitted video
+  /// stays below.
   Widget remoteView({
     ValueListenable<VideoZoomState>? zoom,
     double topInset = 0,
-  }) =>
-      ValueListenableBuilder<RTCVideoValue>(
-        valueListenable: remoteRenderer,
-        builder: (context, value, _) {
-          if (value.width <= 0 || value.height <= 0) {
-            return RTCVideoView(
-              remoteRenderer,
-              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-            );
-          }
-          final rotated = value.rotation == 90 || value.rotation == 270;
-          return BoardSafeVideo(
-            sourceWidth: rotated ? value.height : value.width,
-            sourceHeight: rotated ? value.width : value.height,
-            zoom: zoom,
-            topInset: topInset,
-            child: RTCVideoView(
-              remoteRenderer,
-              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-            ),
-          );
-        },
-      );
+  }) => remoteVideoView(remoteRenderer, zoom: zoom, topInset: topInset);
 
   void _handleConnected() {
     if (_connected || _disposed) return;
@@ -431,7 +333,8 @@ class P2pRtcSession {
           final kind = values['kind'] ?? values['mediaType'];
           if (kind != 'video') continue;
           final decoded = values['framesDecoded'];
-          if (decoded is num) framesTotal = (framesTotal ?? 0) + decoded.toInt();
+          if (decoded is num)
+            framesTotal = (framesTotal ?? 0) + decoded.toInt();
           final bytes = values['bytesReceived'];
           if (bytes is num) bytesTotal = (bytesTotal ?? 0) + bytes.toInt();
         }
@@ -459,8 +362,10 @@ class P2pRtcSession {
       }
       final since = _lastFrameProgressAt;
       if (since == null || now.difference(since) < mediaStallTimeout) return;
-      debugPrint('P2P: remote video stalled (no decoded frame for '
-          '${now.difference(since).inSeconds}s)');
+      debugPrint(
+        'P2P: remote video stalled (no decoded frame for '
+        '${now.difference(since).inSeconds}s)',
+      );
       _setImpaired('media_stalled');
     });
   }
@@ -514,7 +419,8 @@ class P2pRtcSession {
           return;
         }
         await pc.setRemoteDescription(
-            RTCSessionDescription(data['sdp'] as String?, type));
+          RTCSessionDescription(data['sdp'] as String?, type),
+        );
         _remoteDescriptionSet = true;
         await _drainPendingCandidates();
         final answer = await pc.createAnswer();
@@ -528,7 +434,8 @@ class P2pRtcSession {
           return;
         }
         await pc.setRemoteDescription(
-            RTCSessionDescription(data['sdp'] as String?, type));
+          RTCSessionDescription(data['sdp'] as String?, type),
+        );
         _remoteDescriptionSet = true;
         await _drainPendingCandidates();
       } else if (type == 'candidate') {
@@ -579,8 +486,7 @@ class P2pRtcSession {
       final localCandidates = <String, Map<dynamic, dynamic>>{};
       for (final report in stats) {
         if (report.type == 'transport') {
-          selectedPairId =
-              report.values['selectedCandidatePairId'] as String?;
+          selectedPairId = report.values['selectedCandidatePairId'] as String?;
         } else if (report.type == 'candidate-pair') {
           pairs[report.id] = report.values;
           if (report.values['selected'] == true) selectedPairId ??= report.id;
@@ -591,8 +497,9 @@ class P2pRtcSession {
       final pair = selectedPairId != null ? pairs[selectedPairId] : null;
       final localId = pair?['localCandidateId'] as String?;
       final localCandidate = localId != null ? localCandidates[localId] : null;
-      final candidateType =
-          localCandidate == null ? null : localCandidate['candidateType'];
+      final candidateType = localCandidate == null
+          ? null
+          : localCandidate['candidateType'];
       if (candidateType == null) return null;
       return candidateType == 'relay';
     } catch (_) {
@@ -625,9 +532,10 @@ class P2pRtcSession {
     return {
       'connected': _connected,
       'connectTimeMs': ?_connectTimeMs,
-      'iceFinalState': ?state
-          ?.toString()
-          .replaceFirst('RTCPeerConnectionState.RTCPeerConnectionState', ''),
+      'iceFinalState': ?state?.toString().replaceFirst(
+        'RTCPeerConnectionState.RTCPeerConnectionState',
+        '',
+      ),
       'usedRelay': ?usedRelay,
       'reason': ?reason,
     };

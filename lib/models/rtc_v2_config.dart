@@ -5,7 +5,11 @@
 /// all: P2P is the sole transport, so no block means no video, and there is
 /// nothing to fall back to.
 class RtcV2Config {
-  const RtcV2Config({required this.iceServers, required this.polite});
+  const RtcV2Config({
+    required this.iceServers,
+    required this.polite,
+    this.sfu,
+  });
 
   /// Ready-to-use RTCPeerConnection `iceServers` list (Cloudflare TURN + STUN).
   final List<Map<String, dynamic>> iceServers;
@@ -13,6 +17,14 @@ class RtcV2Config {
   /// Perfect-negotiation role, decided server-side so both peers agree
   /// without a round-trip: the polite peer rolls back on offer glare.
   final bool polite;
+
+  /// Present while the server runs this series over Cloudflare Realtime
+  /// (both apps support it and the kill-switch is open). Null = P2P. A later
+  /// payload whose `rtcV2` has no `sfu` means the series fell back to P2P —
+  /// [adopt] replaces the whole config, so that verdict is picked up too.
+  final SfuConfig? sfu;
+
+  bool get usesSfu => sfu != null;
 
   /// Adopts a verdict carried by [payload], keeping [current] when the
   /// payload has none.
@@ -37,6 +49,26 @@ class RtcV2Config {
       if (s is Map) parsed.add(Map<String, dynamic>.from(s));
     }
     if (parsed.isEmpty) return null;
-    return RtcV2Config(iceServers: parsed, polite: raw['polite'] == true);
+    return RtcV2Config(
+      iceServers: parsed,
+      polite: raw['polite'] == true,
+      sfu: SfuConfig.tryParse(raw['sfu']),
+    );
+  }
+}
+
+/// The nested `rtcV2.sfu` block: this series' video goes through Cloudflare
+/// Realtime. [seriesId] identifies the server-side series (diagnostics only:
+/// every SFU request is keyed by the matchId, like the P2P relay).
+class SfuConfig {
+  const SfuConfig({required this.seriesId});
+
+  final String seriesId;
+
+  static SfuConfig? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final id = raw['seriesId'];
+    if (id is! String || id.isEmpty) return null;
+    return SfuConfig(seriesId: id);
   }
 }

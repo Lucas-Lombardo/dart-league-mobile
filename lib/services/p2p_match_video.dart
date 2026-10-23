@@ -2,17 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart'
-    show
-        AppleAudioCategory,
-        AppleAudioCategoryOption,
-        AppleAudioConfiguration,
-        AppleAudioMode,
-        Helper;
 
 import '../models/rtc_v2_config.dart';
 import '../widgets/board_safe_video.dart';
+import 'match_audio_route.dart';
+import 'match_video.dart';
 import 'p2p_rtc_session.dart';
+import 'rtc_quality_probe.dart';
 import 'rtc_frames_service.dart';
 import 'socket_service.dart';
 
@@ -47,7 +43,7 @@ import 'socket_service.dart';
 /// that relaunched at generation 0 mid-series is caught by the stale-offer
 /// fast path in [_onSignal].
 ///
-class P2pMatchVideo {
+class P2pMatchVideo implements MatchVideoTransport {
   P2pMatchVideo({
     required this.matchId,
     required this.opponentId,
@@ -92,6 +88,9 @@ class P2pMatchVideo {
   static const Duration fastRebuildSpacing = Duration(seconds: 3);
 
   P2pRtcSession? _session;
+  late final RtcQualityProbe _quality = RtcQualityProbe(
+    () => _session?.peerConnection,
+  );
   Timer? _loop;
   int _gen = 0;
   int? _trackGeneration;
@@ -125,45 +124,38 @@ class P2pMatchVideo {
   /// Android can retain audio/ICE while its video codec or render surface
   /// is lost in the background. Schedule a fresh generation even if the
   /// old session still reports healthy; wait for signaling and swap spacing.
+  @override
   void onAppResumed() {
     if (_stopped) return;
     _resumePending = true;
     _tick();
   }
 
+  @override
   bool get isRemoteReady => _remoteReady;
+  @override
   bool get isLinkUp => _session?.isLinkUp ?? false;
 
   /// The peer's video, or null before a session exists. [zoom] is the
   /// opponent-turn dart zoom the match screen drives (see [BoardSafeVideo]).
+  @override
   Widget? remoteView({
     ValueListenable<VideoZoomState>? zoom,
     double topInset = 0,
-  }) =>
-      _session?.remoteView(zoom: zoom, topInset: topInset);
+  }) => _session?.remoteView(zoom: zoom, topInset: topInset);
 
   /// Starts the call. Returns once the first connection attempt has been
   /// made — failures are handled by the recovery loop, not by the caller.
+  @override
   Future<void> start() async {
     if (_stopped) return;
     SocketService.on('rtc_signal', _onSignal, owner: this);
     SocketService.addReconnectListener(_onSocketReconnected);
     _loop = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-    // iOS: WebRTC's stock session profile is voiceChat — the phone-call
-    // profile: earpiece unless overridden, loudspeaker output capped near
-    // earpiece level. With the phone propped up facing the board that turned
-    // the opponent AND every app sound into a whisper, the match-found jingle
-    // first: it is still playing when the call opens ~1s after match_found.
-    // videoChat is Apple's speakerphone profile — same voice-processing echo
-    // cancellation, full speaker level. Two steps, both before the first
-    // PeerConnection: store the profile as WebRTC's OWN configuration (what
-    // its audio unit re-applies whenever it starts — the live session state
-    // alone is overwritten the moment ICE connects), then apply it live so
-    // the jingle already plays through the loudspeaker.
-    if (_isIOS) {
-      await RtcFramesService.installAppleAudioSessionProfile();
-      await _applyAppleAudioProfile();
-    }
+    _quality.start();
+    // Loudspeaker profile before the first PeerConnection — see
+    // MatchAudioRoute.prepare.
+    await MatchAudioRoute.prepare();
     // Initial roles come from the server so both sides agree with no
     // round-trip: the impolite peer offers, the polite peer answers.
     final offerer = !configProvider().polite;
@@ -236,64 +228,24 @@ class P2pMatchVideo {
     // created — creating it first returned no_factory on Android and
     // silently degraded the call to receive-only. A null track still
     // connects receive-only and is tagged in telemetry.
-    await session.connect(localVideoTrackFactory: () async {
-      final track = await RtcFramesService.createTrack();
-      _trackGeneration = RtcFramesService.generation;
-      if (track == null) {
-        session.noteLocalVideoFailure(RtcFramesService.lastCreateError);
-      }
-      return track;
-    });
+    await session.connect(
+      localVideoTrackFactory: () async {
+        final track = await RtcFramesService.createTrack();
+        _trackGeneration = RtcFramesService.generation;
+        if (track == null) {
+          session.noteLocalVideoFailure(RtcFramesService.lastCreateError);
+        }
+        return track;
+      },
+    );
     await _routeToLoudspeaker();
     // Re-apply the player's mic choice: every new session starts muted.
     if (_micEnabled) await session.setMicEnabled(true);
   }
 
-  static bool get _isIOS =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-
-  /// The match's iOS session profile. Options mirror the set flutter_webrtc's
-  /// setSpeakerphoneOn(true) applies, so the two never flip-flop; the same
-  /// values are stored natively as WebRTC's own configuration
-  /// (RtcFramesService.installAppleAudioSessionProfile).
-  static AppleAudioConfiguration get _appleAudioProfile =>
-      AppleAudioConfiguration(
-        appleAudioCategory: AppleAudioCategory.playAndRecord,
-        appleAudioCategoryOptions: {
-          AppleAudioCategoryOption.allowBluetooth,
-          AppleAudioCategoryOption.allowBluetoothA2DP,
-          AppleAudioCategoryOption.allowAirPlay,
-          AppleAudioCategoryOption.defaultToSpeaker,
-        },
-        appleAudioMode: AppleAudioMode.videoChat,
-      );
-
-  Future<void> _applyAppleAudioProfile() async {
-    try {
-      await Helper.setAppleAudioConfiguration(_appleAudioProfile);
-    } catch (e) {
-      debugPrint('P2P: apple audio configuration failed: $e');
-    }
-  }
-
-  /// Remote audio through the loudspeaker — the phone is propped up facing
-  /// the board, so the earpiece (WebRTC's default on both platforms) is
-  /// useless. Called after every connect and again on ICE-connected.
-  ///
-  /// Android: selects AudioSwitch's Speakerphone device (the call runs in
-  /// MODE_IN_COMMUNICATION with speakerphone on). Nothing else in the app may
-  /// touch AudioManager mid-match — audioplayers did, see AppAudioContext.
-  /// iOS: setSpeakerphoneOn also re-applies WebRTC's stored mode (videoChat
-  /// once installed natively, voiceChat if that failed), so the videoChat
-  /// profile is applied again right after it.
   Future<void> _routeToLoudspeaker() async {
     if (_stopped) return;
-    try {
-      await Helper.setSpeakerphoneOn(true);
-    } catch (e) {
-      debugPrint('P2P: setSpeakerphoneOn failed: $e');
-    }
-    if (_isIOS) await _applyAppleAudioProfile();
+    await MatchAudioRoute.routeToLoudspeaker();
   }
 
   void _emitSignal(int gen, Map<String, dynamic> data) {
@@ -318,8 +270,10 @@ class P2pMatchVideo {
   void _onSignal(dynamic raw) {
     if (_stopped || raw is! Map) return;
     if (raw['from'] != opponentId) {
-      debugPrint('P2P: dropping signal from ${raw['from']} '
-          '(expected $opponentId)');
+      debugPrint(
+        'P2P: dropping signal from ${raw['from']} '
+        '(expected $opponentId)',
+      );
       return;
     }
     // No strict matchId filter: the relay already proved the sender is OUR
@@ -452,7 +406,8 @@ class P2pMatchVideo {
 
   void _tick() {
     if (_stopped || _swapping) return;
-    if (_resumePending && SocketService.isConnected &&
+    if (_resumePending &&
+        SocketService.isConnected &&
         _rebuild('app_resumed', fast: true)) {
       return;
     }
@@ -478,19 +433,23 @@ class P2pMatchVideo {
 
   /// Kept for the screens' game_state_sync path, which can prove the socket
   /// works again before the socket-level listener has fired.
+  @override
   void onSocketReconnected() => _onSocketReconnected();
 
+  @override
   Future<void> setMicEnabled(bool enabled) async {
     _micEnabled = enabled;
     await _session?.setMicEnabled(enabled);
   }
 
   /// Tears everything down and sends the one terminal telemetry report.
+  @override
   Future<void> stop() async {
     if (_stopped) return;
     _stopped = true;
     _loop?.cancel();
     _loop = null;
+    _quality.stop();
     _swapBuffer.clear();
     SocketService.off('rtc_signal', owner: this);
     SocketService.removeReconnectListener(_onSocketReconnected);
@@ -505,13 +464,13 @@ class P2pMatchVideo {
     if (session != null && !_reportSent) {
       _reportSent = true;
       try {
-        final payload =
-            await session.reportPayload().timeout(const Duration(seconds: 3));
+        final payload = await session.reportPayload().timeout(
+          const Duration(seconds: 3),
+        );
         // The reason ties the report to what the match ENDED as: a broken
         // link keeps its cause, and the rebuild count rides along.
         final parts = <String>[
-          if (!session.isLinkUp && payload['reason'] == null)
-            _lastImpairReason,
+          if (!session.isLinkUp && payload['reason'] == null) _lastImpairReason,
           if (_rebuildCount > 0) '$_rebuildCount rebuild(s)',
         ];
         SocketService.emit('rtc_v2_report', {
@@ -520,6 +479,7 @@ class P2pMatchVideo {
           // constant. Kept in the payload (rather than dropped) so rows stay
           // comparable with the migration-era ones.
           'fellBack': false,
+          'transport': 'p2p',
           ...payload,
           // After the spread on purpose: this one spans every generation,
           // where payload's `connected` describes the last session only, and
@@ -527,6 +487,7 @@ class P2pMatchVideo {
           'everConnected': _everConnected,
           if (parts.isNotEmpty && payload['reason'] == null)
             'reason': parts.join(', '),
+          'diagnostics': _quality.snapshot(),
         });
       } catch (e) {
         debugPrint('P2P: report emit failed: $e');
@@ -538,14 +499,16 @@ class P2pMatchVideo {
     // Bounded like every await above: a wedged native call must not hang
     // stop()'s caller forever (the platform side still finishes on its own).
     try {
-      await RtcFramesService.disposeTrack(ifGeneration: _trackGeneration)
-          .timeout(const Duration(seconds: 5));
+      await RtcFramesService.disposeTrack(
+        ifGeneration: _trackGeneration,
+      ).timeout(const Duration(seconds: 5));
     } catch (e) {
       debugPrint('P2P: disposeTrack timed out/failed: $e');
     }
   }
 
   /// Fire-and-forget teardown for `State.dispose`, which cannot await.
+  @override
   void stopDetached() {
     stop();
   }
