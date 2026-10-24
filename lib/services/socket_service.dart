@@ -39,7 +39,8 @@ class SocketService {
   // idle. What was NOT fine: an off() from the idle provider (its reset()
   // clears the same event list) tore out the ACTIVE provider's handler, and
   // the running match went deaf. off() now only removes what its caller
-  // actually registered.
+  // actually registered. The idle loser must also not trust its own
+  // "listeners set up" flag: see [ownsHandler].
   static final Map<String, Object> _handlerOwners = {};
 
   // Multi-consumer registry, additive next to the single-slot one: several
@@ -605,6 +606,7 @@ class SocketService {
       _socket = null;
       if (!preserveHandlers) {
         _handlers.clear();
+        _handlerOwners.clear();
         _sharedHandlers.clear();
       }
     }
@@ -759,6 +761,16 @@ class SocketService {
       _socket?.off(event, handler);
     }
   }
+
+  /// Whether [owner]'s handler is the live one for [event]. A provider that
+  /// set its listeners up once can have been displaced since — the other game
+  /// provider registered the same event, then tore it down on reset — so
+  /// "I registered once" is not "I still receive it". Ranked after a
+  /// tournament in the same app session went deaf exactly like that: no
+  /// game_started, no game_state_sync, and the retry button re-registered
+  /// nothing because the flag said everything was in place.
+  static bool ownsHandler(String event, Object owner) =>
+      identical(_handlerOwners[event], owner) && _handlers.containsKey(event);
 
   /// Remove the handler for [event]. With [owner] set, this is a no-op unless
   /// the live handler was registered by that same owner — so a provider

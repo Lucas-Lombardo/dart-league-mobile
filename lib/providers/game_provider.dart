@@ -121,10 +121,15 @@ class GameProvider with ChangeNotifier {
   }
 
   void ensureListenersSetup() {
-    if (_listenersSetUp) {
+    // The flag alone is not enough: a tournament played since can have taken
+    // over (then removed) these single-slot handlers — see
+    // SocketService.ownsHandler.
+    if (_listenersSetUp &&
+        SocketService.ownsHandler('game_started', this) &&
+        SocketService.ownsHandler('game_state_sync', this)) {
       return;
     }
-    
+
     _setupSocketListeners();
     _listenersSetUp = true;
   }

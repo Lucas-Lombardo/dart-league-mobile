@@ -186,7 +186,13 @@ class TournamentGameProvider with ChangeNotifier {
   }
 
   Future<void> ensureListenersSetup() async {
-    if (_listenersSetUp) return;
+    // Same displacement hazard as GameProvider: a ranked match since can own
+    // these single-slot handlers now — see SocketService.ownsHandler.
+    if (_listenersSetUp &&
+        SocketService.ownsHandler('game_started', this) &&
+        SocketService.ownsHandler('game_state_sync', this)) {
+      return;
+    }
     await SocketService.ensureConnected();
     _setupSocketListeners();
     _listenersSetUp = true;
