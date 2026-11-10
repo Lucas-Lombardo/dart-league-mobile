@@ -7,6 +7,8 @@ import '../utils/app_theme.dart';
 import '../l10n/app_localizations.dart';
 import 'design_system.dart';
 import 'premium_badge.dart';
+import 'progression/metal.dart';
+import 'progression/progression_widgets.dart';
 
 /// The home "Matchs récents" list: one [MatchRowTile] per match (or per BO3
 /// series), 10 px apart, capped at four.
@@ -166,6 +168,10 @@ class MatchRowTile extends StatelessWidget {
         : match.getOpponentUsername(userId);
     final opponentIsPremium = !isPlacement && match.getOpponentIsPremium(userId);
     final iAmPlayer1 = userId == match.player1Id;
+    // Progression: the opponent's avatar + frame ring next to the name, only
+    // when they wear one (history rows carry no rank for the default badge).
+    final opponentLook = isPlacement ? null : (iAmPlayer1 ? match.player2Cosmetics : match.player1Cosmetics);
+    final showLook = FramedAvatar.wearsLook(watchProgressionContent(context), opponentLook);
     final myScore = isSeries
         ? (iAmPlayer1 ? seriesP1Legs! : seriesP2Legs!)
         : match.getMyScore(userId);
@@ -210,9 +216,20 @@ class MatchRowTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
+                      if (showLook) ...[
+                        Text(l10n.vs, style: AppTheme.rowTitle),
+                        const SizedBox(width: 6),
+                        FramedAvatar(
+                          rank: 'unranked',
+                          cosmetics: opponentLook,
+                          size: 20,
+                          fallback: InitialAvatar(name: opponentUsername, size: 20),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       Flexible(
                         child: Text(
-                          '${l10n.vs} $opponentUsername',
+                          showLook ? opponentUsername : '${l10n.vs} $opponentUsername',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTheme.rowTitle,

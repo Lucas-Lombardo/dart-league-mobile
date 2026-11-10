@@ -6,6 +6,65 @@ import '../services/bot_training_service.dart';
 import '../services/placement_service.dart';
 import '../services/training_service.dart';
 
+/// The network calls of a placement / bot match. A seam so tests can stand in
+/// for the server; the app always uses the default, which forwards to the
+/// static services.
+class PlacementApi {
+  const PlacementApi();
+
+  Future<Map<String, dynamic>> getStatus() => PlacementService.getStatus();
+
+  Future<Map<String, dynamic>> getActiveMatch() =>
+      PlacementService.getActiveMatch();
+
+  Future<Map<String, dynamic>> startMatch() => PlacementService.startMatch();
+
+  Future<Map<String, dynamic>> botTurn(
+    String matchId, {
+    int? playerRoundScore,
+    List<String>? playerRoundThrows,
+    bool? playerBusted,
+    List<Map<String, dynamic>>? playerRoundDarts,
+    int? visitIndex,
+  }) =>
+      PlacementService.triggerBotTurn(
+        matchId,
+        playerRoundScore: playerRoundScore,
+        playerRoundThrows: playerRoundThrows,
+        playerBusted: playerBusted,
+        playerRoundDarts: playerRoundDarts,
+        visitIndex: visitIndex,
+      );
+
+  Future<Map<String, dynamic>> completeMatch(
+    String matchId,
+    String? winnerId, {
+    int? player1Score,
+  }) =>
+      PlacementService.completeMatch(matchId, winnerId,
+          player1Score: player1Score);
+
+  Future<Map<String, dynamic>> trainingBotTurn({
+    required BotRank rank,
+    required int botRemaining,
+  }) =>
+      BotTrainingService.botTurn(rank: rank, botRemaining: botRemaining);
+}
+
+/// True when retrying cannot help: the server refused the call itself (the
+/// match was forfeited or cancelled under the player's feet, it is not theirs,
+/// it is already over). Timeouts, lost connections and 5xx are worth a retry.
+/// ApiService throws plain Exceptions, so the status lives in the message.
+bool isPermanentPlacementError(Object error) {
+  final m = error.toString();
+  return m.contains('Error 400') ||
+      m.contains('Error 409') ||
+      m.contains('Error 422') ||
+      m.contains('Not found') ||
+      m.contains('Forbidden') ||
+      m.contains('Unauthorized');
+}
+
 /// Distinguishes a placement match (counts toward ranking) from a bot-training
 /// match (no progression — submitted as a TrainingSession at the end).
 enum PlacementMode { placement, botTraining }
@@ -151,10 +210,39 @@ class ActivePlacementMatch {
 }
 
 class PlacementProvider extends ChangeNotifier {
+  PlacementProvider({
+    PlacementApi api = const PlacementApi(),
+    List<Duration> retryDelays = const [
+      Duration(seconds: 1),
+      Duration(seconds: 3),
+    ],
+  })  : _api = api,
+        _retryDelays = retryDelays;
+
+  final PlacementApi _api;
+
+  /// Waits between automatic attempts of a bot turn or a result save: the
+  /// first call plus one retry per entry. After that the screen shows the
+  /// failure with "Retry" and "Leave" instead of a frozen bot or a dead end.
+  final List<Duration> _retryDelays;
+
   PlacementStatus? _status;
   ActivePlacementMatch? _activeMatch;
   bool _isLoading = false;
   String? _error;
+
+  /// The last failure cannot be fixed by retrying (match gone or over).
+  bool _errorIsPermanent = false;
+
+  /// How many of the player's visits the server holds (sent as visitIndex).
+  int _serverVisits = 0;
+
+  /// The bot turn that failed, kept as-is so a retry sends the same visit.
+  Future<bool> Function()? _pendingBotTurn;
+
+  /// Visit totals of a resumed match (bust = 0), to restore the averages.
+  List<int> _resumedPlayerRounds = const [];
+  List<int> _resumedBotRounds = const [];
 
   // Active match state
   PlacementMode _mode = PlacementMode.placement;
@@ -180,6 +268,10 @@ class PlacementProvider extends ChangeNotifier {
   ActivePlacementMatch? get activeMatch => _activeMatch;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get errorIsPermanent => _errorIsPermanent;
+  bool get hasPendingBotTurn => _pendingBotTurn != null;
+  List<int> get resumedPlayerRounds => _resumedPlayerRounds;
+  List<int> get resumedBotRounds => _resumedBotRounds;
   PlacementMode get mode => _mode;
   BotRank? get botRank => _botRank;
   BotMatchConfig? get botConfig => _botConfig;
@@ -236,7 +328,7 @@ class PlacementProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await PlacementService.getStatus();
+      final response = await _api.getStatus();
       _status = PlacementStatus.fromJson(response);
     } catch (e) {
       _error = e.toString();
@@ -248,7 +340,7 @@ class PlacementProvider extends ChangeNotifier {
 
   Future<void> loadActiveMatch() async {
     try {
-      final response = await PlacementService.getActiveMatch();
+      final response = await _api.getActiveMatch();
       if (response['active'] == true) {
         _activeMatch = ActivePlacementMatch.fromJson(response);
       } else {
@@ -278,25 +370,43 @@ class PlacementProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Creates the server match — or picks up the one in progress, which the
+  /// server returns as-is. Called when the player presses "Play" on the camera
+  /// screen, never before: a match created at the hub died on the cron's idle
+  /// sweep while the player was still setting up the tripod.
   Future<bool> startMatch() async {
     _isLoading = true;
     _error = null;
+    _errorIsPermanent = false;
+    _pendingBotTurn = null;
     _mode = PlacementMode.placement;
     _botRank = null;
+    _botConfig = null;
     _startingScore = 501;
     notifyListeners();
 
     try {
-      final response = await PlacementService.startMatch();
+      final response = await _withRetries(_api.startMatch);
       _currentMatchId = response['matchId'] as String?;
       _currentBotDifficulty = response['botDifficulty'] as int?;
+      if (_currentMatchId == null) {
+        throw Exception('Invalid response from server');
+      }
 
       final gameState = response['gameState'] as Map<String, dynamic>?;
+      _player1Score = 501;
+      _player2Score = 501;
+      _resumedPlayerRounds = const [];
+      _resumedBotRounds = const [];
       if (gameState != null) {
         _player1Score = gameState['player1Score'] as int? ?? 501;
         _player2Score = gameState['player2Score'] as int? ?? 501;
+        _resumedPlayerRounds = _intList(gameState['player1Rounds']);
+        _resumedBotRounds = _intList(gameState['player2Rounds']);
         _isPlayerTurn = true;
       }
+      // A resumed match: the server already holds these visits.
+      _serverVisits = _resumedPlayerRounds.length;
 
       _lastBotThrows = [];
       _botIsCheckout = false;
@@ -306,15 +416,43 @@ class PlacementProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = e.toString();
+      _errorIsPermanent = isPermanentPlacementError(e);
       _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
+  static List<int> _intList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw.whereType<num>().map((e) => e.toInt()).toList();
+  }
+
+  /// [call], retried on transient failures with [_retryDelays] between
+  /// attempts. A permanent refusal (see [isPermanentPlacementError]) is
+  /// rethrown at once.
+  Future<T> _withRetries<T>(Future<T> Function() call) async {
+    var attempt = 0;
+    while (true) {
+      try {
+        return await call();
+      } catch (e) {
+        if (isPermanentPlacementError(e) || attempt >= _retryDelays.length) {
+          rethrow;
+        }
+        await Future<void>.delayed(_retryDelays[attempt]);
+        attempt++;
+      }
+    }
+  }
+
   /// Start a bot-training match (no backend match record — the result is
   /// submitted as a TrainingSession when the game ends).
+  /// When the current bot match started (progression: training duration).
+  DateTime? _botMatchStartedAt;
+
   void startBotTrainingMatch(BotMatchConfig config) {
+    _botMatchStartedAt = DateTime.now();
     _mode = PlacementMode.botTraining;
     _botRank = config.rank;
     _botConfig = config;
@@ -332,10 +470,27 @@ class PlacementProvider extends ChangeNotifier {
     _botIsCheckout = false;
     _botIsBust = false;
     _error = null;
+    _errorIsPermanent = false;
+    _pendingBotTurn = null;
+    _resumedPlayerRounds = const [];
+    _resumedBotRounds = const [];
     _isLoading = false;
     notifyListeners();
   }
 
+  /// Sends the bot turn that failed again, with the same visit and the same
+  /// visit index (so a server that did record it replays its answer).
+  Future<bool> retryBotTurn() async {
+    final pending = _pendingBotTurn;
+    if (pending == null) return false;
+    return pending();
+  }
+
+  /// Plays the bot's visit (after the player's, which rides along). Retried
+  /// automatically on transient failures; when it still fails the turn is
+  /// kept in [hasPendingBotTurn] for [retryBotTurn] and false is returned —
+  /// the screen must then stop, never hand the turn back to the player as if
+  /// the bot had thrown (that froze the bot at 501 for the rest of the match).
   Future<bool> triggerBotTurn({
     int? playerRoundScore,
     List<String>? playerRoundThrows,
@@ -344,15 +499,38 @@ class PlacementProvider extends ChangeNotifier {
     List<Map<String, dynamic>>? playerRoundDarts,
   }) async {
     if (_currentMatchId == null) return false;
+    // Fixed now, so a retry sends exactly the same request.
+    final visitIndex = _serverVisits;
+    Future<bool> attempt() => _botTurn(
+          playerRoundScore: playerRoundScore,
+          playerRoundThrows: playerRoundThrows,
+          playerScoreAfterRound: playerScoreAfterRound,
+          playerBusted: playerBusted,
+          playerRoundDarts: playerRoundDarts,
+          visitIndex: visitIndex,
+        );
+    _pendingBotTurn = attempt;
+    return attempt();
+  }
 
+  Future<bool> _botTurn({
+    int? playerRoundScore,
+    List<String>? playerRoundThrows,
+    int? playerScoreAfterRound,
+    bool? playerBusted,
+    List<Map<String, dynamic>>? playerRoundDarts,
+    required int visitIndex,
+  }) async {
     _isLoading = true;
     _error = null;
+    _errorIsPermanent = false;
     notifyListeners();
 
     try {
       if (_mode == PlacementMode.botTraining) {
         if (_botRank == null) {
           _error = 'Missing bot rank for training match';
+          _errorIsPermanent = true;
           _isLoading = false;
           notifyListeners();
           return false;
@@ -360,10 +538,11 @@ class PlacementProvider extends ChangeNotifier {
         if (playerScoreAfterRound != null) {
           _player1Score = playerScoreAfterRound;
         }
-        final response = await BotTrainingService.botTurn(
-          rank: _botRank!,
-          botRemaining: _player2Score,
-        );
+        // Stateless on the server: retrying is always safe.
+        final response = await _withRetries(() => _api.trainingBotTurn(
+              rank: _botRank!,
+              botRemaining: _player2Score,
+            ));
         _lastBotThrows = (response['botThrows'] as List<dynamic>?)
                 ?.map((t) => BotThrow.fromJson(t as Map<String, dynamic>))
                 .toList() ??
@@ -372,18 +551,22 @@ class PlacementProvider extends ChangeNotifier {
         _botIsBust = response['isBust'] as bool? ?? false;
         _player2Score = response['botNewScore'] as int? ?? _player2Score;
         _isPlayerTurn = true;
+        _pendingBotTurn = null;
         _isLoading = false;
         notifyListeners();
         return true;
       }
 
-      final response = await PlacementService.triggerBotTurn(
-        _currentMatchId!,
-        playerRoundScore: playerRoundScore,
-        playerRoundThrows: playerRoundThrows,
-        playerRoundDarts: playerRoundDarts,
-        playerBusted: playerBusted,
-      );
+      final matchId = _currentMatchId!;
+      final response = await _withRetries(() => _api.botTurn(
+            matchId,
+            playerRoundScore: playerRoundScore,
+            playerRoundThrows: playerRoundThrows,
+            playerRoundDarts: playerRoundDarts,
+            playerBusted: playerBusted,
+            visitIndex: visitIndex,
+          ));
+      if (playerRoundThrows != null) _serverVisits = visitIndex + 1;
 
       _lastBotThrows = (response['botThrows'] as List<dynamic>?)
               ?.map((t) => BotThrow.fromJson(t as Map<String, dynamic>))
@@ -399,11 +582,13 @@ class PlacementProvider extends ChangeNotifier {
         _isPlayerTurn = true;
       }
 
+      _pendingBotTurn = null;
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString();
+      _errorIsPermanent = isPermanentPlacementError(e);
       _isLoading = false;
       notifyListeners();
       return false;
@@ -422,6 +607,7 @@ class PlacementProvider extends ChangeNotifier {
 
     _isLoading = true;
     _error = null;
+    _errorIsPermanent = false;
     notifyListeners();
 
     try {
@@ -430,6 +616,7 @@ class PlacementProvider extends ChangeNotifier {
         final rank = _botRank;
         final config = _botConfig;
         await TrainingService.submit(
+          startedAt: _botMatchStartedAt,
           type: TrainingType.botTraining,
           score: won ? 1 : 0,
           dartsThrown: dartsThrown ?? 0,
@@ -466,13 +653,23 @@ class PlacementProvider extends ChangeNotifier {
         };
       }
 
-      final response = await PlacementService.completeMatch(
-        _currentMatchId!,
-        winnerId,
-        player1Score: player1Score,
-      );
+      final matchId = _currentMatchId!;
+      Map<String, dynamic> response;
+      try {
+        response = await _withRetries(() => _api.completeMatch(
+              matchId,
+              winnerId,
+              player1Score: player1Score,
+            ));
+      } catch (e) {
+        // An earlier attempt went through and only its answer was lost: the
+        // match is saved, carry on (the hub reloads the status).
+        if (!e.toString().contains('already completed')) rethrow;
+        response = <String, dynamic>{'alreadyCompleted': true};
+      }
 
       _currentMatchId = null;
+      _pendingBotTurn = null;
       _currentBotDifficulty = null;
       _activeMatch = null;
 
@@ -486,7 +683,10 @@ class PlacementProvider extends ChangeNotifier {
       notifyListeners();
       return response;
     } catch (e) {
+      // _currentMatchId is kept: the screen offers "Retry", which calls this
+      // again with the same result.
       _error = e.toString();
+      _errorIsPermanent = isPermanentPlacementError(e);
       _isLoading = false;
       notifyListeners();
       return null;
@@ -519,6 +719,11 @@ class PlacementProvider extends ChangeNotifier {
     _botIsCheckout = false;
     _botIsBust = false;
     _error = null;
+    _errorIsPermanent = false;
+    _pendingBotTurn = null;
+    _serverVisits = 0;
+    _resumedPlayerRounds = const [];
+    _resumedBotRounds = const [];
     notifyListeners();
   }
 

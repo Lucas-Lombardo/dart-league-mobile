@@ -7,6 +7,7 @@ import '../utils/haptic_service.dart';
 import '../l10n/app_localizations.dart';
 import 'board_safe_video.dart';
 import 'design_system.dart';
+import 'fit_text.dart';
 import 'logo_watermark.dart';
 
 /// Shared building blocks of the in-match UI (system D, 2026-09): the flat
@@ -895,6 +896,11 @@ class TurnScoreHeader extends StatelessWidget {
   /// to the opponent's, null (callers that don't track it) draws no dot.
   final bool? myTurn;
 
+  /// Progression: the small static avatar + frame ring next to each name
+  /// (mockup EnMatch). Null keeps the name row exactly as before.
+  final Widget? myAvatar;
+  final Widget? opponentAvatar;
+
   const TurnScoreHeader({
     super.key,
     required this.myName,
@@ -910,6 +916,8 @@ class TurnScoreHeader extends StatelessWidget {
     this.opponentLegs = 0,
     this.showBadges = true,
     this.myTurn,
+    this.myAvatar,
+    this.opponentAvatar,
   });
 
   static const _scoreStyle = TextStyle(
@@ -932,11 +940,13 @@ class TurnScoreHeader extends StatelessWidget {
     final color = mine ? AppTheme.playerBlueBright : AppTheme.opponentPinkBright;
     final dotColor = mine ? AppTheme.playerBlue : AppTheme.opponentPink;
     final showDot = myTurn == mine;
+    // A name too long for its third of the header (next to an avatar)
+    // shrinks a little before it gives way: « Bruno_T19 », not « Bruno_… ».
     final text = Flexible(
-      child: Text(
+      child: FitText(
         name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        minFontSize: 10,
+        textAlign: mine ? TextAlign.start : TextAlign.end,
         style: TextStyle(
           color: color,
           fontSize: 13,
@@ -945,14 +955,18 @@ class TurnScoreHeader extends StatelessWidget {
         ),
       ),
     );
+    final avatar = mine ? myAvatar : opponentAvatar;
     return SizedBox(
-      height: 13,
+      // Both rows grow together so the scores below stay on one line.
+      height: (myAvatar != null || opponentAvatar != null) ? 22 : 13,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: mine ? MainAxisAlignment.start : MainAxisAlignment.end,
         children: [
           if (mine && showDot) ...[_dot(dotColor), const SizedBox(width: 6)],
+          if (mine && avatar != null) ...[avatar, const SizedBox(width: 6)],
           text,
+          if (!mine && avatar != null) ...[const SizedBox(width: 6), avatar],
           if (!mine && showDot) ...[const SizedBox(width: 6), _dot(dotColor)],
         ],
       ),

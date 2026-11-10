@@ -32,6 +32,8 @@ class CheckoutVisionScreen extends StatefulWidget {
 }
 
 class _CheckoutVisionScreenState extends State<CheckoutVisionScreen> {
+  /// Sent with the result (progression: trainings count after 5 minutes).
+  final DateTime _sessionStartedAt = DateTime.now();
   static const int kQuestions = 10;
 
   final _rng = Random();
@@ -202,6 +204,7 @@ class _CheckoutVisionScreenState extends State<CheckoutVisionScreen> {
     });
     try {
       await TrainingService.submit(
+        startedAt: _sessionStartedAt,
         type: TrainingType.checkoutVision,
         score: _accuracy,
         dartsThrown: 0,

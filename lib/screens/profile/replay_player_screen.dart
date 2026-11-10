@@ -11,6 +11,7 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/notification_service.dart';
+import '../../services/progression_service.dart';
 
 /// Full-screen player for one replay clip — local file (fresh capture) or
 /// presigned R2 url (library). Two actions: save to the phone gallery (from
@@ -47,6 +48,8 @@ class _ReplayPlayerScreenState extends State<ReplayPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // Discovery quest "Rewatch one of your darts" (progression).
+    ProgressionService.reportClientAction('replay_viewed');
     final controller = widget.isLocal
         ? VideoPlayerController.file(File(widget.source))
         : VideoPlayerController.networkUrl(Uri.parse(widget.source));

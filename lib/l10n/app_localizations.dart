@@ -1751,6 +1751,1050 @@ abstract class AppLocalizations {
   /// Player page: "88 – 18" row label.
   String get profileWinsLosses;
 
+
+  // ---- Progression & rewards (docs/progression/CONTRACT.md) ----
+  /// Level pill on player cards.
+  String xpLevelShort(int level);
+
+  /// Progression level, long form.
+  String xpLevel(int level);
+
+  /// XP inside the level.
+  String xpProgressValue(String current, String total);
+
+  /// Progression screen title.
+  String get progressionTitle;
+
+  /// Level path screen title / link.
+  String get progressionPath;
+
+  /// Next level reward.
+  String progressionNextReward(int level, String reward);
+
+  /// Profile pinned badges caption.
+  String get progressionShowcase;
+
+  /// Profile button to the locker.
+  String get progressionCustomize;
+
+  /// Profile tile: items owned.
+  String get progressionItems;
+
+  /// Daily quests section / home block.
+  String get questsToday;
+
+  /// Reroll error.
+  String get questsRerollFailed;
+
+  /// Home quests row title.
+  String get questsRow;
+
+  /// Home quests row subtitle.
+  String questsRowSubtitle(int done, int total, int xp);
+
+  /// All daily quests done.
+  String get questsAllDone;
+
+  /// XP reward.
+  String questXp(int xp);
+
+  /// Short days.
+  String durationDaysShort(int days);
+
+  /// Short hours.
+  String durationHoursShort(int hours);
+
+  /// Short minutes.
+  String durationMinutesShort(int minutes);
+
+  /// Item kind.
+  String get itemKindAvatar;
+
+  /// Item kind.
+  String get itemKindFrame;
+
+  /// Item kind.
+  String get itemKindBackground;
+
+  /// Item kind.
+  String get itemKindTitle;
+
+  /// Item kind.
+  String get itemKindFlight;
+
+  /// Item kind.
+  String get itemKindBadge;
+
+  /// Level 1 reward.
+  String get levelsPathBase;
+
+  /// Level up screen title.
+  String get levelUpTitle;
+
+  /// XP towards the next level.
+  String levelUpProgress(String current, String total, int next);
+
+  /// Level up: unlocked items.
+  String get levelUpUnlocks;
+
+  /// Where items show.
+  String get levelUpVisible;
+
+  /// Equip now button.
+  String get levelUpEquipNow;
+
+  /// Later button.
+  String get levelUpLater;
+
+  /// Locker screen title.
+  String get lockerTitle;
+
+  /// Locker tab.
+  String get lockerTabAvatars;
+
+  /// Locker tab.
+  String get lockerTabFrames;
+
+  /// Locker tab.
+  String get lockerTabBackgrounds;
+
+  /// Locker tab.
+  String get lockerTabTitles;
+
+  /// Locker tab.
+  String get lockerTabFlights;
+
+  /// Default avatar tile.
+  String get lockerDefaultAvatar;
+
+  /// No item tile.
+  String get lockerNone;
+
+  /// Equipped item note.
+  String get lockerEquipped;
+
+  /// Equip error.
+  String get lockerEquipFailed;
+
+  /// Initials field.
+  String get lockerMonogramHint;
+
+  /// Save button.
+  String get lockerSave;
+
+  /// Match found screen title.
+  String get matchFoundTitle;
+
+  /// Match found subtitle (ranked).
+  String get matchFoundRanked;
+
+  /// Match found subtitle (friendly).
+  String get matchFoundFriendly;
+
+  /// Me side.
+  String get matchFoundYou;
+
+  /// Opponent side.
+  String get matchFoundOpponent;
+
+  /// Ghost opponent side.
+  String get matchFoundGhost;
+
+  /// End of match XP block.
+  String get xpEarnedTitle;
+
+  /// XP not computed yet.
+  String get xpPending;
+
+  /// Level reached.
+  String xpLevelReached(int level);
+
+  /// Item unlocked.
+  String xpItemUnlocked(String item);
+
+  // --- progression (Agent 1) ---
+  /// Match found: the two players never met.
+  String get matchFoundFirstMeeting;
+  // --- fin progression ---
+
+  // --- league (Agent 4) ---
+  /// Weekly league: section / screen title.
+  String get leagueWeeklyTitle;
+
+  /// Weekly league: "Steel League" / "Ligue Acier".
+  String leagueName(String league);
+
+  /// Weekly league: a place, "3rd" / "3ᵉ".
+  String leaguePlace(int position);
+
+  /// Weekly league: "914 pts".
+  String leaguePoints(String points);
+
+  /// Weekly league: time left in the week.
+  String leagueTimeLeft(String duration);
+
+  /// Weekly league: the week is over (Sunday night).
+  String get leagueWeekOver;
+
+  /// Weekly league: header when the week is over.
+  String get leagueResultsMonday;
+
+  /// Weekly league: line under the promotion zone.
+  String leaguePromoteZone(String league);
+
+  /// Weekly league: line above the relegation zone.
+  String leagueRelegateZone(int from, int to, String league);
+
+  /// Weekly league: points card title.
+  String get leagueEverythingCounts;
+
+  /// Weekly league: ranked win bonus.
+  String leagueRuleWinBonus(int bonus);
+
+  /// Weekly league: my row.
+  String get leagueYou;
+
+  /// Weekly league: never had a league.
+  String get leagueFirstTitle;
+
+  /// Weekly league: never had a league, explanation.
+  String get leagueFirstBody;
+
+  /// Weekly league: no group this week (did not play last week).
+  String get leagueBackTitle;
+
+  /// Weekly league: no group this week, explanation.
+  String get leagueBackBody;
+
+  /// Weekly league: time until Monday.
+  String leagueStartsIn(String duration);
+
+  /// Weekly league: final standings note.
+  String get leagueClosedBody;
+
+  /// Weekly league: weekday, short (1 = Monday).
+  String leagueWeekdayShort(int weekday);
+
+  /// Weekly league: weekday, long (1 = Monday).
+  String leagueWeekdayLong(int weekday);
+
+  /// Weekly league: an hour of the day.
+  String leagueHour(int hour);
+
+  /// Weekly league: "ends Sun. 10 pm".
+  String leagueEndsOn(String day, String hour);
+
+  /// Monday screen: "Week 45 finished".
+  String leagueWeekFinished(int week);
+
+  /// Monday screen: promoted headline.
+  String get leagueResultUp;
+
+  /// Monday screen: relegated headline.
+  String get leagueResultDown;
+
+  /// Monday screen: stayed headline.
+  String get leagueResultStay;
+
+  /// Monday screen: "of 20".
+  String leagueOutOf(int size);
+
+  /// Monday screen: points tile.
+  String get leaguePointsLabel;
+
+  /// Monday screen: XP tile.
+  String get leagueXpLabel;
+
+  /// Monday screen: a reward item, "Title “Climber”".
+  String leagueRewardItem(String kind, String name);
+
+  /// Monday screen: podium badge row.
+  String get leaguePodiumBadge;
+
+  /// Monday screen: podium badge subtitle.
+  String leaguePodiumBadgeSub(String place);
+
+  /// Monday screen: one player promoted with you.
+  String leaguePromotedWithOne(String name);
+
+  /// Monday screen: several players promoted with you.
+  String leaguePromotedWithMany(String names);
+
+  /// Monday screen: the new week.
+  String leagueNewWeek(int size, String ends);
+
+  /// Monday screen: button to the new league.
+  String get leagueSeeNewLeague;
+
+  /// Monday screen: button when there is no new group.
+  String get leagueContinue;
+
+  /// League history: title.
+  String get leagueHistoryTitle;
+
+  /// League history: tooltip.
+  String get leagueHistoryTooltip;
+
+  /// League history: empty.
+  String get leagueHistoryEmpty;
+
+  /// League history: "Week 45".
+  String leagueHistoryWeek(int week);
+
+  /// League history: best league reached.
+  String leagueBest(String league);
+
+  /// League history: promoted.
+  String get leagueOutcomeUp;
+
+  /// League history: relegated.
+  String get leagueOutcomeDown;
+
+  /// League history: stayed.
+  String get leagueOutcomeStay;
+
+  /// Weekly league: load error.
+  String get leagueLoadFailed;
+
+  /// Weekly league: retry button.
+  String get leagueRetry;
+  // --- fin league ---
+
+  // --- onboarding (Agent 2b) ---
+  /// Placement camera screen: POST /placement/start failed.
+  String get onboardingPlacementStartFailed;
+
+  /// Placement / bot match: the bot turn failed after the automatic retries.
+  String get onboardingPlacementBotTurnFailedTitle;
+  String get onboardingPlacementBotTurnFailedBody;
+
+  /// Placement / bot match end: the result could not be saved.
+  String get onboardingPlacementSaveFailedTitle;
+  String get onboardingPlacementSaveFailedBody;
+
+  /// Placement: the server refused the match (forfeited or cancelled).
+  String get onboardingPlacementMatchGoneTitle;
+  String get onboardingPlacementMatchGoneBody;
+
+  /// Placement / bot match: label of the suggested-finish bar ("Finish T20 · D20").
+  String get onboardingCheckoutHintLabel;
+
+  /// First 7 days: the card and screen title.
+  String get onboardingTitle;
+
+  /// First 7 days card footer: the premium given at the end.
+  String onboardingPremiumAtTheEnd(int days);
+
+  /// First 7 days: "Day 3".
+  String onboardingDayN(int day);
+
+  /// First 7 days card: "Today · day 2".
+  String onboardingTodayDay(int day);
+
+  /// First 7 days card: "Tomorrow · day 3".
+  String onboardingTomorrowDay(int day);
+
+  /// First 7 days timeline: "Day 2 · today".
+  String onboardingDayToday(int day);
+
+  /// First 7 days timeline: "Day 3 · opens tomorrow".
+  String onboardingDayOpensTomorrow(int day);
+
+  /// First 7 days card: the day-7 summary is ready.
+  String get onboardingBilanReadyTitle;
+
+  /// First 7 days card: open the summary.
+  String get onboardingSee;
+
+  /// First 7 days timeline: open the summary.
+  String get onboardingSeeBilan;
+
+  /// First 7 days timeline: the open step's button.
+  String get onboardingPlayNow;
+
+  /// First 7 days: XP reward of a step.
+  String onboardingXp(int xp);
+
+  /// First 7 days: premium days reward.
+  String onboardingPremiumDays(int days);
+
+  /// First 7 days: an item reward, kind then name ("title “New Recruit”").
+  String onboardingRewardItem(String kind, String name);
+
+  /// Day-7 summary: "7 of 7 steps".
+  String onboardingBilanSteps(int done, int total);
+
+  /// Day-7 summary: title.
+  String get onboardingBilanTitle;
+
+  /// Day-7 summary tiles.
+  String get onboardingBilanMatches;
+  String get onboardingBilanBestVisit;
+  String get onboardingBilanAverage;
+  String get onboardingBilanSinceDay1;
+  String get onboardingBilanYourRank;
+
+  /// Day-7 summary: "You unlock" section.
+  String get onboardingBilanUnlocks;
+
+  /// Day-7 summary: premium end date and perks.
+  String onboardingBilanPremiumUntil(String date);
+  String get onboardingBilanPremiumPerks;
+
+  /// Day-7 summary: the frame reward.
+  String onboardingBilanFrame(String name);
+  String get onboardingBilanEquipped;
+  String get onboardingBilanInLocker;
+
+  /// Day-7 summary: what comes next.
+  String get onboardingBilanNext;
+
+  /// Day-7 summary: share button and shared text.
+  String get onboardingBilanShare;
+  String onboardingBilanShareText(int matches, String best, String average);
+  // --- fin onboarding ---
+
+  // --- ghost (Agent 5) ---
+  /// Ghost match: chip on the board / end screen.
+  String get ghostBadge;
+
+  /// Queue: the bottom link once the ghost card is folded, « Jouer contre
+  /// un fantôme ».
+  String get ghostPlayButton;
+
+  /// Ghost match needs the AI camera.
+  String get ghostCameraRequired;
+
+  /// Ghost match could not start.
+  String get ghostStartError;
+
+  /// Free tier: daily match used.
+  String get ghostDailyLimit;
+
+  /// Unranked player.
+  String get ghostPlacementRequired;
+
+  /// The offer is gone.
+  String get ghostOfferExpired;
+
+  /// Match found subtitle.
+  String ghostMatchFoundSubtitle(int bestOf);
+
+  /// Match found: the replayed match.
+  String ghostMatchFoundRecord(String date, String average);
+
+  /// Board caption during the ghost's turn.
+  String ghostPanelCaption(String date);
+
+  /// Waiting for the ghost's answer.
+  String get ghostThrowing;
+
+  /// Visit not sent.
+  String get ghostSendFailed;
+
+  /// Retry.
+  String get ghostRetry;
+
+  /// In-match REC strip.
+  String get ghostRecBanner;
+
+  /// In-match REC strip, over the daily cap.
+  String get ghostRecBannerNoElo;
+
+  /// Leaving a counted ghost match.
+  String get ghostLeaveWarning;
+
+  /// Leaving a ghost match out of the ELO cap.
+  String get ghostLeaveWarningNoElo;
+
+  /// Leaving before the first visit.
+  String get ghostLeaveFree;
+
+  /// End screen subtitle.
+  String ghostVs(String name);
+
+  /// End screen: new rating.
+  String ghostEloCaption(int elo);
+
+  /// End screen: gain on hold.
+  String get ghostEloHeldCaption;
+
+  /// End screen: why the gain is on hold.
+  String get ghostEloHeld;
+
+  /// End screen: no ELO.
+  String get ghostEloNoneCaption;
+
+  /// End screen: over the daily cap.
+  String get ghostEloNone;
+
+  /// End screen: average tile.
+  String get ghostAverageLabel;
+
+  /// Proof upload in progress.
+  String get ghostProofSending;
+
+  /// Proof uploaded.
+  String get ghostProofSent;
+
+  /// Proof upload failed.
+  String get ghostProofFailed;
+
+  /// End screen: back home.
+  String get ghostHome;
+
+  /// Resume a running ghost match.
+  String get ghostResume;
+
+  /// Owner digest title.
+  String ghostDigestTitle(int count);
+
+  /// Owner digest row subtitle.
+  String ghostDigestRowSubtitle(int wins, int xp);
+
+  /// Owner digest kicker.
+  String get ghostDigestWhileAway;
+
+  /// Owner digest: the replayed match.
+  String ghostDigestReplays(String date, String average);
+
+  /// Owner digest XP tile.
+  String ghostDigestWins(int count);
+
+  /// Owner digest record tile.
+  String get ghostDigestRecord;
+
+  /// Owner digest: who beat the ghost.
+  String ghostDigestBeaten(String name, int darts);
+
+  /// Owner digest: challenge button.
+  String ghostDigestChallenge(String name);
+
+  /// Owner digest: row button.
+  String get ghostDigestChallengeShort;
+
+  /// Owner digest footer.
+  String get ghostDigestFooter;
+
+  /// Owner digest: ghost won (letter).
+  String get ghostResultWin;
+
+  /// Owner digest: ghost lost (letter).
+  String get ghostResultLoss;
+
+  /// Settings section.
+  String get ghostSettingsSection;
+
+  /// Settings: matches used as ghosts.
+  String get ghostSettingsEnabled;
+
+  /// Settings hint.
+  String get ghostSettingsEnabledHint;
+
+  /// Settings: grouped push.
+  String get ghostSettingsNotify;
+
+  /// Settings hint.
+  String get ghostSettingsNotifyHint;
+  // --- fin ghost ---
+
+  // --- achievement (Agent 3) ---
+  /// Achievements screen title, profile tile.
+  String get achievementsTitle;
+
+  /// Family chip: every family.
+  String get achievementFamilyAll;
+
+  /// "Closest" card of the collection.
+  String get achievementClosest;
+
+  /// "Bull Finish · Silver tier".
+  String achievementClosestTier(String name, String tier);
+
+  /// Tier names.
+  String get achievementTierBronze;
+  String get achievementTierSilver;
+  String get achievementTierGold;
+
+  /// A unique achievement, unlocked.
+  String get achievementTierUnique;
+
+  /// Not unlocked yet.
+  String get achievementLocked;
+
+  /// "9 % of players".
+  String achievementRarity(String pct);
+
+  /// "8 / 10 for Silver".
+  String achievementForBronze(String progress);
+  String achievementForSilver(String progress);
+  String achievementForGold(String progress);
+
+  /// "best 31".
+  String achievementRecord(String value);
+
+  /// Load error.
+  String get achievementLoadFailed;
+
+  /// Retry button.
+  String get achievementRetry;
+
+  /// Detail: the AI-only rule.
+  String get achievementAiOnly;
+
+  /// Detail: "unlocked on 4 October".
+  String achievementUnlockedOn(String date);
+
+  /// Detail: target of a tier, "target 100".
+  String achievementTarget(String target);
+
+  /// Detail: the last samples that moved the achievement.
+  String get achievementRecent;
+
+  /// "vs Mika_180".
+  String achievementRecentVs(String opponent);
+
+  /// "leg 2".
+  String achievementRecentLeg(int leg);
+
+  /// Replay of the dart / visit.
+  String get achievementReplay;
+
+  /// No replay for that match.
+  String get achievementNoReplay;
+
+  /// "Ancien": the account age condition.
+  String get achievementRequiresAge;
+
+  /// Unlock sheet: title.
+  String get achievementUnlockedTitle;
+
+  /// "Silver tier · 10".
+  String achievementTierLine(String tier, String target);
+
+  /// "4 % of players have it".
+  String achievementPlayersHaveIt(String pct);
+
+  /// Under "+250 XP".
+  String get achievementXpAdded;
+
+  /// The reward of a later tier: "at Gold (50)".
+  String achievementRewardAt(String tier, String target);
+
+  /// The reward of this tier.
+  String get achievementRewardNow;
+
+  /// Pin the badge.
+  String get achievementPin;
+
+  /// Pinned.
+  String get achievementPinned;
+
+  /// Already pinned.
+  String get achievementAlreadyPinned;
+
+  /// Pin failed.
+  String get achievementPinFailed;
+
+  /// Open the collection.
+  String get achievementSeeAll;
+
+  /// Close the sheet.
+  String get achievementLater;
+
+  /// "+ 3 more".
+  String achievementMore(int count);
+
+  /// First launch: the retroactive unlocks.
+  String get achievementRetroTitle;
+
+  /// "18 achievements unlocked from your past matches."
+  String achievementRetroBody(int count);
+
+  /// Locker tab.
+  String get achievementBadgesTab;
+
+  /// Locker tab hint.
+  String get achievementBadgesHint;
+
+  /// No badge yet.
+  String get achievementBadgesEmpty;
+
+  /// At most 3 pins.
+  String get achievementBadgesFull;
+
+  /// "2 / 3 pinned".
+  String achievementBadgesPinned(int count);
+  // --- fin achievement ---
+
+  // --- challenge (Agent 2) ---
+  String get challengeTitle;
+  String challengeStreakDays(int days);
+  String challengeRowDone(String format, String place, int total);
+  String challengeRowPlayed(String format, String score);
+  String challengePrizeRank(String rank);
+  String challengePrizeReward(int elo);
+  String challengeBoardNotOpen(int players);
+  String challengeMergedWith(String ranks);
+  String challengeEndsIn(String time);
+  String challengeHoursMinutes(int hours, int minutes);
+  String challengeMinutes(int minutes);
+  String get challengePractice;
+  String get challengePracticeNote;
+  String get challengeAbandoned;
+  String get challengeExcluded;
+  String get challengeExcludedRejected;
+  String get challengeUpdateApp;
+  String get challengeYourStreak;
+  String get challengeFreezeAvailable;
+  String get challengeFreezeUsed;
+  String get challengeLeaderboardTitle;
+  String challengeTabRank(String rank, int count);
+  String challengeTabAll(int count);
+  String challengeTabFriends(int count);
+  String get challengeEmptyBoard;
+  String get challengeEmptyFriends;
+  String get challengeWatchSession;
+  String get challengeWatchMySession;
+  String get challengeYesterdayResult;
+  String get challengeRemind;
+  String get challengeLoadFailed;
+  String get challengeRetry;
+  String get challengeUnfinished;
+  String get challengeCrownLabel;
+  String get challengePlayTotal;
+  String get challengePlayTarget;
+  String get challengePlayRemaining;
+  String get challengePlayVisit;
+  String get challengePlayDarts;
+  String get challengePlayScore;
+  String get challengePlayHits;
+  String get challengePlayMarks;
+  String get challengePlayPoints;
+  String challengeVisitProgress(int index, int total);
+  String challengeDartProgress(int index, int total);
+  String challengeTargetProgress(int index, int total);
+  String challengeCheckoutProgress(int index, int total, int used, int budget);
+  String get challengeAnyDouble;
+  String get challengeAnyTriple;
+  String get challengeRankedBadge;
+  String get challengePracticeBadge;
+  String get challengeQuitRankedTitle;
+  String get challengeQuitRankedBody;
+  String get challengeSubmitting;
+  String get challengeSubmitFailed;
+  String get challengeStartFailed;
+  String challengeResultTitle(String date);
+  String challengeBestVisit(int value);
+  String challengePlaceSub(String rank, String place, int total);
+  String get challengeStreakPlus;
+  String get challengePassedPrefix;
+  String get challengeAnd;
+  String challengeLeaderStays(String name, String score, String left);
+  String challengeYouLead(String left);
+  String get challengeProofSending;
+  String get challengeProofSent;
+  String get challengeProofWhy;
+  String get challengeProofReceived;
+  String get challengeProofFailed;
+  String get challengeTop10Pending;
+  String get challengePracticeResult;
+  String get challengeShare;
+  String get challengeShareFailed;
+  String challengeShareText(String format, String score);
+  String challengeStoryHeader(String date);
+  String challengeStoryTop(int pct);
+  String challengeStoryPlace(String place, String rank);
+  String challengeStoryStreak(int days);
+  String get challengeStoryLine;
+  String get challengeStoryCta;
+  String challengePodiumFirst(String rank);
+  String get challengePodiumEmpty;
+  String get challengePodiumNotClosed;
+  String get challengeNoFirst;
+  String get challengeEloLabel;
+  String get challengeBadgeLabel;
+  String get challengeSessionVerified;
+  String challengeSessionVerifiedBody(int ai, int corrected);
+  String get challengeSessionPending;
+  String get challengeSessionPendingBody;
+  String challengePodiumYourPlace(String place, int total, int xp);
+  String get challengePinBadge;
+  String get challengeCrownAvatar;
+  String challengeWinsOf(int wins, int goal);
+  String challengeSessionSubtitle(String rank, String format, String date);
+  String get challengeSessionCorrected;
+  String get challengeSessionNoVideo;
+  String challengeVisitOverlay(int index, int value);
+  String get challengePlayerCamera;
+  String get challengePlay;
+  String get challengePause;
+  String get challengeReport;
+  String get challengeReported;
+  String get challengeReportFailed;
+  String get challengeReportReasonScore;
+  String get challengeReportReasonHidden;
+  String get challengeReportReasonEdited;
+  String get challengeReportReasonOther;
+  String challengeCorrectedVisits(String name, int count);
+  // --- fin challenge ---
+
+  // --- finitions (Agent Finitions) ---
+  /// End of match, under the XP: the league points of this match and the
+  /// place before / after ("Ligue Acier : +50 pts, tu passes de 6ᵉ à 4ᵉ.").
+  /// [league] is already "Steel League" / "Ligue Acier".
+  String leagueMatchMoved(String league, int points, String from, String to);
+
+  /// End of match, under the XP: the league points, same place.
+  String leagueMatchStayed(String league, int points, String place);
+  // --- fin finitions ---
+
+  // --- tour 5 (Agent Tour 5) ---
+  /// "Étoile de prestige 2": one star on the Légende frame every 10 levels past 50.
+  String prestigeStarName(int n);
+  /// What carries the star (levels path, level up): "Cadre Légende".
+  String get prestigeStarKind;
+  /// Level up at 60, 70…: under the star.
+  String get levelUpPrestigeHint;
+  /// Level up: the star only shows on the Légende frame.
+  String get levelUpPrestigeWear;
+  /// Level up past 50, when the next level gives no item.
+  String progressionNextStar(int level);
+  /// Ghost offer refused by the server (GHOST_PREMIUM_REQUIRED).
+  String get ghostPremiumRequired;
+  /// Achievement detail: a tier reached but held for an admin review.
+  String get achievementPendingReview;
+  String get achievementPendingReviewHint;
+  // --- fin tour 5 ---
+  // --- home final ---
+  /// Player card (S1): the « Modifier » button of one's own card → locker.
+  String get homeEditCard;
+  String get homeEditCardLabel;
+  /// Player card (S1): under the level number, in the hexagon.
+  String get homeLevelHexLabel;
+  /// « +40 XP »: the XP a way of playing or a quest pays.
+  String homeXpGain(int xp);
+  /// Home quest strip: the daily quest in progress, the weekly one once the daily are done.
+  String homeQuestDaily(String quest);
+  String homeQuestWeekly(String quest);
+  String get homeQuestsAllDone;
+  /// Screen reader: « 2/3 » on the quest strip.
+  String homeQuestsDoneLabel(int done, int total);
+  /// Compétitif: « 3 matchs classés en direct », and the quiet line with none.
+  String homeLiveRanked(int count);
+  String get homeLiveNone;
+  /// Compétitif: « Platine dans 191 pts ».
+  String homeNextRankIn(String rank, int points);
+  /// Compétitif during placement: « Compétitif · Placement », « Ton rang dans 2 matchs ».
+  String get homePlacementLabel;
+  String homePlacementLeft(int count);
+  /// Compétitif, event states: the button and their caption.
+  String get homeResume;
+  String get homeJoin;
+  String homeMatchInProgress(String opponent);
+  String get homeRankedLockedCaption;
+  String get homeTournamentLiveCaption;
+  String get homeTournamentReadyCaption;
+  /// « Jouer autrement » and its tiles.
+  String get homePlayOtherWays;
+  String get homeNoXp;
+  // --- fin home final ---
+  // --- challenge simple ---
+  /// Daily challenge screen B (docs/progression/ecrans/DefB1, DefB2).
+  /// Header bell: the SnackBar after a tap.
+  String get challengeSRemindOn;
+  String get challengeSRemindOff;
+  /// Screen reader: the streak pill of the header.
+  String challengeSStreakLabel(int days);
+  /// Format card: « 1 essai · caméra IA », then « · fin dans 14 h » (challengeEndsIn).
+  String get challengeSMeta;
+  /// « 14 h »: whole hours left.
+  String challengeSHours(int hours);
+  /// The ⓘ of the format card and the title of its sheet.
+  String get challengeSRuleLabel;
+  String get challengeSRuleOneTry;
+  String get challengeSRuleCamera;
+  String get challengeSRewardsTitle;
+  String challengeSRewardPlay(int xp);
+  String challengeSRewardTop10(int xp);
+  /// Before the ranked try: the n°1 of my board, or nobody yet.
+  String get challengeSToBeat;
+  String get challengeSNobodyYet;
+  String get challengeSBeFirst;
+  String get challengeSPlay;
+  /// Under the Play button: « N°1 : +24 ELO · top 10 % : +50 XP ».
+  String challengeSPrizeLine(int elo, int xp);
+  /// Under the Play button while the board has fewer than 5 players.
+  String challengeSNotOpen(int players);
+  /// After the ranked try: the duel with the n°1.
+  String get challengeSYou;
+  String challengeSPlace(String place, int total);
+  String get challengeSVs;
+  String get challengeSFirst;
+  String get challengeSSecond;
+  String challengeSXpEarned(int xp);
+  String get challengeSReview;
+  String get challengeSPractice;
+  String get challengeSOffBoard;
+  /// The top 5 of the page.
+  String get challengeSLeaderboard;
+  String get challengeSAll;
+  String get challengeSFriends;
+  String challengeSMeRow(String name);
+  String challengeSPlayers(int count);
+  String get challengeSYesterday;
+  String get challengeSNoScores;
+  // --- fin challenge simple ---
+  // --- locker simple ---
+  /// Locker A (docs/progression/ecrans/CasA1, CasA2, CasObtenir).
+  /// The two shelves of each tab: « À toi », « À débloquer ».
+  String get lockerSOwned;
+  String get lockerSToUnlock;
+  /// The short condition under a locked item (« Niv. 27 » is xpLevelShort).
+  String get lockerSCondPremium;
+  String get lockerSCondAchievement;
+  String get lockerSCondLeague;
+  String lockerSCondSeason(int number);
+  String get lockerSCondEvent;
+  String get lockerSCondOnboarding;
+  /// The pill of the locked item's sheet: « Avatar à débloquer ».
+  String get lockerSLockedAvatar;
+  String get lockerSLockedFrame;
+  String get lockerSLockedBackground;
+  String get lockerSLockedTitle;
+  String get lockerSLockedFlight;
+  /// « Essayer sur ma carte » and the tag on the card while trying.
+  String get lockerSTryOnCard;
+  String get lockerSPreview;
+  /// Screen reader: the tag on the card cancels the preview.
+  String get lockerSPreviewCancel;
+  /// How to get it: a level.
+  String lockerSHowLevelTitle(int level);
+  String lockerSHowLevelSub(int level, int left);
+  String lockerSHowLevelReached(int level);
+  String get lockerSSeeLevels;
+  /// How to get it: the premium track.
+  String lockerSHowPremiumTitle(int level);
+  String lockerSHowPremiumSub(int level);
+  String get lockerSHowPremiumNow;
+  String get lockerSGoPremium;
+  /// How to get it: an achievement tier (« Bulls, palier Or »).
+  String lockerSHowAchievementTier(String name, String tier);
+  String get lockerSSeeAchievement;
+  /// How to get it: the weekly league.
+  String lockerSHowLeagueTitle(String league);
+  String get lockerSHowLeagueFirstPromotion;
+  String lockerSHowLeagueSub(String league);
+  String get lockerSSeeLeague;
+  /// How to get it: a season.
+  String lockerSHowSeasonTitle(int number);
+  String get lockerSHowSeasonSub;
+  String lockerSHowSeasonSubDate(String date);
+  String get lockerSHowSeasonOver;
+  /// How to get it: a dated event (« décembre », « Du 11 déc. au 3 janv. »).
+  String lockerSHowEventTitle(String month);
+  String lockerSHowEventDates(String from, String to);
+  String get lockerSSeeQuest;
+  String get lockerSEventNotStarted;
+  String get lockerSEventOver;
+  /// How to get it: the first 7 days.
+  String get lockerSHowOnboardingTitle;
+  String lockerSHowOnboardingDay(int day, int days);
+  String get lockerSHowOnboardingClosed;
+  String get lockerSSeeJourney;
+  /// The letters of a monogram avatar (replaces « Texte du monogramme »).
+  String get lockerSLettersTitle;
+  String get lockerSLettersSub;
+  String get lockerSLettersAuto;
+  String get lockerSLettersDouble;
+  String get lockerSLettersCustom;
+  /// Screen reader: the pencil on the equipped monogram avatar.
+  String get lockerSLettersEdit;
+  // --- fin locker simple ---
+  // --- fantôme secours (Agent Fantôme secours) ---
+  /// Queue: the ghost card's title after [minutes] without an opponent.
+  String ghostQueueNobody(int minutes);
+  // --- fin fantôme secours ---
+  // --- match found duel ---
+  /// Match found: the label over what the series is worth.
+  String get matchFoundStakes;
+
+  /// Match found: head-to-head record, no pronoun ("Bilan 7 – 5").
+  String matchFoundDuelRecord(int wins, int losses);
+
+  /// Match found: under the 3-2-1 ring.
+  String get matchFoundStarting;
+
+  /// Match found: the versus disc.
+  String get matchFoundVsShort;
+  // --- fin match found duel ---
+  // --- fantôme carte B ---
+  /// Queue ghost card: the line under the ghost's card.
+  String get ghostQueueReplayed;
+
+  /// Queue ghost card: the blue button, before the XP.
+  String get ghostQueuePlay;
+
+  /// Queue ghost card: folds the card into the bottom link.
+  String get ghostQueueWait;
+
+  /// Queue ghost card, free player: the gold button to the subscription.
+  String get ghostQueuePremium;
+
+  /// Screen reader: the lock on a free player's blurred ghost card.
+  String get ghostQueueLocked;
+  // --- fin fantôme carte B ---
+  // --- parcours et progression (Agent Parcours) ---
+  /// Levels path: a tier of 10 levels, « Niveaux 21 – 30 ».
+  String pathTierRange(int from, int to);
+
+  /// Levels path: the last card, past level 50.
+  String pathPrestige(int every);
+
+  /// Levels path: two items of one level sharing a name, « Légende · cadre et titre ».
+  String pathPairSame(String name, String kindA, String kindB);
+
+  /// Levels path: short item kinds, for [pathPairSame].
+  String get pathKindAvatar;
+  String get pathKindFrame;
+  String get pathKindBackground;
+  String get pathKindTitle;
+  String get pathKindFlight;
+
+  /// Levels path: XP still needed for the next level, « 774 XP ».
+  String pathXpLeft(String xp);
+
+  /// Screen reader: a level reached / still locked.
+  String get pathReached;
+  String get pathLocked;
+
+  /// Progression tabs.
+  String get questsTabDay;
+  String get questsTabWeek;
+  String get questsTabDiscover;
+  String get questsTabEvent;
+
+  /// Progression, the line under the tabs.
+  String questsNewQuestsIn(String time);
+  String questsWeekLeft(String time);
+  String get questsOnce;
+  String questsEventUntil(String date);
+
+  /// Daily quest changes left today (0 or 1).
+  String questsChanges(int count);
+
+  /// The folded line of the quests done: « 1 terminée · +40 XP gagnés ».
+  String questsDoneSummary(int count, String xp);
+
+  /// The swap icon on a quest that can be changed, and its confirmation.
+  String get questsChangeLabel;
+  String get questsChangeTitle;
+  String get questsChangeBody;
+  String get questsChangeConfirm;
+
+  /// A tab without any quest.
+  String get questsNothing;
+  // --- fin parcours et progression ---
 }
 
 class _AppLocalizationsDelegate

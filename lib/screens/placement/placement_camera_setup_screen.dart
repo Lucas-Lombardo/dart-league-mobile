@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/progression_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/app_navigator.dart';
@@ -12,7 +15,18 @@ class PlacementCameraSetupScreen extends StatefulWidget {
   /// [PlacementGameScreen]; the cricket bot flow injects its own screen.
   final Widget Function()? gameScreenBuilder;
 
-  const PlacementCameraSetupScreen({super.key, this.gameScreenBuilder});
+  /// Runs when the player presses "Play", before the game screen: the
+  /// placement flow creates (or resumes) the server match here, once the
+  /// camera is ready — never at the hub, where the 7-minute idle sweep used to
+  /// kill it during the tripod setup. False keeps the player on this screen
+  /// with an error, the camera still live.
+  final Future<bool> Function()? beforeStart;
+
+  const PlacementCameraSetupScreen({
+    super.key,
+    this.gameScreenBuilder,
+    this.beforeStart,
+  });
 
   @override
   State<PlacementCameraSetupScreen> createState() =>
@@ -45,9 +59,28 @@ class _PlacementCameraSetupScreenState
     handleAppLifecycleState(state);
   }
 
+  /// True while [PlacementCameraSetupScreen.beforeStart] is running.
+  bool _starting = false;
+
   Future<void> _onPlayPressed() async {
-    if (!canPlay) return;
+    if (!canPlay || _starting) return;
     HapticService.mediumImpact();
+    // Discovery quest "Set up your camera" and the first step of the first
+    // 7 days (progression). Fire-and-forget.
+    unawaited(ProgressionService.reportClientAction('camera_setup'));
+    final before = widget.beforeStart;
+    if (before != null) {
+      setState(() => _starting = true);
+      final ok = await before();
+      if (!mounted) return;
+      setState(() => _starting = false);
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLocalizations.of(context).onboardingPlacementStartFailed),
+        ));
+        return;
+      }
+    }
     await prepareForNavigation();
     if (!mounted) return;
     final result = await AppNavigator.toScreen<Map<String, dynamic>>(
@@ -151,8 +184,15 @@ class _PlacementCameraSetupScreenState
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: canPlay ? _onPlayPressed : null,
-              child: Text(dsSentence(getPlayButtonLabel(l10n))),
+              onPressed: canPlay && !_starting ? _onPlayPressed : null,
+              child: _starting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : Text(dsSentence(getPlayButtonLabel(l10n))),
             ),
           ),
         ],

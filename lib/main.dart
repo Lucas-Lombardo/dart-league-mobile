@@ -45,6 +45,9 @@ import 'utils/haptic_service.dart';
 import 'widgets/matchmaking_navigation_gate.dart';
 import 'widgets/friend_match_gate.dart';
 import 'widgets/tournament_invite_gate.dart';
+import 'providers/progression_provider.dart';
+import 'screens/onboarding/onboarding_provider.dart';
+import 'screens/challenge/challenge_entry.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
@@ -176,6 +179,9 @@ void main() async {
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
   };
 
+  // Daily challenge (Agent 2): the "first 7 days" step opens its screen.
+  registerChallengeEntryPoints();
+
   runApp(DartLegendsApp(gameProvider: gameProvider));
 }
 
@@ -223,6 +229,8 @@ class DartLegendsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => ReferralProvider()),
         ChangeNotifierProvider(create: (_) => SeasonProvider()),
+        ChangeNotifierProvider(create: (_) => ProgressionProvider()),
+        ChangeNotifierProvider(create: (_) => OnboardingProvider()),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {

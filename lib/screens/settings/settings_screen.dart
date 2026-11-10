@@ -24,6 +24,8 @@ import 'subscription_screen.dart';
 import '../../providers/referral_provider.dart';
 import 'referral_screen.dart';
 import 'redeem_referral_screen.dart';
+import '../../providers/progression_provider.dart';
+import '../ghost/ghost_settings_section.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -158,6 +160,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+
+          // Ghost match (Agent 5): "My ghost" — hidden until the server answers.
+          const GhostSettingsSection(),
 
           const SizedBox(height: 16),
           _SettingsGroup(
@@ -488,6 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Referral state is per-account: drop it so the next sign-in
               // does not inherit this user's code and eligibility.
               final referralProvider = context.read<ReferralProvider>();
+              final progressionProvider = context.read<ProgressionProvider>();
               // Pop with the dialog's context, but navigate with the screen's:
               // after the pop the dialog context is unmounted by the time the
               // (network) logout resolves, so guarding navigation on it meant
@@ -495,6 +501,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.pop(dialogContext);
               await authProvider.logout();
               referralProvider.reset();
+              progressionProvider.reset();
               if (context.mounted) {
                 AppNavigator.toLoginClearing(context);
               }

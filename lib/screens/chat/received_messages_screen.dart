@@ -256,6 +256,7 @@ class ConversationRow extends StatelessWidget {
               username: conversation.username,
               online: online,
               size: 40,
+              cosmetics: conversation.cosmetics,
             ),
             const SizedBox(width: 12),
             Expanded(

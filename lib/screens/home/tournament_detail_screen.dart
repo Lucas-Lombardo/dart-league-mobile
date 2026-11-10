@@ -10,7 +10,6 @@ import '../../services/tournament_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/haptic_service.dart';
 import '../../utils/rank_translation.dart';
-import '../../utils/rank_utils.dart';
 import '../../utils/tournament_bracket_logic.dart';
 import '../../utils/tournament_registration_gate.dart';
 import '../../utils/tournament_round.dart';
@@ -22,6 +21,7 @@ import '../../services/spectate_service.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/tournament_bracket_tree.dart';
 import '../../widgets/trophy_image.dart';
+import '../../widgets/progression/progression_widgets.dart';
 import '../spectate/spectator_match_screen.dart';
 import 'community_organizer_panel.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
@@ -2349,7 +2349,12 @@ class _ParticipantRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          RankUtils.getRankBadge(reg.rank ?? 'unranked', size: 28),
+          // The rank badge, or the equipped avatar in its frame ring.
+          FramedAvatar(
+            rank: reg.rank ?? 'unranked',
+            cosmetics: reg.cosmetics,
+            size: 28,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Row(

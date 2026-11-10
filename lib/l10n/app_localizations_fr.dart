@@ -710,7 +710,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainWhileWaiting => 'S\'ENTRAÎNER EN ATTENDANT';
   @override
   String get trainWhileWaitingSubtitle =>
-      'Entraînez-vous maintenant — on vous bascule dans le match dès qu\'un adversaire est trouvé.';
+      'Tu passes au match dès qu\'un adversaire arrive.';
   @override
   String get peakHours => 'HEURES DE POINTE';
   @override
@@ -3942,4 +3942,1234 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get profileWinsLosses => 'Victoires – défaites';
+
+  // ---- Progression & rewards ----
+  @override
+  String xpLevelShort(int level) => 'Niv. $level';
+
+  @override
+  String xpLevel(int level) => 'Niveau $level';
+
+  @override
+  String xpProgressValue(String current, String total) => '$current / $total XP';
+
+  @override
+  String get progressionTitle => 'Progression';
+
+  @override
+  String get progressionPath => 'Parcours';
+
+
+  @override
+  String progressionNextReward(int level, String reward) => 'Niveau $level : $reward';
+
+
+  @override
+  String get progressionShowcase => 'Vitrine vue par tes adversaires';
+
+  @override
+  String get progressionCustomize => 'Personnaliser';
+
+  @override
+  String get progressionItems => 'Objets';
+
+  @override
+  String get questsToday => "Aujourd'hui";
+
+
+
+
+
+
+
+
+  @override
+  String get questsRerollFailed => 'Impossible de changer cette quête';
+
+  @override
+  String get questsRow => 'Quêtes';
+
+  @override
+  String questsRowSubtitle(int done, int total, int xp) => '$done sur $total · +$xp XP à prendre';
+
+  @override
+  String get questsAllDone => 'Tout est fait · nouvelles demain';
+
+  @override
+  String questXp(int xp) => '+$xp XP';
+
+  @override
+  String durationDaysShort(int days) => '$days j';
+
+  @override
+  String durationHoursShort(int hours) => '$hours h';
+
+  @override
+  String durationMinutesShort(int minutes) => '$minutes min';
+
+  @override
+  String get itemKindAvatar => 'avatar';
+
+  @override
+  String get itemKindFrame => 'cadre de carte';
+
+  @override
+  String get itemKindBackground => 'fond de carte';
+
+  @override
+  String get itemKindTitle => 'titre';
+
+  @override
+  String get itemKindFlight => 'flights';
+
+  @override
+  String get itemKindBadge => 'badge';
+
+  @override
+  String get levelsPathBase => 'Avatar de rang, fond uni';
+
+
+
+  @override
+  String get levelUpTitle => 'Niveau supérieur';
+
+  @override
+  String levelUpProgress(String current, String total, int next) => '$current / $total XP vers le niveau $next';
+
+  @override
+  String get levelUpUnlocks => 'Tu débloques';
+
+  @override
+  String get levelUpVisible => 'Visible sur ta carte, en match et au classement';
+
+  @override
+  String get levelUpEquipNow => 'Équiper maintenant';
+
+  @override
+  String get levelUpLater => 'Plus tard';
+
+  @override
+  String get lockerTitle => 'Casier';
+
+  @override
+  String get lockerTabAvatars => 'Avatars';
+
+  @override
+  String get lockerTabFrames => 'Cadres';
+
+  @override
+  String get lockerTabBackgrounds => 'Fonds';
+
+  @override
+  String get lockerTabTitles => 'Titres';
+
+  @override
+  String get lockerTabFlights => 'Flights';
+
+  @override
+  String get lockerDefaultAvatar => 'Ton rang';
+
+  @override
+  String get lockerNone => 'Aucun';
+
+  @override
+  String get lockerEquipped => 'Équipé';
+
+  @override
+  String get lockerEquipFailed => 'Impossible d’équiper cet objet';
+
+  @override
+  String get lockerMonogramHint => '1 à 3 lettres ou chiffres';
+
+  @override
+  String get lockerSave => 'Enregistrer';
+
+  @override
+  String get matchFoundTitle => 'Match trouvé';
+
+  @override
+  String get matchFoundRanked => 'Série classée · BO3 · 501';
+
+  @override
+  String get matchFoundFriendly => 'Match amical';
+
+  @override
+  String get matchFoundYou => 'Toi';
+
+  @override
+  String get matchFoundOpponent => 'Adversaire';
+
+  @override
+  String get matchFoundGhost => 'Fantôme';
+
+  @override
+  String get xpEarnedTitle => 'XP gagnée';
+
+  @override
+  String get xpPending => 'Calcul de ton XP…';
+
+  @override
+  String xpLevelReached(int level) => 'Niveau $level atteint';
+
+  @override
+  String xpItemUnlocked(String item) => '$item débloqué';
+
+  // --- progression (Agent 1) ---
+  @override
+  String get matchFoundFirstMeeting => 'Première rencontre';
+  // --- fin progression ---
+
+  // --- league (Agent 4) ---
+  @override
+  String get leagueWeeklyTitle => 'Ligue de la semaine';
+
+  @override
+  String leagueName(String league) => 'Ligue $league';
+
+  @override
+  String leaguePlace(int position) => position == 1 ? '1ᵉʳ' : '$positionᵉ';
+
+  @override
+  String leaguePoints(String points) => '$points pts';
+
+  @override
+  String leagueTimeLeft(String duration) => 'encore $duration';
+
+  @override
+  String get leagueWeekOver => 'semaine terminée';
+
+  @override
+  String get leagueResultsMonday => 'résultat lundi';
+
+  @override
+  String leaguePromoteZone(String league) => 'montent en Ligue $league';
+
+  @override
+  String leagueRelegateZone(int from, int to, String league) => '$from à $to redescendent en $league';
+
+  @override
+  String get leagueEverythingCounts => 'Tout rapporte';
+
+  @override
+  String leagueRuleWinBonus(int bonus) => '+$bonus si gagnée';
+
+  @override
+  String get leagueYou => 'Toi';
+
+  @override
+  String get leagueFirstTitle => 'Ta première ligue commence lundi';
+
+  @override
+  String get leagueFirstBody =>
+      'Joue cette semaine : lundi, tu rejoins un groupe de joueurs de ta ligue. Chaque dimanche soir, les premiers montent, les derniers descendent.';
+
+  @override
+  String get leagueBackTitle => 'Ta ligue reprend lundi';
+
+  @override
+  String get leagueBackBody => 'Tu n’as pas joué la semaine dernière. Joue cette semaine pour retrouver un groupe lundi.';
+
+  @override
+  String leagueStartsIn(String duration) => 'Dans $duration';
+
+  @override
+  String get leagueClosedBody => 'Classement final. Ton résultat arrive lundi, à l’ouverture de l’appli.';
+
+  @override
+  String leagueWeekdayShort(int weekday) =>
+      const ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'][(weekday - 1).clamp(0, 6)];
+
+  @override
+  String leagueWeekdayLong(int weekday) =>
+      const ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][(weekday - 1).clamp(0, 6)];
+
+  @override
+  String leagueHour(int hour) => '${hour % 24} h';
+
+  @override
+  String leagueEndsOn(String day, String hour) => 'fin $day $hour';
+
+  @override
+  String leagueWeekFinished(int week) => 'Semaine $week terminée';
+
+  @override
+  String get leagueResultUp => 'Tu montes';
+
+  @override
+  String get leagueResultDown => 'Tu redescends';
+
+  @override
+  String get leagueResultStay => 'Tu restes';
+
+  @override
+  String leagueOutOf(int size) => 'sur $size';
+
+  @override
+  String get leaguePointsLabel => 'points';
+
+  @override
+  String get leagueXpLabel => 'XP';
+
+  @override
+  String leagueRewardItem(String kind, String name) => '$kind « $name »';
+
+  @override
+  String get leaguePodiumBadge => 'Badge Podium';
+
+  @override
+  String leaguePodiumBadgeSub(String place) => '$place de ton groupe';
+
+  @override
+  String leaguePromotedWithOne(String name) => '$name monte avec toi.';
+
+  @override
+  String leaguePromotedWithMany(String names) => '$names montent avec toi.';
+
+  @override
+  String leagueNewWeek(int size, String ends) => 'Ta nouvelle ligue commence maintenant : $size joueurs, $ends.';
+
+  @override
+  String get leagueSeeNewLeague => 'Voir ma nouvelle ligue';
+
+  @override
+  String get leagueContinue => 'Continuer';
+
+  @override
+  String get leagueHistoryTitle => 'Mes semaines de ligue';
+
+  @override
+  String get leagueHistoryTooltip => 'Historique';
+
+  @override
+  String get leagueHistoryEmpty => 'Aucune semaine terminée pour l’instant.';
+
+  @override
+  String leagueHistoryWeek(int week) => 'Semaine $week';
+
+  @override
+  String leagueBest(String league) => 'Meilleure ligue : $league';
+
+  @override
+  String get leagueOutcomeUp => 'montée';
+
+  @override
+  String get leagueOutcomeDown => 'descente';
+
+  @override
+  String get leagueOutcomeStay => 'maintien';
+
+  @override
+  String get leagueLoadFailed => 'Impossible de charger la ligue.';
+
+  @override
+  String get leagueRetry => 'Réessayer';
+  // --- fin league ---
+
+  // --- onboarding (Agent 2b) ---
+  @override
+  String get onboardingPlacementStartFailed =>
+      'Impossible de lancer le match. Vérifie ta connexion et réessaie.';
+
+  @override
+  String get onboardingPlacementBotTurnFailedTitle => 'Connexion perdue';
+
+  @override
+  String get onboardingPlacementBotTurnFailedBody =>
+      'Ta volée n’a pas pu être envoyée. Réessaie, ou quitte : un match de placement se reprend plus tard.';
+
+  @override
+  String get onboardingPlacementSaveFailedTitle => 'Résultat non enregistré';
+
+  @override
+  String get onboardingPlacementSaveFailedBody =>
+      'Le résultat n’a pas pu être enregistré. Vérifie ta connexion et réessaie.';
+
+  @override
+  String get onboardingPlacementMatchGoneTitle => 'Ce match a expiré';
+
+  @override
+  String get onboardingPlacementMatchGoneBody =>
+      'Il n’est plus disponible. Quitte et lance le suivant.';
+
+  @override
+  String get onboardingCheckoutHintLabel => 'Finish';
+
+  @override
+  String get onboardingTitle => 'Tes 7 premiers jours';
+
+  @override
+  String onboardingPremiumAtTheEnd(int days) =>
+      'Au bout : $days jours de premium offerts';
+
+  @override
+  String onboardingDayN(int day) => 'Jour $day';
+
+  @override
+  String onboardingTodayDay(int day) => 'Aujourd’hui · jour $day';
+
+  @override
+  String onboardingTomorrowDay(int day) => 'Demain · jour $day';
+
+  @override
+  String onboardingDayToday(int day) => 'Jour $day · aujourd’hui';
+
+  @override
+  String onboardingDayOpensTomorrow(int day) => 'Jour $day · s’ouvre demain';
+
+  @override
+  String get onboardingBilanReadyTitle => 'Ton bilan de la semaine est prêt';
+
+  @override
+  String get onboardingSee => 'Voir';
+
+  @override
+  String get onboardingSeeBilan => 'Voir mon bilan';
+
+  @override
+  String get onboardingPlayNow => 'Jouer maintenant';
+
+  @override
+  String onboardingXp(int xp) => '+$xp XP';
+
+  @override
+  String onboardingPremiumDays(int days) => '$days jours de premium';
+
+  @override
+  String onboardingRewardItem(String kind, String name) => '$kind « $name »';
+
+  @override
+  String onboardingBilanSteps(int done, int total) => '$done étapes sur $total';
+
+  @override
+  String get onboardingBilanTitle => 'Ta première semaine';
+
+  @override
+  String get onboardingBilanMatches => 'matchs joués';
+
+  @override
+  String get onboardingBilanBestVisit => 'meilleure volée';
+
+  @override
+  String get onboardingBilanAverage => 'moyenne';
+
+  @override
+  String get onboardingBilanSinceDay1 => 'depuis le jour 1';
+
+  @override
+  String get onboardingBilanYourRank => 'ton rang';
+
+  @override
+  String get onboardingBilanUnlocks => 'Tu débloques';
+
+  @override
+  String onboardingBilanPremiumUntil(String date) =>
+      'jusqu’au $date · matchs entre amis, tournois illimités';
+
+  @override
+  String get onboardingBilanPremiumPerks =>
+      'matchs entre amis, tournois illimités';
+
+  @override
+  String onboardingBilanFrame(String name) => 'Cadre $name';
+
+  @override
+  String get onboardingBilanEquipped => 'déjà équipé sur ta carte';
+
+  @override
+  String get onboardingBilanInLocker => 'rangé dans ton casier';
+
+  @override
+  String get onboardingBilanNext =>
+      'La suite : le défi du jour chaque matin, et ta première ligue de la semaine commence lundi.';
+
+  @override
+  String get onboardingBilanShare => 'Partager mon bilan';
+
+  @override
+  String onboardingBilanShareText(int matches, String best, String average) =>
+      'Ma première semaine sur Dart Rivals : $matches matchs, meilleure volée $best, moyenne $average.';
+  // --- fin onboarding ---
+
+  // --- ghost (Agent 5) ---
+  @override
+  String get ghostBadge => 'FANTÔME';
+
+  @override
+  String get ghostPlayButton => 'Jouer contre un fantôme';
+
+  @override
+  String get ghostCameraRequired => 'Le match fantôme se joue avec la caméra IA, comme en classé.';
+
+  @override
+  String get ghostStartError => 'Impossible de lancer le match fantôme.';
+
+  @override
+  String get ghostDailyLimit => 'Ton match classé du jour est déjà joué. Passe premium pour jouer sans limite.';
+
+  @override
+  String get ghostPlacementRequired => 'Termine tes matchs de placement pour jouer contre un fantôme.';
+
+  @override
+  String get ghostOfferExpired => 'Ce fantôme n\'est plus disponible.';
+
+  @override
+  String ghostMatchFoundSubtitle(int bestOf) => 'Match fantôme · BO$bestOf · 501';
+
+  @override
+  String ghostMatchFoundRecord(String date, String average) => 'Son match du $date · moyenne $average';
+
+  @override
+  String ghostPanelCaption(String date) => 'ses vraies fléchettes, à leur vraie place, à son rythme · match du $date';
+
+  @override
+  String get ghostThrowing => 'Le fantôme lance…';
+
+  @override
+  String get ghostSendFailed => 'Ta volée n\'est pas partie.';
+
+  @override
+  String get ghostRetry => 'Réessayer';
+
+  @override
+  String get ghostRecBanner => 'Ta caméra filme la partie, comme en classé. Résultat : un tiers de l\'ELO d\'un classé.';
+
+  @override
+  String get ghostRecBannerNoElo => 'Ta caméra filme la partie, comme en classé. Ce match ne compte pas pour l\'ELO.';
+
+  @override
+  String get ghostLeaveWarning => 'Quitter compte comme une défaite : tu perds un tiers de l\'ELO d\'un classé.';
+
+  @override
+  String get ghostLeaveWarningNoElo => 'Quitter compte comme une défaite (sans ELO en jeu).';
+
+  @override
+  String get ghostLeaveFree => 'Tu n\'as encore rien lancé : quitter ne coûte rien.';
+
+  @override
+  String ghostVs(String name) => 'contre $name · fantôme';
+
+  @override
+  String ghostEloCaption(int elo) => 'ELO · $elo';
+
+  @override
+  String get ghostEloHeldCaption => 'ELO en attente';
+
+  @override
+  String get ghostEloHeld => 'Ta victoire est vérifiée avant de compter : ta vidéo part pour contrôle. Sans décision sous 24 h, ton ELO est ajouté.';
+
+  @override
+  String get ghostEloNoneCaption => 'hors ELO';
+
+  @override
+  String get ghostEloNone => 'Hors ELO : seuls 5 matchs fantômes par jour comptent.';
+
+  @override
+  String get ghostAverageLabel => 'moyenne';
+
+  @override
+  String get ghostProofSending => 'Envoi de ta vidéo pour vérification…';
+
+  @override
+  String get ghostProofSent => 'Vidéo envoyée : ta victoire compte dès qu\'elle est vérifiée, sous 24 h au plus.';
+
+  @override
+  String get ghostProofFailed => 'La vidéo n\'a pas pu partir : elle repartira à la prochaine ouverture.';
+
+  @override
+  String get ghostHome => 'Accueil';
+
+  @override
+  String get ghostResume => 'Reprendre le match fantôme';
+
+  @override
+  String ghostDigestTitle(int count) => 'Ton fantôme a joué $count fois';
+
+  @override
+  String ghostDigestRowSubtitle(int wins, int xp) => '${wins == 1 ? '1 victoire' : '$wins victoires'} · +$xp XP · ton ELO ne bouge pas';
+
+  @override
+  String get ghostDigestWhileAway => 'Pendant ton absence';
+
+  @override
+  String ghostDigestReplays(String date, String average) => 'Il rejoue ton match du $date (moyenne $average)';
+
+  @override
+  String ghostDigestWins(int count) => count == 1 ? '1 victoire de ton fantôme' : '$count victoires de ton fantôme';
+
+  @override
+  String get ghostDigestRecord => 'bilan';
+
+  @override
+  String ghostDigestBeaten(String name, int darts) => '$name a battu ton fantôme de ${darts == 1 ? '1 fléchette' : '$darts fléchettes'}. Une revanche en vrai ?';
+
+  @override
+  String ghostDigestChallenge(String name) => 'Défier $name';
+
+  @override
+  String get ghostDigestChallengeShort => 'Défier';
+
+  @override
+  String get ghostDigestFooter => 'Ton ELO ne bouge pas quand ton fantôme joue.\nTu peux le désactiver dans les réglages.';
+
+  @override
+  String get ghostResultWin => 'V';
+
+  @override
+  String get ghostResultLoss => 'D';
+
+  @override
+  String get ghostSettingsSection => 'Mon fantôme';
+
+  @override
+  String get ghostSettingsEnabled => 'Mes matchs comme fantôme';
+
+  @override
+  String get ghostSettingsEnabledHint => 'D\'autres joueurs rejouent tes matchs. Ton ELO ne bouge pas.';
+
+  @override
+  String get ghostSettingsNotify => 'Notification «\u00A0Ton\u00A0fantôme\u00A0a\u00A0joué\u00A0»';
+
+  @override
+  String get ghostSettingsNotifyHint => 'Une par jour au plus, jamais une par match.';
+  // --- fin ghost ---
+
+  // --- achievement (Agent 3) ---
+  @override
+  String get achievementsTitle => 'Succès';
+  @override
+  String get achievementFamilyAll => 'Tous';
+  @override
+  String get achievementClosest => 'Le plus proche';
+  @override
+  String achievementClosestTier(String name, String tier) => '$name · palier $tier';
+  @override
+  String get achievementTierBronze => 'Bronze';
+  @override
+  String get achievementTierSilver => 'Argent';
+  @override
+  String get achievementTierGold => 'Or';
+  @override
+  String get achievementTierUnique => 'Débloqué';
+  @override
+  String get achievementLocked => 'À débloquer';
+  @override
+  String achievementRarity(String pct) => '$pct % des joueurs';
+  @override
+  String achievementForBronze(String progress) => '$progress pour le Bronze';
+  @override
+  String achievementForSilver(String progress) => '$progress pour l’Argent';
+  @override
+  String achievementForGold(String progress) => '$progress pour l’Or';
+  @override
+  String achievementRecord(String value) => 'record $value';
+  @override
+  String get achievementLoadFailed => 'Impossible de charger les succès.';
+  @override
+  String get achievementRetry => 'Réessayer';
+  @override
+  String get achievementAiOnly => 'Seules les fléchettes validées par l’IA sans correction comptent.';
+  @override
+  String achievementUnlockedOn(String date) => 'débloqué le $date';
+  @override
+  String achievementTarget(String target) => 'objectif $target';
+  @override
+  String get achievementRecent => 'Les dernières fois';
+  @override
+  String achievementRecentVs(String opponent) => 'contre $opponent';
+  @override
+  String achievementRecentLeg(int leg) => 'manche $leg';
+  @override
+  String get achievementReplay => 'Revoir la fléchette';
+  @override
+  String get achievementNoReplay => 'Pas de replay enregistré pour ce match.';
+  @override
+  String get achievementRequiresAge => 'Il faut aussi un an sur l’appli.';
+  @override
+  String get achievementUnlockedTitle => 'Succès débloqué';
+  @override
+  String achievementTierLine(String tier, String target) => 'Palier $tier · $target';
+  @override
+  String achievementPlayersHaveIt(String pct) => '$pct % des joueurs l’ont';
+  @override
+  String get achievementXpAdded => 'ajoutés à ta barre';
+  @override
+  String achievementRewardAt(String tier, String target) => 'au palier $tier ($target)';
+  @override
+  String get achievementRewardNow => 'débloqué maintenant';
+  @override
+  String get achievementPin => 'Épingler sur mon profil';
+  @override
+  String get achievementPinned => 'Épinglé sur ton profil.';
+  @override
+  String get achievementAlreadyPinned => 'Déjà sur ton profil.';
+  @override
+  String get achievementPinFailed => 'Impossible d’épingler ce badge.';
+  @override
+  String get achievementSeeAll => 'Voir tous les succès';
+  @override
+  String get achievementLater => 'Plus tard';
+  @override
+  String achievementMore(int count) => '+ $count autres';
+  @override
+  String get achievementRetroTitle => 'Tes succès sont arrivés';
+  @override
+  String achievementRetroBody(int count) =>
+      count == 1 ? '1 succès débloqué d’après tes matchs passés.' : '$count succès débloqués d’après tes matchs passés.';
+  @override
+  String get achievementBadgesTab => 'Badges';
+  @override
+  String get achievementBadgesHint => 'Épingle jusqu’à 3 badges : tes adversaires les voient.';
+  @override
+  String get achievementBadgesEmpty => 'Pas encore de badge. Débloque un succès pour en gagner un.';
+  @override
+  String get achievementBadgesFull => '3 badges au plus : retires-en un d’abord.';
+  @override
+  String achievementBadgesPinned(int count) => '$count / 3 épinglés';
+  // --- fin achievement ---
+
+  // --- challenge (Agent 2) ---
+  @override
+  String get challengeTitle => 'Défi du jour';
+  @override
+  String challengeStreakDays(int days) => '$days j';
+  @override
+  String challengeRowDone(String format, String place, int total) => '$format · $place / $total';
+  @override
+  String challengeRowPlayed(String format, String score) => '$format · $score';
+  @override
+  String challengePrizeRank(String rank) => 'N°1 $rank :';
+  @override
+  String challengePrizeReward(int elo) => 'badge « N°1 du jour » et +$elo ELO';
+  @override
+  String challengeBoardNotOpen(int players) => '$players/5 joueurs : le classement s’ouvre à 5.';
+  @override
+  String challengeMergedWith(String ranks) => 'Moins de 5 joueurs : $ranks jouent dans ce classement aujourd’hui.';
+  @override
+  String challengeEndsIn(String time) => 'fin dans $time';
+  @override
+  String challengeHoursMinutes(int hours, int minutes) => '$hours h ${minutes.toString().padLeft(2, '0')}';
+  @override
+  String challengeMinutes(int minutes) => '$minutes min';
+  @override
+  String get challengePractice => 'Rejouer pour m’entraîner';
+  @override
+  String get challengePracticeNote => 'Les essais suivants ne comptent pas au classement.';
+  @override
+  String get challengeAbandoned => 'Essai classé commencé mais pas terminé : il ne compte pas.';
+  @override
+  String get challengeExcluded => 'Retiré du classement : ta vidéo n’est pas arrivée à temps.';
+  @override
+  String get challengeExcludedRejected => 'Retiré du classement après contrôle.';
+  @override
+  String get challengeUpdateApp => 'Mets l’appli à jour pour jouer le format du jour.';
+  @override
+  String get challengeYourStreak => 'Ta série';
+  @override
+  String get challengeFreezeAvailable => '1 gel de série en réserve';
+  @override
+  String get challengeFreezeUsed => 'Gel utilisé cette semaine';
+  @override
+  String get challengeLeaderboardTitle => 'Classement du jour';
+  @override
+  String challengeTabRank(String rank, int count) => '$rank · $count';
+  @override
+  String challengeTabAll(int count) => 'Tous · $count';
+  @override
+  String challengeTabFriends(int count) => 'Amis · $count';
+  @override
+  String get challengeEmptyBoard => 'Personne n’a encore joué. Sois le premier.';
+  @override
+  String get challengeEmptyFriends => 'Aucun ami n’a joué aujourd’hui.';
+  @override
+  String get challengeWatchSession => 'Revoir la session';
+  @override
+  String get challengeWatchMySession => 'Revoir ma session';
+  @override
+  String get challengeYesterdayResult => 'Défi d’hier · résultat final';
+  @override
+  String get challengeRemind => 'Rappel à 18 h';
+  @override
+  String get challengeLoadFailed => 'Impossible de charger le défi.';
+  @override
+  String get challengeRetry => 'Réessayer';
+  @override
+  String get challengeUnfinished => 'non fini';
+  @override
+  String get challengeCrownLabel => 'N°1';
+  @override
+  String get challengePlayTotal => 'Total';
+  @override
+  String get challengePlayTarget => 'Cible';
+  @override
+  String get challengePlayRemaining => 'Reste';
+  @override
+  String get challengePlayVisit => 'Volée';
+  @override
+  String get challengePlayDarts => 'Fléchettes';
+  @override
+  String get challengePlayScore => 'Score';
+  @override
+  String get challengePlayHits => 'Touchés';
+  @override
+  String get challengePlayMarks => 'Marques';
+  @override
+  String get challengePlayPoints => 'Points';
+  @override
+  String challengeVisitProgress(int index, int total) => 'Volée $index sur $total';
+  @override
+  String challengeDartProgress(int index, int total) => 'Fléchette $index sur $total';
+  @override
+  String challengeTargetProgress(int index, int total) => 'Cible $index sur $total';
+  @override
+  String challengeCheckoutProgress(int index, int total, int used, int budget) => 'Finition $index sur $total · $used/$budget fléchettes';
+  @override
+  String get challengeAnyDouble => 'Un double';
+  @override
+  String get challengeAnyTriple => 'Un triple';
+  @override
+  String get challengeRankedBadge => 'Classé';
+  @override
+  String get challengePracticeBadge => 'Entraînement';
+  @override
+  String get challengeQuitRankedTitle => 'Arrêter l’essai classé ?';
+  @override
+  String get challengeQuitRankedBody => 'Ton score actuel est envoyé tel quel. Tu n’auras pas d’autre essai classé aujourd’hui.';
+  @override
+  String get challengeSubmitting => 'Envoi de tes fléchettes…';
+  @override
+  String get challengeSubmitFailed => 'Impossible d’envoyer tes fléchettes. Vérifie ta connexion.';
+  @override
+  String get challengeStartFailed => 'Impossible de lancer le défi.';
+  @override
+  String challengeResultTitle(String date) => 'Défi du $date';
+  @override
+  String challengeBestVisit(int value) => 'meilleure volée : $value';
+  @override
+  String challengePlaceSub(String rank, String place, int total) => '$rank · $place / $total tous';
+  @override
+  String get challengeStreakPlus => 'série · +1';
+  @override
+  String get challengePassedPrefix => 'Tu passes devant';
+  @override
+  String get challengeAnd => 'et';
+  @override
+  String challengeLeaderStays(String name, String score, String left) => '$name reste n°1 avec $score : il reste $left pour les autres.';
+  @override
+  String challengeYouLead(String left) => 'Tu es n°1 pour l’instant : il reste $left pour les autres.';
+  @override
+  String get challengeProofSending => 'Ta session part';
+  @override
+  String get challengeProofSent => 'Ta session est envoyée';
+  @override
+  String get challengeProofWhy => 'Tu es dans le top 3 de ton rang : la vidéo sert de preuve.';
+  @override
+  String get challengeProofReceived => 'reçue';
+  @override
+  String get challengeProofFailed => 'Vidéo pas encore envoyée. Garde l’appli ouverte pour réessayer avant 1 h.';
+  @override
+  String get challengeTop10Pending => '+50 XP après minuit si tu restes dans le top 10 %.';
+  @override
+  String get challengePracticeResult => 'Entraînement : hors classement';
+  @override
+  String get challengeShare => 'Partager mon résultat';
+  @override
+  String get challengeShareFailed => 'Impossible de partager la carte.';
+  @override
+  String challengeShareText(String format, String score) => 'Mon défi du jour sur Dart Rivals : $format, $score. Fais mieux que moi.';
+  @override
+  String challengeStoryHeader(String date) => 'défi du $date';
+  @override
+  String challengeStoryTop(int pct) => 'top $pct %';
+  @override
+  String challengeStoryPlace(String place, String rank) => '$place $rank';
+  @override
+  String challengeStoryStreak(int days) => 'série $days j';
+  @override
+  String get challengeStoryLine => 'Fais mieux que moi.';
+  @override
+  String get challengeStoryCta => 'Télécharge Dart Rivals';
+  @override
+  String challengePodiumFirst(String rank) => 'N°1 $rank';
+  @override
+  String get challengePodiumEmpty => 'Pas de résultat final pour hier.';
+  @override
+  String get challengePodiumNotClosed => 'Le classement se clôt à 1 h.';
+  @override
+  String get challengeNoFirst => 'Pas de n°1 : le classement n’a pas atteint 5 joueurs.';
+  @override
+  String get challengeEloLabel => 'ELO';
+  @override
+  String get challengeBadgeLabel => 'badge N°1';
+  @override
+  String get challengeSessionVerified => 'Session vérifiée';
+  @override
+  String challengeSessionVerifiedBody(int ai, int corrected) => '$ai fléchettes lues par l’IA, ${corrected == 0 ? 'aucune corrigée' : '$corrected corrigée${corrected > 1 ? 's' : ''}'}. Visible par tous pendant 30 jours.';
+  @override
+  String get challengeSessionPending => 'Session en cours de vérification';
+  @override
+  String get challengeSessionPendingBody => 'Badge et ELO à 10 h si le contrôle est bon.';
+  @override
+  String challengePodiumYourPlace(String place, int total, int xp) => 'Tu finis $place / $total · +$xp XP';
+  @override
+  String get challengePinBadge => 'Épingler le badge';
+  @override
+  String get challengeCrownAvatar => 'Avatar « Couronne »';
+  @override
+  String challengeWinsOf(int wins, int goal) => '$wins / $goal victoires';
+  @override
+  String challengeSessionSubtitle(String rank, String format, String date) => 'N°1 $rank · $format · $date';
+  @override
+  String get challengeSessionCorrected => 'corrigée';
+  @override
+  String get challengeSessionNoVideo => 'Pas de vidéo pour cette session.';
+  @override
+  String challengeVisitOverlay(int index, int value) => 'VOLÉE $index · $value';
+  @override
+  String get challengePlayerCamera => 'caméra du joueur';
+  @override
+  String get challengePlay => 'Lecture';
+  @override
+  String get challengePause => 'Pause';
+  @override
+  String get challengeReport => 'Signaler cette session';
+  @override
+  String get challengeReported => 'Signalée, merci.';
+  @override
+  String get challengeReportFailed => 'Impossible d’envoyer le signalement.';
+  @override
+  String get challengeReportReasonScore => 'Le score ne correspond pas aux fléchettes';
+  @override
+  String get challengeReportReasonHidden => 'Fléchettes hors champ';
+  @override
+  String get challengeReportReasonEdited => 'Fléchettes mal corrigées';
+  @override
+  String get challengeReportReasonOther => 'Autre chose';
+  @override
+  String challengeCorrectedVisits(String name, int count) => '$name a corrigé $count fléchette${count > 1 ? 's' : ''} à la main. La vidéo montre la cible.';
+  // --- fin challenge ---
+
+  // --- finitions (Agent Finitions) ---
+  @override
+  String leagueMatchMoved(String league, int points, String from, String to) =>
+      '$league : +$points pts, tu passes de $from à $to.';
+
+  @override
+  String leagueMatchStayed(String league, int points, String place) =>
+      '$league : +$points pts, tu restes $place.';
+  // --- fin finitions ---
+
+  // --- tour 5 (Agent Tour 5) ---
+  @override
+  String prestigeStarName(int n) => 'Étoile de prestige $n';
+  @override
+  String get prestigeStarKind => 'Cadre Légende';
+  @override
+  String get levelUpPrestigeHint => 'Une étoile de plus sur ton cadre Légende.';
+  @override
+  String get levelUpPrestigeWear => 'Elle se voit quand tu portes le cadre Légende.';
+  @override
+  String progressionNextStar(int level) => 'Prochaine étoile de prestige au niveau $level';
+  @override
+  String get ghostPremiumRequired => 'Le match fantôme est réservé au premium.';
+  @override
+  String get achievementPendingReview => 'En vérification';
+  @override
+  String get achievementPendingReviewHint =>
+      'Moins de 95 % de tes fléchettes ont été lues par l’IA sur cette série : le palier est vérifié avant d’être donné, sous 24 h au plus.';
+  // --- fin tour 5 ---
+  // --- home final ---
+  @override
+  String get homeEditCard => 'Modifier';
+  @override
+  String get homeEditCardLabel => 'Modifier ma carte';
+  @override
+  String get homeLevelHexLabel => 'NIV.';
+  @override
+  String homeXpGain(int xp) => '+$xp XP';
+  @override
+  String homeQuestDaily(String quest) => 'Quête : $quest';
+  @override
+  String homeQuestWeekly(String quest) => 'Semaine : $quest';
+  @override
+  String get homeQuestsAllDone => 'Quêtes du jour terminées';
+  @override
+  String homeQuestsDoneLabel(int done, int total) => '$done quêtes du jour faites sur $total';
+  @override
+  String homeLiveRanked(int count) =>
+      count == 1 ? '1 match classé en direct' : '$count matchs classés en direct';
+  @override
+  String get homeLiveNone => 'Aucun match classé en direct';
+  @override
+  String homeNextRankIn(String rank, int points) => '$rank dans $points pts';
+  @override
+  String get homePlacementLabel => 'Placement';
+  @override
+  String homePlacementLeft(int count) =>
+      count == 1 ? 'Ton rang dans 1 match' : 'Ton rang dans $count matchs';
+  @override
+  String get homeResume => 'Reprendre';
+  @override
+  String get homeJoin => 'Rejoindre';
+  @override
+  String homeMatchInProgress(String opponent) => 'Contre $opponent';
+  @override
+  String get homeRankedLockedCaption => 'Bloqué pendant ton tournoi';
+  @override
+  String get homeTournamentLiveCaption => 'Ta manche est en cours';
+  @override
+  String get homeTournamentReadyCaption => 'Ton match est prêt';
+  @override
+  String get homePlayOtherWays => 'Jouer autrement';
+  @override
+  String get homeNoXp => 'sans XP';
+  // --- fin home final ---
+  // --- challenge simple ---
+  @override
+  String get challengeSRemindOn => 'Rappel à 18 h activé';
+  @override
+  String get challengeSRemindOff => 'Rappel à 18 h désactivé';
+  @override
+  String challengeSStreakLabel(int days) => days == 1 ? 'Ta série : 1 jour' : 'Ta série : $days jours';
+  @override
+  String get challengeSMeta => '1 essai · caméra IA';
+  @override
+  String challengeSHours(int hours) => '$hours h';
+  @override
+  String get challengeSRuleLabel => 'Règle complète';
+  @override
+  String get challengeSRuleOneTry => '1 seul essai compte, les suivants sont de l’entraînement.';
+  @override
+  String get challengeSRuleCamera => 'Caméra IA obligatoire. Si tu finis dans le top 3, ta session est filmée.';
+  @override
+  String get challengeSRewardsTitle => 'À gagner';
+  @override
+  String challengeSRewardPlay(int xp) => '+$xp XP pour jouer';
+  @override
+  String challengeSRewardTop10(int xp) => '+$xp XP dans le top 10 %';
+  @override
+  String get challengeSToBeat => 'À battre';
+  @override
+  String get challengeSNobodyYet => 'Personne n’a encore joué';
+  @override
+  String get challengeSBeFirst => 'Sois le premier';
+  @override
+  String get challengeSPlay => 'Jouer';
+  @override
+  String challengeSPrizeLine(int elo, int xp) => 'N°1 : +$elo ELO · top 10 % : +$xp XP';
+  @override
+  String challengeSNotOpen(int players) => 'Classement ouvert à 5 joueurs · $players/5';
+  @override
+  String get challengeSYou => 'Toi';
+  @override
+  String challengeSPlace(String place, int total) => '$place sur $total';
+  @override
+  String get challengeSVs => 'vs';
+  @override
+  String get challengeSFirst => 'N°1';
+  @override
+  String get challengeSSecond => 'N°2';
+  @override
+  String challengeSXpEarned(int xp) => '+$xp XP gagnés';
+  @override
+  String get challengeSReview => 'Revoir mon essai';
+  @override
+  String get challengeSPractice => 'S’entraîner';
+  @override
+  String get challengeSOffBoard => '· hors classement';
+  @override
+  String get challengeSLeaderboard => 'Classement';
+  @override
+  String get challengeSAll => 'Tous';
+  @override
+  String get challengeSFriends => 'Amis';
+  @override
+  String challengeSMeRow(String name) => '$name · toi';
+  @override
+  String challengeSPlayers(int count) => count == 1 ? '1 joueur' : 'Les $count joueurs';
+  @override
+  String get challengeSYesterday => 'N°1 d’hier';
+  @override
+  String get challengeSNoScores => 'Aucun score pour l’instant.';
+  // --- fin challenge simple ---
+  // --- locker simple ---
+  @override
+  String get lockerSOwned => 'À toi';
+  @override
+  String get lockerSToUnlock => 'À débloquer';
+  @override
+  String get lockerSCondPremium => 'Premium';
+  @override
+  String get lockerSCondAchievement => 'Succès';
+  @override
+  String get lockerSCondLeague => 'Ligue';
+  @override
+  String lockerSCondSeason(int number) => 'Saison $number';
+  @override
+  String get lockerSCondEvent => 'Événement';
+  @override
+  String get lockerSCondOnboarding => '7 jours';
+  @override
+  String get lockerSLockedAvatar => 'Avatar à débloquer';
+  @override
+  String get lockerSLockedFrame => 'Cadre à débloquer';
+  @override
+  String get lockerSLockedBackground => 'Fond à débloquer';
+  @override
+  String get lockerSLockedTitle => 'Titre à débloquer';
+  @override
+  String get lockerSLockedFlight => 'Flight à débloquer';
+  @override
+  String get lockerSTryOnCard => 'Essayer sur ma carte';
+  @override
+  String get lockerSPreview => 'Aperçu';
+  @override
+  String get lockerSPreviewCancel => 'Aperçu. Touche pour revenir à ta carte.';
+  @override
+  String lockerSHowLevelTitle(int level) => 'Atteins le niveau $level';
+  @override
+  String lockerSHowLevelSub(int level, int left) =>
+      left == 1 ? 'Tu es niveau $level · encore 1 niveau' : 'Tu es niveau $level · encore $left niveaux';
+  @override
+  String lockerSHowLevelReached(int level) => 'Tu es niveau $level';
+  @override
+  String get lockerSSeeLevels => 'Voir les niveaux';
+  @override
+  String lockerSHowPremiumTitle(int level) => 'Premium, au niveau $level';
+  @override
+  String lockerSHowPremiumSub(int level) => 'Tu es niveau $level · sans Premium';
+  @override
+  String get lockerSHowPremiumNow => 'Passe Premium : il est à toi tout de suite';
+  @override
+  String get lockerSGoPremium => 'Passer Premium';
+  @override
+  String lockerSHowAchievementTier(String name, String tier) => '$name, palier $tier';
+  @override
+  String get lockerSSeeAchievement => 'Voir le succès';
+  @override
+  String lockerSHowLeagueTitle(String league) => 'Atteins la ligue $league';
+  @override
+  String get lockerSHowLeagueFirstPromotion => 'Monte de ligue pour la première fois';
+  @override
+  String lockerSHowLeagueSub(String league) => 'Tu es en ligue $league';
+  @override
+  String get lockerSSeeLeague => 'Voir ma ligue';
+  @override
+  String lockerSHowSeasonTitle(int number) => 'Joue en classé pendant la saison $number';
+  @override
+  String get lockerSHowSeasonSub => 'Donné à la fin de la saison';
+  @override
+  String lockerSHowSeasonSubDate(String date) => 'Donné à la fin de la saison · $date';
+  @override
+  String get lockerSHowSeasonOver => 'Plus disponible';
+  @override
+  String lockerSHowEventTitle(String month) => 'Quête de l’événement de $month';
+  @override
+  String lockerSHowEventDates(String from, String to) => 'Du $from au $to';
+  @override
+  String get lockerSSeeQuest => 'Voir la quête';
+  @override
+  String get lockerSEventNotStarted => 'Pas encore commencé';
+  @override
+  String get lockerSEventOver => 'Terminé';
+  @override
+  String get lockerSHowOnboardingTitle => 'Tes 7 premiers jours';
+  @override
+  String lockerSHowOnboardingDay(int day, int days) => 'Jour $day/$days';
+  @override
+  String get lockerSHowOnboardingClosed => 'Réservé aux nouveaux comptes';
+  @override
+  String get lockerSSeeJourney => 'Voir mon parcours';
+  @override
+  String get lockerSLettersTitle => 'Les lettres de ton avatar';
+  @override
+  String get lockerSLettersSub => 'Elles s’écrivent sur ta médaille.';
+  @override
+  String get lockerSLettersAuto => 'Tes initiales';
+  @override
+  String get lockerSLettersDouble => 'Ton double';
+  @override
+  String get lockerSLettersCustom => 'Au choix';
+  @override
+  String get lockerSLettersEdit => 'Changer les lettres de ton avatar';
+  // --- fin locker simple ---
+  // --- fantôme secours (Agent Fantôme secours) ---
+  @override
+  String ghostQueueNobody(int minutes) => 'Personne depuis $minutes\u00a0min';
+  // --- fin fantôme secours ---
+  // --- match found duel ---
+  @override
+  String get matchFoundStakes => 'En jeu';
+  @override
+  String matchFoundDuelRecord(int wins, int losses) => 'Bilan $wins – $losses';
+  @override
+  String get matchFoundStarting => 'Le match commence';
+  @override
+  String get matchFoundVsShort => 'VS';
+  // --- fin match found duel ---
+  // --- fantôme carte B ---
+  @override
+  String get ghostQueueReplayed => 'Ses vraies fléchettes, rejouées';
+  @override
+  String get ghostQueuePlay => 'Jouer';
+  @override
+  String get ghostQueueWait => 'Attendre';
+  @override
+  String get ghostQueuePremium => 'Premium';
+  @override
+  String get ghostQueueLocked => 'Match fantôme, réservé à Premium';
+  // --- fin fantôme carte B ---
+  // --- parcours et progression (Agent Parcours) ---
+  @override
+  String pathTierRange(int from, int to) => 'Niveaux $from – $to';
+  @override
+  String pathPrestige(int every) => 'Prestige · une étoile tous les $every niveaux';
+  @override
+  String pathPairSame(String name, String kindA, String kindB) => '$name\u00a0· $kindA et $kindB';
+  @override
+  String get pathKindAvatar => 'avatar';
+  @override
+  String get pathKindFrame => 'cadre';
+  @override
+  String get pathKindBackground => 'fond';
+  @override
+  String get pathKindTitle => 'titre';
+  @override
+  String get pathKindFlight => 'flights';
+  @override
+  String pathXpLeft(String xp) => '$xp XP';
+  @override
+  String get pathReached => 'Atteint';
+  @override
+  String get pathLocked => 'Verrouillé';
+  @override
+  String get questsTabDay => 'Jour';
+  @override
+  String get questsTabWeek => 'Semaine';
+  @override
+  String get questsTabDiscover => 'Découvrir';
+  @override
+  String get questsTabEvent => 'Événement';
+  @override
+  String questsNewQuestsIn(String time) => 'Nouvelles quêtes dans $time';
+  @override
+  String questsWeekLeft(String time) => 'Encore $time';
+  @override
+  String get questsOnce => 'Une seule fois';
+  @override
+  String questsEventUntil(String date) => 'Jusqu’au $date';
+  @override
+  String questsChanges(int count) => '$count changement${count > 1 ? 's' : ''}';
+  @override
+  String questsDoneSummary(int count, String xp) => '$count terminée${count > 1 ? 's' : ''} · +$xp XP gagnés';
+  @override
+  String get questsChangeLabel => 'Changer cette quête';
+  @override
+  String get questsChangeTitle => 'Changer cette quête ?';
+  @override
+  String get questsChangeBody => 'Une autre quête du jour la remplace. Un seul changement par jour.';
+  @override
+  String get questsChangeConfirm => 'Changer';
+  @override
+  String get questsNothing => 'Rien pour l’instant';
+  // --- fin parcours et progression ---
 }

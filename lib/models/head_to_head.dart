@@ -1,3 +1,5 @@
+import 'progression.dart';
+
 // Models for GET /stats/head-to-head/:opponentId.
 //
 // `record` counts ENCOUNTERS — a ranked best-of-3 is one, not three — while
@@ -21,7 +23,11 @@ class HeadToHeadOpponent {
     required this.elo,
     required this.rank,
     required this.isPremium,
+    this.cosmetics,
   });
+
+  /// Progression cosmetics (additive; null on an old server).
+  final PublicCosmetics? cosmetics;
 
   factory HeadToHeadOpponent.fromJson(Map<String, dynamic> json) {
     return HeadToHeadOpponent(
@@ -30,6 +36,7 @@ class HeadToHeadOpponent {
       elo: _i(json['elo']),
       rank: json['rank'] as String? ?? 'bronze',
       isPremium: json['isPremium'] == true,
+      cosmetics: PublicCosmetics.fromJson(json['cosmetics']),
     );
   }
 }

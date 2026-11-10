@@ -13,6 +13,10 @@ import '../../utils/friendly_match_launcher.dart';
 import '../../utils/haptic_service.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/progression/progression_widgets.dart';
+import '../../widgets/progression/metal.dart';
+import '../../models/progression.dart';
+import '../../providers/progression_provider.dart';
 
 /// One conversation — with a friend, or with the team when
 /// [counterpartId] == [kSupportConversationId]. Flat app bar with the
@@ -50,6 +54,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _chat.addThreadListener(_onIncoming);
     _chat.markThreadRead(widget.counterpartId);
     _load();
+    // Progression: the friend's avatar + frame in the title, from the
+    // session cache of players' looks (any entry point: list, profile, push).
+    if (!_isSupport) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          context.read<ProgressionProvider>().ensurePlayers([widget.counterpartId]);
+        } on ProviderNotFoundException {
+          // Built without the provider (tests): the initial disc stays.
+        }
+      });
+    }
   }
 
   @override
@@ -137,6 +153,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           isSupport: _isSupport,
           username: widget.username,
           online: online,
+          cosmetics: _isSupport ? null : maybeWatchProgression(context)?.player(widget.counterpartId)?.cosmetics,
         ),
         actions: [
           if (friend != null)
@@ -337,12 +354,14 @@ class ChatThreadTitle extends StatelessWidget {
   final bool isSupport;
   final String username;
   final bool online;
+  final PublicCosmetics? cosmetics;
 
   const ChatThreadTitle({
     super.key,
     required this.isSupport,
     required this.username,
     required this.online,
+    this.cosmetics,
   });
 
   @override
@@ -351,7 +370,7 @@ class ChatThreadTitle extends StatelessWidget {
     final subtitle = isSupport ? l10n.teamReplyDelay : (online ? l10n.online : '');
     return Row(
       children: [
-        ChatAvatar(isSupport: isSupport, username: username, online: online, size: 36),
+        ChatAvatar(isSupport: isSupport, username: username, online: online, size: 36, cosmetics: cosmetics),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -613,22 +632,36 @@ class ChatAvatar extends StatelessWidget {
   final bool online;
   final double size;
 
+  /// The friend's progression look: when they wear an avatar or a frame,
+  /// it replaces the initial disc (the initial stays inside a bare frame).
+  final PublicCosmetics? cosmetics;
+
   const ChatAvatar({
     super.key,
     required this.isSupport,
     required this.username,
     required this.online,
     this.size = 40,
+    this.cosmetics,
   });
 
   @override
   Widget build(BuildContext context) {
+    final look = !isSupport && FramedAvatar.wearsLook(watchProgressionContent(context), cosmetics);
     return SizedBox(
       width: size,
       height: size,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          if (look)
+            FramedAvatar(
+              rank: 'unranked',
+              cosmetics: cosmetics,
+              size: size,
+              fallback: InitialAvatar(name: username, size: size),
+            )
+          else
           Container(
             width: size,
             height: size,

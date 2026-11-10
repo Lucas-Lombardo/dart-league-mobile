@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/progression.dart';
 import 'api_service.dart';
 
 /// Public identity of one player in a spectatable match.
@@ -9,11 +10,15 @@ class SpectatorPlayer {
   final int elo;
   final String rank;
 
+  /// Progression cosmetics (avatar, frame, flights…). Null on old servers.
+  final PublicCosmetics? cosmetics;
+
   const SpectatorPlayer({
     required this.id,
     required this.username,
     required this.elo,
     this.rank = 'unranked',
+    this.cosmetics,
   });
 
   static SpectatorPlayer? fromJson(dynamic json) {
@@ -26,6 +31,7 @@ class SpectatorPlayer {
       username: username,
       elo: (json['elo'] as num?)?.toInt() ?? 0,
       rank: json['rank'] as String? ?? 'unranked',
+      cosmetics: PublicCosmetics.fromJson(json['cosmetics']),
     );
   }
 }

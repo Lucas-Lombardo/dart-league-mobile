@@ -1,0 +1,137 @@
+{
+  "_note": "Vecteurs partagés du moteur du défi : le backend (challenge-engine.spec.ts) et l'appli (mobile/test/challenge_engine_test.dart, copie de ce fichier) doivent donner exactement ces résultats. Toute nouvelle règle = un vecteur ici, recopié dans l'appli.",
+  "cases": [
+    {
+      "name": "score max 15, complete",
+      "mode": "high_score", "params": { "visits": 5 }, "day": {},
+      "visits": [["T20", "T20", "T20"], ["T20", "T20", "S20"], ["S1", "S5", "S20"], ["M", "M", "M"], ["T19", "T19", "T19"]],
+      "expect": { "score": 517, "tiebreak": 180, "darts": 15, "finished": true }
+    },
+    {
+      "name": "score max 30, partial",
+      "mode": "high_score", "params": { "visits": 10 }, "day": {},
+      "visits": [["T20", "S20", "S20"], ["D20", "S5", "S1"]],
+      "expect": { "score": 146, "tiebreak": 100, "darts": 6, "finished": false }
+    },
+    {
+      "name": "all on 20",
+      "mode": "target_points", "params": { "darts": 21, "segment": 20 }, "day": {},
+      "visits": [["T20", "S20", "D20"], ["T20", "T20", "S1"], ["S5", "M", "S20"], ["T20", "T20", "T20"], ["D20", "M", "M"], ["S20", "S20", "S20"], ["T20", "S19", "S20"], ["T20", "T20", "T20"]],
+      "expect": { "score": 620, "tiebreak": 7, "darts": 21, "finished": true }
+    },
+    {
+      "name": "bull, every bull notation",
+      "mode": "target_points", "params": { "darts": 21, "segment": 25 }, "day": {},
+      "visits": [["DB", "SB", "M"], ["SB", "SB", "SB"], ["DB", "DB", "DB"], ["M", "M", "M"], ["T20", "S25", "M"], ["D25", "M", "M"], ["BULL", "50", "25"]],
+      "expect": { "score": 500, "tiebreak": 7, "darts": 21, "finished": true }
+    },
+    {
+      "name": "bob's 27, three rounds",
+      "mode": "bobs_27", "params": { "start": 27, "targets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25] }, "day": {},
+      "visits": [["D1", "M", "M"], ["M", "M", "M"], ["D3", "D3", "M"]],
+      "expect": { "score": 37, "tiebreak": 3, "darts": 9, "finished": false }
+    },
+    {
+      "name": "bob's 27, out below zero",
+      "mode": "bobs_27", "params": { "start": 27, "targets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25] }, "day": {},
+      "visits": [["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["D6", "D6", "D6"]],
+      "expect": { "score": -3, "tiebreak": 0, "darts": 15, "finished": true }
+    },
+    {
+      "name": "match doubles",
+      "mode": "doubles_block", "params": { "targets": [20, 16, 8], "dartsPer": 10 }, "day": {},
+      "visits": [["M", "D20", "M"], ["D20", "D20", "M"], ["M", "M", "M"], ["D20", "D16", "D16"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["D8", "D8", "D8"]],
+      "expect": { "score": 9, "tiebreak": 2, "darts": 30, "finished": true }
+    },
+    {
+      "name": "doubles clock, finished mid-visit",
+      "mode": "atc", "params": { "ring": "double", "targets": [1, 2, 3], "cap": 99 }, "day": {},
+      "visits": [["D1", "S2", "D2"], ["M", "D3", "D20"]],
+      "expect": { "score": 5, "tiebreak": 3, "darts": 5, "finished": true }
+    },
+    {
+      "name": "doubles clock, stopped by the cap",
+      "mode": "atc", "params": { "ring": "double", "targets": [1, 2, 3], "cap": 6 }, "day": {},
+      "visits": [["D1", "M", "M"], ["M", "D2", "M"], ["D3", "D3", "D3"]],
+      "expect": { "score": 7, "tiebreak": 2, "darts": 6, "finished": true }
+    },
+    {
+      "name": "clock any ring with bull",
+      "mode": "atc", "params": { "ring": "any", "targets": [1, 2, 25], "cap": 99 }, "day": {},
+      "visits": [["T1", "S2", "SB"]],
+      "expect": { "score": 3, "tiebreak": 3, "darts": 3, "finished": true }
+    },
+    {
+      "name": "trebles clock, bull needs the bullseye",
+      "mode": "atc", "params": { "ring": "triple", "targets": [20, 25], "cap": 99 }, "day": {},
+      "visits": [["T20", "SB", "DB"]],
+      "expect": { "score": 3, "tiebreak": 2, "darts": 3, "finished": true }
+    },
+    {
+      "name": "big finish, a bust then the bull",
+      "mode": "checkout_set", "params": { "count": 2, "min": 100, "max": 170, "darts": 9, "scoring": "sum" }, "day": { "finishes": [100, 121] },
+      "visits": [["T20", "D20", "M"], ["T20", "T20", "M"], ["T20", "S11", "DB"]],
+      "expect": { "score": 221, "tiebreak": 0, "darts": 8, "finished": true }
+    },
+    {
+      "name": "big finish, missed: leftover is the tiebreak",
+      "mode": "checkout_set", "params": { "count": 1, "min": 100, "max": 170, "darts": 3, "scoring": "sum" }, "day": { "finishes": [100] },
+      "visits": [["T20", "S20", "M"]],
+      "expect": { "score": 0, "tiebreak": 20, "darts": 3, "finished": true }
+    },
+    {
+      "name": "catch 40",
+      "mode": "checkout_set", "params": { "count": 2, "min": 61, "max": 100, "darts": 6, "scoring": "catch40" }, "day": { "finishes": [61, 82] },
+      "visits": [["T15", "D8", "M"], ["S20", "S20", "S20"], ["S2", "D10", "M"]],
+      "expect": { "score": 4, "tiebreak": 7, "darts": 7, "finished": true }
+    },
+    {
+      "name": "catch 40, missed",
+      "mode": "checkout_set", "params": { "count": 1, "min": 61, "max": 100, "darts": 6, "scoring": "catch40" }, "day": { "finishes": [61] },
+      "visits": [["M", "M", "M"], ["S1", "M", "M"]],
+      "expect": { "score": 0, "tiebreak": 6, "darts": 6, "finished": true }
+    },
+    {
+      "name": "x01 short leg",
+      "mode": "x01", "params": { "start": 101, "doubleOut": true, "cap": 9 }, "day": {},
+      "visits": [["T20", "S1", "M"], ["D20", "M", "M"]],
+      "expect": { "score": 4, "tiebreak": 101, "darts": 4, "finished": true }
+    },
+    {
+      "name": "x01 bust then checkout",
+      "mode": "x01", "params": { "start": 50, "doubleOut": true, "cap": 6 }, "day": {},
+      "visits": [["S20", "S20", "S20"], ["S10", "D20", "M"]],
+      "expect": { "score": 5, "tiebreak": 50, "darts": 5, "finished": true }
+    },
+    {
+      "name": "x01 unfinished at the cap",
+      "mode": "x01", "params": { "start": 501, "doubleOut": true, "cap": 6 }, "day": {},
+      "visits": [["T20", "T20", "T20"], ["T20", "T20", "T20"], ["T20", "T20", "T20"]],
+      "expect": { "score": 7, "tiebreak": 360, "darts": 6, "finished": true }
+    },
+    {
+      "name": "shanghai 10 to 20, partial",
+      "mode": "shanghai", "params": { "from": 10, "to": 20 }, "day": {},
+      "visits": [["S10", "D10", "T10"], ["T11", "M", "S20"], ["M", "M", "M"]],
+      "expect": { "score": 93, "tiebreak": 2, "darts": 9, "finished": false }
+    },
+    {
+      "name": "halve-it",
+      "mode": "halve_it", "params": { "start": 0, "targets": [{ "n": 20 }, { "n": 16 }, { "ring": "double" }, { "n": 17 }, { "ring": "triple" }, { "n": 18 }, { "n": 19 }, { "n": 25 }] }, "day": {},
+      "visits": [["S20", "T20", "M"], ["M", "M", "M"], ["D5", "M", "S1"], ["S17", "S17", "S17"], ["M", "M", "M"], ["D18", "M", "M"], ["M", "M", "M"], ["SB", "DB", "M"]],
+      "expect": { "score": 118, "tiebreak": 5, "darts": 24, "finished": true }
+    },
+    {
+      "name": "jdc, shanghai bonus and part 2",
+      "mode": "jdc", "params": {}, "day": {},
+      "visits": [["S10", "D10", "T10"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["M", "M", "M"], ["D1", "M", "D3"]],
+      "expect": { "score": 260, "tiebreak": 2, "darts": 21, "finished": false }
+    },
+    {
+      "name": "cricket marks",
+      "mode": "cricket_marks", "params": { "darts": 30, "numbers": [15, 16, 17, 18, 19, 20, 25] }, "day": {},
+      "visits": [["T20", "T19", "S15"], ["SB", "DB", "S1"], ["D16", "T14", "M"]],
+      "expect": { "score": 12, "tiebreak": 3, "darts": 9, "finished": false }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import '../../utils/dart_sound_service.dart';
 import '../../utils/haptic_service.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/virtual_dartboard.dart';
+import '../../providers/progression_provider.dart' show maybeWatchProgression;
 import 'logic/quick_count_questions.dart';
 import 'logic/training_strategy.dart';
 import 'training_end_screen.dart';
@@ -31,6 +32,8 @@ class QuickCountScreen extends StatefulWidget {
 
 class _QuickCountScreenState extends State<QuickCountScreen>
     with SingleTickerProviderStateMixin {
+  /// Sent with the result (progression: trainings count after 5 minutes).
+  final DateTime _sessionStartedAt = DateTime.now();
   static const int kQuestions = 10;
   static const Duration kAnswerTime = Duration(seconds: 30);
 
@@ -180,6 +183,7 @@ class _QuickCountScreenState extends State<QuickCountScreen>
     });
     try {
       await TrainingService.submit(
+        startedAt: _sessionStartedAt,
         type: TrainingType.quickCount,
         score: _accuracy,
         dartsThrown: 0,
@@ -359,6 +363,8 @@ class _QuickCountScreenState extends State<QuickCountScreen>
                 child: VirtualDartboard(
                   throws: visible.map(_boardNotation).toList(),
                   size: size,
+                  // Progression: the darts wear my equipped flights.
+                  flightId: maybeWatchProgression(context)?.summary?.cosmetics.flight,
                 ),
               );
             },

@@ -33,8 +33,14 @@ class PlacementService {
     // it. Sent alongside playerRoundThrows, never instead of it: a server that
     // only knows the notations scores the visit exactly as before.
     List<Map<String, dynamic>>? playerRoundDarts,
+    // How many of the player's visits the server already holds before this
+    // one. Makes the call safe to retry: a server that already recorded the
+    // visit (only its answer was lost) replays the bot's reply instead of
+    // counting the visit twice. Ignored by a server that predates it.
+    int? visitIndex,
   }) async {
     final body = <String, dynamic>{'matchId': matchId};
+    if (visitIndex != null) body['visitIndex'] = visitIndex;
     if (playerRoundScore != null) body['playerRoundScore'] = playerRoundScore;
     if (playerRoundThrows != null) body['playerRoundThrows'] = playerRoundThrows;
     if (playerBusted != null) body['playerBusted'] = playerBusted;

@@ -12,6 +12,7 @@ import '../../widgets/design_system.dart';
 import '../shared/camera_setup_mixin.dart';
 import 'matchmaking_screen.dart';
 import '../game/game_screen.dart';
+import '../../services/progression_service.dart';
 
 /// Optional context banner shown under the app bar (e.g. tournament round,
 /// name and opponent). Purely presentational — the screen behaves identically
@@ -124,6 +125,8 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     // transition this State is still mounted, and re-enabling the button
     // there would reopen the double-tap window the busy flag closes.
     var navigated = false;
+    // Discovery quest "Set up your camera" (progression). Fire-and-forget.
+    ProgressionService.reportClientAction('camera_setup');
     try {
       await prepareForNavigation();
       if (!mounted) return;
@@ -158,6 +161,14 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
     await matchmaking.joinQueue(user!.id);
 
     if (!mounted) return true;
+    // Paired on entry: the server emits match_found BEFORE it answers the
+    // join, so the gate has already pushed "Match found" on top of this
+    // screen. Replacing the top route here would swap that screen for the
+    // search screen (whose Cancel / back / pause would then leave a match
+    // that has already started). Stay put: the gate's pushAndRemoveUntil
+    // into the game removes this screen. Returning false gives the button
+    // back, should the match be voided before the game opens.
+    if (matchmaking.matchFound) return false;
     AppNavigator.replaceWith(context, const MatchmakingScreen());
     return true;
   }

@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/progression.dart';
 import '../utils/app_theme.dart';
+import 'progression/metal.dart';
+import 'progression/progression_widgets.dart';
 
 /// A rendered dartboard with impact markers for the current visit — the
 /// spectator's "camera substitute". Real board colours (black/cream beds,
@@ -19,7 +22,17 @@ class VirtualDartboard extends StatelessWidget {
   /// Board diameter in logical pixels.
   final double size;
 
-  const VirtualDartboard({super.key, required this.throws, required this.size});
+  /// The thrower's equipped flights (progression item id): each dart is then
+  /// drawn as that flight seen from the front instead of a white dot. Null
+  /// (or an unknown item) keeps the classic dots. Static: nothing animates.
+  final String? flightId;
+
+  /// Ghost match (Agent 5): where each dart really landed, parallel to
+  /// [throws], as an offset from the centre in fractions of the board radius
+  /// (x right, y down). A null list or entry keeps the bed-centre placement.
+  final List<Offset?>? impacts;
+
+  const VirtualDartboard({super.key, required this.throws, required this.size, this.flightId, this.impacts});
 
   /// Offset from the board center for one notation, or null for a miss.
   /// Mirrors [SpectatorDartboardPainter]'s ring geometry.
@@ -66,15 +79,19 @@ class VirtualDartboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final flight = flightId == null ? null : watchProgressionContent(context)?.item(flightId);
     final markers = <Widget>[];
     for (var i = 0; i < throws.length; i++) {
-      final offset = _offsetFor(throws[i]);
+      final impact = impacts != null && i < impacts!.length ? impacts![i] : null;
+      final offset = impact != null ? impact * (size / 2) : _offsetFor(throws[i]);
       if (offset == null) continue;
       final isLatest = i == throws.length - 1;
       markers.add(
         Transform.translate(
           offset: offset,
-          child: _ImpactMarker(isLatest: isLatest),
+          child: flight != null && flight.type == ItemType.flight
+              ? FlightMarker.forItem(flight, size: 24, rotation: 20.0 + i * 35, isLatest: isLatest)
+              : _ImpactMarker(isLatest: isLatest),
         ),
       );
     }

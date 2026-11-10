@@ -2,6 +2,7 @@ import '../models/user.dart';
 import '../models/match.dart';
 import '../models/inactivity_penalty.dart';
 import 'api_service.dart';
+import '../models/progression.dart';
 
 class UserStats {
   final int totalMatches;
@@ -98,15 +99,22 @@ class LeaderboardEntry {
 }
 
 class UserService {
-  static Future<UserStats> getUserStats(String userId) async {
+  static Future<UserStats> getUserStats(String userId) async =>
+      (await getUserStatsWithCosmetics(userId)).stats;
+
+  /// Same call, plus the player's progression cosmetics (additive top-level
+  /// `cosmetics` field; null on an old server).
+  static Future<({UserStats stats, PublicCosmetics? cosmetics})> getUserStatsWithCosmetics(
+    String userId,
+  ) async {
     final response = await ApiService.get('/users/$userId/stats');
     if (response is Map<String, dynamic>) {
       final statsData = response['stats'] ?? response;
       if (statsData is Map<String, dynamic>) {
-        return UserStats.fromJson(statsData);
+        return (stats: UserStats.fromJson(statsData), cosmetics: PublicCosmetics.fromJson(response['cosmetics']));
       }
     }
-    return UserStats.fromJson(<String, dynamic>{});
+    return (stats: UserStats.fromJson(<String, dynamic>{}), cosmetics: null);
   }
 
   static Future<List<LeaderboardEntry>> getLeaderboard() async {
