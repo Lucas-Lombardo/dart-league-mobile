@@ -6,6 +6,8 @@ import '../utils/app_theme.dart';
 import '../utils/round_labels.dart';
 import '../utils/tournament_bracket_logic.dart';
 import 'design_system.dart';
+import 'progression/metal.dart';
+import 'progression/progression_widgets.dart';
 
 /// "Gagnant demi 2" for an empty slot, or the generic TBD label when the
 /// bracket carries no feeder link.
@@ -423,6 +425,19 @@ class _BracketTile extends StatelessWidget {
       border = AppTheme.border;
     }
 
+    // Progression: the avatar + frame ring of a player who wears one. When
+    // one of the two does, the other row keeps the same gap so the names
+    // stay aligned; a tile where nobody does is unchanged.
+    final content = watchProgressionContent(context);
+    final looks = [match.player1Cosmetics, match.player2Cosmetics];
+    final wears = [
+      for (var slot = 0; slot < 2; slot++)
+        (slot == 0 ? match.player1Id : match.player2Id) != null &&
+            FramedAvatar.wearsLook(content, looks[slot]),
+    ];
+    final avatarSize = compact ? 16.0 : 20.0;
+    final avatarGap = compact ? 5.0 : 6.0;
+
     Widget row(int slot) {
       final id = slot == 0 ? match.player1Id : match.player2Id;
       final name = slot == 0 ? match.player1Username : match.player2Username;
@@ -457,6 +472,16 @@ class _BracketTile extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: padding),
             child: Row(
               children: [
+                if (wears[slot]) ...[
+                  FramedAvatar(
+                    rank: 'unranked',
+                    cosmetics: looks[slot],
+                    size: avatarSize,
+                    fallback: InitialAvatar(name: label, size: avatarSize),
+                  ),
+                  SizedBox(width: avatarGap),
+                ] else if (wears.contains(true))
+                  SizedBox(width: avatarSize + avatarGap),
                 Expanded(
                   child: Text.rich(
                     TextSpan(

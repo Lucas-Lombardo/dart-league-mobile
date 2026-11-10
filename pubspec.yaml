@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.3.6+98
+version: 1.4.0+99
 
 environment:
   sdk: ^3.10.7
@@ -61,6 +61,9 @@ dependencies:
   # CameraX, which changes image-stream behavior the AI dart detection relies on.
   camera_android: ^0.10.10
   path_provider: ^2.1.1
+  # Progression item visuals (avatars-emblems, frames, flights, badges) are
+  # SVG files served by the API — docs/progression/CONTRACT.md §10.
+  flutter_svg: ^2.3.2
   wakelock_plus: ^1.2.8
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
@@ -102,6 +105,9 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   fake_async: ^1.3.3 # SeasonProvider countdown test
+  # Already pulled by flutter_svg; used directly by the SVG capability test
+  # (test/progression_svg_support_test.dart) to compile in strict mode.
+  vector_graphics_compiler: ^1.3.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

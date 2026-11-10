@@ -65,26 +65,22 @@ class _PlacementHubScreenState extends State<PlacementHubScreen> {
     (rank: 'platinum', avg: 55),
   ];
 
-  Future<void> _startNextMatch() async {
-    final provider = context.read<PlacementProvider>();
-    final success = await provider.startMatch();
-    if (success && mounted) {
-      await _runMatchAndHandleResult(provider);
-    }
-  }
+  // Start and resume take the same path: camera first, then POST
+  // /placement/start when the player presses "Play" — the server creates the
+  // match, or hands back the one in progress (with its real scores and its
+  // idle clock re-armed). Creating it here, before the camera, let the cron's
+  // idle sweep kill it while the player was still setting up the tripod.
+  Future<void> _startNextMatch() => _runMatchAndHandleResult();
 
-  Future<void> _resumeActiveMatch() async {
-    final provider = context.read<PlacementProvider>();
-    final active = provider.activeMatch;
-    if (active == null) return;
-    provider.resumeFromActiveMatch(active);
-    await _runMatchAndHandleResult(provider);
-  }
+  Future<void> _resumeActiveMatch() => _runMatchAndHandleResult();
 
-  Future<void> _runMatchAndHandleResult(PlacementProvider provider) async {
+  Future<void> _runMatchAndHandleResult() async {
+    final provider = context.read<PlacementProvider>();
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (context) => const PlacementCameraSetupScreen(),
+        builder: (context) => PlacementCameraSetupScreen(
+          beforeStart: provider.startMatch,
+        ),
       ),
     );
     if (!mounted) return;

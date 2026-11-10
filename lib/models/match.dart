@@ -1,3 +1,5 @@
+import 'progression.dart';
+
 DateTime? _tryParseDateTime(String? value) {
   if (value == null) return null;
   try {
@@ -15,6 +17,10 @@ class Match {
   final String player2Username;
   final bool player1IsPremium;
   final bool player2IsPremium;
+
+  /// Progression cosmetics (match history only; null otherwise).
+  final PublicCosmetics? player1Cosmetics;
+  final PublicCosmetics? player2Cosmetics;
   final int player1Score;
   final int player2Score;
   final String winnerId;
@@ -65,6 +71,8 @@ class Match {
     this.series,
     this.rounds,
     this.statistics,
+    this.player1Cosmetics,
+    this.player2Cosmetics,
   });
 
   bool get isPlacement => matchType == 'placement';
@@ -83,6 +91,8 @@ class Match {
       player2Username: json['player2Username'] as String? ?? 'Unknown',
       player1IsPremium: json['player1IsPremium'] as bool? ?? false,
       player2IsPremium: json['player2IsPremium'] as bool? ?? false,
+      player1Cosmetics: PublicCosmetics.fromJson(json['player1Cosmetics']),
+      player2Cosmetics: PublicCosmetics.fromJson(json['player2Cosmetics']),
       player1Score: json['player1Score'] as int? ?? 501,
       player2Score: json['player2Score'] as int? ?? 501,
       winnerId: json['winnerId'] as String? ?? '',

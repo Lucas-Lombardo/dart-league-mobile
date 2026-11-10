@@ -9,6 +9,7 @@ import '../../widgets/game_turn_ui.dart'
     show GameControlButton, LiveBadge, VisitTotal;
 import '../../widgets/tv_scoreboard.dart';
 import '../../widgets/virtual_dartboard.dart';
+import '../../widgets/progression/progression_widgets.dart' show MatchAvatar;
 
 /// Read-only live view of a ranked/tournament match: virtual board animated
 /// by the per-dart stream, score band, current visit and last-visits feed.
@@ -385,6 +386,10 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
                   VirtualDartboard(
                     throws: p.currentRoundThrows,
                     size: boardSize,
+                    // The thrower's equipped flights (progression).
+                    flightId: (p.currentPlayerId == p.player1?.id ? p.player1 : p.player2)
+                        ?.cosmetics
+                        ?.flight,
                   ),
                   if (!isLive) _buildStatusPill(p, l10n),
                 ],
@@ -495,6 +500,13 @@ class _SpectatorMatchScreenState extends State<SpectatorMatchScreen> {
       myLegs: p.player1LegsWon,
       opponentLegs: p.player2LegsWon,
       caption: dsSentence(l10n.legNumber(p.legNumber)),
+      // Progression: each player's avatar + frame ring (static).
+      myAvatar: p.player1 == null
+          ? null
+          : MatchAvatar(userId: p.player1!.id, rank: p.player1!.rank, cosmetics: p.player1!.cosmetics),
+      opponentAvatar: p.player2 == null
+          ? null
+          : MatchAvatar(userId: p.player2!.id, rank: p.player2!.rank, cosmetics: p.player2!.cosmetics),
     );
   }
 

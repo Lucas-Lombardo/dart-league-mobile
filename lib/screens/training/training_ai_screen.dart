@@ -67,6 +67,9 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
   double _cameraMinZoom = 1.0;
   double _cameraMaxZoom = 1.0;
 
+  /// Sent with the result: the session's duration counts for progression XP.
+  final DateTime _startedAt = DateTime.now();
+
   @override
   void initState() {
     super.initState();
@@ -359,6 +362,7 @@ class _TrainingAiScreenState extends State<TrainingAiScreen>
         dartsThrown: result.dartsThrown,
         completed: result.completed,
         details: result.details,
+        startedAt: _startedAt,
       );
       if (!mounted) return;
       setState(() => _submitting = false);

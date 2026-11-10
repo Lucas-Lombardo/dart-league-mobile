@@ -45,6 +45,8 @@ import '../../widgets/turn_report_banner.dart';
 import '../../widgets/logo_watermark.dart';
 import '../../widgets/auto_score_display.dart';
 import '../../widgets/local_camera_preview.dart';
+import '../../providers/progression_provider.dart';
+import '../../widgets/progression/progression_widgets.dart';
 
 /// Shared base state for GameScreen and TournamentGameScreen.
 /// readGame() returns dynamic to support both GameProvider and TournamentGameProvider.
@@ -1490,6 +1492,25 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
     }
   }
 
+  /// Progression (CONTRACT.md §14.1): my static avatar + frame ring next to
+  /// my name in the match header. Overridable (ghost screens…).
+  Widget? buildMyMatchAvatar(AuthProvider auth) {
+    final user = auth.currentUser;
+    if (user == null) return null;
+    return MatchAvatar(
+      userId: user.id,
+      rank: user.rank,
+      cosmetics: maybeWatchProgression(context)?.summary?.cosmetics ?? user.cosmetics,
+    );
+  }
+
+  /// The opponent's, loaded once by id (GET /progression/cosmetics).
+  Widget? buildOpponentMatchAvatar(dynamic game) {
+    final id = _opponentIdOf(game);
+    if (id == null) return null;
+    return MatchAvatar(userId: id);
+  }
+
   /// Establish the P2P (RTC v2) call and wire the camera/AI pipeline to it:
   /// the camera service pushes into the WebRTC track (p2pMode) and feeds the
   /// same TFLite capture callbacks.
@@ -2323,6 +2344,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
       opponentLegs: opponentLegs,
       showBadges: false,
       myTurn: false,
+      myAvatar: buildMyMatchAvatar(auth),
+      opponentAvatar: buildOpponentMatchAvatar(game),
     );
     final cameraView = buildOpponentTurnVideoLayout(
       game,
@@ -2709,6 +2732,8 @@ abstract class BaseGameScreenState<W extends StatefulWidget> extends State<W>
                             opponentLegs: game.opponentLegsWon,
                             showBadges: false,
                             myTurn: true,
+                            myAvatar: buildMyMatchAvatar(auth),
+                            opponentAvatar: buildOpponentMatchAvatar(game),
                           )
                         : null,
                     visitTotalText: cricket != null

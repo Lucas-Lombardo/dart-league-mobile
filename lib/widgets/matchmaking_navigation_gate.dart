@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -5,8 +7,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/matchmaking_provider.dart';
 import '../screens/game/game_screen.dart';
-import '../utils/app_theme.dart';
-import 'design_system.dart';
+import '../providers/auth_provider.dart';
+import '../screens/progression/match_found_screen.dart';
+import '../utils/rank_utils.dart';
 
 /// Owns match-found navigation globally, independent of the current screen.
 ///
@@ -29,6 +32,27 @@ class MatchmakingNavigationGate extends StatefulWidget {
   @override
   State<MatchmakingNavigationGate> createState() =>
       _MatchmakingNavigationGateState();
+
+  /// Ghost match (Agent 5, CONTRACT.md §14.5). A ghost is "found" by the
+  /// player's own tap rather than a socket event, but it goes through the
+  /// same 6 s "Match found" screen ([matchFound], built with isGhost: true,
+  /// left after its own `seconds`) and the same jump into the match as a
+  /// ranked game: [destination]
+  /// replaces every screen above the home screen. Returns false — and
+  /// navigates nowhere — when no gate is mounted or a real match is already
+  /// being opened: the real opponent always wins that race.
+  static Future<bool> openGhostMatch({
+    required MatchFoundScreen matchFound,
+    required WidgetBuilder destination,
+  }) async {
+    final gate = _MatchmakingNavigationGateState._current;
+    if (gate == null || !gate.mounted || gate._navigating) return false;
+    return gate._openGhostMatch(matchFound, destination);
+  }
+
+  /// Test seam: what the ranked path opens instead of [GameScreen].
+  @visibleForTesting
+  static Widget Function(String matchId, String opponentId)? debugGameScreen;
 }
 
 class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
@@ -80,70 +104,48 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
     if (nav != null && nav.canPop()) nav.pop();
   }
 
+  /// The 6-second "Match found" screen (piste B « Duel », CONTRACT §14.13:
+  /// both S1 cards, ranks, ELO, what the series is worth, the 3-2-1 ring).
+  /// A full-screen route rather than a dialog, but popped the same way by
+  /// [_dismissDialogIfOpen] and removed by the pushAndRemoveUntil into
+  /// GameScreen. The camera and the video call are not started during it.
   void _showMatchFoundDialog(MatchmakingProvider matchmaking) {
     final ctx = _navContext;
-    if (ctx == null) return;
+    final nav = _navigator;
+    if (ctx == null || nav == null) return;
+    final l10n = AppLocalizations.of(ctx);
+    final me = ctx.read<AuthProvider>().currentUser;
 
     _dialogOpen = true;
-    showDialog(
-      context: ctx,
-      barrierDismissible: false,
-      // Theme dialog (surface, 20 px radius): a success check, the title in
-      // sentence case, the opponent on a flat card, the "starting" caption.
-      builder: (context) {
-        final l10n = AppLocalizations.of(context);
-        return Dialog(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle_outline_rounded,
-                  color: AppTheme.success,
-                  size: 48,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  dsSentence(l10n.matchFoundExclamation),
-                  style: AppTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
-                if (matchmaking.opponentId != null) ...[
-                  const SizedBox(height: 18),
-                  DsCard(
-                    child: Column(
-                      children: [
-                        Text(
-                          matchmaking.opponentUsername ?? l10n.unknownPlayer,
-                          style: AppTheme.titleLarge,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          l10n.eloValue.replaceAll(
-                              '{value}', '${matchmaking.opponentElo ?? '???'}'),
-                          style: AppTheme.caption,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  l10n.startingGame,
-                  style: AppTheme.caption,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+    nav
+        .push(
+      MatchFoundScreen.route(
+        MatchFoundScreen(
+          subtitle: l10n.matchFoundRanked,
+          seconds: _matchFoundSeconds,
+          // Head-to-head line, fetched while the screen is up.
+          opponentId: matchmaking.opponentId,
+          me: MatchFoundPlayer(
+            username: me?.username ?? '',
+            rank: me?.rank ?? 'unranked',
+            elo: matchmaking.playerElo ?? me?.elo,
+            cosmetics: matchmaking.playerCosmetics ?? me?.cosmetics,
+            isPremium: me?.isPremiumActive ?? false,
           ),
-        );
-      },
-    ).then((_) {
-      // Cleared however the dialog closes (our dismiss, or removal by the
+          opponent: MatchFoundPlayer(
+            username: matchmaking.opponentUsername ?? l10n.unknownPlayer,
+            rank: matchmaking.opponentElo == null ? 'unranked' : rankFromElo(matchmaking.opponentElo!),
+            elo: matchmaking.opponentElo,
+            cosmetics: matchmaking.opponentCosmetics,
+            isPremium: matchmaking.opponentPremium,
+          ),
+          eloIfWin: matchmaking.eloIfWin,
+          eloIfLoss: matchmaking.eloIfLoss,
+        ),
+      ),
+    )
+        .then((_) {
+      // Cleared however the screen closes (our dismiss, or removal by the
       // pushAndRemoveUntil into GameScreen).
       _dialogOpen = false;
     });
@@ -169,13 +171,17 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
         _dismissDialogIfOpen();
         return;
       }
+      final matchId = matchmaking.matchId!;
+      final opponentId = matchmaking.opponentId!;
       navigator.pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => GameScreen(
-            matchId: matchmaking.matchId!,
-            opponentId: matchmaking.opponentId!,
-            opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
-          ),
+          builder: (_) =>
+              MatchmakingNavigationGate.debugGameScreen?.call(matchId, opponentId) ??
+              GameScreen(
+                matchId: matchId,
+                opponentId: opponentId,
+                opponentUsername: matchmaking.opponentUsername ?? 'Opponent',
+              ),
         ),
         (route) => route.isFirst,
       );
@@ -189,13 +195,58 @@ class _MatchmakingNavigationGateState extends State<MatchmakingNavigationGate> {
       WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
     }
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(seconds: _matchFoundSeconds), () {
       if (mounted) go();
     });
   }
 
+  /// How long the "Match found" screen stays up (validated 9 nov. 2026:
+  /// 6 s, the déroulé of MtDeroule; was 2 s, and a 500 ms dialog before
+  /// that). The server starts nothing at match_found that 4 more seconds
+  /// could cost a player (CONTRACT §14.13).
+  static const int _matchFoundSeconds = MatchFoundScreen.defaultSeconds;
+
+  /// The mounted gate, for [MatchmakingNavigationGate.openGhostMatch].
+  static _MatchmakingNavigationGateState? _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = this;
+  }
+
+  /// Ghost match: same screen, same timing, same navigation as a ranked
+  /// match found by the queue. Holds [_navigating] for the duration so a
+  /// late queue event cannot open a second match on top of it.
+  Future<bool> _openGhostMatch(
+    MatchFoundScreen matchFound,
+    WidgetBuilder destination,
+  ) async {
+    final nav = _navigator;
+    if (nav == null) return false;
+    _navigating = true;
+    try {
+      unawaited(nav.push(MatchFoundScreen.route(matchFound)));
+      // The screen's own length (MatchFoundScreen.defaultSeconds unless told
+      // otherwise), so its 3-2-1 and the navigation always agree.
+      await Future.delayed(Duration(seconds: matchFound.seconds));
+      if (!mounted) return false;
+      final navigator = _navigator;
+      if (navigator == null) return false;
+      unawaited(navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: destination),
+        (route) => route.isFirst,
+      ));
+      WidgetsBinding.instance.addPostFrameCallback((_) => WakelockPlus.enable());
+      return true;
+    } finally {
+      _navigating = false;
+    }
+  }
+
   @override
   void dispose() {
+    if (identical(_current, this)) _current = null;
     _matchmaking?.removeListener(_onMatchmakingUpdate);
     super.dispose();
   }

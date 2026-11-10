@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, visibleForTesting;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'api_service.dart';
@@ -28,6 +28,14 @@ class PushNotificationService {
   static void Function(Map<String, dynamic> data)? _onMessageOpened;
   static Map<String, dynamic>? _bufferedOpenData;
 
+  // The tap that cold-started the app, kept until a consumer claims it. The
+  // buffer above is flushed to whoever registers FIRST (match invites, at
+  // login): a screen that only mounts later (the home's daily challenge and
+  // ghost rows) would otherwise never hear about the tap that launched the
+  // app, and the user would land on the home screen instead.
+  static Map<String, dynamic>? _launchData;
+  static bool _launchHandled = false;
+
   // Additive multi-listener API: the legacy single-slot setter stays for
   // MatchInviteProvider, and other consumers (tournament push routing)
   // register here without displacing it.
@@ -47,6 +55,28 @@ class PushNotificationService {
 
   static void removeOpenedListener(void Function(Map<String, dynamic> data) listener) {
     _openedListeners.remove(listener);
+  }
+
+  /// For a consumer that mounts after the launch tap was dispatched: the
+  /// payload of the notification that cold-started the app when [wants] it
+  /// and nobody handled it yet, else null. Returned once.
+  static Map<String, dynamic>? claimLaunchData(bool Function(Map<String, dynamic> data) wants) {
+    final data = _launchData;
+    if (data == null || _launchHandled || !wants(data)) return null;
+    _launchHandled = true;
+    return data;
+  }
+
+  /// A listener that acted on [data] calls this, so a later
+  /// [claimLaunchData] does not act on the same launch tap twice.
+  static void markHandled(Map<String, dynamic> data) {
+    if (identical(data, _launchData)) _launchHandled = true;
+  }
+
+  @visibleForTesting
+  static void debugSetLaunchData(Map<String, dynamic>? data) {
+    _launchData = data;
+    _launchHandled = false;
   }
 
   static void _flushBuffered() {
@@ -119,7 +149,10 @@ class PushNotificationService {
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
         debugPrint('🔔 App launched from notification: ${initialMessage.data}');
-        _dispatchOpened(Map<String, dynamic>.from(initialMessage.data));
+        final data = Map<String, dynamic>.from(initialMessage.data);
+        _launchData = data;
+        _launchHandled = false;
+        _dispatchOpened(data);
       }
 
       // On iOS, FCM cannot mint a token until APNs has delivered one.
@@ -197,6 +230,7 @@ class PushNotificationService {
     _onMessageOpened = null;
     _openedListeners.clear();
     _bufferedOpenData = null;
+    _launchData = null;
     _initialized = false;
   }
 

@@ -1,3 +1,5 @@
+import 'progression.dart';
+
 DateTime? _tryParseDateTime(String? value) {
   if (value == null) return null;
   try {
@@ -24,6 +26,10 @@ class User {
   final bool isPremium;
   final DateTime? premiumExpiresAt;
 
+  /// Public progression cosmetics (level, avatar, frame, title…), added by
+  /// the API on every player payload. Null on old servers.
+  final PublicCosmetics? cosmetics;
+
   User({
     required this.id,
     required this.username,
@@ -40,6 +46,7 @@ class User {
     this.isEmailVerified = false,
     this.isPremium = false,
     this.premiumExpiresAt,
+    this.cosmetics,
   });
 
   /// Whether premium is currently active (true and not expired).
@@ -66,6 +73,7 @@ class User {
       isEmailVerified: json['isEmailVerified'] as bool? ?? false,
       isPremium: json['isPremium'] as bool? ?? false,
       premiumExpiresAt: _tryParseDateTime(json['premiumExpiresAt'] as String?),
+      cosmetics: PublicCosmetics.fromJson(json['cosmetics']),
     );
   }
 

@@ -8,10 +8,20 @@ import '../../providers/match_invite_provider.dart';
 import '../../providers/placement_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/season_provider.dart';
+import '../../providers/progression_provider.dart';
+import '../progression/locker_screen.dart';
+import '../progression/progression_format.dart';
+import '../ghost/ghost_play_row.dart';
+import 'home_other_modes.dart';
+import '../league/league_store.dart';
+import '../challenge/challenge_api.dart';
+import '../challenge/challenge_entry.dart';
+import '../league/league_widgets.dart';
 import '../../widgets/recent_matches_widget.dart';
 import '../../widgets/design_system.dart';
-import '../../widgets/live_matches_pill.dart';
-import '../../services/presence_service.dart';
+import '../../widgets/home_tiles.dart';
+import '../../widgets/progression/metal.dart';
+import '../../widgets/progression/player_showcase_card.dart';
 import '../../services/socket_service.dart';
 import '../../services/spectate_service.dart';
 import '../../services/user_service.dart';
@@ -25,19 +35,20 @@ import '../../utils/haptic_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/rank_utils.dart';
 import '../../utils/rank_translation.dart';
-import '../../utils/season_format.dart';
-import '../../widgets/season_picker_sheet.dart';
-import 'seasons_screen.dart';
 import '../matchmaking/camera_setup_screen.dart';
 import '../matchmaking/friend_select_screen.dart';
 import '../local_match/local_match_entry_screen.dart';
 import '../../models/user.dart';
-import '../../widgets/player_card.dart';
+import '../../models/progression.dart';
 import '../placement/placement_hub_screen.dart';
+import '../onboarding/onboarding_home_card.dart';
+import '../onboarding/onboarding_provider.dart';
 import '../tournament/tournament_camera_setup_screen.dart';
 import '../profile/match_history_screen.dart';
 import '../settings/subscription_screen.dart';
 import '../training/training_select_screen.dart';
+import 'competitive_card.dart';
+import 'home_quest_strip.dart';
 
 class PlayScreen extends StatefulWidget {
   final ValueNotifier<int>? refreshNotifier;
@@ -57,8 +68,10 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
   TournamentProvider? _tournamentProvider;
   bool _inActiveTournament = false;
   String? _activeTournamentName;
-  ActivitySnapshot? _activity;
+  /// Live matches (ranked + tournament) and live ranked series alone, for
+  /// the strip at the bottom of Compétitif.
   int _liveCount = 0;
+  int _liveRanked = 0;
 
   @override
   void initState() {
@@ -68,7 +81,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     _checkActiveMatch();
     _checkPendingTournamentMatch();
     _checkActiveTournamentStatus();
-    _loadActivity();
     _loadLiveCount();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshSubscription();
@@ -107,35 +119,28 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     _checkActiveTournamentStatus();
     _refreshSubscription();
     _loadPlacementStatusIfUnranked();
-    _loadActivity();
     _loadLiveCount();
   }
 
-  /// Feeds the activity pulse card; the card stays hidden until (and unless)
-  /// a snapshot arrives, so failures cost nothing. 24 h window: a full day of
-  /// matches reads better under Compétitif than half a day.
-  Future<void> _loadActivity() async {
-    final snapshot = await PresenceService.fetchActivity(hours: 24);
-    if (mounted && snapshot != null) {
-      setState(() => _activity = snapshot);
-    }
-  }
-
-  /// Feeds the live-matches pill; 0 (no capability, error, nothing live)
-  /// keeps the classic activity pill in place. Gated on the handshake's
-  /// supportsSpectate so a pre-spectate backend is never polled (guaranteed
-  /// 404 otherwise).
+  /// Feeds the live strip of Compétitif; 0 (no capability, error, nothing
+  /// live) shows its quiet line. Gated on the handshake's supportsSpectate so
+  /// a pre-spectate backend is never polled (guaranteed 404 otherwise).
   Future<void> _loadLiveCount() async {
     try {
       await SocketService.ensureAuthenticated();
     } catch (_) {}
     if (!SocketService.supportsSpectate) {
-      if (mounted && _liveCount != 0) setState(() => _liveCount = 0);
+      if (mounted && (_liveCount != 0 || _liveRanked != 0)) {
+        setState(() => _liveCount = _liveRanked = 0);
+      }
       return;
     }
     final live = await SpectateService.fetchLive();
     if (mounted) {
-      setState(() => _liveCount = live?.liveCount ?? 0);
+      setState(() {
+        _liveCount = live?.liveCount ?? 0;
+        _liveRanked = live?.ranked.length ?? 0;
+      });
     }
   }
 
@@ -394,24 +399,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// The one filled block of the screen. Every state that takes the play slot
-  /// renders through this so they all keep the same geometry.
-  Widget _primarySlot({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    VoidCallback? onTap,
-    bool muted = false,
-  }) {
-    return DsPrimaryRow(
-      icon: icon,
-      title: dsSentence(title),
-      subtitle: subtitle,
-      onTap: onTap,
-      muted: muted,
-    );
-  }
-
   /// Compétitif: free users who've already used their daily ranked match land
   /// straight on the paywall instead of entering the queue.
   void _onCompetitiveTapped() {
@@ -487,19 +474,6 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
           inviteSentAt: match.inviteSentAt,
         ),
       ),
-    );
-  }
-
-  /// Play slot when a friend invite is pending; tapping it asks the player to
-  /// accept or decline.
-  Widget _buildFriendInviteButton(IncomingInvite invite, AppLocalizations l10n) {
-    final hint = l10n.invitedYouToMatch
-        .replaceAll('{username}', invite.inviterUsername);
-    return _primarySlot(
-      icon: Icons.sports_esports_outlined,
-      title: l10n.joinMatch,
-      subtitle: '$hint · ${invite.isCricket ? l10n.cricketLabel : '501'} · BO${invite.bestOf}',
-      onTap: () => _onFriendInviteTapped(invite),
     );
   }
 
@@ -601,213 +575,68 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// The player card: badge, name, rank · position, ELO, progress to the next
-  /// rank and the season selector. With a past season selected it freezes to
-  /// that season's line for this player: final badge, final ELO, standing,
-  /// "Classement final ›".
-  Widget _buildPlayerCard({
-    required AppLocalizations l10n,
-    required SeasonProvider seasonProvider,
-    required User user,
-    required bool isPremium,
-  }) {
-    final hasSeason = seasonProvider.hasSeason;
-    final selected = seasonProvider.selectedSeason;
+  /// My progression cosmetics: the live summary when loaded, else the copy
+  /// the profile endpoint carried. Null on an old server.
+  PublicCosmetics? _myCosmetics(User user) =>
+      maybeWatchProgression(context)?.summary?.cosmetics ?? user.cosmetics;
 
-    if (hasSeason && selected != null && !seasonProvider.isActiveSelected) {
-      final standing = seasonProvider.selectedStanding;
-      final loading = seasonProvider.loadingSelected;
-      final total = selected.playersCount ?? 0;
-      final Widget subline = loading
-          ? const SizedBox(
-              height: 12,
-              width: 12,
-              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-            )
-          : Text(
-              standing != null
-                  ? '${l10n.seasonEndedLabel} · ${l10n.seasonFinalRank} '
-                      '${RankTranslation.translate(l10n, standing.rank)} · '
-                      '#${standing.position} ${l10n.seasonOf(total)}'
-                  : '${l10n.seasonEndedLabel} · ${l10n.seasonNotRanked}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTheme.caption.copyWith(fontSize: 13),
-            );
-      return PlayerCard(
-        rank: standing?.rank ?? user.rank,
-        username: user.username,
-        isPremium: isPremium,
-        subline: subline,
-        value: standing?.elo == null ? '—' : '${standing!.elo}',
-        valueLabel: l10n.seasonEloFinal,
-        progress: 1.0,
-        footerLeft: _link(
-          l10n.seasonFinalStandings,
-          () => seasonProvider.requestStandings(selected.number),
-        ),
-        footerRight: _seasonSelector(l10n, seasonProvider, showCountdown: false),
-      );
-    }
+  void _openLocker() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LockerScreen()));
+  }
 
-    final me = seasonProvider.current?.me;
-    final rank = user.rank;
-    final isMaxRank = rank.toLowerCase() == 'master';
-    // Thresholds live in rank_utils (mirrors the backend's 800/1200/1600/
-    // 2000/2400).
-    final eloNeeded = eloNeededForNextRank(rank, user.elo);
-    final nextLabel = RankTranslation.translate(l10n, nextRank(rank));
-    final position = hasSeason && me != null ? ' · #${me.position}' : '';
-    return PlayerCard(
-      rank: rank,
+  /// The player card (S1) with, on the home only, the XP bar and the quest
+  /// strip under it. Its « Modifier » opens the locker.
+  Widget _buildShowcase(User user, bool isPremium) {
+    final cosmetics = _myCosmetics(user);
+    return PlayerShowcaseCard(
       username: user.username,
+      rank: user.rank,
+      cosmetics: cosmetics,
       isPremium: isPremium,
-      subline: Text(
-        '${RankTranslation.translate(l10n, rank)}$position',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTheme.caption.copyWith(fontSize: 13),
-      ),
-      value: '${user.elo}',
-      valueLabel: l10n.eloLabel,
-      progress: isMaxRank ? 1.0 : rankProgress(rank, user.elo),
-      footerLeft: isMaxRank
-          ? Text(
-              l10n.maxRankReached,
-              style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
-            )
-          : Text.rich(
-              TextSpan(
-                style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
-                children: [
-                  TextSpan(text: '$nextLabel ${l10n.nextRankConnector} '),
-                  TextSpan(
-                    text: '+${math.max(eloNeeded, 0)} pts',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-      footerRight: hasSeason
-          ? _seasonSelector(l10n, seasonProvider, showCountdown: true)
-          : null,
+      level: maybeWatchProgression(context)?.summary?.level ?? cosmetics?.level,
+      onEdit: _openLocker,
+      footer: HomeQuestStrip.fromProvider(context),
     );
   }
 
-  /// Unranked: the same card with the placement progress as its number.
-  Widget _buildPlacementCard({
-    required AppLocalizations l10n,
-    required User user,
-    required bool isPremium,
-    required int matchesPlayed,
-  }) {
-    // Mirrors the backend's TOTAL_PLACEMENT_MATCHES (and the 4 hardcoded in
-    // PlacementHubScreen).
-    const total = 4;
-    final played = matchesPlayed.clamp(0, total);
-    return PlayerCard(
-      rank: 'unranked',
-      username: user.username,
-      isPremium: isPremium,
-      subline: Text(l10n.unranked, style: AppTheme.caption.copyWith(fontSize: 13)),
-      value: '$played / $total',
-      valueLabel: l10n.placementUpper,
-      progress: played / total,
-      footerLeft: Text(
-        l10n.completePlacementToUnlock,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTheme.caption.copyWith(color: const Color(0xFFCBD5E1)),
-      ),
-    );
-  }
-
-  Widget _link(String label, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
-      onTap: () {
-        HapticService.lightImpact();
-        onTap();
+  /// « Aujourd'hui »: the daily challenge and the weekly league, side by
+  /// side (one alone takes the width); nothing until one of them answers.
+  Widget _buildToday(AppLocalizations l10n, ProgressionContent? content) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([LeagueStore.instance, ChallengeStore.instance]),
+      builder: (context, _) {
+        final tiles = <Widget>[
+          if (ChallengeTodayTile.isVisible(context)) ChallengeTodayTile(xp: content?.xp?.challenge),
+          if (LeagueTodayTile.isVisible()) LeagueTodayTile(xpForPosition: content?.leagueXpFor),
+        ];
+        if (tiles.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              HomeSectionTitle(l10n.questsToday),
+              HomeTileRow(children: tiles),
+            ],
+          ),
+        );
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, size: 14, color: AppTheme.primaryLight),
-          ],
-        ),
-      ),
     );
   }
 
-  /// "Saison 1 · 84 j ▾" — opens the season picker.
-  Widget _seasonSelector(
-    AppLocalizations l10n,
-    SeasonProvider seasonProvider, {
-    required bool showCountdown,
-  }) {
-    final selected = seasonProvider.selectedSeason;
-    if (selected == null) return const SizedBox.shrink();
-    var label = l10n.seasonN(selected.number);
-    if (showCountdown && seasonProvider.activeSeason?.endAt != null) {
-      label = '$label · ${formatSeasonCountdown(l10n, seasonProvider.timeLeft)}';
-    }
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
-      onTap: _openSeasonPicker,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.primaryLight),
-          ],
-        ),
-      ),
+  /// « Jouer autrement »: 3 tiles of the same size (friend and local, then
+  /// training across), each with the XP it pays (server constants: GET
+  /// /progression/content → xp). No ghost tile: the ghost is the ranked
+  /// queue's fallback (CONTRACT §14.12).
+  Widget _buildOtherModes(SubscriptionProvider subscription, XpRules? xp) {
+    return HomeOtherModes(
+      xp: xp,
+      friendLocked: !subscription.canPlayFriendMatch,
+      onFriend: _openFriendMatch,
+      onLocal: _openLocalMatch,
+      onTraining: _openTraining,
     );
   }
-
-  Future<void> _openSeasonPicker() async {
-    HapticService.lightImpact();
-    final provider = context.read<SeasonProvider>();
-    final result = await SeasonPickerSheet.show(context);
-    if (!mounted || result == null) return;
-    if (result == SeasonPickerSheet.allSeasonsResult) {
-      final picked = await Navigator.of(context).push<int>(
-        MaterialPageRoute(
-          builder: (_) => SeasonsScreen(initialNumber: provider.selectedNumber),
-        ),
-      );
-      if (!mounted || picked == null) return;
-      // "Standings ›" on a poster: hand over to the Rankings tab.
-      provider.requestStandings(picked);
-      return;
-    }
-    await provider.select(result);
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -823,6 +652,7 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     final isUnranked = user.rank.toLowerCase() == 'unranked';
     final seasonProvider = context.watch<SeasonProvider>();
     final isPremium = subscription.isPremiumActive;
+    final content = watchProgressionContent(context);
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -832,70 +662,35 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
           _checkActiveMatch(),
           _checkPendingTournamentMatch(),
           _checkActiveTournamentStatus(),
-          _loadActivity(),
           _loadLiveCount(),
+          context.read<ProgressionProvider>().bootstrap(),
+          ?maybeReadOnboarding(context)?.refresh(),
+          ChallengeStore.instance.refresh(userId: user.id),
+          LeagueStore.instance.refresh(),
+          GhostHomeStore.instance.load(),
         ]);
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (isUnranked)
-              _buildPlacementCard(
-                l10n: l10n,
-                user: user,
-                isPremium: isPremium,
-                matchesPlayed:
-                    context.watch<PlacementProvider>().status?.matchesPlayed ?? 0,
-              )
-            else
-              _buildPlayerCard(
-                l10n: l10n,
-                seasonProvider: seasonProvider,
-                user: user,
-                isPremium: isPremium,
-              ),
-            const SizedBox(height: 14),
-            ..._buildPrimarySlot(l10n, subscription, matchInvite, isUnranked),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: DsTile(
-                    icon: Icons.people_outline_rounded,
-                    label: l10n.friendModeTitle,
-                    // Premium (or the Free Play window) is required to invite a
-                    // friend — show the gate on the tile instead of letting the
-                    // user discover it once they've picked someone.
-                    locked: !subscription.canPlayFriendMatch,
-                    onTap: _openFriendMatch,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DsTile(
-                    icon: Icons.smartphone_outlined,
-                    label: l10n.localModeTitle,
-                    onTap: _openLocalMatch,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DsTile(
-                    icon: Icons.fitness_center_rounded,
-                    label: l10n.trainingPlayCardTitle,
-                    onTap: _openTraining,
-                  ),
-                ),
-              ],
-            ),
-            if (_liveCount > 0) ...[
-              const SizedBox(height: 14),
-              LiveMatchesPill(count: _liveCount),
-            ],
-            const SizedBox(height: 28),
+            _buildShowcase(user, isPremium),
+            const SizedBox(height: 12),
+            ..._buildCompetitive(l10n, subscription, matchInvite, seasonProvider, user, isUnranked, content?.xp),
+            // "Your first 7 days" (Agent 2b): replaces « Aujourd'hui » while
+            // the journey runs; renders nothing otherwise.
+            const OnboardingHomeCard(topSpacing: 12),
+            if (!(maybeWatchOnboarding(context)?.isActive ?? false)) _buildToday(l10n, content),
+            // Daily challenge pushes (18:00 reminder, verified n°1) → screens.
+            const ChallengeHomeHooks(),
+            const SizedBox(height: 12),
+            _buildOtherModes(subscription, content?.xp),
+            // A ghost match to resume, the ghost owner's digest (and the
+            // ghost's push hooks).
+            const GhostHomeRows(),
+            const SizedBox(height: 16),
             DsSectionHeader(
               title: l10n.recentMatches,
               actionLabel: _loadingMatches ? null : l10n.viewAll,
@@ -936,26 +731,52 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// CTA priority, unchanged: live tournament leg → pending tournament join →
-  /// friend invite → placement → active match rejoin → tournament lock →
-  /// Compétitif (with the free-tier hint above it).
-  List<Widget> _buildPrimarySlot(
+  /// Compétitif (K1) and the hints above it. CTA priority, unchanged: live
+  /// tournament leg → pending tournament join → friend invite → placement →
+  /// active match rejoin → tournament lock → Compétitif (with the free-tier
+  /// hint, or the Free Play banner, above it). Every state keeps the block's
+  /// geometry; the live strip stays at its bottom.
+  List<Widget> _buildCompetitive(
     AppLocalizations l10n,
     SubscriptionProvider subscription,
     MatchInviteProvider matchInvite,
+    SeasonProvider seasonProvider,
+    User user,
     bool isUnranked,
+    XpRules? xp,
   ) {
+    CompetitiveCard event({
+      required IconData icon,
+      required String label,
+      required String title,
+      required String caption,
+      required String action,
+      required VoidCallback onTap,
+    }) =>
+        CompetitiveCard(
+          leading: CompetitiveCard.iconDisc(icon),
+          label: label,
+          value: title,
+          largeValue: false,
+          caption: caption,
+          actionLabel: action,
+          onTap: onTap,
+          liveRanked: _liveRanked,
+          liveTotal: _liveCount,
+        );
+
     final liveLeg = _activeTournamentLeg;
     if (liveLeg?.lastGameId != null) {
       // A tournament leg is LIVE for this player (app was killed mid-match) —
       // resuming outranks everything: the disconnect grace timer is running
       // server-side.
       return [
-        _primarySlot(
+        event(
           icon: Icons.replay_rounded,
-          title: l10n.resumeTournamentMatch,
-          subtitle: '${liveLeg!.tournamentName ?? l10n.tournament} · '
-              '${localizedRoundLabel(l10n, liveLeg)}',
+          label: '${l10n.tournament} · ${localizedRoundLabel(l10n, liveLeg!)}',
+          title: liveLeg.tournamentName ?? l10n.tournament,
+          caption: l10n.homeTournamentLiveCaption,
+          action: l10n.homeResume,
           onTap: _resumeTournamentLeg,
         ),
       ];
@@ -964,74 +785,99 @@ class _PlayScreenState extends State<PlayScreen> with WidgetsBindingObserver {
     if (pending != null) {
       // A tournament commitment outranks friend invites and placement.
       return [
-        _primarySlot(
+        event(
           icon: Icons.emoji_events_outlined,
-          title: l10n.joinMatch,
-          subtitle: '${pending.tournamentName ?? l10n.tournament} · '
-              '${localizedRoundLabel(l10n, pending)}',
+          label: '${l10n.tournament} · ${localizedRoundLabel(l10n, pending)}',
+          title: pending.tournamentName ?? l10n.tournament,
+          caption: l10n.homeTournamentReadyCaption,
+          action: l10n.homeJoin,
           onTap: () => _joinTournamentMatch(pending),
         ),
       ];
     }
-    if (matchInvite.incoming != null) {
+    final invite = matchInvite.incoming;
+    if (invite != null) {
       // The inviter is actively waiting and the invite is short-lived. (The
       // backend refuses to invite a busy player, so this can't collide with
       // an active-match rejoin.)
-      return [_buildFriendInviteButton(matchInvite.incoming!, l10n)];
+      return [
+        event(
+          icon: Icons.sports_esports_outlined,
+          label: l10n.matchInviteTitle,
+          title: invite.inviterUsername,
+          caption: '${invite.isCricket ? l10n.cricketLabel : '501'} · BO${invite.bestOf}',
+          action: l10n.homeJoin,
+          onTap: () => _onFriendInviteTapped(invite),
+        ),
+      ];
     }
     if (isUnranked) {
+      // Mirrors the backend's TOTAL_PLACEMENT_MATCHES (and the 4 hardcoded in
+      // PlacementHubScreen).
+      const total = 4;
+      final played = (context.watch<PlacementProvider>().status?.matchesPlayed ?? 0).clamp(0, total);
       return [
-        _primarySlot(
-          icon: Icons.flag_outlined,
-          title: l10n.placementMatches,
-          subtitle: l10n.completePlacementToUnlock,
+        CompetitiveCard(
+          leading: CompetitiveCard.rankImage(RankUtils.getRankIcon('unranked')),
+          label: '${l10n.competitiveModeTitle} · ${l10n.homePlacementLabel}',
+          value: '$played / $total',
+          progress: played / total,
+          caption: played < total ? l10n.homePlacementLeft(total - played) : l10n.completePlacementToUnlock,
+          actionLabel: l10n.play,
           onTap: _openPlacement,
+          liveRanked: _liveRanked,
+          liveTotal: _liveCount,
         ),
       ];
     }
+
+    final rank = user.rank;
+    final isMaxRank = rank.toLowerCase() == 'master';
+    // Thresholds live in rank_utils (mirrors the backend's 800/1200/1600/
+    // 2000/2400).
+    final eloNeeded = eloNeededForNextRank(rank, user.elo);
+    final me = seasonProvider.hasSeason ? seasonProvider.current?.me : null;
+    String caption = isMaxRank
+        ? l10n.maxRankReached
+        : l10n.homeNextRankIn(RankTranslation.translate(l10n, nextRank(rank)), math.max(eloNeeded, 0));
+    var label = me != null ? '${l10n.competitiveModeTitle} · #${me.position}' : l10n.competitiveModeTitle;
+    VoidCallback? onTap = _onCompetitiveTapped;
+    String action = l10n.play;
+    String? actionXp = xp?.ranked == null ? null : l10n.homeXpGain(xp!.ranked!);
     if (_activeMatch != null) {
-      return [
-        _primarySlot(
-          icon: Icons.play_arrow_rounded,
-          title: l10n.play,
-          subtitle: '${l10n.rejoinVs} ${_activeMatch!['opponentUsername']}',
-          onTap: _rejoinMatch,
-        ),
-      ];
+      caption = l10n.homeMatchInProgress('${_activeMatch!['opponentUsername'] ?? ''}');
+      onTap = _rejoinMatch;
+      action = l10n.homeResume;
+      actionXp = null;
+    } else if (_inActiveTournament) {
+      label = '${l10n.activeTournament} · ${_activeTournamentName ?? l10n.tournament}';
+      caption = l10n.homeRankedLockedCaption;
+      onTap = null;
+      actionXp = null;
     }
-    if (_inActiveTournament) {
-      return [
-        _primarySlot(
-          icon: Icons.lock_outline_rounded,
-          title: l10n.rankedLocked,
-          subtitle: '${l10n.activeTournament} · ${_activeTournamentName ?? l10n.tournament}',
-          muted: true,
-        ),
-      ];
-    }
-    final activity = _activity;
-    final subtitle = activity == null
-        ? l10n.homeCompetitiveSubtitle
-        : '${l10n.homeCompetitiveSubtitle} · ${activity.matches} '
-            '${l10n.activityMatchesLabel(activity.windowHours).toLowerCase()}';
     return [
-      // The play row is always shown for free users; the daily-match hint
-      // stays visible (it reads "match used" once the free match is spent)
-      // and tapping Compétitif then opens the paywall. During Free Play the
-      // upsell hint is replaced by the "it's free tonight" line.
+      // Free users: the daily-match hint stays visible (it reads "match
+      // used" once the free match is spent) and tapping Compétitif then
+      // opens the paywall. During Free Play the upsell hint is replaced by
+      // the "it's free tonight" line.
       if (subscription.freePlayActive) ...[
         _buildFreePlayBanner(),
         const SizedBox(height: 10),
-      ] else if (!subscription.isPremiumActive &&
-          subscription.matchesRemainingToday != null) ...[
+      ] else if (!subscription.isPremiumActive && subscription.matchesRemainingToday != null) ...[
         _buildFreeTierHint(subscription),
         const SizedBox(height: 10),
       ],
-      _primarySlot(
-        icon: Icons.military_tech_outlined,
-        title: l10n.competitiveModeTitle,
-        subtitle: subtitle,
-        onTap: _onCompetitiveTapped,
+      CompetitiveCard(
+        leading: CompetitiveCard.rankImage(RankUtils.getRankIcon(rank)),
+        label: label,
+        value: formatXp(user.elo),
+        progress: isMaxRank ? 1.0 : rankProgress(rank, user.elo),
+        caption: caption,
+        actionLabel: action,
+        actionXp: actionXp,
+        onTap: onTap,
+        liveRanked: _liveRanked,
+        liveTotal: _liveCount,
       ),
     ];
   }

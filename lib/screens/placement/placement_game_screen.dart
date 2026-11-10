@@ -29,6 +29,7 @@ import '../../widgets/queue_searching_banner.dart';
 import '../game/leg_end_view.dart';
 import '../game/match_end_view.dart';
 import 'bot_camera_ai_mixin.dart';
+import 'checkout_hint_bar.dart';
 
 class PlacementGameScreen extends StatefulWidget {
   const PlacementGameScreen({super.key});
@@ -40,7 +41,17 @@ class PlacementGameScreen extends StatefulWidget {
 class _PlacementGameScreenState extends State<PlacementGameScreen>
     with WidgetsBindingObserver, BotCameraAiMixin {
   bool _botTurnInProgress = false;
+
+  /// The bot turn failed even after the provider's automatic retries: the bot
+  /// panel shows "Retry" / "Leave" and the player cannot throw meanwhile.
+  bool _botTurnFailed = false;
   bool _gameEnded = false;
+
+  /// Saving the result failed: the end screen shows "Retry" / "Leave" instead
+  /// of a spinner that never ends.
+  bool _endFailed = false;
+  bool _endWasPlacement = false;
+  String? _endModeWire;
   String? _winnerId;
   int? _editingDartIndex;
 
@@ -100,6 +111,11 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _myScore = provider.player1Score;
     _scoreBeforeRound = _myScore;
     _lastBotScore = provider.player2Score;
+    // A resumed placement match: its visits so far keep counting in the
+    // averages and the round number.
+    _myRoundScores.addAll(provider.resumedPlayerRounds);
+    _botRoundScores.addAll(provider.resumedBotRounds);
+    _botRoundsThisLeg = provider.resumedBotRounds.length;
     if (provider.mode == PlacementMode.placement) {
       PlacementDebugCapture.startMatch(
         matchId: provider.currentMatchId,
@@ -424,7 +440,10 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
   }) async {
     if (_botTurnInProgress || _gameEnded) return;
 
-    setState(() => _botTurnInProgress = true);
+    setState(() {
+      _botTurnInProgress = true;
+      _botTurnFailed = false;
+    });
 
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
@@ -452,30 +471,57 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
       );
     }
 
-    if (success && mounted) {
-      _botRoundsThisLeg++;
-      // Bot just played a visit: record its 3-dart score (0 on bust).
-      final botRoundScore =
-          placement.botIsBust ? 0 : (_lastBotScore - placement.player2Score);
-      if (botRoundScore >= 0) {
-        setState(() {
-          _botRoundScores.add(botRoundScore);
-          _lastBotScore = placement.player2Score;
-        });
-        // Caller: announce the bot's visit like a human opponent's in a ranked
-        // match. The total matches what the bot panel shows — 0 on a bust,
-        // which the caller reads as "no score".
-        DartCallerService.callScore(botRoundScore);
-      } else {
+    if (!mounted) return;
+    if (!success) {
+      // Never hand the turn back as if the bot had thrown: that is how a
+      // match ended up against a bot frozen at 501.
+      setState(() => _botTurnFailed = true);
+      return;
+    }
+    await _afterBotTurn(placement);
+  }
+
+  /// "Retry" on the bot panel: the same visit, sent again.
+  Future<void> _retryBotTurn() async {
+    if (!_botTurnFailed) return;
+    HapticService.lightImpact();
+    setState(() => _botTurnFailed = false);
+    final placement = context.read<PlacementProvider>();
+    final success = await placement.retryBotTurn();
+    if (!mounted) return;
+    if (!success) {
+      setState(() => _botTurnFailed = true);
+      return;
+    }
+    await _afterBotTurn(placement);
+  }
+
+  /// The bot's visit landed: record it, then hand the turn back (or end the
+  /// leg on a bot checkout).
+  Future<void> _afterBotTurn(PlacementProvider placement) async {
+    _botRoundsThisLeg++;
+    // Bot just played a visit: record its 3-dart score (0 on bust).
+    final botRoundScore =
+        placement.botIsBust ? 0 : (_lastBotScore - placement.player2Score);
+    if (botRoundScore >= 0) {
+      setState(() {
+        _botRoundScores.add(botRoundScore);
         _lastBotScore = placement.player2Score;
-      }
+      });
+      // Caller: announce the bot's visit like a human opponent's in a ranked
+      // match. The total matches what the bot panel shows — 0 on a bust,
+      // which the caller reads as "no score".
+      DartCallerService.callScore(botRoundScore);
+    } else {
+      _lastBotScore = placement.player2Score;
+    }
 
-      await Future.delayed(const Duration(milliseconds: 1200));
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) return;
 
-      if (placement.botIsCheckout && placement.player2Score == 0) {
-        _onBotCheckout();
-        return;
-      }
+    if (placement.botIsCheckout && placement.player2Score == 0) {
+      _onBotCheckout();
+      return;
     }
 
     if (mounted) {
@@ -689,17 +735,17 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     _foldCurrentRound();
 
     final placement = context.read<PlacementProvider>();
-    final auth = context.read<AuthProvider>();
     final wasPlacement = placement.mode == PlacementMode.placement;
     final isBotTraining = placement.mode == PlacementMode.botTraining;
-    // completeMatch clears the bot config — capture what the end screen and
-    // the per-mode history filter still need.
-    final modeWire = placement.botConfig?.modeWire;
 
     setState(() {
       _gameEnded = true;
       _winnerId = winnerId;
       _endIsBotTraining = isBotTraining;
+      _endWasPlacement = wasPlacement;
+      // completeMatch clears the bot config — capture what the end screen and
+      // the per-mode history filter still need.
+      _endModeWire = placement.botConfig?.modeWire;
       _statsLoading = isBotTraining;
       _endMyLegs = placement.myLegs;
       _endBotLegs = placement.botLegs;
@@ -709,18 +755,47 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     if (winnerId == null) {
       DartSoundService.playLose();
     }
+    await _submitResult();
+  }
+
+  /// Saves the result (retried by the provider on transient failures). When it
+  /// still fails, the end screen offers "Retry" and "Leave" — before, a null
+  /// result returned without navigating and left a spinner that never ended.
+  Future<void> _submitResult() async {
+    final placement = context.read<PlacementProvider>();
+    final auth = context.read<AuthProvider>();
+    final wasPlacement = _endWasPlacement;
+    final isBotTraining = _endIsBotTraining;
+    final modeWire = _endModeWire;
+    if (_endFailed) setState(() => _endFailed = false);
+
     // _foldCurrentRound already rolled any in-flight darts into the total.
     final totalDarts = _totalDartsThrown;
     final matchAverage = _myAverage;
+    final bestVisit = _myRoundScores.isEmpty
+        ? null
+        : _myRoundScores.reduce((a, b) => a > b ? a : b);
     final result = await placement.completeMatch(
-      winnerId,
+      _winnerId,
       player1Score: _myScore,
       currentUserId: auth.currentUser?.id,
       dartsThrown: totalDarts,
       matchPlayerAverage: matchAverage,
+      // Read by the first-7-days step "a 60+ visit": the server has no
+      // per-visit record of a bot match. Additive key.
+      extraDetails: isBotTraining && bestVisit != null
+          ? {'bestVisit': bestVisit}
+          : null,
     );
 
-    if (!mounted || result == null) return;
+    if (!mounted) return;
+    if (result == null) {
+      setState(() {
+        _endFailed = true;
+        _statsLoading = false;
+      });
+      return;
+    }
 
     if (wasPlacement) {
       await context.read<AuthProvider>().checkAuthStatus();
@@ -880,6 +955,14 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
                     currentZoom: cameraZoom,
                     minZoom: cameraMinZoom,
                     maxZoom: cameraMaxZoom,
+                    // The suggested finish, docked under the camera (the
+                    // double wall: new players stall on the last points).
+                    captureButton: _isBust || _isWin
+                        ? null
+                        : CheckoutHintBar.maybe(
+                            remaining: _myScore,
+                            dartsLeft: 3 - _dartsThrown,
+                          ),
                     onEditDart: (index, dartScore) {
                       final (base, mul) = dartScoreToBackend(dartScore);
                       if (index < _currentRoundThrows.length) {
@@ -1062,7 +1145,18 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
         children: [
           Container(color: AppTheme.gamePanelEmpty),
           Center(
-            child: hasThrown
+            child: _botTurnFailed
+                ? _PlacementErrorPanel(
+                    title: placement.errorIsPermanent
+                        ? l10n.onboardingPlacementMatchGoneTitle
+                        : l10n.onboardingPlacementBotTurnFailedTitle,
+                    body: placement.errorIsPermanent
+                        ? l10n.onboardingPlacementMatchGoneBody
+                        : l10n.onboardingPlacementBotTurnFailedBody,
+                    onRetry: placement.errorIsPermanent ? null : _retryBotTurn,
+                    onLeave: () => Navigator.of(context).pop(),
+                  )
+                : hasThrown
                 ? Column(mainAxisSize: MainAxisSize.min, children: [
                     Text(
                       l10n.plusPts(placement.botIsBust ? 0 : visitTotal),
@@ -1184,7 +1278,19 @@ class _PlacementGameScreenState extends State<PlacementGameScreen>
     final match = _myAverage;
     final isSeries = isBotTraining && _endBestOf > 1;
 
-    final Widget panel = !isBotTraining
+    final placement = context.read<PlacementProvider>();
+    final Widget panel = _endFailed
+        ? _PlacementErrorPanel(
+            title: placement.errorIsPermanent
+                ? l10n.onboardingPlacementMatchGoneTitle
+                : l10n.onboardingPlacementSaveFailedTitle,
+            body: placement.errorIsPermanent
+                ? l10n.onboardingPlacementMatchGoneBody
+                : l10n.onboardingPlacementSaveFailedBody,
+            onRetry: placement.errorIsPermanent ? null : _submitResult,
+            onLeave: () => Navigator.of(context).pop(),
+          )
+        : !isBotTraining
         ? Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1416,6 +1522,69 @@ class _StatRow extends StatelessWidget {
               height: 1,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the player sees when the server could not be reached even after the
+/// automatic retries: what happened, "Retry" when it can help, and always a
+/// way out. A match left this way stays resumable from the placement hub.
+class _PlacementErrorPanel extends StatelessWidget {
+  final String title;
+  final String body;
+  final VoidCallback? onRetry;
+  final VoidCallback onLeave;
+
+  const _PlacementErrorPanel({
+    required this.title,
+    required this.body,
+    required this.onRetry,
+    required this.onLeave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded,
+              size: 32, color: AppTheme.textSecondary),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppTheme.rowTitle.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: AppTheme.caption.copyWith(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton(
+                onPressed: onLeave,
+                style: gameNeutralOutlineButtonStyle(),
+                child: Text(dsSentence(l10n.leave)),
+              ),
+              if (onRetry != null) ...[
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: onRetry,
+                  style: gameFilledButtonStyle(AppTheme.primary),
+                  child: Text(dsSentence(l10n.retry)),
+                ),
+              ],
+            ],
           ),
         ],
       ),

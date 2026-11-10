@@ -18,6 +18,7 @@ import '../../utils/haptic_service.dart';
 import '../../utils/rank_translation.dart';
 import '../profile/player_stats_screen.dart';
 import 'seasons_screen.dart';
+import '../../widgets/progression/progression_widgets.dart';
 
 /// Every figure on this screen (positions, ELO, W/L) is tabular.
 const _tabular = [FontFeature.tabularFigures()];
@@ -719,7 +720,7 @@ class LeaderboardRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    RankBadge(rank: entry.user.rank, size: 24, showLabel: false),
+                    FramedAvatar(rank: entry.user.rank, cosmetics: entry.user.cosmetics, size: 28),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(

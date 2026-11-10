@@ -14,9 +14,10 @@ import '../../utils/app_navigator.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/friendly_match_launcher.dart';
 import '../../utils/haptic_service.dart';
-import '../../utils/rank_utils.dart';
 import '../chat/chat_thread_screen.dart';
 import '../profile/player_stats_screen.dart';
+import '../../models/progression.dart';
+import '../../widgets/progression/progression_widgets.dart';
 
 /// Every row of this tab (team, friend, request, search result) is a 64 px
 /// flat card with the same inner padding.
@@ -660,8 +661,9 @@ class _GroupLabel extends StatelessWidget {
 class _RankAvatar extends StatelessWidget {
   final String rank;
   final bool? isOnline;
+  final PublicCosmetics? cosmetics;
 
-  const _RankAvatar({required this.rank, this.isOnline});
+  const _RankAvatar({required this.rank, this.isOnline, this.cosmetics});
 
   @override
   Widget build(BuildContext context) {
@@ -672,7 +674,8 @@ class _RankAvatar extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          RankUtils.getRankBadge(rank, size: 36),
+          // Progression: the player's avatar and frame ring (rank badge by default).
+          FramedAvatar(rank: rank, cosmetics: cosmetics, size: 36),
           if (isOnline != null)
             Positioned(
               right: -2,
@@ -726,7 +729,7 @@ class _PlayerRow extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: [
-            _RankAvatar(rank: user.rank, isOnline: isOnline),
+            _RankAvatar(rank: user.rank, isOnline: isOnline, cosmetics: user.cosmetics),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

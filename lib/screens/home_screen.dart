@@ -24,6 +24,12 @@ import 'home/leaderboard_screen.dart';
 import 'home/friends_screen.dart';
 import 'home/tournament_screen.dart';
 import 'settings/settings_screen.dart';
+import '../providers/progression_provider.dart';
+import 'progression/level_up_screen.dart';
+import 'achievements/achievement_unlock_sheet.dart';
+import 'ghost/ghost_play_row.dart';
+import 'league/league_result_screen.dart';
+import 'league/league_store.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -67,6 +73,20 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       // the daily-limit card need eligibility resolved before they can decide
       // whether to render at all.
       context.read<ReferralProvider>().refreshEligibility();
+
+      // Progression: content (disk cache first), my level and today's
+      // quests; then the once-only "level up" screen if one is owed.
+      // Weekly league (Agent 4): Monday's result comes first (its XP often
+      // causes the level up); its pop comes back through didPopNext, which
+      // then shows the level up.
+      LeagueStore.instance.reset();
+      GhostHomeStore.instance.reset();
+      unawaited(context.read<ProgressionProvider>().bootstrap().then((_) async {
+        if (mounted && await LeagueResultScreen.showIfPending(context)) return;
+        if (mounted) await LevelUpScreen.showIfPending(context);
+        // Agent 3: achievements not announced yet (retroactive ones included).
+        if (mounted) await AchievementUnlockSheet.showIfPending(context);
+      }));
 
       // Match proof: attach the capture_match listener for the app's
       // lifetime, and sweep for result disputes that were filed while this
@@ -172,6 +192,13 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       _refreshNotifier.value++;
       context.read<AuthProvider>().checkAuthStatus();
       context.read<SeasonProvider>().refresh();
+      final progression = context.read<ProgressionProvider>();
+      unawaited(Future.wait([progression.refreshSummary(), progression.refreshQuests()]).then((_) async {
+        if (mounted && await LeagueResultScreen.showIfPending(context)) return;
+        if (mounted) await LevelUpScreen.showIfPending(context);
+        // Agent 3: achievements not announced yet (retroactive ones included).
+        if (mounted) await AchievementUnlockSheet.showIfPending(context);
+      }));
     });
   }
 

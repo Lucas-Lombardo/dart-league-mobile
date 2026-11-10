@@ -1,3 +1,5 @@
+import 'progression.dart';
+
 /// Counterpart id of the virtual "Équipe Dart Rivals" conversation — mirrors
 /// the backend's SUPPORT_CONVERSATION_ID.
 const String kSupportConversationId = 'support';
@@ -48,6 +50,9 @@ class ChatConversation {
   final DateTime lastAt;
   final int unreadCount;
 
+  /// The friend's progression cosmetics (null for support / old servers).
+  final PublicCosmetics? cosmetics;
+
   ChatConversation({
     required this.conversationId,
     required this.isSupport,
@@ -56,6 +61,7 @@ class ChatConversation {
     required this.lastSenderId,
     required this.lastAt,
     required this.unreadCount,
+    this.cosmetics,
   });
 
   factory ChatConversation.fromJson(Map<String, dynamic> json) {
@@ -68,6 +74,7 @@ class ChatConversation {
       lastSenderId: last['senderId'] as String? ?? '',
       lastAt: _parseDate(last['createdAt']),
       unreadCount: json['unreadCount'] as int? ?? 0,
+      cosmetics: PublicCosmetics.fromJson(json['cosmetics']),
     );
   }
 }

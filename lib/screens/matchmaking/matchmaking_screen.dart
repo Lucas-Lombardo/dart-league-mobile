@@ -13,6 +13,8 @@ import '../../utils/haptic_service.dart';
 import '../../utils/orientation_utils.dart';
 import '../../widgets/design_system.dart';
 import '../../widgets/queue_activity_chart.dart';
+import '../ghost/ghost_queue_offer.dart';
+import '../../widgets/progression/metal.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/referral_provider.dart';
 import '../settings/redeem_referral_screen.dart';
@@ -29,6 +31,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   late AnimationController _rotationController;
   MatchmakingProvider? _matchmakingProvider;
   String? _userId;
+
+  /// The ghost fallback after 5 min without an opponent (CONTRACT §14.12):
+  /// the card under the search card, then the link above « Annuler ».
+  final GhostQueueOfferController _ghost = GhostQueueOfferController();
 
   /// True when another screen (a training launched via "Train while you wait")
   /// is on top of this one. While that's the case we must NOT leave the queue or
@@ -63,6 +69,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     // Only react while this screen is on top. If a "Train while you wait"
     // screen is above us, leaving the queue / popping here would wrongly cancel
     // the search and pop the training screen.
+    // Never once a match is found: it has already started on the server, and
+    // leaving the queue would only strand the player outside it.
+    if (_matchmakingProvider?.matchFound ?? false) return;
     if (state == AppLifecycleState.paused && _isCurrent) {
       final userId = _userId;
       if (userId != null) {
@@ -85,6 +94,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   /// Back chevron and "Cancel search" share this: leave the queue, then pop.
   Future<void> _cancelSearch() async {
     final matchmaking = context.read<MatchmakingProvider>();
+    // A found match can't be cancelled from here (it already started).
+    if (matchmaking.matchFound) return;
     final user = context.read<AuthProvider>().currentUser;
     if (mounted && user?.id != null) {
       await matchmaking.leaveQueue(user!.id);
@@ -98,6 +109,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _rotationController.dispose();
+    _ghost.dispose();
     // Releasing the wakelock here is safe: BaseGameScreenState re-asserts the
     // wakelock on a short periodic timer for the whole match, so this late
     // disable() (it runs ~300ms after the match-found navigation, once the
@@ -106,6 +118,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     WakelockPlus.disable();
     OrientationUtils.portraitOnly();
     super.dispose();
+  }
+
+  /// Premium (paid or bonus days); false without the provider (tests).
+  bool _isPremium(BuildContext context) {
+    try {
+      return context.watch<SubscriptionProvider>().isPremiumActive;
+    } on ProviderNotFoundException {
+      return false;
+    }
   }
 
   String _formatTime(int seconds) {
@@ -309,11 +330,12 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
   /// "Train while you wait": a quiet row — the queue keeps running under the
   /// training, and the match-found gate pulls the player back.
   Widget _buildTrainRow(AppLocalizations l10n) {
-    return SizedBox(
-      height: 64,
+    // 64 pt, a little more when the subtitle needs its second line.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 64),
       child: DsCard(
         radius: AppTheme.radiusRow,
-        padding: const EdgeInsets.fromLTRB(16, 0, 14, 0),
+        padding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
         onTap: _openTrainingWhileWaiting,
         child: Row(
           children: [
@@ -337,7 +359,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   const SizedBox(height: 3),
                   Text(
                     l10n.trainWhileWaitingSubtitle,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTheme.caption,
                   ),
@@ -389,11 +411,18 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
         matchmaking.errorMessage?.contains('DAILY_MATCH_LIMIT_REACHED') ??
         false;
     final connected = SocketService.isConnected;
+    final content = watchProgressionContent(context);
+    // Premium plays it; a free player sees it locked (« Premium »).
+    _ghost.tick(
+      searchSeconds: matchmaking.searchTime,
+      premium: _isPremium(context),
+      delaySec: ghostQueueDelayOf(content),
+    );
 
     return PopScope(
-      canPop: true,
+      canPop: !matchmaking.matchFound,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop && mounted && user?.id != null) {
+        if (didPop && mounted && user?.id != null && !matchmaking.matchFound) {
           await matchmaking.leaveQueue(user!.id);
         }
       },
@@ -447,6 +476,12 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                                 elo: user?.elo ?? 0,
                                 range: matchmaking.eloRange,
                               ),
+                              // Ghost match: after 5 min without an
+                              // opponent, at any hour (§14.12).
+                              GhostQueueOfferCard(
+                                controller: _ghost,
+                                xp: ghostMatchXpOf(content),
+                              ),
                               const SizedBox(height: 14),
                               const QueueActivityChart(),
                               const SizedBox(height: 14),
@@ -463,6 +498,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
                     children: [
+                      // « Attendre » folds the ghost card here.
+                      GhostQueueLink(controller: _ghost),
                       SizedBox(
                         width: double.infinity,
                         height: 52,

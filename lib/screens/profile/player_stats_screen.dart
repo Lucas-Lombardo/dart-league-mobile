@@ -15,13 +15,18 @@ import '../../utils/notification_service.dart';
 import '../../utils/rank_translation.dart';
 import '../../utils/rank_utils.dart';
 import '../../widgets/design_system.dart';
-import '../../widgets/player_card.dart';
+import '../../widgets/progression/player_showcase_card.dart';
 import '../chat/chat_thread_screen.dart';
 import '../home/stats/double_ladder_card.dart';
 import '../home/stats/impacts_card.dart';
 import '../home/stats/level_card.dart';
 import '../home/stats/stats_widgets.dart';
 import 'head_to_head_screen.dart';
+import '../../models/progression.dart';
+import '../../providers/progression_provider.dart';
+import '../progression/locker_screen.dart';
+import '../progression/progression_format.dart';
+import '../progression/profile_progression_section.dart';
 
 /// Another player's profile (also opens on your own row of a leaderboard):
 /// their player card, the challenge row for a friend, then the same three
@@ -58,6 +63,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
   /// doubles. Without it the page falls back to the career figures alone.
   PlayerProfileStats? _profile;
   bool _friendBusy = false;
+  PublicCosmetics? _cosmetics;
 
   @override
   void initState() {
@@ -74,10 +80,11 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     if (!_isSelf(context)) _loadHeadToHead();
     _loadProfile();
     try {
-      final stats = await UserService.getUserStats(widget.userId);
+      final result = await UserService.getUserStatsWithCosmetics(widget.userId);
       if (!mounted) return;
       setState(() {
-        _stats = stats;
+        _stats = result.stats;
+        _cosmetics = result.cosmetics;
         _isLoading = false;
       });
     } catch (e) {
@@ -270,6 +277,10 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildTopCard(l10n, _identity(context, friends), stats),
+            ProfileProgressionSection(
+              cosmetics: _profileCosmetics(isSelf),
+              mine: isSelf ? maybeWatchProgression(context)?.summary : null,
+            ),
             if (friend != null) ...[
               const SizedBox(height: 14),
               _buildChallengeRow(l10n, friend, friends.isOnline(friend.id)),
@@ -289,62 +300,35 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     );
   }
 
-  /// The player card when their rank and ELO are known; otherwise the same
-  /// card without a badge or number — a wrong badge is worse than none.
+  /// My live cosmetics on my own profile, the player's otherwise.
+  PublicCosmetics? _profileCosmetics(bool isSelf) =>
+      (isSelf ? maybeWatchProgression(context)?.summary?.cosmetics : null) ?? _cosmetics;
+
+  /// The player card (S1, the home's card without its quest strip), then
+  /// their rank and ELO when known — a wrong badge is worse than none, so an
+  /// unknown rank shows the name's initial and no rank line. « Modifier »
+  /// (the locker) on your own profile only.
   Widget _buildTopCard(AppLocalizations l10n, _Identity? identity, UserStats stats) {
-    if (identity != null) {
-      final isMaxRank = identity.rank.toLowerCase() == 'master';
-      return PlayerCard(
-        rank: identity.rank,
-        username: widget.username,
-        isPremium: identity.isPremium,
-        subline: Text(
-          RankTranslation.translate(l10n, identity.rank),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTheme.caption.copyWith(fontSize: 13),
-        ),
-        value: '${identity.elo}',
-        valueLabel: l10n.eloLabel,
-        progress: isMaxRank ? 1.0 : rankProgress(identity.rank, identity.elo),
-      );
-    }
-    final initial = widget.username.isNotEmpty ? widget.username[0].toUpperCase() : '?';
-    return DsCard(
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.surfaceLight),
-            child: Text(
-              initial,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.username,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTheme.titleLarge.copyWith(height: 1.1),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${l10n.totalMatches} · ${stats.totalMatches}',
-                  style: AppTheme.caption.copyWith(fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    final isSelf = _isSelf(context);
+    final cosmetics = _profileCosmetics(isSelf);
+    final card = PlayerShowcaseCard(
+      username: widget.username,
+      rank: identity?.rank,
+      cosmetics: cosmetics,
+      isPremium: identity?.isPremium ?? false,
+      level: (isSelf ? maybeWatchProgression(context)?.summary?.level : null) ?? cosmetics?.level,
+      onEdit: isSelf
+          ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LockerScreen()))
+          : null,
+    );
+    if (identity == null) return card;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        card,
+        const SizedBox(height: 10),
+        ProfileRankRow(rank: identity.rank, elo: identity.elo),
+      ],
     );
   }
 
@@ -511,6 +495,76 @@ class _CareerFiguresCard extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Under the profile card: rank badge, rank and the road to the next one,
+/// the ELO on the right, a thin bar (what the old player card carried).
+class ProfileRankRow extends StatelessWidget {
+  final String rank;
+  final int elo;
+  const ProfileRankRow({super.key, required this.rank, required this.elo});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isMaxRank = rank.toLowerCase() == 'master';
+    final isUnranked = rank.toLowerCase() == 'unranked';
+    final String? next = isMaxRank
+        ? l10n.maxRankReached
+        : isUnranked
+            ? null
+            : l10n.homeNextRankIn(
+                RankTranslation.translate(l10n, nextRank(rank)),
+                eloNeededForNextRank(rank, elo).clamp(0, 1 << 30),
+              );
+    return DsCard(
+      radius: AppTheme.radiusRow,
+      padding: const EdgeInsets.fromLTRB(12, 10, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              RankUtils.getRankBadge(rank, size: 36),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(RankTranslation.translate(l10n, rank), style: AppTheme.rowTitle.copyWith(fontWeight: FontWeight.w700)),
+                    if (next != null) Text(next, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTheme.caption),
+                  ],
+                ),
+              ),
+              if (!isUnranked)
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      // Tabular figures, as on the home card: with a narrow
+                      // proportional « 1 », « 1 409 » read « 1409 ».
+                      TextSpan(
+                        text: formatXp(elo),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      TextSpan(text: ' ${l10n.eloLabel}', style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (!isUnranked) ...[
+            const SizedBox(height: 10),
+            DsProgressBar(value: isMaxRank ? 1.0 : rankProgress(rank, elo)),
+          ],
+        ],
+      ),
     );
   }
 }

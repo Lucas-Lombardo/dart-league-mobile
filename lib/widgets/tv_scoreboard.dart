@@ -33,6 +33,11 @@ class TvScoreboard extends StatelessWidget {
   /// Small line under the legs ("Manche 1"); null hides it.
   final String? caption;
 
+  /// Progression: static avatar + frame ring next to each name. Null keeps
+  /// the band exactly as before.
+  final Widget? myAvatar;
+  final Widget? opponentAvatar;
+
   const TvScoreboard({
     super.key,
     required this.myScore,
@@ -48,11 +53,14 @@ class TvScoreboard extends StatelessWidget {
     this.myLegs = 0,
     this.opponentLegs = 0,
     this.caption,
+    this.myAvatar,
+    this.opponentAvatar,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final rowHeight = (myAvatar != null || opponentAvatar != null) ? 22.0 : 13.0;
     // me renders on the left unless the current user is player 2.
     final mePanel = _PlayerScore(
       name: myName,
@@ -62,6 +70,8 @@ class TvScoreboard extends StatelessWidget {
       dotColor: AppTheme.playerBlue,
       average: myAverage,
       isLeft: !iAmPlayer2,
+      avatar: myAvatar,
+      nameRowHeight: rowHeight,
     );
     final opponentPanel = _PlayerScore(
       name: opponentName,
@@ -71,6 +81,8 @@ class TvScoreboard extends StatelessWidget {
       dotColor: AppTheme.opponentPink,
       average: opponentAverage,
       isLeft: iAmPlayer2,
+      avatar: opponentAvatar,
+      nameRowHeight: rowHeight,
     );
     final legs = SeriesLegsScore(
       myLegs: iAmPlayer2 ? opponentLegs : myLegs,
@@ -139,6 +151,8 @@ class _PlayerScore extends StatelessWidget {
   final double? average;
   // Which half of the band this panel occupies: text aligns to the outer edge.
   final bool isLeft;
+  final Widget? avatar;
+  final double nameRowHeight;
 
   const _PlayerScore({
     required this.name,
@@ -148,6 +162,8 @@ class _PlayerScore extends StatelessWidget {
     required this.dotColor,
     this.average,
     this.isLeft = true,
+    this.avatar,
+    this.nameRowHeight = 13,
   });
 
   @override
@@ -177,12 +193,14 @@ class _PlayerScore extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 13,
+          height: nameRowHeight,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (isLeft && isActive) ...[dot, const SizedBox(width: 6)],
+              if (isLeft && avatar != null) ...[avatar!, const SizedBox(width: 6)],
               nameText,
+              if (!isLeft && avatar != null) ...[const SizedBox(width: 6), avatar!],
               if (!isLeft && isActive) ...[const SizedBox(width: 6), dot],
             ],
           ),

@@ -1,5 +1,6 @@
 import '../utils/api_config.dart';
 import '../utils/rank_utils.dart';
+import 'progression.dart';
 
 DateTime? _tryParseDateTime(String? value) {
   if (value == null) return null;
@@ -262,6 +263,10 @@ class TournamentMatch {
   /// the app resume a live leg after being killed.
   final String? lastGameId;
 
+  /// Progression cosmetics of both players (bracket only; null otherwise).
+  final PublicCosmetics? player1Cosmetics;
+  final PublicCosmetics? player2Cosmetics;
+
   TournamentMatch({
     required this.id,
     required this.tournamentId,
@@ -285,6 +290,8 @@ class TournamentMatch {
     this.startedAt,
     this.completedAt,
     this.lastGameId,
+    this.player1Cosmetics,
+    this.player2Cosmetics,
   });
 
   factory TournamentMatch.fromJson(Map<String, dynamic> json) {
@@ -311,6 +318,8 @@ class TournamentMatch {
       startedAt: _tryParseDateTime(json['startedAt'] as String?),
       completedAt: _tryParseDateTime(json['completedAt'] as String?),
       lastGameId: json['lastGameId'] as String?,
+      player1Cosmetics: PublicCosmetics.fromJson(json['player1Cosmetics']),
+      player2Cosmetics: PublicCosmetics.fromJson(json['player2Cosmetics']),
     );
   }
 
@@ -362,6 +371,9 @@ class TournamentRegistration {
   final int seed;
   final DateTime registeredAt;
 
+  /// Progression cosmetics (additive; null on an old server).
+  final PublicCosmetics? cosmetics;
+
   TournamentRegistration({
     required this.id,
     required this.userId,
@@ -371,6 +383,7 @@ class TournamentRegistration {
     required this.status,
     required this.seed,
     required this.registeredAt,
+    this.cosmetics,
   });
 
   factory TournamentRegistration.fromJson(Map<String, dynamic> json) {
@@ -383,6 +396,7 @@ class TournamentRegistration {
       status: json['status'] as String? ?? 'unknown',
       seed: json['seed'] as int? ?? 0,
       registeredAt: _tryParseDateTime(json['registeredAt'] as String?) ?? DateTime.now(),
+      cosmetics: PublicCosmetics.fromJson(json['cosmetics']),
     );
   }
 

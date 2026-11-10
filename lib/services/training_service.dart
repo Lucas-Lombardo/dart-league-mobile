@@ -8,13 +8,19 @@ class TrainingService {
     required int dartsThrown,
     bool completed = true,
     Map<String, dynamic>? details,
+    // When the session started: sent as details.durationSec, which the
+    // progression system uses for "a training counts after 5 minutes".
+    DateTime? startedAt,
   }) async {
+    final payloadDetails = startedAt == null
+        ? details
+        : {...?details, 'durationSec': DateTime.now().difference(startedAt).inSeconds};
     final response = await ApiService.post('/trainings', {
       'type': type.apiValue,
       'score': score,
       'dartsThrown': dartsThrown,
       'completed': completed,
-      if (details != null) 'details': details,
+      'details': ?payloadDetails,
     });
     if (response is Map<String, dynamic>) {
       return TrainingSessionRecord.fromJson(response);

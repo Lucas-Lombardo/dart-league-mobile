@@ -16,6 +16,8 @@ import '../../services/turn_report_service.dart';
 import 'base_game_screen_state.dart';
 import 'leg_end_view.dart';
 import 'match_end_view.dart';
+import '../progression/xp_summary_panel.dart';
+import '../achievements/achievement_unlock_sheet.dart';
 import 'turn_reports_view.dart';
 
 class GameScreen extends StatefulWidget {
@@ -36,6 +38,8 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends BaseGameScreenState<GameScreen> {
   String? _storedMatchId;
+  // Progression: the end screen lists the XP earned since this screen opened.
+  final DateTime _openedAt = DateTime.now().subtract(const Duration(seconds: 5));
 
   @override
   dynamic readGame() => context.read<GameProvider>();
@@ -296,6 +300,31 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
     ).then((_) => forfeitDialogShowing = false);
   }
 
+  /// The winning-visit banner, then the "XP earned" block of a ranked series
+  /// (static, nothing animates).
+  Widget? _endPreCard(dynamic game, bool didWin) {
+    final banner = buildWinningVisitBanner(game, didWin: didWin);
+    if (game.isRankedSeries != true || game.isFriendly == true) return banner;
+    // Agent 3: the achievements unlocked by the series, announced now that it is over.
+    // Bottom gap like every pre-card: the XP card (or its league line) never
+    // touches the accept button.
+    final xp = Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          XpSummaryPanel(since: _openedAt, expectRefId: game.seriesId as String?),
+          AchievementUnlockWatcher(since: _openedAt),
+        ],
+      ),
+    );
+    if (banner == null) return xp;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [banner, const SizedBox(height: 12), xp],
+    );
+  }
+
   @override
   Widget buildEndScreen(dynamic game, AuthProvider auth) {
     // BO3: a leg just ended but the series continues — show the leg result
@@ -373,7 +402,7 @@ class _GameScreenState extends BaseGameScreenState<GameScreen> {
       replayClips: matchReplayClips,
       // The loser's only chance at the winning visit: they were sent straight
       // here by game_won, with no confirmation step of their own to hang it on.
-      preCard: buildWinningVisitBanner(game, didWin: didWin),
+      preCard: _endPreCard(game, didWin),
       // The server already replayed these darts; the card asks it for them
       // rather than re-deriving anything client-side.
       statsMatchId: game.matchId as String?,

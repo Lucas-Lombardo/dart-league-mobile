@@ -6,9 +6,9 @@ import '../services/matchmaking_service.dart';
 import '../services/match_service.dart';
 import '../services/socket_service.dart';
 import '../services/turn_report_service.dart';
-import '../utils/haptic_service.dart';
 import '../utils/dart_sound_service.dart';
 import 'game_provider.dart';
+import '../models/progression.dart';
 
 class MatchmakingProvider with ChangeNotifier {
   bool _isSearching = false;
@@ -24,6 +24,14 @@ class MatchmakingProvider with ChangeNotifier {
   String? _opponentUsername;
   int? _opponentElo;
   int? _playerElo;
+  // Progression cosmetics of both players (additive match_found fields).
+  PublicCosmetics? _opponentCosmetics;
+  PublicCosmetics? _playerCosmetics;
+  // What the series is worth to me and the opponent's crown (additive
+  // match_found fields, CONTRACT §14.13); null on an older server.
+  int? _eloIfWin;
+  int? _eloIfLoss;
+  bool _opponentPremium = false;
   int _eloRange = 250;
   int _searchTime = 0;
   Timer? _searchTimer;
@@ -49,6 +57,11 @@ class MatchmakingProvider with ChangeNotifier {
   String? get opponentUsername => _opponentUsername;
   int? get opponentElo => _opponentElo;
   int? get playerElo => _playerElo;
+  PublicCosmetics? get opponentCosmetics => _opponentCosmetics;
+  PublicCosmetics? get playerCosmetics => _playerCosmetics;
+  int? get eloIfWin => _eloIfWin;
+  int? get eloIfLoss => _eloIfLoss;
+  bool get opponentPremium => _opponentPremium;
   RtcV2Config? get rtcV2Config => _rtcV2Config;
   String? get errorMessage => _errorMessage;
 
@@ -69,6 +82,9 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentId = null;
     _opponentUsername = null;
     _opponentElo = null;
+    _opponentCosmetics = null;
+    _playerCosmetics = null;
+    _clearStakes();
     _rtcV2Config = null;
     TurnReportService.resetForMatch();
     _errorMessage = null;
@@ -230,6 +246,8 @@ class MatchmakingProvider with ChangeNotifier {
             'opponentUsername': result['opponentUsername'] ?? 'Opponent',
             'opponentElo': result['opponentElo'],
             'playerElo': result['playerElo'],
+            'opponentCosmetics': result['opponentCosmetics'],
+            'playerCosmetics': result['playerCosmetics'],
           });
         }
       } catch (_) {
@@ -255,7 +273,8 @@ class MatchmakingProvider with ChangeNotifier {
     debugPrint('QUEUE DEBUG: match_found received - matchId=${data['matchId']}, opponentId=${data['opponentId']}');
     debugPrint('QUEUE DEBUG: gameProvider state at match_found - gameStarted=${_gameProvider?.gameStarted}, gameEnded=${_gameProvider?.gameEnded}');
 
-    HapticService.heavyImpact();
+    // No haptic here: the "Match found" screen owns the scene's taps (a
+    // light one as it opens, another as the VS lands), CONTRACT §14.13.
     DartSoundService.playMatchFound();
 
     _stopSearchTimer();
@@ -265,6 +284,14 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentUsername = data['opponentUsername'] as String?;
     _opponentElo = data['opponentElo'] as int?;
     _playerElo = data['playerElo'] as int?;
+    _opponentCosmetics = PublicCosmetics.fromJson(data['opponentCosmetics']);
+    _playerCosmetics = PublicCosmetics.fromJson(data['playerCosmetics']);
+    // Absent from older servers and from the active-match poll: no stakes.
+    final win = data['eloIfWin'];
+    final loss = data['eloIfLoss'];
+    _eloIfWin = win is num ? win.toInt() : null;
+    _eloIfLoss = loss is num ? loss.toInt() : null;
+    _opponentPremium = data['opponentPremium'] == true;
     
     // Keep-if-absent, so an HTTP poll response can't wipe the verdict the
     // socket payload already delivered.
@@ -335,6 +362,9 @@ class MatchmakingProvider with ChangeNotifier {
       _opponentUsername = null;
       _opponentElo = null;
       _playerElo = null;
+      _opponentCosmetics = null;
+      _playerCosmetics = null;
+      _clearStakes();
       _rtcV2Config = null;
       TurnReportService.resetForMatch();
       _errorMessage = null;
@@ -342,6 +372,21 @@ class MatchmakingProvider with ChangeNotifier {
     } catch (_) {
       // Leave queue failed
     }
+  }
+
+  /// The server took the player out of the ranked queue to start a ghost
+  /// match (POST /ghost/matches, CONTRACT §14.12): stop searching here
+  /// without DELETE /matchmaking/leave — the queue entry is already gone,
+  /// and the leave would also mark the player as a recent queue leaver.
+  void endSearchForGhost() {
+    _cleanupSocketListeners();
+    _stopSearchTimer();
+    _isSearching = false;
+    _matchFound = false;
+    _searchTime = 0;
+    _eloRange = 250;
+    _errorMessage = null;
+    notifyListeners();
   }
 
   void _cleanupSocketListeners() {
@@ -357,7 +402,16 @@ class MatchmakingProvider with ChangeNotifier {
     _opponentId = null;
     _opponentUsername = null;
     _opponentElo = null;
+    _opponentCosmetics = null;
+    _playerCosmetics = null;
+    _clearStakes();
     notifyListeners();
+  }
+
+  void _clearStakes() {
+    _eloIfWin = null;
+    _eloIfLoss = null;
+    _opponentPremium = false;
   }
 
   @override
